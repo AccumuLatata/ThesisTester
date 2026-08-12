@@ -207,7 +207,7 @@ untouched). Study runs do **not** call `run_batch`; they loop
 | Soft resume | Ledger `ok` cells are skipped only when their `bundle_path` zip still exists; missing/null index metrics (incl. RS-D7 PF/WR) are rehydrated from bundle `trade_summary.json`; identity fields prefer prior index row / `dataset_meta.json` |
 | `--force` | Re-run all cells; on identity mismatch replaces the ledger (no orphan cells from the prior StudySpec) |
 | Workers | `workers>1` uses spawn pool; cell tasks **return** ok/failed payloads (continue-on-failure); pool deaths mark the cell failed |
-| Lock | Exclusive `.study.lock` on `output_dir` (fail-closed if another study run holds it) |
+| Lock | Exclusive `.study.lock` on `output_dir` (fail-closed if another study run holds it). POSIX: `fcntl.flock`; Windows: `msvcrt.locking`. Importing `thesistester.study` must not require POSIX-only `fcntl` (Studies viewer on Windows). |
 
 ### Artifacts (under output_dir)
 
@@ -426,6 +426,8 @@ Streamlit page: **Studies** (`pages/15_Studies.py`).
   Studies-scoped `studies_viewer_study_dir` session key is written (never classic
   research keys); no Research-Bundles deep-link.
 - Report bundle reads refuse `bundle_path` values that escape the study directory.
+- Package import is Windows-safe: `study.execute` binds `fcntl` / `msvcrt`
+  optionally so opening this page cannot raise `ModuleNotFoundError: fcntl`.
 
 ---
 

@@ -57,7 +57,10 @@ capabilities. **RS-D2** adds a **read-only** Streamlit Studies viewer
 (`pages/15_Studies.py`) over completed study artifacts via
 `report_study(..., write_artifacts=False)` /
 ledger loaders — no in-app expand/run/promote and no classic research
-`st.session_state` mutation. Study execution sets `execution_origin="study"`
+`st.session_state` mutation. `thesistester.study.execute` imports on Windows:
+exclusive `.study.lock` uses POSIX `fcntl.flock` or Windows `msvcrt.locking`
+(fail-closed; released on process exit). Study execution sets
+`execution_origin="study"`
 (member of `EXECUTION_ORIGINS`) and does **not** call `run_batch` — R18 CLI
 `run` / `run_batch` all-or-nothing write semantics stay identical. Engine and
 classic research pages remain undisturbed. Operator contract:

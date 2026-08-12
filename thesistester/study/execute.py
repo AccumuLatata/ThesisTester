@@ -7,7 +7,6 @@ failures. Does **not** call ``run_batch``.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import math
 import multiprocessing
@@ -17,7 +16,17 @@ import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import IO, Any, Callable, Iterator, Mapping
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows CPython
+    fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None  # type: ignore[assignment]
 
 import pandas as pd
 
@@ -384,24 +393,75 @@ def _resolve_study_output_dir(
     return out
 
 
+_LOCK_REGION_BYTES = 1
+
+
+def _lock_held_error(output_dir: Path) -> StudySpecError:
+    return StudySpecError(
+        f"Another study run holds the lock on {output_dir}; "
+        f"wait or use a different --output-dir"
+    )
+
+
+def _prepare_lock_region(handle: IO[bytes]) -> None:
+    """Ensure a lockable byte exists (required by Windows ``msvcrt.locking``)."""
+    handle.seek(0, os.SEEK_END)
+    if handle.tell() < _LOCK_REGION_BYTES:
+        handle.write(b"\0")
+        handle.flush()
+    handle.seek(0)
+
+
+def _acquire_exclusive_lock(handle: IO[bytes], *, output_dir: Path) -> None:
+    """Non-blocking exclusive lock via POSIX ``fcntl`` or Windows ``msvcrt``."""
+    _prepare_lock_region(handle)
+    fd = handle.fileno()
+    try:
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        if msvcrt is not None:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, _LOCK_REGION_BYTES)
+            return
+    except OSError as exc:
+        raise _lock_held_error(output_dir) from exc
+    raise StudySpecError(
+        "Exclusive study directory lock is unavailable on this Python runtime "
+        "(need POSIX fcntl or Windows msvcrt)"
+    )
+
+
+def _release_exclusive_lock(handle: IO[bytes]) -> None:
+    fd = handle.fileno()
+    handle.seek(0)
+    if fcntl is not None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return
+    if msvcrt is not None:
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, _LOCK_REGION_BYTES)
+
+
 @contextmanager
 def _study_dir_lock(output_dir: Path) -> Iterator[None]:
-    """Fail-closed exclusive lock so concurrent study runs cannot clobber ledgers."""
+    """Fail-closed exclusive lock so concurrent study runs cannot clobber ledgers.
+
+    POSIX uses ``fcntl.flock``; Windows uses ``msvcrt.locking``. Both are
+    released on process exit, so a crashed run cannot leave a stale lock.
+    Importing this module must not require POSIX-only ``fcntl`` — the Studies
+    viewer loads ``thesistester.study`` on Windows.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     lock_path = output_dir / ".study.lock"
-    fh = open(lock_path, "a+", encoding="utf-8")
+    fh = open(lock_path, "ab+")
+    locked = False
     try:
-        try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise StudySpecError(
-                f"Another study run holds the lock on {output_dir}; "
-                f"wait or use a different --output-dir"
-            ) from exc
+        _acquire_exclusive_lock(fh, output_dir=output_dir)
+        locked = True
         yield
     finally:
         try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            if locked:
+                _release_exclusive_lock(fh)
         finally:
             fh.close()
 
