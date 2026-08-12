@@ -274,6 +274,38 @@ def test_closed_level_token_set_includes_ma_columns():
     assert "SMA_50_5min" not in tokens
 
 
+def test_closed_level_token_set_empty_timeframes_do_not_invent_bare_ma():
+    tokens = closed_level_token_set(
+        {
+            "sma_lengths": [50],
+            "ema_lengths": [21],
+            "sma_timeframes": [],
+            "ema_timeframes": [],
+        }
+    )
+    assert "SMA_50" not in tokens
+    assert "EMA_21" not in tokens
+    assert not any(t.startswith("SMA_") for t in tokens)
+    assert not any(t.startswith("EMA_") for t in tokens)
+
+
+def test_closed_level_token_set_gates_pivots_and_prev30m_on_flags():
+    disabled = closed_level_token_set({"pivots_enabled": False, "prev30m_vwap_enabled": False})
+    assert "Pivot_1min_High" not in disabled
+    assert "prev30mVWAP" not in disabled
+
+    enabled = closed_level_token_set(
+        {
+            "pivots_enabled": True,
+            "pivot_timeframes": ["1min"],
+            "prev30m_vwap_enabled": True,
+            "prev30m_vwap_validity_periods": 1,
+        }
+    )
+    assert "Pivot_1min_High" in enabled
+    assert "prev30mVWAP" in enabled
+
+
 def test_schema_version_rejected():
     raw = _minimal_study()
     raw["schema_version"] = 99

@@ -67,21 +67,14 @@ STUDY_STATIC_LEVEL_NAMES: frozenset[str] = frozenset(
         "pdPOC",
         "dVWAP_RTH",
         "dVWAP",
-        "prev30mVWAP",
         "APOC",
         "pAPOC",
         "dSinglePrint_30m_NearestAbove",
         "dSinglePrint_30m_NearestBelow",
         "pSinglePrint_30m_NearestAbove",
         "pSinglePrint_30m_NearestBelow",
-        "Pivot_1min_High",
-        "Pivot_1min_Low",
-        "Pivot_5min_High",
-        "Pivot_5min_Low",
-        "Pivot_30min_High",
-        "Pivot_30min_Low",
-        "Pivot_4h_High",
-        "Pivot_4h_Low",
+        # prev30mVWAP* and Pivot_* are admitted only when the matching
+        # study.levels enable flags are on (see closed_level_token_set).
     }
 )
 
@@ -244,24 +237,27 @@ def closed_level_token_set(levels: Mapping[str, Any] | None) -> frozenset[str]:
 
     sma_lengths = settings.get("sma_lengths") or []
     ema_lengths = settings.get("ema_lengths") or []
+    # None → bare SMA_N / EMA_N (levels engine). Explicit [] → no MA tokens.
+    # Do not treat empty lists as None (that invented bare columns the engine
+    # never emits for empty timeframe tuples).
     sma_timeframes = settings.get("sma_timeframes")
     ema_timeframes = settings.get("ema_timeframes")
 
-    if sma_timeframes:
+    if sma_timeframes is None:
+        for length in sma_lengths:
+            tokens.add(f"SMA_{int(length)}")
+    else:
         for length in sma_lengths:
             for timeframe in sma_timeframes:
                 tokens.add(f"SMA_{int(length)}_{timeframe}")
-    else:
-        for length in sma_lengths:
-            tokens.add(f"SMA_{int(length)}")
 
-    if ema_timeframes:
+    if ema_timeframes is None:
+        for length in ema_lengths:
+            tokens.add(f"EMA_{int(length)}")
+    else:
         for length in ema_lengths:
             for timeframe in ema_timeframes:
                 tokens.add(f"EMA_{int(length)}_{timeframe}")
-    else:
-        for length in ema_lengths:
-            tokens.add(f"EMA_{int(length)}")
 
     for window in settings.get("vwap_windows") or []:
         tokens.add(f"VWAP_rolling_{normalized_window_label(str(window))}")
