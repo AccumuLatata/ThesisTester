@@ -905,6 +905,28 @@ other than the last bar in the dataset.
   bars, or WFO history policy makes OTF-enabled runs incomparable without
   explicit re-baselining.
 
+## Research Study Runner ranking (RS4)
+
+- Study overview ranking (`study.overview.md` / ranked CSV rows) is a
+  **descriptive multi-cell screen**, not a validated edge. Large closed
+  factorials create severe multiple-testing bias: the top cell is a sample
+  extreme under the study design, not independent confirmation.
+- Cells with `trade_count < study.report.min_trades` are listed under low-N
+  and excluded from the ranked section. Meeting `min_trades` is a sample-size
+  filter only — not statistical significance.
+- OTF Δ rows (`study.otf_delta.csv`) compare metric(OTF variant) −
+  metric(`report.otf_baseline`) for matched non-OTF factor tuples. They inherit
+  the same multiple-testing caveats; a positive Δ is not proof that OTF adds
+  edge.
+- `multiple_testing: warn` (default) still crowns a “top descriptive cell” in
+  Markdown with explicit caveats. `multiple_testing: error` suppresses that
+  crowning; the ranked table remains descriptive only.
+- Prefer stage-first expansion, human-confirmed promote (RS5), held-out /
+  walk-forward evaluation, and non-zero `commission_per_side` /
+  `slippage_ticks` before trusting expectancy ranks.
+- Study execute does not change R18 `run_batch` semantics; overview join does
+  not invent new inference (no automatic WFA/PBO rollup in RS4).
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

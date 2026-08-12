@@ -42,17 +42,19 @@ and sends its bundle-ready mapping to `build_research_bundle()`.
 parallelism inside a single engine pipeline. Results are collected in YAML
 order and summarized in `results_index.csv`.
 
-## Research Study Runner boundary (RS1–RS3)
+## Research Study Runner boundary (RS1–RS4)
 
 `thesistester/study/` is an additive headless module for closed factorial
 StudySpecs. RS1 validates; RS2 expands to R18 `experiment.yaml` + factor map;
 RS3 wires `python -m thesistester study expand|run` and a **study-owned**
 execute loop (`run_experiment` + `build_research_bundle`) with per-cell ledger,
-soft resume, and continue-on-failure. Study execution sets
-`execution_origin="study"` (member of `EXECUTION_ORIGINS`) and does **not** call
-`run_batch` — R18 CLI `run` / `run_batch` all-or-nothing write semantics stay
-identical. Engine and Streamlit pages are untouched. Operator contract:
-`docs/STUDY_RUNNER.md`; plan: `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`.
+soft resume, and continue-on-failure; RS4 adds `study report` (overview CSV/MD,
+OTF Δ, honesty; PF from bundle `trade_summary` unless present on the index).
+Study execution sets `execution_origin="study"` (member of `EXECUTION_ORIGINS`)
+and does **not** call `run_batch` — R18 CLI `run` / `run_batch` all-or-nothing
+write semantics stay identical. Engine and Streamlit pages are untouched.
+Operator contract: `docs/STUDY_RUNNER.md`; plan:
+`docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`.
 
 ## Classic/Assistant research identity boundary (CAI-1)
 

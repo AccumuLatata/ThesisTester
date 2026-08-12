@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1–RS3 landed (schema + expand + study-owned execute/ledger). Report lands in RS4–RS5.  
+**Status:** RS1–RS4 landed (schema + expand + execute/ledger + overview report). Promote/examples in RS5.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`  
 **Package:** `thesistester.study`
 
@@ -224,3 +224,49 @@ Expand/run print `run_count`, `workers`, and warn when any cell has
 ### Out of scope for RS3
 
 Overview aggregator (`study report`), promote drafts, assistant/MCP tools.
+
+---
+
+## RS4 — Overview report
+
+### Command
+
+```bash
+python -m thesistester study report out/study1
+```
+
+Reads a completed study directory (does not re-run backtests).
+
+### Artifacts written
+
+| File | Role |
+|---|---|
+| `study.overview.csv` | `results_index.csv` ⟕ `study.expansion.json` on `run_name` + resolved PF/win_rate |
+| `study.overview.md` | Ranked / low-N / group summaries / OTF Δ + honesty block |
+| `study.otf_delta.csv` | metric(OTF variant) − metric(`report.otf_baseline`) per non-OTF factor tuple |
+
+### Join / ranking
+
+- Factor tags flatten to `factor_*` columns (`partner_levels` as `A+B`; `otf` as canonical JSON key).
+- Ranked section: `status=ok`, `trade_count >= min_trades`, non-null `primary_metric`.
+- Low-N section: ok cells below `min_trades` (excluded from ranked winners).
+- Sort: higher-is-better for `expectancy_r` / `total_r` / `profit_factor` / `trade_count`; lower-is-better for `max_drawdown_r`.
+- `multiple_testing: error` suppresses best-cell crowning in Markdown (ranked table still emitted as descriptive).
+
+### Profit factor source
+
+R18 study index does **not** add PF columns in MVP (RS-D7 deferred). Report resolves:
+
+1. Index `profit_factor` when present → `profit_factor_source=index`
+2. Else bundle `trade_summary.json` → `profit_factor_source=bundle`
+3. Else `missing`
+
+Optional `win_rate` follows the same path. Documented in `METRICS_GLOSSARY.md`.
+
+### OTF Δ
+
+Baseline = normalized `study.report.otf_baseline` (default `{enabled: false}`). Alias-stable via `normalize_otf_filter_config` (`5min` ≡ `5m`). Interpret with multiple-testing caution (`ASSUMPTIONS_AND_LIMITATIONS.md`).
+
+### Out of scope for RS4
+
+LLM narrative, Studies UI page, silent R18 index schema change, promote/examples (RS5).
