@@ -1,7 +1,7 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 landed (holistic MVP: schema → expand → execute → report → promote/examples). Optional RS6 deferred.  
-**Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`  
+**Status:** RS1–RS5 landed (holistic MVP). Post-MVP sequenced in the plan: **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5**.  
+**Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
@@ -223,7 +223,7 @@ Expand/run print `run_count`, `workers`, and warn when any cell has
 
 ### Out of scope for RS3
 
-Overview aggregator (`study report`), promote drafts, assistant/MCP tools.
+Overview aggregator (`study report`), promote drafts, assistant `STUDY.*` tools.
 
 ---
 
@@ -332,4 +332,21 @@ CI/golden miniatures remain under `tests/fixtures/study/` (2×2×2). Do not run 
 
 ### Out of scope for RS5
 
-Auto-run promotion, assistant NL compiler, Studies UI, RS6 MCP/assistant tools.
+Auto-run promotion, assistant NL compiler, Studies UI, RS6 `STUDY.*` assistant tools.
+
+---
+
+## Post-MVP (plan-locked)
+
+See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
+**Next code PR = RS-D7 only** (§12.8).
+
+| Order | ID | Intent |
+|---|---|---|
+| 1 | **RS-D7** (**next**) | Additive `results_index` `profit_factor` + `win_rate` (incl. soft-resume PF/WR backfill; ordered CLI↔study key parity) |
+| 2 | **RS6** | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
+| 3 | **RS-D2** | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
+| 4 | **RS-D4** | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
+| 5 | **RS-D5** | External Grok Bot routine pack |
+
+Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).
