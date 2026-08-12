@@ -906,13 +906,13 @@ deep-link. HC allowlist if USER_GUIDE H2 added. No engine edits. §4.2.
 | **Out of scope** | New PBO/DSR algorithm; study-level pooled PBO across factorial cells; auto-enabling batteries on promote/report; changing analytics formulas; engine changes |
 | **Regression** | Enabling rollup never changes cell backtest results; classic validation pages unchanged |
 | **Acceptance checklist** | |
-| | ☐ Rollup reads existing cell artifacts / index WFA columns only |
-| | ☐ Missing batteries → explicit null/not_run, not invented scores |
-| | ☐ No cross-cell PBO/DSR computation |
-| | ☐ Honesty block in MD |
-| | ☐ Docs state grid requirement for overfitting fields + survivor opt-in recipe |
-| | ☐ No engine/pages golden drift |
-| | ☐ Full suite green |
+| | ☑ Rollup reads existing cell artifacts / index WFA columns only |
+| | ☑ Missing batteries → explicit null/not_run, not invented scores |
+| | ☑ No cross-cell PBO/DSR computation |
+| | ☑ Honesty block in MD |
+| | ☑ Docs state grid requirement for overfitting fields + survivor opt-in recipe |
+| | ☑ No engine/pages golden drift |
+| | ☑ Full suite green |
 
 **Copy-ready agent prompt:**
 

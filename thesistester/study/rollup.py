@@ -73,11 +73,23 @@ def _load_results_index(study_dir: Path) -> pd.DataFrame:
     path = study_dir / RESULTS_INDEX
     if not path.is_file():
         raise StudyRollupError(f"Missing {RESULTS_INDEX} under {study_dir}")
-    frame = pd.read_csv(path)
+    try:
+        frame = pd.read_csv(path)
+    except (OSError, pd.errors.ParserError, ValueError) as exc:
+        raise StudyRollupError(f"Unable to read {path}: {exc}") from exc
     if frame.empty:
         raise StudyRollupError(f"{RESULTS_INDEX} is empty under {study_dir}")
     if "run_name" not in frame.columns:
         raise StudyRollupError(f"{RESULTS_INDEX} must include a run_name column")
+    if frame["run_name"].duplicated().any():
+        dupes = sorted(
+            {str(name) for name in frame.loc[frame["run_name"].duplicated(), "run_name"]}
+        )
+        preview = ", ".join(dupes[:8])
+        suffix = " ..." if len(dupes) > 8 else ""
+        raise StudyRollupError(
+            f"{RESULTS_INDEX} contains duplicate run_name values: {preview}{suffix}"
+        )
     return frame
 
 
@@ -87,9 +99,11 @@ def _read_study_name(study_dir: Path) -> str:
         return study_dir.name
     try:
         import yaml
-
+    except ImportError:
+        return study_dir.name
+    try:
         payload = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
+    except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError):
         return study_dir.name
     if isinstance(payload, Mapping):
         study = payload.get("study")
@@ -209,9 +223,7 @@ def _compose_row(study_dir: Path, row: Mapping[str, Any]) -> dict[str, Any]:
             if out["wfa_fold_count"] is None:
                 out["wfa_fold_count"] = _as_null_or_value(wfa_summary.get("fold_count"))
             if out["wfa_valid_fold_count"] is None:
-                out["wfa_valid_fold_count"] = _as_null_or_value(
-                    wfa_summary.get("valid_fold_count")
-                )
+                out["wfa_valid_fold_count"] = _as_null_or_value(wfa_summary.get("valid_fold_count"))
             if out["wfa_median_test_expectancy_r"] is None:
                 out["wfa_median_test_expectancy_r"] = _as_null_or_value(
                     wfa_summary.get("median_test_expectancy_r")
@@ -230,9 +242,7 @@ def _compose_row(study_dir: Path, row: Mapping[str, Any]) -> dict[str, Any]:
             out["validation_battery"] = PRESENT
             trade_count = validation_summary.get("trade_count")
             if isinstance(trade_count, Mapping) and out["validation_trade_count_status"] is None:
-                out["validation_trade_count_status"] = _as_null_or_value(
-                    trade_count.get("status")
-                )
+                out["validation_trade_count_status"] = _as_null_or_value(trade_count.get("status"))
             grid_overfit = validation_summary.get("grid_overfit")
             if isinstance(grid_overfit, Mapping):
                 out["validation_grid_overfit_risk"] = _as_null_or_value(
@@ -329,7 +339,8 @@ def render_rollup_markdown(
                 if _is_missing(value):
                     cells.append("")
                 else:
-                    cells.append(str(value))
+                    # Keep markdown tables intact when values contain pipes.
+                    cells.append(str(value).replace("|", "\\|"))
             lines.append("| " + " | ".join(cells) + " |")
     lines.append("")
     return "\n".join(lines)

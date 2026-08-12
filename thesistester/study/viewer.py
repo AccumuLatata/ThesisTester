@@ -73,10 +73,15 @@ def resolve_study_dir(
 def _ledger_status_counts(ledger: Mapping[str, Any] | None) -> dict[str, int]:
     if ledger is None:
         return {}
-    cells = ledger.get("cells") or {}
+    cells = ledger.get("cells")
+    if not isinstance(cells, Mapping):
+        return {}
     counts: dict[str, int] = {}
     for cell in cells.values():
-        status = str((cell or {}).get("status") or "unknown")
+        if isinstance(cell, Mapping):
+            status = str(cell.get("status") or "unknown")
+        else:
+            status = "unknown"
         counts[status] = counts.get(status, 0) + 1
     return counts
 
@@ -174,8 +179,13 @@ def load_study_view(
     except StudyReportError as exc:
         raise StudyViewerError(str(exc)) from exc
 
-    ledger = load_ledger(root)
-    ledger_summary = _ledger_status_counts(ledger)
+    # Ledger is optional; corrupt JSON must not hard-fail the Studies page.
+    try:
+        ledger = load_ledger(root)
+        ledger_summary = _ledger_status_counts(ledger)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, TypeError):
+        ledger = None
+        ledger_summary = {}
     if not ledger_summary:
         ledger_summary = _index_status_counts(report.overview)
 

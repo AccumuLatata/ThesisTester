@@ -105,13 +105,56 @@ def test_composes_index_wfa_and_bundle_overfitting(tmp_path: Path):
     assert row["validation_battery"] == PRESENT
     assert row["validation_grid_overfit_risk"] == "low"
     assert row["overfitting_battery"] == PRESENT
-    assert row["overfitting_available"] is True or row["overfitting_available"] == True
+    assert bool(row["overfitting_available"]) is True
     assert float(row["overfitting_pbo"]) == pytest.approx(0.25)
     assert float(row["overfitting_dsr"]) == pytest.approx(0.1)
 
     # Other cells remain not_run for overfitting.
     others = frame.loc[frame["run_name"] != name]
     assert (others["overfitting_battery"] == NOT_RUN).all()
+
+
+def test_corrupt_study_spec_falls_back_to_directory_name(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path)
+    (study_dir / "study.spec.yaml").write_text("study: [unterminated\n", encoding="utf-8")
+    result = rollup_study(study_dir)
+    assert result.study_name == study_dir.name
+    assert result.cell_count == 4
+
+
+def test_rollup_ignores_bundle_path_outside_study_dir(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path)
+    secret = tmp_path / "secret.research.zip"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "overfitting_summary.json",
+            json.dumps(
+                {
+                    "overfitting_summary": {
+                        "available": True,
+                        "pbo": {"pbo": 0.9},
+                        "deflated_sharpe": {"dsr": 0.9},
+                    }
+                }
+            ).encode("utf-8"),
+        )
+    secret.write_bytes(buffer.getvalue())
+    index = pd.read_csv(study_dir / "results_index.csv")
+    index["bundle_path"] = str(secret.resolve())
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    frame = build_rollup_frame(study_dir)
+    assert (frame["overfitting_battery"] == NOT_RUN).all()
+    assert frame["overfitting_pbo"].isna().all()
+
+
+def test_rollup_rejects_duplicate_run_names(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path)
+    index = pd.read_csv(study_dir / "results_index.csv")
+    index = pd.concat([index, index.iloc[[0]]], ignore_index=True)
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    with pytest.raises(StudyRollupError, match="duplicate run_name"):
+        rollup_study(study_dir)
 
 
 def test_rollup_does_not_invent_cross_cell_pbo():

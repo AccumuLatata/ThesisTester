@@ -900,17 +900,19 @@ record/discuss entry).
 
 **What it is.** The primary CLI workflow for closed multi-factor confluence
 studies: declare a StudySpec, expand to an R18 experiment, run cells with a
-study-owned ledger, then report an honest overview. Distinct from in-trade
+study-owned ledger, then report an honest overview (and optionally roll up
+per-cell WFA/validation/overfitting diagnostics). Distinct from in-trade
 confluence-combo attribution on Backtest. Optional default-off assistant
-`STUDY.*` tools wrap the same CLI contract.
+`STUDY.expand` / `STUDY.run` / `STUDY.report` / `STUDY.promote` wrap those CLI
+surfaces; `study rollup` remains CLI-only (no `STUDY.rollup` tool).
 
 **When to use it.** When you want a stage-first factorial screen (e.g. pdPOC ×
 MA partners × modes × OTF) without driving classic Streamlit research pages,
 then promote survivors into a draft StudySpec for a second pass.
 
 **Related terms.** StudySpec, study expand, study run, study report, study
-promote draft, stage filter, explicit cells, multi-factor study, overview
-ranking, OTF delta, Research Study Runner
+promote draft, study rollup, stage filter, explicit cells, multi-factor study,
+overview ranking, OTF delta, Research Study Runner
 
 **Key settings.**
 
@@ -920,6 +922,7 @@ ranking, OTF delta, Research Study Runner
 | `confirm_above_runs` | `study run` refuses large expansions without `--confirm` | Confirm is required before rewriting expansion artifacts |
 | `report.min_trades` | Ranked overview excludes low-N cells | Meeting N is not statistical significance |
 | `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs; human edit/confirm still required |
+| `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
 
 **How to use.**
 
@@ -928,11 +931,13 @@ ranking, OTF delta, Research Study Runner
 2. `python -m thesistester study expand study.yaml --output-dir out/study1`
 3. `python -m thesistester study run study.yaml --output-dir out/study1 --confirm`
 4. `python -m thesistester study report out/study1`
-5. Optionally `python -m thesistester study promote out/study1 --output drafts/draft.yaml --top-n 10`
+5. Optionally `python -m thesistester study rollup out/study1` for a compose-only
+   diagnostic table (`study.rollup.csv` / `.md`).
+6. Optionally `python -m thesistester study promote out/study1 --output drafts/draft.yaml --top-n 10`
    (refuses overwrite without `--force`), then edit the draft before any further `study run`.
    Phase-2 full cartesian (example: 800) means restoring/opening axes on the unpromoted
    StudySpec — not dropping `stage` from a narrowed promote draft.
-6. Inspect artifacts in the **Studies viewer (read-only)** page when you want a
+7. Inspect artifacts in the **Studies viewer (read-only)** page when you want a
    Streamlit glance at ledger / ranked / low-N tables.
 
 **What it is not.**
