@@ -291,7 +291,7 @@ python -m thesistester study run \
 # 3) Overview
 python -m thesistester study report out/pdPOC_stage40
 
-# 4) Draft survivors (does NOT execute)
+# 4) Draft survivors (does NOT execute; refuses to overwrite without --force)
 python -m thesistester study promote out/pdPOC_stage40 \
   --output drafts/pdPOC_survivors.yaml --top-n 10
 
@@ -304,16 +304,19 @@ python -m thesistester study expand drafts/pdPOC_survivors.yaml --output-dir out
 | Flag | Behavior |
 |---|---|
 | `study_dir` | Completed study output (spec + expansion + index/bundles) |
-| `--output` | Draft StudySpec path (required) |
+| `--output` | Draft StudySpec path (required); refuses overwrite unless `--force` |
 | `--top-n` | Ranked survivors to include (default 10) |
 | `--metric` | Optional ranking override (default `report.primary_metric`) |
+| `--force` | Replace an existing draft at `--output` |
 
 Draft rules:
 
 - `stage.mode: explicit_cells` with one cell per survivor (every factor axis present)
 - Factor domains narrowed to survivor values (cartesian skipped by explicit_cells)
+- Relative `dataset.path` / `subtimeframe_path` are absolutized when possible so drafts under `drafts/` do not reinterpret bars paths against the draft parent
 - Header comments mark **DRAFT**; description notes source study_dir
 - Validates as StudySpec before write; **never** calls execute / `run_batch`
+- Phase-2 **800**-cell cartesian is reached by removing/widening `stage` on the **unpromoted** example (full factor domains). Dropping `stage` from a promote draft expands only the narrowed survivor domains — not 800.
 
 ### Example
 
@@ -322,7 +325,7 @@ Draft rules:
 | Expansion | Cells |
 |---|---|
 | Active `stage.filter` (`touch` + `base`) | **40** |
-| Full cartesian (phase-2; remove/widen stage) | **800** |
+| Full cartesian (phase-2; remove/widen stage on this example) | **800** |
 
 CI/golden miniatures remain under `tests/fixtures/study/` (2×2×2). Do not run the
 800-cell grid in CI.

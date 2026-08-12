@@ -714,15 +714,16 @@ stage:
   include:
     trigger: [touch]
     trigger_timeframe: [base]
-# Phase 2: remove/widen stage after promote, or open trigger/trigger_timeframe axes
-# on survivor partners only. Full cartesian for §6.1 factors = 800 cells.
+# Phase 2: remove/widen stage on this unpromoted example (full factor domains).
+# Do not drop stage from a study-promote draft and expect 800 — promote narrows
+# factors to survivor values. Full cartesian for §6.1 factors = 800 cells.
 ```
 
 Recommended human workflow after RS5:
 
 1. Stage filter expand/run/report (40 cells).  
 2. Promote survivors (`explicit_cells` draft).  
-3. Open triggers/TFs/3c on the reduced set.  
+3. Optionally restore/open selected axes on the draft (or on the unpromoted example for full 800).  
 4. Interpret OTF Δ with multiple-testing caution.  
 5. Prefer non-zero `commission_per_side` / `slippage_ticks` before trusting expectancy ranks.
 

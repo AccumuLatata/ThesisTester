@@ -3,8 +3,10 @@
 # Stage-first default (ACTIVE): trigger=touch + trigger_timeframe=base → 40 cells
 #   Formula: 1 core × 4 partners × 2 modes × 1 trigger × 1 tf × 5 OTF = 40
 #
-# Phase 2 (full cartesian = 800 cells): remove or widen `stage` after promote,
-# or open trigger / trigger_timeframe axes on survivor partners only.
+# Phase 2 (full cartesian = 800 cells): remove or widen `stage` on THIS example
+# (or restore the original full factor domains). Do NOT drop `stage` from a
+# `study promote` survivor draft — promote narrows factors to survivor values,
+# so removing its explicit_cells stage expands only the narrowed cartesian.
 #   Formula: 1 × 4 × 2 × 5 × 4 × 5 = 800
 #
 # Usage:
@@ -14,9 +16,10 @@
 #     --output-dir out/pdPOC_stage40 --confirm
 #   python -m thesistester study report out/pdPOC_stage40
 #   python -m thesistester study promote out/pdPOC_stage40 \
-#     --output examples/studies/pdPOC_survivors_draft.yaml --top-n 10
+#     --output drafts/pdPOC_survivors_draft.yaml --top-n 10
 #
 # Replace dataset.path with your bars CSV before study run.
+# Promote absolutizes relative dataset.path when possible (drafts/ is safe).
 # Prefer non-zero commission_per_side / slippage_ticks before trusting ranks.
 # Descriptive ranking ≠ validated edge (see docs/ASSUMPTIONS_AND_LIMITATIONS.md).
 
@@ -100,11 +103,12 @@ study:
     otf_baseline: {enabled: false}
     multiple_testing: warn
 
-  # ACTIVE stage-first filter → 40 cells. Phase 2: remove/widen after promote.
+  # ACTIVE stage-first filter → 40 cells. Phase 2: remove/widen stage here
+  # (unpromoted example) to open the full 800-cell cartesian — not on a promote draft.
   stage:
     mode: filter
     include:
       trigger: [touch]
       trigger_timeframe: [base]
-# Phase 2: remove/widen stage after promote, or open trigger/trigger_timeframe axes
-# on survivor partners only. Full cartesian for §6.1 factors = 800 cells.
+# Phase 2: remove/widen stage on this example (full factor domains), or restore
+# those domains onto a survivor draft before opening axes. Full cartesian = 800.

@@ -16,7 +16,7 @@ python -m thesistester study run examples/studies/pdPOC_ma_confluence_battery.ya
   --output-dir out/pdPOC_stage40 --confirm
 python -m thesistester study report out/pdPOC_stage40
 python -m thesistester study promote out/pdPOC_stage40 \
-  --output examples/studies/pdPOC_survivors_draft.yaml --top-n 10
+  --output drafts/pdPOC_survivors_draft.yaml --top-n 10
 ```
 
-Replace `dataset.path` before `study run`. Promote writes a **draft** only — edit and confirm before re-running.
+Replace `dataset.path` before `study run` (promote absolutizes relative paths when possible). Promote writes a **draft** only — edit and confirm before re-running; use `--force` to overwrite an existing draft. The phase-2 **800**-cell path is “remove/widen `stage` on this example,” not on a narrowed promote draft.

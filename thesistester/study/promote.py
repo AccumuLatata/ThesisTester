@@ -153,8 +153,7 @@ def select_survivor_run_names(
         # Allow explicit selection from ranked only (honesty: do not promote low-N).
         if missing:
             raise StudyPromoteError(
-                "run_names must be ranked-eligible survivors; missing or not ranked: "
-                f"{missing}"
+                f"run_names must be ranked-eligible survivors; missing or not ranked: {missing}"
             )
         # Preserve caller order; drop duplicates.
         out: list[str] = []
@@ -165,6 +164,53 @@ def select_survivor_run_names(
     return list(ranked_run_names[:top_n])
 
 
+def _rewrite_dataset_paths_for_draft(
+    study: dict[str, Any],
+    *,
+    search_roots: Sequence[Path],
+) -> list[str]:
+    """Pin relative dataset paths so draft relocation cannot reinterpret them.
+
+    ``study run`` resolves relative ``dataset.path`` against the StudySpec
+    parent. Promote often writes under ``drafts/`` (or cwd), which would break
+    paths authored for the original study file. Prefer an existing file under
+    ``search_roots``; otherwise absolutize against cwd so the draft no longer
+    depends on its own parent directory.
+    """
+    dataset = study.get("dataset")
+    if not isinstance(dataset, dict):
+        return []
+    notes: list[str] = []
+    roots = [Path(root).resolve() for root in search_roots]
+    for key in ("path", "subtimeframe_path"):
+        raw = dataset.get(key)
+        if raw is None:
+            continue
+        if not isinstance(raw, (str, Path)):
+            continue
+        path = Path(raw)
+        if path.is_absolute():
+            dataset[key] = str(path)
+            continue
+        found: Path | None = None
+        for root in roots:
+            candidate = (root / path).resolve()
+            if candidate.is_file():
+                found = candidate
+                break
+        if found is not None:
+            dataset[key] = str(found)
+            notes.append(f"dataset.{key} resolved to existing file {found.as_posix()}")
+        else:
+            pinned = (Path.cwd() / path).resolve()
+            dataset[key] = str(pinned)
+            notes.append(
+                f"dataset.{key} pinned to {pinned.as_posix()} "
+                f"(relative path was not found under search roots; verify before study run)"
+            )
+    return notes
+
+
 def build_promoted_draft(
     source_spec: Mapping[str, Any],
     *,
@@ -173,6 +219,7 @@ def build_promoted_draft(
     source_study_dir: str | Path,
     primary_metric: str,
     top_n: int,
+    output_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Construct a draft StudySpec with ``stage.mode: explicit_cells``."""
     if not selected_run_names:
@@ -200,9 +247,20 @@ def build_promoted_draft(
     promote_note = (
         f"DRAFT from study promote of {Path(source_study_dir).as_posix()} "
         f"({len(cells)} ranked survivor cell(s) by {primary_metric}, top_n={top_n}). "
-        "Edit and confirm before study run — auto-execution is unsupported."
+        "Edit and confirm before study run — auto-execution is unsupported. "
+        "Phase-2 800-cell cartesian requires restoring the original full factor "
+        "domains (or removing stage from the unpromoted example) — not dropping "
+        "stage from this narrowed survivor draft."
     )
     study["description"] = f"{prior_desc} {promote_note}".strip() if prior_desc else promote_note
+
+    source_root = Path(source_study_dir).resolve()
+    search_roots: list[Path] = [Path.cwd().resolve(), source_root]
+    if output_path is not None:
+        search_roots.append(Path(output_path).resolve().parent)
+    path_notes = _rewrite_dataset_paths_for_draft(study, search_roots=search_roots)
+    if path_notes:
+        study["description"] = f"{study['description']} {' '.join(path_notes)}"
 
     draft = {
         "schema_version": int(source_spec["schema_version"]),
@@ -219,6 +277,7 @@ def promote_study(
     top_n: int = 10,
     metric: str | None = None,
     run_names: Sequence[str] | None = None,
+    force: bool = False,
 ) -> StudyPromoteResult:
     """Write a draft survivor StudySpec; never executes backtests."""
     root = Path(study_dir)
@@ -227,6 +286,13 @@ def promote_study(
     spec_path = root / SPEC_YAML
     if not spec_path.is_file():
         raise StudyPromoteError(f"Missing {SPEC_YAML} under {root}")
+
+    out_path = Path(output)
+    if out_path.exists() and not force:
+        raise StudyPromoteError(
+            f"Refusing to overwrite existing draft {out_path}; pass --force to replace "
+            "(promote drafts are meant for human edits)"
+        )
 
     try:
         source_spec = load_study_spec(spec_path)
@@ -274,9 +340,9 @@ def promote_study(
         source_study_dir=root,
         primary_metric=primary,
         top_n=top_n,
+        output_path=out_path,
     )
 
-    out_path = Path(output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     header = (
         "# DRAFT StudySpec produced by `python -m thesistester study promote`.\n"
@@ -285,6 +351,11 @@ def promote_study(
         f"# Source study_dir: {root.as_posix()}\n"
         f"# Survivors: {len(selected)} cell(s) by {primary} "
         f"(top_n={top_n if run_names is None else 'explicit'}).\n"
+        "# dataset.path values are absolutized when possible so relocating this\n"
+        "# draft under drafts/ does not reinterpret relative bars paths.\n"
+        "# Phase-2 800-cell cartesian: restore original full factor domains on the\n"
+        "# unpromoted example (or remove its stage filter) — do not drop stage from\n"
+        "# this narrowed survivor draft and expect 800 cells.\n"
     )
     out_path.write_text(header + _dump_yaml(draft), encoding="utf-8")
 

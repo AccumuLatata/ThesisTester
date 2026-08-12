@@ -102,6 +102,11 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help="Ranking metric override (default: study.report.primary_metric)",
     )
+    promote_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing draft StudySpec at --output",
+    )
 
 
 def dispatch_study(args: argparse.Namespace) -> int:
@@ -195,6 +200,7 @@ def _cmd_promote(args: argparse.Namespace) -> int:
         output=args.output,
         top_n=int(args.top_n),
         metric=args.metric,
+        force=bool(args.force),
     )
     print(
         f"Draft StudySpec written: {result.output_path} "

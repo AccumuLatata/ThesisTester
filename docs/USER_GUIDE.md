@@ -927,8 +927,10 @@ ranking, OTF delta, Research Study Runner
 2. `python -m thesistester study expand study.yaml --output-dir out/study1`
 3. `python -m thesistester study run study.yaml --output-dir out/study1 --confirm`
 4. `python -m thesistester study report out/study1`
-5. Optionally `python -m thesistester study promote out/study1 --output draft.yaml --top-n 10`,
-   then edit the draft before any further `study run`.
+5. Optionally `python -m thesistester study promote out/study1 --output drafts/draft.yaml --top-n 10`
+   (refuses overwrite without `--force`), then edit the draft before any further `study run`.
+   Phase-2 full cartesian (example: 800) means restoring/opening axes on the unpromoted
+   StudySpec — not dropping `stage` from a narrowed promote draft.
 
 **What it is not.**
 
