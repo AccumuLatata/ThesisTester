@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + **RS-D8 authoring-preview sequence**)  
-**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 complete**. Next sequenced: **RS-D8** (Studies authoring preview). Parked: RS-D1 / RS-D3 / RS-D6  
+**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 complete**. Parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -977,7 +977,7 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 ### 12.8 First implementable PR (kickoff)
 
-**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, and RS-D5 ✅ shipped.** Next code PR = **RS-D8 only** (§12.9). Parked items (§12.7) stay out unless this plan is amended.
+**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, RS-D5 ✅, and RS-D8 ✅ shipped.** Sequenced post-MVP track complete; parked items (§12.7) stay out unless this plan is amended.
 
 Historical D7 implementer notes (kept for audit):
 
@@ -993,7 +993,7 @@ Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
 
 ---
 
-### 12.9 RS-D8 — Studies authoring preview (validate + expand dry-run + ledger watch)
+### 12.9 RS-D8 — Studies authoring preview (validate + expand dry-run + ledger watch) — ✅
 
 | | |
 |---|---|
@@ -1035,19 +1035,19 @@ Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
 | | No `engine/` edits; no `run` / `run_batch` semantic change; no STUDY.* handler changes required (page must not call them) |
 | | USER_GUIDE: prefer extending the existing H2 `Studies viewer (read-only)`. **If** a new H2 is added, amend RQ §7.1.4 + `_USER_GUIDE_SECTIONS` + freeze tests **in the same PR** |
 | **Acceptance checklist** | |
-| | ☐ `preview_study_spec` on the stage-first example → exact `run_count=40`, `cartesian_product=800` (1×4×2×5×4×5), `needs_confirm` false at default `confirm_above_runs=200` |
-| | ☐ Filter estimate uses matched `_apply_stage_filter` sizes: include tokens absent from the factor domain do **not** inflate the estimate (fixture: extra include value → same count as expand) |
-| | ☐ Invalid YAML / non-mapping / shorthand (`factors.core`) → `StudySpecError`, no expand, no execute |
-| | ☐ Missing `mode_rules` when `confluence_mode` present → fail closed (existing schema) |
-| | ☐ Over-cap estimate skips `expand_study` and still shows matched axis sizes + warning |
-| | ☐ Import/AST guard: `preview.py` must **not import** `thesistester.study.execute` / `run_experiment` / `run_batch` / `expand_study_to_directory` / `promote_study` |
-| | ☐ Page has no Run / Promote execute controls; classic research session keys untouched; no collision with `studies_viewer_path_input` |
-| | ☐ Viewer Refresh reloads ledger counts without rewriting `study.overview.*` |
-| | ☐ Optional Save YAML (if shipped) refuses defaulting to inspect `study.spec.yaml` |
-| | ☐ Honesty visible on successful preview |
-| | ☐ Docs: `STUDY_RUNNER.md` §RS-D8 + USER_GUIDE extend + ARCHITECTURE one-liner + AGENT_GUIDE pointer + roadmap status; HC allowlist **only** if a new H2 lands |
-| | ☐ Existing `tests/study/` + Streamlit/assistant tests green; engine goldens untouched |
-| | ☐ Full suite green |
+| | ☑ `preview_study_spec` on the stage-first example → exact `run_count=40`, `cartesian_product=800` (1×4×2×5×4×5), `needs_confirm` false at default `confirm_above_runs=200` |
+| | ☑ Filter estimate uses matched `_apply_stage_filter` sizes: duplicate include tokens do **not** inflate the estimate (same count as expand) |
+| | ☑ Invalid YAML / non-mapping / shorthand (`factors.core`) → `StudySpecError`, no expand, no execute |
+| | ☑ Missing `mode_rules` when `confluence_mode` present → fail closed (existing schema) |
+| | ☑ Over-cap estimate skips `expand_study` and still shows matched axis sizes + warning |
+| | ☑ Import/AST guard: `preview.py` must **not import** `thesistester.study.execute` / `run_experiment` / `run_batch` / `expand_study_to_directory` / `promote_study` |
+| | ☑ Page has no Run / Promote execute controls; classic research session keys untouched; no collision with `studies_viewer_path_input` |
+| | ☑ Viewer Refresh reloads ledger counts without rewriting `study.overview.*` |
+| | ☑ Optional Save YAML **not shipped** (D8 MVP) |
+| | ☑ Honesty visible on successful preview |
+| | ☑ Docs: `STUDY_RUNNER.md` §RS-D8 + USER_GUIDE extend + ARCHITECTURE one-liner + AGENT_GUIDE pointer + roadmap status; no new USER_GUIDE H2 (HC allowlist unchanged) |
+| | ☑ Existing `tests/study/` + Streamlit/assistant tests green; engine goldens untouched |
+| | ☑ Full suite green |
 
 **Copy-ready agent prompt:**
 
@@ -1202,7 +1202,7 @@ Recommended workflow after post-MVP sequence (§12):
 | RS-D2 Studies viewer (read-only) | ✅ |
 | RS-D4 Per-cell diagnostic rollup | ✅ |
 | RS-D5 Grok Bot routine pack | ✅ |
-| RS-D8 Studies authoring preview | ☐ **Next** (§12.9) |
+| RS-D8 Studies authoring preview | ✅ |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |
 
 ---
@@ -1291,4 +1291,10 @@ Recommended workflow after post-MVP sequence (§12):
 53. Honesty required on every successful preview; Studies-scoped session keys only (no collision with `studies_viewer_path_input`); import+AST guard — `preview.py` must not import `execute.py`.  
 54. Filter estimate uses `_apply_stage_filter` **intersection**, not raw include-list lengths.  
 55. USER_GUIDE: prefer extending H2 `Studies viewer (read-only)`; HC §7.1.4 allowlist only if a new H2 is added.  
-56. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = RS-D8 only.  
+56. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = RS-D8 only.
+
+### 18.9 RS-D8 ship
+
+57. `thesistester/study/preview.py` + Studies **Preview StudySpec** pane; inspect **Refresh**; no Save YAML in D8 MVP.  
+58. USER_GUIDE H2 `Studies viewer (read-only)` extended (no new H2 / no HC allowlist change).  
+59. Sequenced post-MVP track through RS-D8 marked complete; parked D1/D3/D6 unchanged.  

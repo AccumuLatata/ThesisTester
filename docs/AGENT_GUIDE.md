@@ -47,7 +47,7 @@ the CLI when the flag is off.
 host): `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + copy-ready prompts under
 `examples/studies/agents/`.
 
-**RS-D8** (planned): Studies page authoring preview — canonical StudySpec YAML
+**RS-D8:** Studies page authoring preview — canonical StudySpec YAML
 validate + in-memory expand (cell count / confirm gate). `preview.py` must not
 import `thesistester.study.execute`. Execute stays CLI.
 

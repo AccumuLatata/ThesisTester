@@ -937,8 +937,8 @@ overview ranking, OTF delta, Research Study Runner
    (refuses overwrite without `--force`), then edit the draft before any further `study run`.
    Phase-2 full cartesian (example: 800) means restoring/opening axes on the unpromoted
    StudySpec — not dropping `stage` from a narrowed promote draft.
-7. Inspect artifacts in the **Studies viewer (read-only)** page when you want a
-   Streamlit glance at ledger / ranked / low-N tables.
+7. Inspect artifacts in the **Studies viewer (read-only)** page, or preview a
+   canonical StudySpec YAML there for cell count / `--confirm` before CLI run.
 
 **What it is not.**
 
@@ -954,17 +954,21 @@ robustness (honest next steps after screening).
 
 ## Studies viewer (read-only)
 
-**What it is.** A Streamlit page (`Studies`) that loads an existing study
-**output directory** and shows ledger status, ranked / low-N / unresolved
-tables, OTF Δ, and overview markdown. It reuses the same `study report` /
-ledger loaders as the CLI.
+**What it is.** A Streamlit page (`Studies`) with two panes on the same nav
+slot: **Inspect output dir** loads an existing study **output directory** and
+shows ledger status, ranked / low-N / unresolved tables, OTF Δ, and overview
+markdown (same `study report` / ledger loaders as the CLI). **Preview StudySpec**
+pastes canonical `schema_version: 1` YAML, validates, and expands **in memory**
+to show cell count, full cartesian, and whether CLI `--confirm` is required.
 
-**When to use it.** After a headless `study run` / `study report`, when you want
-to inspect artifacts without leaving the app. Prefer the CLI for any mutate
-path (expand / run / promote).
+**When to use it.** After a headless `study run` / `study report`, inspect
+artifacts without leaving the app. Before a run, preview YAML to see how many
+cells a StudySpec would expand to. Prefer the CLI for any mutate path
+(expand / run / promote).
 
 **Related terms.** Studies viewer, study output directory, study ledger,
-ranked cells, low-N, OTF delta, bundle_path, Research Study Runner
+ranked cells, low-N, OTF delta, bundle_path, Research Study Runner, StudySpec
+preview, run_count, confirm_above_runs
 
 **Key settings.**
 
@@ -972,23 +976,35 @@ ranked cells, low-N, OTF delta, bundle_path, Research Study Runner
 |---|---|---|
 | Study output directory | Path to a completed study dir under the repo cwd or local store | Paths outside those trusted roots are refused |
 | Load study artifacts | Reads ledger + in-memory overview via `report_study(..., write_artifacts=False)` | Does **not** run backtests or rewrite overview files / StudySpecs |
+| Refresh | Reloads ledger/overview for the loaded dir (watch a CLI `study run`) | Does not start or resume execution |
+| Canonical StudySpec YAML | Paste `schema_version: 1` StudySpec text | Shorthand keys (`core` vs `core_level`) and English prompts fail closed |
+| Validate / Preview | In-memory validate + expand (cap 2_000 cells) | Does **not** write `experiment.yaml` or run cells |
+| Load example | Fills the textarea from `examples/studies/pdPOC_ma_confluence_battery.yaml` | Example dataset CSV need not exist for preview |
+| Copy spec from loaded dir | Copies `study.spec.yaml` from the Inspect dir into the textarea | Load a study dir first |
 
 **How to use.**
 
-1. Complete a study via CLI (`study expand` → `study run` → `study report`).
+1. Complete a study via CLI (`study expand` → `study run` → `study report`), or
+   skip to preview YAML first.
 2. Open **Studies** in the sidebar.
-3. Paste the study `output_dir` and click **Load study artifacts**.
+3. **Inspect:** paste the study `output_dir`, click **Load study artifacts**,
+   use **Refresh** while a CLI run is in flight.
 4. Review honesty banner, ledger counts, ranked / low-N tables, and `bundle_path`
    strings. Download overview MD/CSV if useful.
+5. **Preview:** paste canonical StudySpec YAML (or Load example) and click
+   **Validate / Preview**. Note staged vs full cartesian and `needs --confirm`.
+   Execute remains `python -m thesistester study run …`.
 
 **What it is not.**
 
-- Not a StudySpec editor and not an in-app expand / run / promote runner.
+- Not an in-app expand / run / promote runner. Preview is validate + dry expand
+  only (canonical YAML; not an NL compiler).
 - Does not mutate classic research session state (levels / signals / trades);
-  only Studies-scoped path keys are persisted across Streamlit reruns.
+  only Studies-scoped path / preview-YAML keys are persisted across Streamlit reruns.
 - Does not deep-link into Research Bundles by path (that page is upload/import
   oriented); `bundle_path` is listed for orientation only.
-- Ranking remains descriptive screening, not a validated edge.
+- Ranking remains descriptive screening, not a validated edge. Preview
+  `run_count` is a combinatorial screening size, not independent tests.
 
 **Related pages.** Research Study Runner (headless); Research Bundles; Validation
 and robustness.

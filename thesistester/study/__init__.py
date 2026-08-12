@@ -54,6 +54,11 @@ from thesistester.study.rollup import (
     StudyRollupResult,
     rollup_study,
 )
+from thesistester.study.preview import (
+    StudyPreview,
+    preview_study_spec,
+    preview_study_yaml,
+)
 from thesistester.study.viewer import (
     StudyViewerError,
     StudyViewerModel,
@@ -73,6 +78,7 @@ __all__ = [
     "RUN_NAME_RE",
     "STUDY_INDEX_KEYS",
     "STUDY_SCHEMA_VERSION",
+    "StudyPreview",
     "StudyPromoteError",
     "StudyPromoteResult",
     "StudyReportError",
@@ -92,6 +98,8 @@ __all__ = [
     "normalize_study_spec",
     "otf_canonical_key",
     "prepare_study_expansion",
+    "preview_study_spec",
+    "preview_study_yaml",
     "promote_study",
     "report_study",
     "rollup_study",

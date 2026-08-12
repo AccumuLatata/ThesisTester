@@ -158,12 +158,18 @@ def test_pages_studies_is_read_only_source():
             slice_node = target.slice
             if isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_VIEWER_DIR_KEY":
                 written_keys.add(STUDIES_VIEWER_DIR_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_PREVIEW_YAML_KEY":
+                written_keys.add("studies_preview_yaml")
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
             else:
                 written_keys.add("<dynamic>")
     assert STUDIES_VIEWER_DIR_KEY in written_keys
-    assert written_keys <= {STUDIES_VIEWER_DIR_KEY, "studies_viewer_path_input"}
+    assert written_keys <= {
+        STUDIES_VIEWER_DIR_KEY,
+        "studies_viewer_path_input",
+        "studies_preview_yaml",
+    }
     assert not (written_keys & CLASSIC_RESEARCH_SESSION_KEYS)
 
 
