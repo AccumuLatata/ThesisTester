@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1–RS3 landed (schema + expand + study-owned execute/ledger). Report lands in RS4–RS5.  
+**Status:** RS1–RS4 landed (schema + expand + execute/ledger + overview report). Promote/examples in RS5.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`  
 **Package:** `thesistester.study`
 
@@ -202,7 +202,7 @@ untouched). Study runs do **not** call `run_batch`; they loop
 | Flag / rule | Behavior |
 |---|---|
 | `confirm_above_runs` | `study run` refuses when `run_count >= N` unless `--confirm` (**before** rewriting expansion artifacts) |
-| Soft resume | Ledger `ok` cells are skipped only when their `bundle_path` zip still exists |
+| Soft resume | Ledger `ok` cells are skipped only when their `bundle_path` zip still exists; missing/null index metrics are rehydrated from bundle `trade_summary.json` |
 | `--force` | Re-run all cells; on identity mismatch replaces the ledger (no orphan cells from the prior StudySpec) |
 | Workers | `workers>1` uses spawn pool; cell tasks **return** ok/failed payloads (continue-on-failure); pool deaths mark the cell failed |
 | Lock | Exclusive `.study.lock` on `output_dir` (fail-closed if another study run holds it) |
@@ -224,3 +224,51 @@ Expand/run print `run_count`, `workers`, and warn when any cell has
 ### Out of scope for RS3
 
 Overview aggregator (`study report`), promote drafts, assistant/MCP tools.
+
+---
+
+## RS4 — Overview report
+
+### Command
+
+```bash
+python -m thesistester study report out/study1
+```
+
+Reads a completed study directory (does not re-run backtests).
+
+### Artifacts written
+
+| File | Role |
+|---|---|
+| `study.overview.csv` | `results_index.csv` ⟕ `study.expansion.json` on `run_name` + resolved PF/win_rate |
+| `study.overview.md` | Ranked / low-N / group summaries / OTF Δ + honesty block |
+| `study.otf_delta.csv` | metric(OTF variant) − metric(`report.otf_baseline`) per non-OTF factor tuple |
+
+### Join / ranking
+
+- Factor tags flatten to `factor_*` columns (`partner_levels` as `A+B`; `otf` as canonical JSON key).
+- Ranked section: `status=ok`, `factors_joined=True`, `trade_count >= min_trades`, non-null `primary_metric`.
+- Low-N section: expansion-joined ok cells below `min_trades` (excluded from ranked winners).
+- Unresolved section: expansion-joined ok cells meeting `min_trades` but with a null `primary_metric` (e.g. missing PF).
+- Index-only orphan rows (`factors_joined=False`) stay in `study.overview.csv` but are excluded from ranked / low-N / unresolved / group summaries / crowning.
+- Sort: higher-is-better for `expectancy_r` / `total_r` / `profit_factor` / `trade_count`; lower-is-better for `max_drawdown_r`.
+- `multiple_testing: error` suppresses best-cell crowning in Markdown (ranked table still emitted as descriptive).
+
+### Profit factor source
+
+R18 study index does **not** add PF columns in MVP (RS-D7 deferred). Report resolves:
+
+1. Index `profit_factor` when present → `profit_factor_source=index`
+2. Else bundle `trade_summary.json` → `profit_factor_source=bundle`
+3. Else `missing`
+
+Optional `win_rate` resolves **per field** the same way (index then bundle), including when PF came from the index but `win_rate` did not. Documented in `METRICS_GLOSSARY.md`.
+
+### OTF Δ
+
+Baseline = normalized `study.report.otf_baseline` (default `{enabled: false}`). Alias-stable via `normalize_otf_filter_config` (`5min` ≡ `5m`). Interpret with multiple-testing caution (`ASSUMPTIONS_AND_LIMITATIONS.md`).
+
+### Out of scope for RS4
+
+LLM narrative, Studies UI page, silent R18 index schema change, promote/examples (RS5).

@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester study …`` (RS3)."""
+"""CLI handlers for ``python -m thesistester study …`` (RS3–RS4)."""
 
 from __future__ import annotations
 
@@ -6,11 +6,13 @@ import argparse
 import os
 import sys
 from pathlib import Path
+
 from thesistester.study.execute import (
     cost_hint_lines,
     prepare_study_expansion,
     run_study,
 )
+from thesistester.study.report import StudyReportError, report_study
 from thesistester.study.schema import StudySpecError
 
 
@@ -18,7 +20,7 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``study`` command group on the root CLI parser."""
     study_parser = subparsers.add_parser(
         "study",
-        help="Research Study Runner (expand / run closed StudySpecs)",
+        help="Research Study Runner (expand / run / report closed StudySpecs)",
     )
     study_sub = study_parser.add_subparsers(dest="study_command", required=True)
 
@@ -62,16 +64,31 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         help="Ignore soft-resume skips and identity mismatch refuse",
     )
 
+    report_parser = study_sub.add_parser(
+        "report",
+        help="Aggregate study results_index + factor map into overview CSV/MD",
+    )
+    report_parser.add_argument(
+        "study_dir",
+        type=Path,
+        help="Completed study output directory (contains expansion + results_index)",
+    )
+
 
 def dispatch_study(args: argparse.Namespace) -> int:
-    """Dispatch ``study expand|run``; return process exit code."""
+    """Dispatch ``study expand|run|report``; return process exit code."""
     try:
         if args.study_command == "expand":
             return _cmd_expand(args)
         if args.study_command == "run":
             return _cmd_run(args)
+        if args.study_command == "report":
+            return _cmd_report(args)
     except StudySpecError as exc:
         print(f"StudySpec error: {exc}", file=sys.stderr)
+        return 2
+    except StudyReportError as exc:
+        print(f"Study report error: {exc}", file=sys.stderr)
         return 2
     except ValueError as exc:
         print(f"Study error: {exc}", file=sys.stderr)
@@ -120,3 +137,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
     failed = sum(1 for name in run_names if (cells.get(name) or {}).get("status") == "failed")
     print(f"Cell status: ok={ok} failed={failed}")
     return os.EX_OK if failed == 0 else 1
+
+
+def _cmd_report(args: argparse.Namespace) -> int:
+    result = report_study(args.study_dir)
+    print(
+        f"Study report: {result.study_name} — "
+        f"ranked={len(result.ranked)} low_n={len(result.low_n)} "
+        f"otf_delta={len(result.otf_delta)} "
+        f"(primary={result.primary_metric}, min_trades={result.min_trades})"
+    )
+    if result.best_cell_suppressed:
+        print("multiple_testing=error: best-cell crowning suppressed")
+    print(f"Artifacts: {result.paths['study.overview.csv']}")
+    print(f"           {result.paths['study.overview.md']}")
+    print(f"           {result.paths['study.otf_delta.csv']}")
+    return os.EX_OK

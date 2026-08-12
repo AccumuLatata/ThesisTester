@@ -456,6 +456,27 @@ Related session / artifact fields: `candidate_signal_count`,
 `otf_accepted_signal_count`, `otf_rejected_signal_count`, `session_timezone`,
 `eth_start` on OTF summaries.
 
+## Research Study Runner overview metrics (RS4)
+
+Emitted by `python -m thesistester study report <study_dir>` into
+`study.overview.csv` / `study.overview.md` / `study.otf_delta.csv`. See
+`docs/STUDY_RUNNER.md` and honesty notes in `ASSUMPTIONS_AND_LIMITATIONS.md`.
+
+| Term | Definition |
+|---|---|
+| **study overview join** | `results_index.csv` ⟕ `study.expansion.json` on `run_name`. Factor tags flatten to `factor_*` columns. |
+| **primary_metric** | Ranking metric from `study.report.primary_metric` (default `expectancy_r`). Must resolve on the overview (index or bundle-extended). |
+| **min_trades** | Sample-size gate from `study.report.min_trades` (default 30). Below-threshold ok cells are **low-N**, not ranked. |
+| **ranked cells** | `status=ok`, `factors_joined=True`, `trade_count >= min_trades`, non-null primary metric; sorted higher-is-better except `max_drawdown_r` (lower-is-better). Descriptive only. Index-only orphans are never ranked or crowned. |
+| **low-N cells** | Expansion-joined ok cells with `trade_count < min_trades`; listed separately; never crowned as winners. |
+| **unresolved primary** | Expansion-joined ok cells with `trade_count >= min_trades` but a null primary metric (e.g. missing PF); listed separately so they do not vanish from Markdown. |
+| **group summary** | Per `report.group_by` axis: cell count, mean/median primary metric, mean trade count (same ranked-eligible gate: joined + min_trades + non-null primary). |
+| **OTF Δ / `delta_<metric>`** | For each non-OTF factor tuple: `metric(OTF variant) − metric(otf_baseline)` using canonical OTF keys (`normalize_otf_filter_config`; `5min` ≡ `5m`). |
+| **otf_baseline** | StudySpec `report.otf_baseline` (default `{enabled: false}`). Baseline cell must exist in the expansion for Δ rows to emit. |
+| **profit_factor (overview)** | Prefer index column when present (optional RS-D7); else read bundle `trade_summary.json`. Tracked as `profit_factor_source` ∈ `{index, bundle, missing}`. |
+| **win_rate (overview)** | Resolves independently of PF: prefer index `win_rate` when present, else bundle `trade_summary.json` (even when PF came from the index). |
+| **multiple_testing** | `warn` (default): Markdown may name a top descriptive cell with caveats. `error`: best-cell crowning suppressed. |
+
 ## Developing session VWAPs (`dVWAP_RTH`, `dVWAP`)
 
 | Name | Definition |

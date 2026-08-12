@@ -30,7 +30,19 @@ def _fake_bundle_bytes(name: str) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("manifest.json", json.dumps({"run_name": name}))
-        archive.writestr("trade_summary.json", json.dumps({"trade_summary": {"trade_count": 3}}))
+        archive.writestr(
+            "trade_summary.json",
+            json.dumps(
+                {
+                    "trade_summary": {
+                        "trade_count": 3,
+                        "expectancy_r": 0.25,
+                        "total_r": 0.75,
+                        "max_drawdown_r": -0.5,
+                    }
+                }
+            ),
+        )
     return buffer.getvalue()
 
 
@@ -414,6 +426,75 @@ def test_soft_resume_requeues_missing_bundle(tmp_path: Path):
     second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
     assert second["executed"] == 1
     assert zip_path.is_file()
+
+
+def test_soft_resume_rehydrates_metrics_when_index_row_missing(tmp_path: Path):
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    first = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    name = first["run_names"][0]
+    assert (out / f"{name}.research.zip").is_file()
+    # Drop the ok row from the index while leaving ledger+zip intact.
+    index = pd.read_csv(out / "results_index.csv")
+    index = index.loc[index["run_name"] != name].copy()
+    index.to_csv(out / "results_index.csv", index=False)
+    second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 0
+    repaired = pd.read_csv(out / "results_index.csv")
+    row = repaired.loc[repaired["run_name"] == name].iloc[0]
+    assert row["status"] == "ok"
+    assert int(row["trade_count"]) == 3
+    assert float(row["expectancy_r"]) == pytest.approx(0.25)
+    assert float(row["total_r"]) == pytest.approx(0.75)
+    assert pd.notna(row["bundle_hash"])
+
+
+def test_soft_resume_repairs_poisoned_null_metric_ok_row(tmp_path: Path):
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    first = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    name = first["run_names"][0]
+    index = pd.read_csv(out / "results_index.csv")
+    # Simulate historically poisoned soft-resume synthesis.
+    for col in ("trade_count", "expectancy_r", "total_r", "max_drawdown_r", "bundle_hash"):
+        index.loc[index["run_name"] == name, col] = None
+    index.to_csv(out / "results_index.csv", index=False)
+    second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 0
+    repaired = pd.read_csv(out / "results_index.csv")
+    row = repaired.loc[repaired["run_name"] == name].iloc[0]
+    assert int(row["trade_count"]) == 3
+    assert float(row["expectancy_r"]) == pytest.approx(0.25)
+
+
+def test_soft_resume_rehydrates_pending_stub_after_ledger_ok_interrupt(tmp_path: Path):
+    """Ledger ok + zip, index still pending null stub (mid-loop interrupt)."""
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    first = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    name = first["run_names"][1]
+    assert (out / f"{name}.research.zip").is_file()
+    index = pd.read_csv(out / "results_index.csv")
+    # Plant the interrupt shape: pending stub with null metrics, no bundle_path on index.
+    for col in (
+        "trade_count",
+        "expectancy_r",
+        "total_r",
+        "max_drawdown_r",
+        "bundle_hash",
+        "bundle_path",
+    ):
+        index.loc[index["run_name"] == name, col] = None
+    index.loc[index["run_name"] == name, "status"] = "pending"
+    index.to_csv(out / "results_index.csv", index=False)
+    second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 0
+    repaired = pd.read_csv(out / "results_index.csv")
+    row = repaired.loc[repaired["run_name"] == name].iloc[0]
+    assert row["status"] == "ok"
+    assert row["bundle_path"] == f"{name}.research.zip"
+    assert int(row["trade_count"]) == 3
+    assert float(row["expectancy_r"]) == pytest.approx(0.25)
 
 
 def test_mark_cell_can_clear_bundle_path():

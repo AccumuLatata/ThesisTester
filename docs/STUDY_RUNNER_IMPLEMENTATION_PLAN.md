@@ -616,13 +616,13 @@ No engine/pages. §4.2 checklist. Keep `thesistester run` identical.
 | **Behavior** | Join → overview CSV/MD; ranked cells; group_by summaries; OTF delta vs baseline using canonical OTF keys; min_trades filter; multiple_testing warn block; resolve `profit_factor` via bundle `trade_summary` (or study index if RS-D7 landed) |
 | **Out of scope** | LLM narrative; UI page; silent R18 `results_index` schema change without RS-D7 |
 | **Acceptance checklist** | |
-| | ☐ Overview join is deterministic and complete for fixture |
-| | ☐ Cells below min_trades excluded from “ranked” section but listed under low-N |
-| | ☐ OTF delta rows correct vs baseline factor (alias-stable) |
-| | ☐ Markdown includes multiple-testing honesty paragraph |
-| | ☐ Glossary entries for study overview metrics / OTF Δ |
-| | ☐ PF available in overview when bundles present (document source) |
-| | ☐ Full suite green |
+| | ✅ Overview join is deterministic and complete for fixture |
+| | ✅ Cells below min_trades excluded from “ranked” section but listed under low-N |
+| | ✅ OTF delta rows correct vs baseline factor (alias-stable) |
+| | ✅ Markdown includes multiple-testing honesty paragraph |
+| | ✅ Glossary entries for study overview metrics / OTF Δ |
+| | ✅ PF available in overview when bundles present (document source) |
+| | ✅ Full suite green |
 
 **Copy-ready agent prompt:**
 
@@ -789,7 +789,7 @@ Holistic MVP is done when **all** of the following hold:
 | RS1 Schema | ✅ |
 | RS2 Expander | ✅ |
 | RS3 CLI expand/run + study-owned ledger | ✅ |
-| RS4 Report | ☐ |
+| RS4 Report | ✅ |
 | RS5 Staging/promote + examples | ☐ |
 | RS6 Optional agent tools | ☐ Deferred until after RS5 |
 
