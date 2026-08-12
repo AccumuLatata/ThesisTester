@@ -202,7 +202,7 @@ untouched). Study runs do **not** call `run_batch`; they loop
 | Flag / rule | Behavior |
 |---|---|
 | `confirm_above_runs` | `study run` refuses when `run_count >= N` unless `--confirm` (**before** rewriting expansion artifacts) |
-| Soft resume | Ledger `ok` cells are skipped only when their `bundle_path` zip still exists; missing/null index metrics are rehydrated from bundle `trade_summary.json` |
+| Soft resume | Ledger `ok` cells are skipped only when their `bundle_path` zip still exists; missing/null index metrics (incl. RS-D7 PF/WR) are rehydrated from bundle `trade_summary.json`; identity fields prefer prior index row / `dataset_meta.json` |
 | `--force` | Re-run all cells; on identity mismatch replaces the ledger (no orphan cells from the prior StudySpec) |
 | Workers | `workers>1` uses spawn pool; cell tasks **return** ok/failed payloads (continue-on-failure); pool deaths mark the cell failed |
 | Lock | Exclusive `.study.lock` on `output_dir` (fail-closed if another study run holds it) |
