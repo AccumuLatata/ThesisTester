@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** + **RS-D8** landed. Parked: RS-D1 / RS-D3 / RS-D6.  
+**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** + **RS-D8** landed. **Next: RS-D9** (Studies CLI-launch button). Parked: RS-D1 / RS-D3 / RS-D6.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
@@ -8,7 +8,9 @@ Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
 RS-D2 adds a **read-only** Studies viewer; RS-D4 adds compose-only diagnostic
 rollup; RS-D5 is the external Grok routine pack (docs/examples only). RS-D8
-extends the Studies page with a **preview-only** YAML pane.
+extends the Studies page with a **preview-only** YAML pane. **RS-D9** (sequenced)
+adds a button on that pane that **spawns** the existing CLI `study run` — not a
+second in-process runner.
 
 This surface answers: *across many closed setups, which factor combinations look
 promising?* It is **not** confluence-combo attribution (within-trade membership).
@@ -431,7 +433,9 @@ Streamlit page: **Studies** (`pages/15_Studies.py`).
 - Report bundle reads refuse `bundle_path` values that escape the study directory.
 - Package import is Windows-safe: `study.execute` binds `fcntl` / `msvcrt`
   optionally so opening this page cannot raise `ModuleNotFoundError: fcntl`.
-- **RS-D8** adds a preview pane on this same page — still no in-app execute.
+- **RS-D8** adds a preview pane on this same page.
+- **RS-D9** (sequenced) may spawn the existing CLI `study run` from Preview;
+  Inspect remains artifacts-only; the page must not call `run_study()` in-process.
 
 ---
 
@@ -477,17 +481,38 @@ yaml.safe_load → normalize_study_spec → validate_study_spec → in-memory ex
 | Imports | `preview.py` does not import `thesistester.study.execute` |
 | Progress | Explicit **Refresh** of an existing study-dir ledger; does not start `study run` |
 | Streamlit caches | Inspect model + last preview result are Studies-scoped session caches (tab reruns must not re-aggregate or drop metrics) |
-| Execute | Remains CLI (`study run --confirm`) / optional RS6 tools |
+| Execute | Remains CLI (`study run --confirm`) / optional RS6 tools. **RS-D9** (sequenced) may spawn that same CLI from this pane |
 
 Stage-first example preview: **40** cells vs full cartesian **800**. Dataset CSV need not exist for preview.
+
+---
+
+## RS-D9 — Studies CLI-launch button (sequenced, not shipped)
+
+Plan contract: `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12.10.
+
+After a successful RS-D8 preview, the Studies page may start the **same**
+headless command a researcher would type:
+
+```bash
+python -m thesistester study run study.launch.yaml --output-dir <dir> [--confirm] [--force] [--workers N]
+```
+
+| Rule | Behavior |
+|---|---|
+| Single runner | Child is CLI `study run` → `run_study`. The page must **not** call `run_study()` in-process or dispatch `STUDY.run` |
+| Confirm | `run_count >= confirm_above_runs` → two-step bound triple `{study_identity_hash, run_count, output_dir}` then `--confirm`. Under threshold: no `--confirm` |
+| YAML | Write `{output_dir}/study.launch.yaml` (pinned dataset paths). Never clobber inspect `study.spec.yaml` |
+| Detach | `Popen` so Streamlit does not block; progress = Inspect **Refresh** + `study.launch.log` |
+| Not a queue | No scheduler / retry / kill UI |
 
 ---
 
 ## Post-MVP (plan-locked)
 
 See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Sequenced milestones
-**RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5 → RS-D8** are complete. Parked items stay
-out of the critical path unless that plan is amended.
+**RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5 → RS-D8** are complete. **Next: RS-D9**.
+Parked items stay out of the critical path unless that plan is amended.
 
 | Order | ID | Intent |
 |---|---|---|
@@ -496,6 +521,7 @@ out of the critical path unless that plan is amended.
 | 3 | **RS-D2** ✅ | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
 | 4 | **RS-D4** ✅ | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
 | 5 | **RS-D5** ✅ | External Grok Bot routine pack (`STUDY_RUNNER_GROK_ROUTINE_PACK.md` + `examples/studies/agents/`) |
-| 6 | **RS-D8** ✅ | Studies authoring preview (canonical YAML validate + in-memory expand; cell count / confirm gate; ledger watch; **no** in-app execute) |
+| 6 | **RS-D8** ✅ | Studies authoring preview (canonical YAML validate + in-memory expand; cell count / confirm gate; ledger watch) |
+| 7 | **RS-D9** ☐ | Studies CLI-launch button (spawn existing `study run`; no in-process execute) |
 
 Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).

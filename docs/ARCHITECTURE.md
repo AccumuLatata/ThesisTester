@@ -42,7 +42,7 @@ and sends its bundle-ready mapping to `build_research_bundle()`.
 parallelism inside a single engine pipeline. Results are collected in YAML
 order and summarized in `results_index.csv`.
 
-## Research Study Runner boundary (RS1–RS5 + RS-D7/RS6/RS-D2/RS-D8)
+## Research Study Runner boundary (RS1–RS5 + RS-D7/RS6/RS-D2/RS-D8; RS-D9 sequenced)
 
 `thesistester/study/` is an additive headless module for closed factorial
 StudySpecs. RS1 validates; RS2 expands to R18 `experiment.yaml` + factor map;
@@ -59,8 +59,11 @@ capabilities. **RS-D2** adds a **read-only** Streamlit Studies viewer
 ledger loaders — no in-app expand/run/promote and no classic research
 `st.session_state` mutation. **RS-D8** extends that same page with a
 **preview-only** StudySpec pane (`thesistester/study/preview.py`: validate +
-in-memory `expand_study`, cap 2_000; no `study.execute` import). `thesistester.study.execute` imports on Windows:
-exclusive `.study.lock` uses POSIX `fcntl.flock` or Windows `msvcrt.locking`
+in-memory `expand_study`, cap 2_000; no `study.execute` import). **RS-D9**
+(sequenced) may spawn the existing CLI `study run` from that pane
+(`thesistester/study/launch.py`; detached; no in-process `run_study`).
+`thesistester.study.execute` imports on Windows: exclusive `.study.lock` uses
+POSIX `fcntl.flock` or Windows `msvcrt.locking`
 (fail-closed; released on process exit). Study execution sets
 `execution_origin="study"`
 (member of `EXECUTION_ORIGINS`) and does **not** call `run_batch` — R18 CLI
@@ -1070,8 +1073,8 @@ Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`,
 `pages/10_Validation.py`, `pages/11_Report_Export.py`,
 `pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`,
-`pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 inspect + RS-D8
-preview; not part of the classic research mutate path).
+`pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 inspect + RS-D8 preview; RS-D9 CLI spawn sequenced;
+not part of the classic research mutate path).
 
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
 ("Long vs Short KPIs") section sourced from the same `trades` DataFrame.

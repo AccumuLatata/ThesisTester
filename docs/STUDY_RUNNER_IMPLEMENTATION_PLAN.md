@@ -1,8 +1,8 @@
 # Research Study Runner — Implementation Plan (RS)
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
-**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + **RS-D8 authoring-preview sequence**)  
-**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 complete**. Parked: RS-D1 / RS-D3 / RS-D6  
+**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + RS-D8 authoring-preview sequence + **RS-D9 CLI-launch sequence**)  
+**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 complete**. **Next: RS-D9** (Studies CLI-launch button). Parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -11,7 +11,7 @@
 
 **Supersedes:** conversational design notes about an autonomous research bot / Grok Bot coworker (those remain usage patterns; this plan is the product contract).
 
-**Completeness posture:** RS1–RS5 is the **holistic MVP** (author → expand → confirm → execute with ledger/resume → report → promote). **§12** locks the post-MVP expansion sequence (index PF → default-off assistant capabilities → Studies viewer → per-cell diagnostic rollup → Grok routine pack → **Studies authoring preview**). Parked items stay out of the critical path.
+**Completeness posture:** RS1–RS5 is the **holistic MVP** (author → expand → confirm → execute with ledger/resume → report → promote). **§12** locks the post-MVP expansion sequence (index PF → default-off assistant capabilities → Studies viewer → per-cell diagnostic rollup → Grok routine pack → Studies authoring preview → **Studies CLI-launch button**). Parked items stay out of the critical path. Academic execute remains the headless CLI; RS-D9 is a control-plane spawn of that same CLI, not a second runner.
 
 ---
 
@@ -24,7 +24,7 @@ Ship an **additive, headless Research Study Runner** so a researcher (or an exte
 3. **Execute** unattended via existing `run_experiment` / bundle machinery (study-owned loop; see §5.3).
 4. **Aggregate** results into an honest overview (ranked cells, factor effects, OTF ΔR, sample-size warnings).
 
-The runner must remain **independent of Streamlit day-to-day research**: no engine, fill, or confluence-math changes in this series. Classic UI and assistant confirmation flows stay unchanged through MVP and through default-off RS6. The only planned page addition is the **read-only** RS-D2 Studies viewer; **RS-D8** extends that same page with a **preview-only** StudySpec authoring pane (validate + expand dry-run + ledger watch — **no** in-app execute).
+The runner must remain **independent of Streamlit day-to-day research**: no engine, fill, or confluence-math changes in this series. Classic UI and assistant confirmation flows stay unchanged through MVP and through default-off RS6. The only planned page addition is the **read-only** RS-D2 Studies viewer; **RS-D8** extends that same page with a **preview-only** StudySpec authoring pane (validate + expand dry-run + ledger watch). **RS-D9** adds a **Confirm / Run via CLI** control on that same pane that **spawns** the existing `python -m thesistester study run` process — it must **not** call `run_study()` in-process, must **not** dispatch `STUDY.run`, and must **not** invent a second execute loop.
 
 ---
 
@@ -37,13 +37,13 @@ The runner must remain **independent of Streamlit day-to-day research**: no engi
 | Primary surface | CLI: `python -m thesistester study {expand,run,report,promote,rollup}` |
 | Compute core | Existing `run_experiment` + `build_research_bundle` (same path as CLI `_execute_run`); emit `experiment.yaml` for R18 replay |
 | Engine / golden impact | **None** for RS1–RS5; RS-D7 may touch CLI index writers only (versioned, default-compatible) — still **no** `engine/` edits |
-| Streamlit / pages impact | **None** for RS1–RS5 / RS-D7 / RS6; **RS-D2** adds a thin Studies viewer page; **RS-D8** extends that page with a preview-only authoring pane (same nav slot; still no in-app `study run`) |
+| Streamlit / pages impact | **None** for RS1–RS5 / RS-D7 / RS6; **RS-D2** adds a thin Studies viewer page; **RS-D8** extends that page with a preview-only authoring pane; **RS-D9** adds a CLI-spawn button on that same pane (same nav slot; still no in-process `run_study`) |
 | Assistant impact | Optional **RS6** only: default-off `FEATURE_PARITY_REGISTRY` capabilities (`STUDY.*`); no greenfield MCP server |
 | NL / LLM compiler | Parked (RS-D1); closed YAML StudySpec remains the contract. RS-D8 does **not** compile English or shorthand dialects |
 | External Grok Bot | Out of repo product core; **RS6** documents minimal CLI/confirm recipe; **RS-D5** is the full external routine pack |
 | Strategy generation | **Non-goal** (aligns with `ENGINEERING_PROPOSAL.md` §2.2) |
 | MVP completeness bar | RS1–RS5 usable end-to-end without Streamlit, NL, or assistant study tools ✅ |
-| Post-MVP sequence | **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5 → RS-D8** (locked in §12); do not reorder without amending this plan |
+| Post-MVP sequence | **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5 → RS-D8 → RS-D9** (locked in §12); do not reorder without amending this plan |
 
 **Feasibility:** High. R18 already runs independent RunSpecs and writes bundles + `results_index.csv`. MVP shipped study expansion + study-owned execution ledger + aggregation; post-MVP deepens agent/UI/rollup surfaces without new simulation semantics.
 
@@ -56,8 +56,8 @@ The runner must remain **independent of Streamlit day-to-day research**: no engi
 | Confirm gate + cost hints | **RS-D2** Streamlit Studies **viewer** (artifacts-only) | **RS-D6** multi-partner / tolerance factor types |
 | Study-owned execute + per-cell ledger | **RS-D4** per-cell WFA/validation/overfitting diagnostic rollup | Auto-run promotion / scheduled studies |
 | Soft resume + workers + continue-on-failure (study layer) | **RS-D5** Grok Bot routine pack (external; after RS6) | UI factor builder / templates marketplace |
-| Overview CSV/MD + OTF Δ + honesty | **RS-D8** Studies authoring preview (validate + expand dry-run + ledger watch; no in-app execute) | Embedding Grok host / RabbitMQ / job queue / live MCP server |
-| Stage filter + promote → `explicit_cells` draft | | |
+| Overview CSV/MD + OTF Δ + honesty | **RS-D8** Studies authoring preview (validate + expand dry-run + ledger watch) | Embedding Grok host / RabbitMQ / job queue / live MCP server |
+| Stage filter + promote → `explicit_cells` draft | **RS-D9** Studies CLI-launch button (spawn existing `study run`; no in-process execute) | |
 | Stage-first example (40) + documented full (800) | | |
 
 ---
@@ -77,8 +77,8 @@ Today that requires hand-authoring dozens/hundreds of YAML runs, no study identi
 > **Note:** This subsection is the **pre-RS1 gap snapshot**. Do not treat rows as
 > current capability status. Living status → §17 + `ENGINEERING_ROADMAP.md`.
 > MVP (RS1–RS5) closed the study expand/execute/report/promote gaps. Remaining
-> sequenced gap after D5 is **RS-D8** (authoring preview on the Studies page).
-> Parked: D1/D3/D6.
+> sequenced gap after D8 is **RS-D9** (Studies page button that spawns the
+> existing CLI `study run`). Parked: D1/D3/D6.
 
 | Desired | State at plan authorship |
 |---|---|
@@ -124,8 +124,10 @@ Keep docs, schemas, and agent prompts separate. Do not fold combo attribution in
 | Non-goal | Reason |
 |---|---|
 | Engine / confluence / fill changes | Out of series; golden identity must hold |
-| Streamlit Study UI (MVP) | Headless-first; RS-D2 viewer + RS-D8 preview are post-MVP and still not an in-app runner |
-| In-app `study run` / promote-execute | Confirm gates and ledgered execute stay CLI/RS6; Studies page must not become a second runner |
+| Streamlit Study UI (MVP) | Headless-first; RS-D2 viewer + RS-D8 preview are post-MVP; RS-D9 is CLI-spawn only |
+| In-process Streamlit `run_study` / `STUDY.run` from the Studies page | Confirm gates and ledgered execute stay in the CLI child (`cli_study._cmd_run` → `run_study`). The page must not become a second runner. **RS-D9** may spawn that CLI; it may not call `run_study()` on the Streamlit request |
+| Promote-execute from the Studies page | Promote stays CLI/RS6; D9 does not add Promote |
+| Job queue / scheduler / cancel daemon | Detached `Popen` (RS-D9) is a convenience spawn, not a queue. No retry/watchdog/kill UI |
 | Genetic / open-ended strategy search | §2.2 anti-roadmap |
 | LLM inventing levels, tolerances, or SL/TP | Closed factors only |
 | Live trading / scheduling daemon / job queue | Unnecessary for local research loop |
@@ -150,7 +152,8 @@ Keep docs, schemas, and agent prompts separate. Do not fold combo attribution in
 ┌──────────────────────────────────────────────────────────┐
 │ thesistester/study/          SHIPPED (RS1–RS5)           │
 │  schema → expand → execute(ledger) → report → promote    │
-│  + tools.py (RS6) + rollup.py (RS-D4) + preview.py (RS-D8) │
+│  + tools.py (RS6) + rollup.py (RS-D4) + preview.py (RS-D8)  │
+│  + launch.py (RS-D9: argv + detached CLI spawn)            │
 │  emits experiment.yaml for R18 replay                    │
 └──────────────────────────────┬───────────────────────────┘
                                │ per cell: run_experiment
@@ -166,7 +169,7 @@ Keep docs, schemas, and agent prompts separate. Do not fold combo attribution in
 ┌──────────────────────────────────────────────────────────┐
 │ engine / levels / signals                                │
 │  NO CHANGES in this series                               │
-│ pages/: RS-D2 Studies viewer; RS-D8 preview pane (no execute) │
+│ pages/: RS-D2 inspect; RS-D8 preview; RS-D9 CLI spawn (no in-process execute) │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -187,10 +190,11 @@ thesistester/study/
   rollup.py            # RS-D4: per-cell diagnostic rollup (compose-only) ✅
   viewer.py            # RS-D2: read-only Studies viewer helpers ✅
   preview.py           # RS-D8: validate + expand dry-run preview (no execute)
+  launch.py            # RS-D9: argv builder + detached `study run` spawn (no execute import)
 docs/STUDY_RUNNER.md   # living operator contract ✅
 tests/study/           # unit + golden expand fixtures ✅
 examples/studies/      # stage-first example YAML ✅
-pages/15_Studies.py    # RS-D2 viewer; RS-D8 adds preview pane (same nav slot)
+pages/15_Studies.py    # RS-D2 inspect; RS-D8 preview; RS-D9 CLI-spawn (same nav slot)
 ```
 
 ### 5.3 Design principles
@@ -493,10 +497,10 @@ Every RS PR must satisfy `ENGINEERING_PROPOSAL.md` §4.2:
 |---|---|---|
 | Golden masters | Untouched; **no** regeneration | Same |
 | Engine | No edits | No edits |
-| Pages | No edits | **RS-D2:** one read-only Studies viewer; **RS-D8:** same page, preview pane only (no execute controls) |
+| Pages | No edits | **RS-D2:** one read-only Studies viewer; **RS-D8:** same page, preview pane; **RS-D9:** same page, CLI-spawn controls (no in-process execute) |
 | Defaults | `thesistester run` / `run_batch` identical | Same; RS6 tools **default-off** |
 | Schema | StudySpec fail-closed | StudySpec unchanged unless parked D6; RS-D7 additive **index columns only** (no Experiment schema bump) |
-| Docs / tests | Land same PR | Land same PR; HC allowlist if USER_GUIDE H2 added (D2, D8) |
+| Docs / tests | Land same PR | Land same PR; HC allowlist if USER_GUIDE H2 added (D2, D8, D9) |
 | PIT | Inherit RunSpec/PIT docs | Same; no new causality claims |
 
 **Forbidden (entire series including post-MVP):** edits under `thesistester/engine/`; fill/signal/confluence-math semantics; golden-master regeneration; changing `run_batch` abort/write defaults; greenfield in-product MCP server.
@@ -510,6 +514,7 @@ Every RS PR must satisfy `ENGINEERING_PROPOSAL.md` §4.2:
 | RS-D2 | `pages/15_Studies.py` (or next free slot), USER_GUIDE + HC §7.1.4 / `help_corpus.py` |
 | RS-D4 / RS-D5 | Docs/examples primarily; CLI subparser additive for `study rollup` if used |
 | RS-D8 | Same `pages/15_Studies.py` + `thesistester/study/preview.py`; USER_GUIDE (prefer extend existing Studies H2); HC §7.1.4 only if a **new** H2 is added |
+| RS-D9 | Same `pages/15_Studies.py` + new `thesistester/study/launch.py`; USER_GUIDE (prefer extend existing Studies H2); HC §7.1.4 only if a **new** H2 is added. **No** `cli_study.py` argv changes; **no** `execute.py` edits |
 
 Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_config`, `api.run_experiment` / `validate_run_spec` / `build_setup`, `research_bundle.build_research_bundle` / `canonical_bundle_hash`.
 
@@ -709,11 +714,12 @@ Full contract: **§12.3**. Brief scope retained here for §11 continuity.
 Post-MVP work **must** follow this order unless this plan is amended in the same PR that reorders. **No escape hatches** that silently reorder milestones.
 
 ```text
-RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5  →  RS-D8
-  │         │        │         │         │         └─ Studies authoring preview (validate + dry expand + ledger watch; no execute)
+RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5  →  RS-D8  →  RS-D9
+  │         │        │         │         │         │         └─ Studies CLI-launch button (spawn existing `study run`; no in-process execute)
+  │         │        │         │         │         └─ Studies authoring preview (validate + dry expand + ledger watch)
   │         │        │         │         └─ external Grok routine pack (docs + recipes)
   │         │        │         └─ per-cell diagnostic rollup (compose existing artifacts only)
-  │         │        └─ Streamlit Studies viewer (artifacts-only; no in-app execute)
+  │         │        └─ Streamlit Studies viewer (artifacts-only inspect; no in-process execute)
   │         └─ default-off STUDY.* assistant capabilities + minimal CLI/confirm docs
   └─ additive results_index profit_factor + win_rate (default-compatible)
 ```
@@ -726,6 +732,7 @@ RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5  →  RS-D8
 | **RS-D4 after survivors-in-use** | Rollup honesty matters once promote workflows exist; compose-only; most MVP cells have batteries off |
 | **RS-D5 after RS6** | External coworker consumes frozen CLI + optional STUDY.* tools; not an embedded host |
 | **RS-D8 after D5** | Authoring preview on the existing Studies page; YAML contract unchanged; still not a second runner |
+| **RS-D9 after D8** | Convenience spawn of the **same** CLI argv from the preview pane; in-process `run_study` stays forbidden; confirm/sandbox/lock gates must not weaken |
 | **Parked ≠ cancelled** | RS-D1 / RS-D3 / RS-D6 stay available when a concrete need appears; not on the critical path |
 
 **Global regression posture (every post-MVP PR):**
@@ -733,7 +740,7 @@ RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5  →  RS-D8
 - Satisfy `ENGINEERING_PROPOSAL.md` §4.2.
 - **No** `thesistester/engine/` edits; **no** fill/signal/confluence-math changes; **no** golden-master regeneration (none in this series).
 - Classic `python -m thesistester run` / `run_batch` abort+write semantics unchanged (study layer remains continue-capable).
-- Allow-list non-`study/` touches: RS-D7 may extend `cli.py` `_execute_run` index keys; RS6 may register default-off assistant capabilities/config; RS-D2 may add one read-only page + HC allowlist; **RS-D8 may edit that same Studies page only** (no new nav slot; no classic research pages).
+- Allow-list non-`study/` touches: RS-D7 may extend `cli.py` `_execute_run` index keys; RS6 may register default-off assistant capabilities/config; RS-D2 may add one read-only page + HC allowlist; **RS-D8 and RS-D9 may edit that same Studies page only** (no new nav slot; no classic research pages). D9 must **not** change `cli_study.py` argv or `execute.py`.
 - Assistant Help/Discuss defaults unchanged when RS6 flag is off.
 - Docs + tests land in the same PR as code; roadmap/status rows updated same PR.
 - Prefer additive modules under `thesistester/study/` (and thin page/assistant wrappers only where listed).
@@ -747,7 +754,8 @@ RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5  →  RS-D8
 | 3 | RS-D2 | Studies viewer over artifacts | **Yes (viewer only)** | No | Read-only page |
 | 4 | RS-D4 | Per-cell WFA/validation/overfitting diagnostic rollup | No | No | Opt-in CLI/report |
 | 5 | RS-D5 | External Grok routine pack | No | No | External docs |
-| 6 | RS-D8 | Studies authoring preview (validate + dry expand + ledger watch) | **Yes (same Studies page; preview only)** | No | No execute |
+| 6 | RS-D8 | Studies authoring preview (validate + dry expand + ledger watch) | **Yes (same Studies page; preview only)** | No | No in-process execute |
+| 7 | RS-D9 | Studies CLI-launch button (spawn existing `study run`) | **Yes (same Studies page; spawn only)** | No | Detached CLI child |
 | — | D1/D3/D6 | Parked | — | — | — |
 
 ---
@@ -971,13 +979,13 @@ No product host embedding. No MCP server. No engine/pages. No default-on tools. 
 | **RS-D3** | `run_batch` continue-on-failure | Only if R18 replay parity with study ledger is required | Additive flag; default abort/write semantics stay identical |
 | **RS-D6** | Multi-partner clusters / tolerance sweeps | When a concrete study needs new factor types | `schema_version` bump; golden expand fixtures; no engine changes |
 
-Still **non-goals:** auto-promote to live thesis without human confirm; scheduled study daemon; UI factor marketplace; merging with confluence-combo attribution; greenfield in-product MCP server; in-app study execute (RS-D8 preview does not reopen this).
+Still **non-goals:** auto-promote to live thesis without human confirm; scheduled study daemon / job queue; UI factor marketplace; merging with confluence-combo attribution; greenfield in-product MCP server; **in-process** Streamlit `run_study` / `STUDY.run` from the Studies page (RS-D8 preview does not reopen this; **RS-D9** is CLI-spawn only and does not reopen in-process execute).
 
 ---
 
 ### 12.8 First implementable PR (kickoff)
 
-**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, RS-D5 ✅, and RS-D8 ✅ shipped.** Sequenced post-MVP track complete; parked items (§12.7) stay out unless this plan is amended.
+**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, RS-D5 ✅, and RS-D8 ✅ shipped.** Next implementable PR is **RS-D9 only** (§12.10). Parked items (§12.7) stay out unless this plan is amended.
 
 Historical D7 implementer notes (kept for audit):
 
@@ -1070,6 +1078,140 @@ added. §4.2.
 
 ---
 
+### 12.10 RS-D9 — Studies CLI-launch button (spawn existing `study run`) — ☐ Next
+
+| | |
+|---|---|
+| **Depends on** | RS1–RS5 ✅ (`cli_study._cmd_run` → `run_study`); **RS-D2** ✅ (path sandbox / honesty / Inspect Refresh); **RS-D8** ✅ (`StudyPreview`, identity hash, `needs_confirm`, `PREVIEW_EXPAND_CAP`, cached YAML). RS6 confirm *shape* is the bound triple to copy — do **not** dispatch `STUDY.run` from the page |
+| **Scope** | After a successful preview, let a researcher start the **same** headless CLI they would type, without hand-saving YAML or leaving the Studies page. The page **spawns** `sys.executable -m thesistester study run …` as a **detached** subprocess. It does **not** call `run_study()` in-process, does **not** call `run_batch`, does **not** dispatch `STUDY.run`, and does **not** add a second execute implementation. |
+| **Product intent (locked)** | |
+| | 1. **Single academic execute path:** `thesistester.study.execute.run_study` reached only via CLI (`python -m thesistester study run` → `cli_study._cmd_run`). RS-D9 is a **control-plane spawn** of that argv. |
+| | 2. Convenience must **not** weaken confirm (`>= confirm_above_runs`), sandbox (RS-D2 roots), identity mismatch, `.study.lock`, or `--force` semantics. |
+| | 3. Local single-user is assumed. The risk to lock is **control-plane drift / confirm / Streamlit reruns**, not fill math. |
+| | 4. Detached `Popen` is **not** a job queue, scheduler, or daemon (those remain non-goals). |
+| **Likely files** | `thesistester/study/launch.py` (**new**; argv + path pin + spawn + pid/log); `pages/15_Studies.py` (controls on the **Preview** pane after a successful cached preview); `tests/study/test_study_launch.py` (new); `tests/study/test_study_preview.py` (extend page AST / session-key allow-list; **keep** `preview.py` import guard); `docs/STUDY_RUNNER.md` §RS-D9; `docs/USER_GUIDE.md` (prefer **extend** H2 `Studies viewer (read-only)` — no new H2 unless Help retrieval requires it); `docs/ARCHITECTURE.md` boundary sentence; `docs/AGENT_GUIDE.md` heading/pointer; roadmap/status; optional **one-liner** in `STUDY_RUNNER_GROK_ROUTINE_PACK.md` (do **not** rewrite the pack) |
+| **Import allow-list (locked)** | |
+| | `launch.py` may import: `thesistester.study.schema` (`StudySpecError`, `normalize_study_spec`, `validate_study_spec`); `thesistester.study.expand.study_identity_hash` (hash the **pinned** spec the child will load — do **not** call `expand_study` at spawn); `thesistester.study.viewer.default_study_viewer_roots` (sandbox roots); `yaml` / `subprocess` / `sys` / `os` / `json` / `pathlib`. Optional: a tiny `resolve_launch_output_dir` helper in `launch.py` (output dir may **not** exist yet — do **not** reuse `resolve_study_dir` as-is; that helper requires an existing directory). |
+| | `launch.py` **must not import** `thesistester.study.execute`, `thesistester.cli`, `run_batch`, `promote`, `tools.py` / `STUDY.*` handlers, or assistant modules. Do **not** acquire `.study.lock` in the Streamlit process (Windows-safe; lock stays the CLI child’s job). |
+| | `preview.py` import allow-list is **unchanged** (still no `execute`). Do **not** put spawn helpers in `preview.py`. |
+| | `pages/15_Studies.py` may import `thesistester.study.launch` plus existing preview/viewer/schema. **Must not** import `run_study` / `promote_study` / `expand_study_to_directory` / assistant handlers. Import the `launch` **submodule** directly — do **not** add `launch.py` to `thesistester.study.__init__` (that module already pulls `execute`). |
+| **CLI argv (locked — no parser change)** | Existing `cli_study.py` `study run` shape is sufficient. D9 **must not** add flags or change `_cmd_run`. Built argv: |
+
+```text
+{sys.executable} -m thesistester study run {launch_yaml} --output-dir {output_dir}
+  [--workers N]    # only when the optional UI override is set
+  [--confirm]      # only when needs_confirm AND the second confirm step succeeded
+  [--force]        # only when the optional checkbox is on (default off)
+```
+
+| | |
+|---|---|
+| | Child `cwd` = `Path.cwd()` (same as a human at repo root). Inherit `os.environ`. |
+| | Do **not** invoke `python -m thesistester run` (R18 replay) or `study expand` as a substitute for `study run`. |
+| | Show the planned argv in the UI (honesty). Tests assert argv **parity** with what a human would type for the same spec/dir/flags. |
+| **Launch YAML (locked)** | |
+| | Canonical `schema_version: 1` from the preview textarea (the snapshot bound to the last successful preview). |
+| | Write `{output_dir}/study.launch.yaml` — **never** `study.spec.yaml`. `run_study` still writes `study.spec.yaml` **after** gates pass. |
+| | **Never** default the launch path (or output_dir) to the Inspect dir’s `study.spec.yaml`. |
+| | **Pin dataset paths** before write, using the same search-roots-then-cwd rule as `promote._rewrite_dataset_paths_for_draft` (prefer an existing file under RS-D2 roots / cwd; else absolutize against `Path.cwd()`). Implement a **local** helper in `launch.py` — do **not** import `promote.py` or `tools.py`. Rationale: CLI `base_directory` is `study_path.parent`; a YAML sitting under `output_dir` would otherwise reinterpret relative `data/es_1m.csv` as `{output_dir}/data/es_1m.csv`. |
+| | Refuse dataset/output paths outside RS-D2 roots (cwd + local store), including `..` traversal and absolute escapes (same spirit as RS6 `_ensure_study_spec_paths_within_roots`). |
+| | `output_dir` may not exist yet: resolve against cwd, sandbox, `mkdir(parents=True)`. Always pass `--output-dir` as that resolved absolute path. |
+| | Overwrite of launch metadata in the chosen `output_dir` (`study.launch.yaml` / `.log` / `.pid` / `.json`) is allowed. D9 must **not** rewrite a completed study’s `study.spec.yaml`. |
+| | **Identity note:** pinning dataset paths changes `study_identity_hash` vs a CLI run of the same relative YAML whose parent is `examples/studies/`. Bind the confirm triple to the **pinned** spec (what the child will hash). Prefer a **new** `output_dir` for UI launches; resuming a CLI dir that used a different StudySpec parent requires `--force` or matching paths. Document this in USER_GUIDE / STUDY_RUNNER. |
+| **Confirm (CLI parity, `>=`) (locked)** | |
+| | Use exact `StudyPreview.run_count` and `confirm_above_runs` (`needs_confirm = run_count >= confirm_above_runs`, matching `run_study`). |
+| | **Under threshold:** one control **Run via CLI**. Do **not** pass `--confirm`. |
+| | **Over threshold:** **two-step**. (1) First control stores bound triple `{study_identity_hash, run_count, output_dir}` in Studies-scoped session state — same triple as RS6. Does **not** spawn. Does **not** stash a sticky `--confirm` that a later rerun can fire. (2) Second control **Confirm and run** must echo that triple against the **current** pinned hash + current `run_count` + current resolved `output_dir`. Only then spawn with `--confirm`. |
+| | One widget click must not both arm confirm and spawn. A lone checkbox / `confirmed=True` is insufficient. |
+| | Extra UI gate (in addition to the triple): textarea must equal the cached preview YAML (`STUDIES_PREVIEW_CACHED_YAML_KEY`). If the operator edited YAML, they must **Validate / Preview** again. Clear any armed approval on YAML / hash / run_count / output_dir change. |
+| | If `preview.expanded is False` (over `PREVIEW_EXPAND_CAP=2000`): **refuse spawn**. Exact `run_count` / child identity cannot be bound honestly. Operator must shrink the study or use CLI after `study expand`. |
+| | Do **not** call `expand_study` again on the Streamlit request at spawn (would freeze the app on ~1800 cells). Re-`yaml.safe_load` + normalize/validate + pin + `study_identity_hash` only. |
+| | `--force` is a **separate** optional checkbox, **default off**, **not** implied by confirm, **not** implied by soft-resume. Distinct from promote `--force`. |
+| **Anti-double-start / Streamlit reruns (locked)** | |
+| | Spawn **only** on an explicit `st.button(...)` (or equivalent) **true** branch. Tab switches, Inspect Refresh, Validate/Preview, download clicks, and widget-default reruns must **not** respawn. Do **not** store `should_launch=True` in `st.session_state` that fires on every subsequent rerun. |
+| | Before spawn, refuse if `study.launch.pid` exists **and** that PID is still alive on this host (stdlib only: `os.kill(pid, 0)` or equivalent; **no** new `psutil` dependency). |
+| | The child CLI still takes `.study.lock`; a concurrent human CLI on the same dir fails closed there. D9 must not probe/hold that lock in the Streamlit process. |
+| | No auto-retry, no queue, no watchdog that restarts a dead child. |
+| **Detach / progress (locked)** | |
+| | `subprocess.Popen` — **not** `run` / `check_call` / `wait` / `communicate` on the Streamlit request. |
+| | POSIX: `start_new_session=True` so Streamlit exit/SIGHUP does not kill the study. Windows: new process group / detached flag so the child outlives the request. |
+| | Redirect child stdout+stderr to `{output_dir}/study.launch.log`. **Truncate** that log on each new successful spawn so the file matches this launch. |
+| | Write `{output_dir}/study.launch.pid` and `{output_dir}/study.launch.json` (`pid`, `argv`, pinned `study_identity_hash`, `run_count`, `output_dir`, `confirm`, `force`, `started_at`, log path, launch yaml path). |
+| | Return immediately with pid + “watch **Inspect → Refresh** / ledger; log at `study.launch.log`”. |
+| | Progress UX remains RS-D8: Inspect **Refresh** (`report_study(..., write_artifacts=False)`). Optional auto-refresh stays **default off**. |
+| | **No** cancel/kill/promote control in D9 (operator stops the OS process if needed). Showing “PID alive / not alive” from the pid file is allowed. |
+| **Workers (locked)** | Display `StudyPreview.workers`. Optional override number input; default = unset (omit `--workers` so the CLI uses the StudySpec). Override must be `int >= 1`; invalid → refuse spawn. Do not silently pass `--workers 1`. |
+| **UI (locked)** | |
+| | Same page `pages/15_Studies.py`, **Preview StudySpec** pane, **after** a successful cached preview. **Do not** add a new sidebar page / numeric slot. |
+| | Controls allowed: `output_dir` text field (default from YAML `study.output_dir` if present, else empty — **never** default to the Inspect dir); optional workers override; optional `--force` checkbox default off; **Run via CLI** / **Confirm and run** as specified; planned argv display; pid/alive status. |
+| | Controls **still forbidden**: Promote; Enable batteries; Dispatch `STUDY.run`; in-process `run_study`; expand-to-disk; new nav page; classic research session mutation. |
+| | Honesty (required, visible with launch controls): combinatorial `run_count` is a **screening size**, not independent tests; large factorials need the two-step confirm; launching the CLI does not validate an edge; the child is the same `study run` as the terminal. |
+| **Session state (locked)** | Studies-scoped keys only. New keys e.g. `studies_launch_output_dir`, `studies_launch_approval` (bound triple). Must **not** collide with `studies_viewer_path_input` / `STUDIES_VIEWER_*` / `STUDIES_PREVIEW_*`. Must **not** mutate `CLASSIC_RESEARCH_SESSION_KEYS`. Armed approval clears when YAML, identity hash, run_count, or output_dir changes. |
+| **Out of scope** | NL compiler (RS-D1); shorthand/alias dialect; form-based factor builder; in-process execute; promote from the page; job queue / scheduler / kill UI; new CLI flags; `execute.py` / `cli_study.py` edits; `run_batch` continue (RS-D3); new factor types (RS-D6); MCP; engine / classic research pages; golden regeneration; rewriting the RS-D5 Grok pack; enabling `assistant.study_tools`; changing `PREVIEW_EXPAND_CAP` or `preview.py` import allow-list; writing `experiment.yaml` from the page |
+| **Regression** | |
+| | RS-D8 preview behavior unchanged (cap, matched stage estimate, no `execute` import). |
+| | RS-D2 inspect + Refresh unchanged. |
+| | CLI `study run` argv and `run_study` gates **unchanged** (the child **is** the runner). |
+| | RS6 tools remain default-off; the page must not call them. |
+| | No `engine/` edits; no `run` / `run_batch` semantic change; no golden regeneration. |
+| | USER_GUIDE: prefer extending H2 `Studies viewer (read-only)`. **If** a new H2 is added, amend RQ §7.1.4 + `_USER_GUIDE_SECTIONS` + freeze tests **in the same PR**. |
+| **Acceptance checklist** | |
+| | ☑ Argv builder: under threshold → no `--confirm`; over threshold without second step → no spawn and no `--confirm` in argv; over threshold + matching bound triple → `--confirm` present |
+| | ☑ `--force` absent unless checkbox on; `--workers N` present only when override set and `N >= 1` |
+| | ☑ Stale textarea (≠ cached preview YAML) → refuse spawn; armed approval cleared |
+| | ☑ Bound-triple mismatch (hash / run_count / output_dir) → refuse spawn |
+| | ☑ `preview.expanded is False` → refuse spawn |
+| | ☑ Path sandbox: `../` and extra-root absolute paths refused; launch YAML not written |
+| | ☑ Dataset path pinned in written `study.launch.yaml` (relative `data/…` does not stay relative to `output_dir`) |
+| | ☑ Launch file is `study.launch.yaml`, **not** `study.spec.yaml` |
+| | ☑ Spawn helper uses `Popen` (not `wait`); tests **mock** `Popen` — do not execute cells |
+| | ☑ Second spawn refused while launch pid is alive (mocked) |
+| | ☑ Streamlit rerun without a new button click does not call spawn (no sticky `should_launch`) |
+| | ☑ `preview.py` still must **not** import `thesistester.study.execute` / `run_study` / `run_batch` (existing AST guard stays green) |
+| | ☑ `launch.py` AST/import guard: no `thesistester.study.execute` / `run_study` / `run_batch` / `promote_study` / `STUDY.run` |
+| | ☑ Page AST: no `run_study` / `promote_study` / `expand_study_to_directory` / `STUDY.run`; session-key allow-list extended for launch keys only |
+| | ☑ Inspect Refresh still reloads ledger without rewriting `study.overview.*` |
+| | ☑ Honesty visible with launch controls |
+| | ☑ Docs: `STUDY_RUNNER.md` §RS-D9 + USER_GUIDE extend + ARCHITECTURE one-liner + AGENT_GUIDE pointer + roadmap status; no new USER_GUIDE H2 (HC allowlist unchanged unless a new H2 is added); optional Grok-pack one-liner that the button is the same CLI, not a second contract |
+| | ☑ Existing `tests/study/` + Streamlit/assistant tests green; engine goldens untouched |
+| | ☑ Full suite green |
+
+**Copy-ready agent prompt:**
+
+```text
+Implement RS-D9 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.10.
+Add a Studies CLI-launch button on the existing pages/15_Studies.py Preview pane
+(no new nav slot). After a successful RS-D8 preview, spawn the existing CLI as a
+detached subprocess — do NOT call run_study() in-process, do NOT dispatch STUDY.run,
+do NOT call run_batch, do NOT change cli_study.py argv or execute.py.
+
+Argv (sys.executable -m thesistester):
+  study run {output_dir}/study.launch.yaml --output-dir {output_dir}
+  [--workers N] [--confirm] [--force]
+Pass --confirm ONLY when run_count >= confirm_above_runs AND a second Confirm-and-run
+step echoes the bound triple {study_identity_hash, run_count, output_dir} (RS6 shape;
+>= matching run_study). One click must not arm confirm and spawn. --force is a separate
+checkbox, default off. Omit --workers unless the optional override is set (>= 1).
+
+New module thesistester/study/launch.py: build argv, pin dataset paths (promote-style
+search-roots-then-cwd; do not import promote.py or tools.py), write study.launch.yaml
+(NOT study.spec.yaml), Popen detached (POSIX start_new_session; Windows new process
+group), log to study.launch.log (truncate on new spawn), pid + study.launch.json.
+launch.py and preview.py must NOT import thesistester.study.execute. Do not add launch
+to study/__init__.py. Do not acquire .study.lock in the Streamlit process.
+
+Refuse spawn when: textarea != cached preview YAML; bound triple mismatch;
+preview.expanded is False (over PREVIEW_EXPAND_CAP); output_dir / dataset path outside
+RS-D2 roots; launch pid still alive. Do not re-expand at spawn. Do not store
+should_launch=True in session_state. Studies-scoped keys only (no collision with
+studies_viewer_path_input / STUDIES_PREVIEW_*). No Promote / enable-batteries.
+Progress = existing Inspect Refresh. Honesty required. Prefer extend USER_GUIDE H2
+Studies viewer (read-only); HC allowlist only if a new H2 is added. Mock Popen in
+tests — do not run cells. §4.2.
+```
+
+---
+
 ## 13. Worked example (acceptance narrative, not a CI mega-grid)
 
 The motivating pdPOC study is **supported** by the schema. CI must **not** run the full **800**-cell grid. Instead:
@@ -1103,7 +1245,8 @@ Recommended workflow after post-MVP sequence (§12):
 8. (RS-D2) Inspect study dirs in the Studies viewer (read-only).  
 9. (RS-D4) Roll up per-cell WFA/validation/overfitting diagnostics only where batteries actually ran (opt-in on survivor stage).  
 10. (RS-D5) External Grok Bot follows the documented routine pack — never invents axes.  
-11. (RS-D8) Paste canonical StudySpec YAML in the Studies preview pane to see cell count / confirm gate; execute remains CLI. Watch in-flight CLI runs via ledger refresh only.
+11. (RS-D8) Paste canonical StudySpec YAML in the Studies preview pane to see cell count / confirm gate. Watch in-flight CLI runs via ledger refresh.  
+12. (RS-D9) After a successful preview, **Run via CLI** / **Confirm and run** spawns the same `python -m thesistester study run` argv (detached). Progress remains Inspect Refresh. Promote stays CLI.
 
 ---
 
@@ -1115,10 +1258,10 @@ Recommended workflow after post-MVP sequence (§12):
 | `STUDY_RUNNER.md` | RS1–RS5 ✅; each post-MVP PR | Living operator contract |
 | `ENGINEERING_ROADMAP.md` | each PR | RS status row + post-MVP sequence |
 | `AGENT_GUIDE.md` | RS3 ✅; RS6 | Headless study commands + `study_tools` flag |
-| `ARCHITECTURE.md` | RS3 ✅; RS-D2; **RS-D8** | Boundary notes (study module; Studies viewer + preview pane) |
+| `ARCHITECTURE.md` | RS3 ✅; RS-D2; **RS-D8**; **RS-D9** | Boundary notes (study module; Studies viewer + preview + CLI spawn) |
 | `ASSUMPTIONS_AND_LIMITATIONS.md` | RS4 ✅; RS-D4 | Study ranking / rollup honesty |
 | `METRICS_GLOSSARY.md` | RS4 ✅; RS-D7 | Overview / index PF + WR columns |
-| `USER_GUIDE.md` | RS5 ✅; RS-D2; **RS-D8** | Studies viewer how-to; extend same H2 for preview (HC allowlist only if new H2) |
+| `USER_GUIDE.md` | RS5 ✅; RS-D2; **RS-D8**; **RS-D9** | Studies viewer how-to; extend same H2 for preview + CLI spawn (HC allowlist only if new H2) |
 | `README.md` (root) | RS5 ✅ | One-liner pointer |
 | Grok docs | RS6 minimal recipe; **RS-D5** ✅ full pack (`STUDY_RUNNER_GROK_ROUTINE_PACK.md` + `examples/studies/agents/`) | External agent recipes (no divergent forks) |
 | `CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` | RS0 pointer only | Keep separate; no edits required for RS |
@@ -1140,7 +1283,7 @@ Recommended workflow after post-MVP sequence (§12):
 | Re-run destroys completed work / identity drift | Soft resume + study identity hash + `--force` |
 | `execution_origin=study` → `unknown` | Additive `EXECUTION_ORIGINS` membership in RS3 |
 | Index column drift vs CLI | Parity test vs `_execute_run` keys (extend in RS-D7) |
-| Help corpus drift | HC allowlist PR when USER_GUIDE **adds an H2** (RS5, RS-D2, RS-D8 if new title) |
+| Help corpus drift | HC allowlist PR when USER_GUIDE **adds an H2** (RS5, RS-D2, RS-D8/D9 if new title) |
 | Naming collisions / invalid run names | `_RUN_NAME_RE` + output_dir isolation |
 | Merging study factorial with combo attribution | Explicit §3.4 boundary; separate docs |
 | Treating study emission rules as R18 validator law | Docs call out study-only rules (`min=max=len`, anchor `selected_levels=[]`) |
@@ -1148,7 +1291,13 @@ Recommended workflow after post-MVP sequence (§12):
 | Bare `confirmed=True` / habitual boolean set by LLMs | Approval payload bound to `(study_identity_hash, run_count, output_dir)` — orchestrator flag alone insufficient |
 | Soft-resume leaves PF/WR null on healthy pre-D7 rows | RS-D7 field-level backfill when ok+bundle and PF/WR missing |
 | Greenfield MCP runtime / voice MCP bleed | RS6 = registry capabilities only; voice keeps MCP denied |
-| Studies UI becomes a second runner | **RS-D2 read-only inspect** + **RS-D8 preview-only** — no in-app expand-to-disk / run / promote; no classic session mutation; execute stays CLI/RS6 |
+| Studies UI becomes a second runner | **RS-D2 inspect** + **RS-D8 preview** stay non-execute; **RS-D9** may only spawn the existing CLI argv (no in-process `run_study` / `STUDY.run`); two-step bound confirm; button-click spawn only; `preview.py` / `launch.py` must not import `execute.py` |
+| Streamlit rerun respawns a study | Spawn only in `st.button` true branch; refuse if `study.launch.pid` is still alive; no sticky `should_launch` session flag |
+| Confirm collapsed to one click / `--confirm` leaked under threshold | Two-step when `run_count >= confirm_above_runs`; bound triple `{hash, run_count, output_dir}`; `--confirm` omitted otherwise |
+| Launch YAML reinterprets relative `dataset.path` | Pin paths (search-roots-then-cwd) into `study.launch.yaml`; never write `study.spec.yaml` from the page; sandbox RS-D2 roots |
+| Page blocks on large factorials at spawn | Detached `Popen`; do not re-`expand_study` at spawn; over-cap (`expanded=False`) refuse |
+| Job-queue scope creep | No scheduler / retry / kill UI; detached spawn is not a daemon |
+| UI launch identity ≠ prior CLI ledger | Bind confirm to **pinned** spec hash; prefer a new `output_dir`; `--force` remains explicit |
 | Shorthand/NL paste silently “fixed” into a study | RS-D8 fail-closed on canonical schema only; NL compiler stays parked RS-D1 |
 | Preview expand of huge factorials hangs the app | `PREVIEW_EXPAND_CAP=2000`; over-cap returns **matched** estimate without `expand_study`; spinner while expanding |
 | Filter estimate overcounts vs expand | Estimate uses `_apply_stage_filter` intersection, not raw include-list lengths |
@@ -1158,7 +1307,7 @@ Recommended workflow after post-MVP sequence (§12):
 | Grok invents setups / bypasses confirm | **RS-D5** hard rules + RS6 minimal recipe; closed StudySpec only |
 | Rollup invents cross-cell PBO / statistical proof | **RS-D4** per-cell compose-only; null/`not_run` when batteries absent |
 | Expecting PBO on default study cells | Docs: overfitting needs grid sequences; survivor opt-in |
-| Post-MVP scope creep / reordering | §12.0 sequence lock (no escape hatches); parked D1/D3/D6; D8 does not reopen D1 |
+| Post-MVP scope creep / reordering | §12.0 sequence lock (no escape hatches); parked D1/D3/D6; D8 does not reopen D1; D9 does not reopen in-process execute |
 
 ---
 
@@ -1181,8 +1330,9 @@ Recommended workflow after post-MVP sequence (§12):
 3. **RS-D2:** read-only Studies viewer over artifacts; honesty visible; no session mutation; HC allowlist if USER_GUIDE grows.  
 4. **RS-D4:** per-cell compose-only diagnostic rollup; no cross-cell PBO; null/`not_run` when batteries absent.  
 5. **RS-D5:** external routine pack documented; no product host embedding.  
-6. **RS-D8:** Studies page preview pane validates canonical YAML + in-memory expand under cap 2000; matched stage estimate; constants battery hints; no `execute.py` import; ledger watch is read-only Refresh; no in-app execute.  
-7. Parked items (D1/D3/D6) remain out of critical path unless this plan is amended.
+6. **RS-D8:** Studies page preview pane validates canonical YAML + in-memory expand under cap 2000; matched stage estimate; constants battery hints; no `execute.py` import; ledger watch is read-only Refresh.  
+7. **RS-D9:** Studies page spawns the existing `study run` CLI (detached); two-step bound confirm over threshold; `study.launch.yaml` + pid/log; no in-process `run_study`; no CLI/execute edits; no job queue.  
+8. Parked items (D1/D3/D6) remain out of critical path unless this plan is amended.
 
 ---
 
@@ -1203,6 +1353,7 @@ Recommended workflow after post-MVP sequence (§12):
 | RS-D4 Per-cell diagnostic rollup | ✅ |
 | RS-D5 Grok Bot routine pack | ✅ |
 | RS-D8 Studies authoring preview | ✅ |
+| RS-D9 Studies CLI-launch button | ☐ Next (§12.10) |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |
 
 ---
@@ -1297,4 +1448,16 @@ Recommended workflow after post-MVP sequence (§12):
 
 57. `thesistester/study/preview.py` + Studies **Preview StudySpec** pane; inspect **Refresh**; no Save YAML in D8 MVP.  
 58. USER_GUIDE H2 `Studies viewer (read-only)` extended (no new H2 / no HC allowlist change).  
-59. Sequenced post-MVP track through RS-D8 marked complete; parked D1/D3/D6 unchanged.  
+59. Sequenced post-MVP track through RS-D8 marked complete; parked D1/D3/D6 unchanged. **Superseded for “what’s next” by §18.10 (RS-D9).**
+
+### 18.10 RS-D9 CLI-launch sequence (this amendment)
+
+60. Sequenced **RS-D9** after RS-D8: Studies **CLI-launch button** on the existing `pages/15_Studies.py` Preview pane (no new nav slot).  
+61. **Single CLI execute path preserved:** the child is `sys.executable -m thesistester study run` → `cli_study._cmd_run` → `run_study`. The page must **not** call `run_study()` in-process, must **not** dispatch `STUDY.run`, must **not** call `run_batch`, and must **not** change `cli_study.py` argv or `execute.py`.  
+62. New module `thesistester/study/launch.py`: argv builder + dataset-path pin + detached `Popen` + `study.launch.yaml` / `.log` / `.pid` / `.json`. **Must not import** `execute.py`. Do not add `launch` to `study/__init__.py`. `preview.py` import allow-list unchanged.  
+63. Confirm = CLI parity (`run_count >= confirm_above_runs`): under threshold → **Run via CLI** without `--confirm`; over threshold → two-step bound triple `{study_identity_hash, run_count, output_dir}` (RS6 shape) then **Confirm and run** with `--confirm`. One click must not arm and spawn. `--force` is a separate default-off checkbox.  
+64. Refuse spawn when textarea ≠ cached preview YAML, bound triple mismatches, `preview.expanded is False` (over cap 2000), paths escape RS-D2 roots, or launch pid is still alive. Do not re-`expand_study` at spawn.  
+65. Pin relative `dataset.path` (search-roots-then-cwd) so a YAML written under `output_dir` cannot reinterpret `data/es_1m.csv`. Never write `study.spec.yaml` from the page; never default output_dir to the Inspect dir.  
+66. Detached spawn is **not** a job queue: no retry/watchdog/kill UI; progress remains Inspect **Refresh**. Streamlit reruns must not respawn (button-click only; no sticky `should_launch`).  
+67. USER_GUIDE: prefer extending H2 `Studies viewer (read-only)`; HC §7.1.4 allowlist only if a new H2 is added.  
+68. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = **RS-D9 only**. Parked D1/D3/D6 unchanged.  
