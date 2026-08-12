@@ -9,6 +9,8 @@ bank. **HC-5 (2026-08-08):** dedicated USER_GUIDE **Exposure policy** H2 +
 retrieval boost; Voice-agent assumptions H2 title realigned to the file.
 **HC-6 (2026-08-08):** P0 settings-depth H2s (Intrabar / Exit management /
 Session close / Focus vs Admit) + retrieval boosts + bank Q-D8…Q-D11 / Q-H14.
+**RS-D2 (2026-08-12):** USER_GUIDE **Studies viewer (read-only)** H2 + HC §6.1 /
+RQ §7.1.4 / `_USER_GUIDE_SECTIONS` allowlist amend.  
 **RS5 (2026-08-12):** USER_GUIDE **Research Study Runner (headless)** H2 +
 §7.1.4 / `HELP_CORPUS_MANIFEST` amend (same PR as Study Runner promote/examples).
 **Owner surface:** Help corpus content + narrow `help_corpus` allowlist/tests
@@ -303,6 +305,7 @@ HC-0 / content PRs). Suggested v1 H2 skeleton (amend only via HC PR):
 ## Research Assistant (draft, Discuss, Help)
 ## Research mode on classic pages
 ## Research Study Runner (headless)
+## Studies viewer (read-only)
 ## When to use Help vs Discuss results
 ```
 

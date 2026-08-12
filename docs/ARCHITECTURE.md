@@ -42,7 +42,7 @@ and sends its bundle-ready mapping to `build_research_bundle()`.
 parallelism inside a single engine pipeline. Results are collected in YAML
 order and summarized in `results_index.csv`.
 
-## Research Study Runner boundary (RS1–RS5)
+## Research Study Runner boundary (RS1–RS5 + RS-D7/RS6/RS-D2)
 
 `thesistester/study/` is an additive headless module for closed factorial
 StudySpecs. RS1 validates; RS2 expands to R18 `experiment.yaml` + factor map;
@@ -51,10 +51,15 @@ execute loop (`run_experiment` + `build_research_bundle`) with per-cell ledger,
 soft resume, and continue-on-failure; RS4 adds `study report` (overview CSV/MD,
 OTF Δ, honesty; PF from bundle `trade_summary` unless present on the index);
 RS5 adds `study promote` (draft `explicit_cells` survivors; no auto-run) plus
-stage-first examples under `examples/studies/`. Study execution sets
-`execution_origin="study"` (member of `EXECUTION_ORIGINS`) and does **not** call
-`run_batch` — R18 CLI `run` / `run_batch` all-or-nothing write semantics stay
-identical. Engine and Streamlit pages are untouched. Operator contract:
+stage-first examples under `examples/studies/`. RS-D7 adds additive index
+`profit_factor` / `win_rate`; RS6 adds default-off `STUDY.*` assistant
+capabilities. **RS-D2** adds a **read-only** Streamlit Studies viewer
+(`pages/15_Studies.py`) over completed study artifacts via `report_study` /
+ledger loaders — no in-app expand/run/promote and no classic research
+`st.session_state` mutation. Study execution sets `execution_origin="study"`
+(member of `EXECUTION_ORIGINS`) and does **not** call `run_batch` — R18 CLI
+`run` / `run_batch` all-or-nothing write semantics stay identical. Engine and
+classic research pages remain undisturbed. Operator contract:
 `docs/STUDY_RUNNER.md`; plan: `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`.
 
 ## Classic/Assistant research identity boundary (CAI-1)
@@ -1059,7 +1064,8 @@ Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`,
 `pages/10_Validation.py`, `pages/11_Report_Export.py`,
 `pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`,
-`pages/14_Research_Assistant.py`.
+`pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 read-only
+study artifact viewer; not part of the classic research mutate path).
 
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
 ("Long vs Short KPIs") section sourced from the same `trades` DataFrame.

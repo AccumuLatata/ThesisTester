@@ -1,11 +1,12 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** landed. Post-MVP remaining: **RS-D2 → RS-D4 → RS-D5**.  
+**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** landed. Post-MVP remaining: **RS-D4 → RS-D5**.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
-Streamlit paths and `python -m thesistester run` are unchanged.
+Streamlit research mutate paths and `python -m thesistester run` are unchanged.
+RS-D2 adds a **read-only** Studies viewer page over completed study dirs.
 
 This surface answers: *across many closed setups, which factor combinations look
 promising?* It is **not** confluence-combo attribution (within-trade membership).
@@ -392,17 +393,29 @@ Full multi-step external Grok routine pack is **RS-D5** (extends this recipe).
 
 ---
 
+## RS-D2 — Studies viewer (read-only)
+
+Streamlit page: **Studies** (`pages/15_Studies.py`).
+
+- Paste a completed study `output_dir` (must stay under repo cwd or local store).
+- Loads ledger + overview via `load_ledger` / `report_study` (no backtests).
+- Shows identity, ledger counts, ranked / low-N / unresolved, OTF Δ, `bundle_path`.
+- Honesty banner required; no expand / run / promote controls; no classic research
+  `session_state` mutation; no Research-Bundles deep-link.
+
+---
+
 ## Post-MVP (plan-locked)
 
 See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
-**Next code PR = RS-D2 only** (§12.4).
+**Next code PR = RS-D4 only** (§12.5).
 
 | Order | ID | Intent |
 |---|---|---|
 | 1 | **RS-D7** ✅ | Additive `results_index` `profit_factor` + `win_rate` (soft-resume PF/WR backfill; ordered CLI↔study key parity) |
 | 2 | **RS6** ✅ | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
-| 3 | **RS-D2** (**next**) | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
-| 4 | **RS-D4** | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
+| 3 | **RS-D2** ✅ | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
+| 4 | **RS-D4** (**next**) | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
 | 5 | **RS-D5** | External Grok Bot routine pack |
 
 Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).

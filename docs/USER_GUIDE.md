@@ -898,14 +898,15 @@ record/discuss entry).
 
 ## Research Study Runner (headless)
 
-**What it is.** A CLI-only workflow for closed multi-factor confluence studies:
-declare a StudySpec, expand to an R18 experiment, run cells with a study-owned
-ledger, then report an honest overview. Distinct from in-trade confluence-combo
-attribution on Backtest.
+**What it is.** The primary CLI workflow for closed multi-factor confluence
+studies: declare a StudySpec, expand to an R18 experiment, run cells with a
+study-owned ledger, then report an honest overview. Distinct from in-trade
+confluence-combo attribution on Backtest. Optional default-off assistant
+`STUDY.*` tools wrap the same CLI contract.
 
 **When to use it.** When you want a stage-first factorial screen (e.g. pdPOC ×
-MA partners × modes × OTF) without opening Streamlit, then promote survivors
-into a draft StudySpec for a second pass.
+MA partners × modes × OTF) without driving classic Streamlit research pages,
+then promote survivors into a draft StudySpec for a second pass.
 
 **Related terms.** StudySpec, study expand, study run, study report, study
 promote draft, stage filter, explicit cells, multi-factor study, overview
@@ -931,16 +932,60 @@ ranking, OTF delta, Research Study Runner
    (refuses overwrite without `--force`), then edit the draft before any further `study run`.
    Phase-2 full cartesian (example: 800) means restoring/opening axes on the unpromoted
    StudySpec — not dropping `stage` from a narrowed promote draft.
+6. Inspect artifacts in the **Studies viewer (read-only)** page when you want a
+   Streamlit glance at ledger / ranked / low-N tables.
 
 **What it is not.**
 
-- Not a Streamlit page and not confluence-combo attribution.
+- Not confluence-combo attribution. Expand / run / promote are not in-app
+  Streamlit controls (see Studies viewer for read-only inspection).
 - Overview ranking is descriptive screening, not a validated edge (multiple-testing
   bias). Prefer non-zero commission/slippage and held-out / walk-forward checks.
 - `study promote` does not execute cells and does not replace human confirmation.
 
-**Related pages.** Operator contract `docs/STUDY_RUNNER.md`; Research Bundles
-(per-cell zips); Validation and robustness (honest next steps after screening).
+**Related pages.** Studies viewer (read-only); operator contract
+`docs/STUDY_RUNNER.md`; Research Bundles (per-cell zips); Validation and
+robustness (honest next steps after screening).
+
+## Studies viewer (read-only)
+
+**What it is.** A Streamlit page (`Studies`) that loads an existing study
+**output directory** and shows ledger status, ranked / low-N / unresolved
+tables, OTF Δ, and overview markdown. It reuses the same `study report` /
+ledger loaders as the CLI.
+
+**When to use it.** After a headless `study run` / `study report`, when you want
+to inspect artifacts without leaving the app. Prefer the CLI for any mutate
+path (expand / run / promote).
+
+**Related terms.** Studies viewer, study output directory, study ledger,
+ranked cells, low-N, OTF delta, bundle_path, Research Study Runner
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| Study output directory | Path to a completed study dir under the repo cwd or local store | Paths outside those trusted roots are refused |
+| Load study artifacts | Reads ledger + regenerates overview via `report_study` | Does **not** run backtests or write StudySpecs |
+
+**How to use.**
+
+1. Complete a study via CLI (`study expand` → `study run` → `study report`).
+2. Open **Studies** in the sidebar.
+3. Paste the study `output_dir` and click **Load study artifacts**.
+4. Review honesty banner, ledger counts, ranked / low-N tables, and `bundle_path`
+   strings. Download overview MD/CSV if useful.
+
+**What it is not.**
+
+- Not a StudySpec editor and not an in-app expand / run / promote runner.
+- Does not mutate classic research session state (levels / signals / trades).
+- Does not deep-link into Research Bundles by path (that page is upload/import
+  oriented); `bundle_path` is listed for orientation only.
+- Ranking remains descriptive screening, not a validated edge.
+
+**Related pages.** Research Study Runner (headless); Research Bundles; Validation
+and robustness.
 
 ## When to use Help vs Discuss results
 
