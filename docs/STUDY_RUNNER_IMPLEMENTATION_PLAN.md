@@ -24,7 +24,7 @@ Ship an **additive, headless Research Study Runner** so a researcher (or an exte
 3. **Execute** unattended via existing `run_experiment` / bundle machinery (study-owned loop; see §5.3).
 4. **Aggregate** results into an honest overview (ranked cells, factor effects, OTF ΔR, sample-size warnings).
 
-The runner must remain **independent of Streamlit day-to-day use**: no engine, fill, confluence-math, or page behavior changes in the core series. Classic UI and assistant confirmation flows keep working unchanged while RS lands.
+The runner must remain **independent of Streamlit day-to-day research**: no engine, fill, or confluence-math changes in this series. Classic UI and assistant confirmation flows stay unchanged through MVP and through default-off RS6. The only planned page addition is the **read-only** RS-D2 Studies viewer.
 
 ---
 
@@ -840,7 +840,7 @@ off. §4.2. Update STUDY_RUNNER.md (minimal agent recipe) + roadmap.
 |---|---|
 | **Depends on** | RS1–RS5 ✅; **RS-D7** (PF/WR on index); RS6 optional |
 | **Scope** | One new Streamlit page that **reads** an existing study output directory and displays ledger + overview artifacts |
-| **Likely files** | `pages/15_Studies.py` (or next free nav slot matching repo convention); thin helpers reusing `report_study` / ledger loaders — **do not reimplement** join/rank; `docs/USER_GUIDE.md` H2 + HC §7.1.4 allowlist amend; `ARCHITECTURE.md` boundary note |
+| **Likely files** | `pages/15_Studies.py` (**preferred** — next free numeric slot after `14_Research_Assistant.py`; rename only if nav convention conflicts); thin helpers reusing `report_study` / ledger loaders — **do not reimplement** join/rank; `docs/USER_GUIDE.md` H2 + HC §7.1.4 allowlist amend; `ARCHITECTURE.md` boundary note |
 | **Behavior** | |
 | | User selects / pastes a study `output_dir` (sandbox/path-validate; refuse arbitrary filesystem traversal outside intended roots if the app already has a path policy — otherwise document trusted-local-path assumption) |
 | | Show: study identity, run_count, ledger ok/failed/pending, ranked table, low-N, unresolved, OTF Δ summary, `bundle_path` strings |
@@ -945,6 +945,21 @@ No product host embedding. No MCP server. No engine/pages. No default-on tools. 
 | **RS-D6** | Multi-partner clusters / tolerance sweeps | When a concrete study needs new factor types | `schema_version` bump; golden expand fixtures; no engine changes |
 
 Still **non-goals:** auto-promote to live thesis without human confirm; scheduled study daemon; UI factor marketplace; merging with confluence-combo attribution; greenfield in-product MCP server.
+
+---
+
+### 12.8 First implementable PR (kickoff)
+
+**Next code PR = RS-D7 only.** Do not combine with RS6/D2/D4.
+
+Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
+
+1. Touch `build_index_row_from_state`, CLI `_execute_run`, **and** `_index_row_from_existing_bundle`.  
+2. Extend parity test that compares study keys to CLI `_execute_run` keys.  
+3. Add a focused test: ok cell → PF/WR present; failed cell → null; soft-resume rehydrate → PF/WR present without re-run.  
+4. Leave `report.py` preference path alone unless a bug is proven — it already prefers index.  
+5. Update glossary + `STUDY_RUNNER.md` RS4 PF source note to “RS-D7 landed” only after green.  
+6. Mark roadmap RS-D7 ✅ in the same PR; do **not** start RS6 in that PR.
 
 ---
 
@@ -1110,7 +1125,7 @@ Recommended workflow after post-MVP sequence (§12):
 23. RS-D2 locked **read-only** (no in-app runner). RS6 locked **default-off**. RS-D4 locked **compose-only**. RS-D5 locked **external**.  
 24. Docs plan, risks, definition of done (§16.2), and status tracker updated for the post-MVP track.
 
-### 18.4 Post-MVP review contracts (this amendment)
+### 18.4 Post-MVP review contracts (prior amendment)
 
 25. Sequence swapped to **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5**; removed “D7 may land before RS6” escape hatch.  
 26. RS6 = `FEATURE_PARITY_REGISTRY` `STUDY.*` capabilities + default-off flag; **no greenfield MCP server** (docs-only descriptor appendix at most; voice MCP stays denied).  
@@ -1121,3 +1136,11 @@ Recommended workflow after post-MVP sequence (§12):
 31. RS-D4 renamed/clarified as **per-cell diagnostic rollup** — no cross-cell PBO/DSR; overfitting fields require grid sequences; survivor opt-in recipe documented.  
 32. RS6 vs RS-D5 docs split (minimal recipe vs full routine pack).  
 33. §5.1/§5.2 updated for shipped MVP + post-MVP `tools.py` / `rollup.py` / Studies page.  
+
+### 18.5 Implementability polish (this amendment)
+
+34. §3.2 marked historical pre-MVP; living status is §17 / roadmap.  
+35. §10 regression table extended with post-MVP allow-list (cli index / assistant registry / one Studies page).  
+36. RS-D7: column order after `max_drawdown_r`; soft-resume `_index_row_from_existing_bundle` must rehydrate PF/WR; §12.8 first-PR kickoff.  
+37. RS6: `[assistant.study_tools]` config pattern; clarify `ConfirmationLevel.EXPLICIT_CONFIRMATION` vs `OrchestrationStatus.APPROVAL_REQUIRED`; bound approval triple; no new ConfirmationLevel members.  
+38. RS-D2: prefer `pages/15_Studies.py` as next free nav slot.  
