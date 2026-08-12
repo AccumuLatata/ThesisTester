@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5)."""
+"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5, RS-D4)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from thesistester.study.execute import (
 )
 from thesistester.study.promote import StudyPromoteError, promote_study
 from thesistester.study.report import StudyReportError, report_study
+from thesistester.study.rollup import StudyRollupError, rollup_study
 from thesistester.study.schema import StudySpecError
 
 
@@ -21,7 +22,7 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``study`` command group on the root CLI parser."""
     study_parser = subparsers.add_parser(
         "study",
-        help="Research Study Runner (expand / run / report / promote)",
+        help="Research Study Runner (expand / run / report / promote / rollup)",
     )
     study_sub = study_parser.add_subparsers(dest="study_command", required=True)
 
@@ -108,9 +109,19 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         help="Overwrite an existing draft StudySpec at --output",
     )
 
+    rollup_parser = study_sub.add_parser(
+        "rollup",
+        help="Compose per-cell WFA/validation/overfitting diagnostics (no new inference)",
+    )
+    rollup_parser.add_argument(
+        "study_dir",
+        type=Path,
+        help="Completed study output directory (results_index + optional cell bundles)",
+    )
+
 
 def dispatch_study(args: argparse.Namespace) -> int:
-    """Dispatch ``study expand|run|report|promote``; return process exit code."""
+    """Dispatch ``study expand|run|report|promote|rollup``; return process exit code."""
     try:
         if args.study_command == "expand":
             return _cmd_expand(args)
@@ -120,6 +131,8 @@ def dispatch_study(args: argparse.Namespace) -> int:
             return _cmd_report(args)
         if args.study_command == "promote":
             return _cmd_promote(args)
+        if args.study_command == "rollup":
+            return _cmd_rollup(args)
     except StudySpecError as exc:
         print(f"StudySpec error: {exc}", file=sys.stderr)
         return 2
@@ -128,6 +141,9 @@ def dispatch_study(args: argparse.Namespace) -> int:
         return 2
     except StudyPromoteError as exc:
         print(f"Study promote error: {exc}", file=sys.stderr)
+        return 2
+    except StudyRollupError as exc:
+        print(f"Study rollup error: {exc}", file=sys.stderr)
         return 2
     except ValueError as exc:
         print(f"Study error: {exc}", file=sys.stderr)
@@ -208,4 +224,18 @@ def _cmd_promote(args: argparse.Namespace) -> int:
     )
     print("This is a DRAFT — edit and confirm before `study run` (no auto-execution).")
     print(f"Expand preview: python -m thesistester study expand {result.output_path}")
+    return os.EX_OK
+
+
+def _cmd_rollup(args: argparse.Namespace) -> int:
+    result = rollup_study(args.study_dir)
+    print(
+        f"Study rollup: {result.study_name} — cells={result.cell_count} "
+        f"wfa_present={result.wfa_present_count} "
+        f"validation_present={result.validation_present_count} "
+        f"overfitting_present={result.overfitting_present_count}"
+    )
+    print("Compose-only: no cross-cell PBO/DSR; missing batteries → not_run.")
+    print(f"Artifacts: {result.paths['study.rollup.csv']}")
+    print(f"           {result.paths['study.rollup.md']}")
     return os.EX_OK

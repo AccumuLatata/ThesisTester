@@ -49,6 +49,11 @@ from thesistester.study.tools import (
     ensure_study_tools_enabled,
     load_study_tools_settings,
 )
+from thesistester.study.rollup import (
+    StudyRollupError,
+    StudyRollupResult,
+    rollup_study,
+)
 from thesistester.study.viewer import (
     StudyViewerError,
     StudyViewerModel,
@@ -57,6 +62,8 @@ from thesistester.study.viewer import (
 
 __all__ = [
     "APPROVAL_PAYLOAD_KEY",
+    "StudyRollupError",
+    "StudyRollupResult",
     "StudyToolsDisabledError",
     "StudyToolsSettings",
     "StudyViewerError",
@@ -87,6 +94,7 @@ __all__ = [
     "prepare_study_expansion",
     "promote_study",
     "report_study",
+    "rollup_study",
     "run_study",
     "study_identity_hash",
     "validate_study_spec",

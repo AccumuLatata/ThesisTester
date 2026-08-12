@@ -89,6 +89,16 @@ def test_resolve_study_dir_refuses_outside_roots(tmp_path: Path):
     assert resolved == inside.resolve()
 
 
+def test_load_study_view_tolerates_corrupt_ledger(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    (study_dir / "study.ledger.json").write_text("{not-json", encoding="utf-8")
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert model.study_name == "pdPOC_rs4"
+    assert model.ledger_present is False
+    # Falls back to overview/index status counts when ledger is unreadable.
+    assert isinstance(model.ledger_summary, dict)
+
+
 def test_report_ignores_bundle_path_outside_study_dir(tmp_path: Path):
     study_dir = _write_report_fixture(tmp_path, min_trades=1)
     secret = tmp_path / "secret.research.zip"
