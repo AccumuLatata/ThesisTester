@@ -333,3 +333,19 @@ CI/golden miniatures remain under `tests/fixtures/study/` (2×2×2). Do not run 
 ### Out of scope for RS5
 
 Auto-run promotion, assistant NL compiler, Studies UI, RS6 MCP/assistant tools.
+
+---
+
+## Post-MVP (plan-locked)
+
+See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
+
+| Order | ID | Intent |
+|---|---|---|
+| 1 | **RS6** | Default-off assistant/MCP tools + Grok CLI/MCP docs (confirm parity) |
+| 2 | **RS-D7** | Additive `results_index` `profit_factor` / `win_rate` |
+| 3 | **RS-D2** | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
+| 4 | **RS-D4** | Study WFA/PBO rollup (compose existing batteries) |
+| 5 | **RS-D5** | External Grok Bot routine pack |
+
+Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).
