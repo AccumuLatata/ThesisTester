@@ -512,13 +512,13 @@ Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_c
 | **Out of scope** | Expansion to runs; CLI; engine; pages |
 | **Regression** | No existing module behavior change |
 | **Acceptance checklist** | |
-| | ☐ Valid minimal StudySpec fixture normalizes stably |
-| | ☐ Unknown top-level / factor keys fail closed |
-| | ☐ Invalid trigger / trigger_timeframe / otf / partner tokens rejected with actionable errors |
-| | ☐ `direction` in constants allowed; listing unsupported factor axes errors clearly |
-| | ☐ `stage.mode: filter` requires `include`; `explicit_cells` requires non-empty `cells` with all factor keys |
-| | ☐ Docs describe schema_version: 1 |
-| | ☐ `pytest -q tests/study/test_study_schema.py` green; full suite green |
+| | ✅ Valid minimal StudySpec fixture normalizes stably |
+| | ✅ Unknown top-level / factor keys fail closed |
+| | ✅ Invalid trigger / trigger_timeframe / otf / partner tokens rejected with actionable errors |
+| | ✅ `direction` in constants allowed; listing unsupported factor axes errors clearly |
+| | ✅ `stage.mode: filter` requires `include`; `explicit_cells` requires non-empty `cells` with all factor keys |
+| | ✅ Docs describe schema_version: 1 |
+| | ✅ `pytest -q tests/study/test_study_schema.py` green (22 passed); no engine/pages/cli execution surface added |
 
 **Copy-ready agent prompt:**
 
@@ -782,7 +782,7 @@ Holistic MVP is done when **all** of the following hold:
 | Milestone | Status |
 |---|---|
 | RS0 Plan lock | ✅ This document (amended for R18 contract accuracy) |
-| RS1 Schema | ☐ |
+| RS1 Schema | ✅ |
 | RS2 Expander | ☐ |
 | RS3 CLI expand/run + study-owned ledger | ☐ |
 | RS4 Report | ☐ |

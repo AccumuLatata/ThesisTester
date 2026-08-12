@@ -46,6 +46,7 @@ Engine / data contracts:
 - [15s_primary_derived_1m_implementation_plan.md](15s_primary_derived_1m_implementation_plan.md)
 - [PREV30M_VWAP_IMPLEMENTATION_PLAN.md](PREV30M_VWAP_IMPLEMENTATION_PLAN.md)
 - [STUDY_RUNNER_IMPLEMENTATION_PLAN.md](STUDY_RUNNER_IMPLEMENTATION_PLAN.md) (RS — Research Study Runner; plan-locked holistic MVP RS1–RS5)
+- [STUDY_RUNNER.md](STUDY_RUNNER.md) (RS operator contract; RS1 schema landed)
 
 ## Research (demoted snapshots)
 
