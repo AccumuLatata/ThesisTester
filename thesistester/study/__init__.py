@@ -42,8 +42,18 @@ from thesistester.study.schema import (
     normalize_study_spec,
     validate_study_spec,
 )
+from thesistester.study.tools import (
+    APPROVAL_PAYLOAD_KEY,
+    StudyToolsDisabledError,
+    StudyToolsSettings,
+    ensure_study_tools_enabled,
+    load_study_tools_settings,
+)
 
 __all__ = [
+    "APPROVAL_PAYLOAD_KEY",
+    "StudyToolsDisabledError",
+    "StudyToolsSettings",
     "ExpansionResult",
     "R18_INDEX_METRIC_KEYS",
     "RUN_NAME_RE",
@@ -57,11 +67,13 @@ __all__ = [
     "build_run_name",
     "closed_level_token_set",
     "cost_hint_lines",
+    "ensure_study_tools_enabled",
     "execute_study_cell",
     "expand_study",
     "expand_study_to_directory",
     "factor_cell_fingerprint",
     "load_study_spec",
+    "load_study_tools_settings",
     "normalize_study_spec",
     "otf_canonical_key",
     "prepare_study_expansion",

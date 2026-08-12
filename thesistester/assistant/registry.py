@@ -537,6 +537,46 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
             ConfirmationLevel.EXPLICIT_CONFIRMATION,
             resource_envelope=_WALK_FORWARD_COMPUTE,
         ),
+        # RS6: always registered; handlers refuse when [assistant.study_tools] enabled=false.
+        _capability(
+            "STUDY.expand",
+            "Headless Study Runner",
+            "Expand a closed StudySpec into R18 experiment artifacts",
+            "thesistester.study.expand_study",
+            CapabilityMode.EXECUTABLE,
+            ConfirmationLevel.NONE,
+            resource_envelope=_STANDARD_COMPUTE,
+        ),
+        _capability(
+            "STUDY.run",
+            "Headless Study Runner",
+            "Execute a StudySpec via the study-owned ledger loop",
+            "thesistester.study.run_study",
+            CapabilityMode.EXECUTABLE,
+            ConfirmationLevel.EXPLICIT_CONFIRMATION,
+            resource_envelope=_WALK_FORWARD_COMPUTE,
+            limitation=(
+                "Over confirm_above_runs requires a bound payload.approval "
+                "(study_identity_hash, run_count, output_dir); confirmed=True alone is insufficient."
+            ),
+        ),
+        _capability(
+            "STUDY.report",
+            "Headless Study Runner",
+            "Aggregate a completed study directory into overview artifacts",
+            "thesistester.study.report_study",
+            CapabilityMode.EXECUTABLE,
+            ConfirmationLevel.NONE,
+        ),
+        _capability(
+            "STUDY.promote",
+            "Headless Study Runner",
+            "Draft a survivor StudySpec from ranked study cells",
+            "thesistester.study.promote_study",
+            CapabilityMode.EXECUTABLE,
+            ConfirmationLevel.NONE,
+            limitation="Writes a draft only; never executes cells or run_batch.",
+        ),
     )
 )
 
