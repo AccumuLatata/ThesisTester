@@ -417,6 +417,7 @@ Portfolio
 Research Assistant (draft, Discuss, Help)
 Research mode on classic pages
 Research Study Runner (headless)
+Studies viewer (read-only)
 When to use Help vs Discuss results
 ```
 

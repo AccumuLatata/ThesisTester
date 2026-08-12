@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening)  
-**Status:** **RS1–RS5 + RS-D7 + RS6 complete**. Post-MVP remaining: **RS-D2 → RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
+**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 complete**. Post-MVP remaining: **RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -849,7 +849,7 @@ Update STUDY_RUNNER.md (minimal agent recipe) + roadmap.
 
 ---
 
-### 12.4 RS-D2 — Streamlit Studies viewer (artifacts-only)
+### 12.4 RS-D2 — Streamlit Studies viewer (artifacts-only) — ✅
 
 | | |
 |---|---|
@@ -865,13 +865,13 @@ Update STUDY_RUNNER.md (minimal agent recipe) + roadmap.
 | **Out of scope** | Factor builder UI; templates marketplace; auto-run; assistant NL; changing headless CLI; portfolio of studies cloud sync |
 | **Regression** | Classic pages unchanged in behavior; no engine edits; Help allowlist updated if USER_GUIDE gains H2; nav addition must not break existing page tests |
 | **Acceptance checklist** | |
-| | ☐ Can load a completed fixture study dir and show ranked/low-N/ledger without running backtests |
-| | ☐ Reuses study report/ledger loaders (no divergent ranking logic) |
-| | ☐ Honesty caveats visible |
-| | ☐ No execute/promote/expand controls that mutate study or research session state |
-| | ☐ USER_GUIDE (+ HC §7.1.4 if Help-readable) updated same PR |
-| | ☐ Existing Streamlit/assistant tests green; engine goldens untouched |
-| | ☐ Full suite green |
+| | ☑ Can load a completed fixture study dir and show ranked/low-N/ledger without running backtests |
+| | ☑ Reuses study report/ledger loaders (no divergent ranking logic) |
+| | ☑ Honesty caveats visible |
+| | ☑ No execute/promote/expand controls that mutate study or research session state |
+| | ☑ USER_GUIDE (+ HC §7.1.4 if Help-readable) updated same PR |
+| | ☑ Existing Streamlit/assistant tests green; engine goldens untouched |
+| | ☑ Full suite green |
 
 **Copy-ready agent prompt:**
 
@@ -965,7 +965,7 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 ### 12.8 First implementable PR (kickoff)
 
-**RS-D7 ✅ and RS6 ✅ shipped.** Next code PR = **RS-D2 only** (§12.4). Do not combine with D4/D5.
+**RS-D7 ✅, RS6 ✅, and RS-D2 ✅ shipped.** Next code PR = **RS-D4 only** (§12.5). Do not combine with D5.
 
 Historical D7 implementer notes (kept for audit):
 
@@ -1102,8 +1102,8 @@ Recommended workflow after post-MVP sequence (§12):
 | **Post-MVP sequence lock** | ✅ This amendment (§12) |
 | RS-D7 Additive index PF + win_rate | ✅ |
 | RS6 Default-off `STUDY.*` assistant capabilities | ✅ |
-| RS-D2 Studies viewer (read-only) | ☐ **Next** |
-| RS-D4 Per-cell diagnostic rollup | ☐ After survivors-in-use |
+| RS-D2 Studies viewer (read-only) | ✅ |
+| RS-D4 Per-cell diagnostic rollup | ☐ **Next** |
 | RS-D5 Grok Bot routine pack | ☐ After RS6 |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |
 

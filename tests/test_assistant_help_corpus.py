@@ -69,6 +69,7 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
             "Research Assistant (draft, Discuss, Help)",
             "Research mode on classic pages",
             "Research Study Runner (headless)",
+            "Studies viewer (read-only)",
             "When to use Help vs Discuss results",
         }
     )

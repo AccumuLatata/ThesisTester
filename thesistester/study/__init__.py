@@ -49,11 +49,18 @@ from thesistester.study.tools import (
     ensure_study_tools_enabled,
     load_study_tools_settings,
 )
+from thesistester.study.viewer import (
+    StudyViewerError,
+    StudyViewerModel,
+    load_study_view,
+)
 
 __all__ = [
     "APPROVAL_PAYLOAD_KEY",
     "StudyToolsDisabledError",
     "StudyToolsSettings",
+    "StudyViewerError",
+    "StudyViewerModel",
     "ExpansionResult",
     "R18_INDEX_METRIC_KEYS",
     "RUN_NAME_RE",
@@ -74,6 +81,7 @@ __all__ = [
     "factor_cell_fingerprint",
     "load_study_spec",
     "load_study_tools_settings",
+    "load_study_view",
     "normalize_study_spec",
     "otf_canonical_key",
     "prepare_study_expansion",
