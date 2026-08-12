@@ -40,6 +40,7 @@ def test_feature_parity_registry_covers_every_product_area():
         "BUNDLE",
         "PORTFOLIO",
         "PIPELINE",
+        "STUDY",
     }
     assert len({capability.capability_id for capability in FEATURE_PARITY_REGISTRY}) == len(
         FEATURE_PARITY_REGISTRY
