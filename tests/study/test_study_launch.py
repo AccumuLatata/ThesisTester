@@ -199,6 +199,9 @@ def test_spawn_writes_launch_yaml_not_spec_and_pins_dataset(tmp_path: Path):
     assert kwargs.get("start_new_session") is True or "creationflags" in kwargs
     assert kwargs.get("close_fds") is True
     assert kwargs.get("shell") is False
+    env = kwargs.get("env")
+    assert isinstance(env, dict)
+    assert env.get("PYTHONUNBUFFERED") == "1"
     assert (plan.output_dir / LAUNCH_YAML_NAME).is_file()
     assert not (plan.output_dir / "study.spec.yaml").exists()
     payload = yaml.safe_load((plan.output_dir / LAUNCH_YAML_NAME).read_text(encoding="utf-8"))
@@ -283,6 +286,36 @@ def test_launch_module_import_allow_list():
                 assert alias.name not in banned
     assert "STUDY.run" not in source
     assert "def launch_pid_is_alive" in source
+    assert "PYTHONUNBUFFERED" in source
+
+
+def test_windows_detach_kwargs_omit_detached_process(monkeypatch):
+    """DETACHED_PROCESS drops redirected stdout; CREATE_NO_WINDOW must stand alone."""
+    import subprocess
+
+    from thesistester.study import launch as launch_mod
+
+    monkeypatch.setattr(launch_mod.os, "name", "nt")
+    kwargs = launch_mod._popen_detach_kwargs()
+    flags = int(kwargs["creationflags"])
+    detached = int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
+    no_window = int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+    new_group = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
+    assert flags & detached == 0
+    assert flags & no_window == no_window
+    assert flags & new_group == new_group
+    assert kwargs.get("close_fds") is True
+    assert "start_new_session" not in kwargs
+
+
+def test_posix_detach_kwargs_use_new_session(monkeypatch):
+    from thesistester.study import launch as launch_mod
+
+    monkeypatch.setattr(launch_mod.os, "name", "posix")
+    kwargs = launch_mod._popen_detach_kwargs()
+    assert kwargs.get("start_new_session") is True
+    assert kwargs.get("close_fds") is True
+    assert "creationflags" not in kwargs
 
 
 def test_preview_yaml_still_loads_example():
