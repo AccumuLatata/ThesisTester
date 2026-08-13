@@ -378,6 +378,7 @@ def spawn_launch(
     pid_path = plan.output_dir / LAUNCH_PID_NAME
     json_path = plan.output_dir / LAUNCH_JSON_NAME
     _claim_launch_pid_file(pid_path, output_dir=plan.output_dir)
+    previous_log = log_path.read_bytes() if log_path.is_file() else None
     try:
         _write_launch_yaml(plan.launch_yaml_path, plan.pinned_spec)
         log_handle = open(log_path, "w", encoding="utf-8")
@@ -388,12 +389,13 @@ def spawn_launch(
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
-                env=os.environ.copy(),
+                env=_child_env(),
                 shell=False,
                 **_popen_detach_kwargs(),
             )
         except Exception:
             log_handle.close()
+            _restore_launch_log(log_path, previous_log)
             raise
         log_handle.close()
     except Exception:
@@ -401,7 +403,13 @@ def spawn_launch(
         raise
 
     pid = int(getattr(proc, "pid"))
-    pid_path.write_text(f"{pid}\n", encoding="utf-8")
+    try:
+        _record_child_pid(pid_path, pid)
+    except OSError as exc:
+        raise StudyLaunchError(
+            f"Started CLI pid {pid} but could not persist {pid_path}: {exc}. "
+            "Stop that process before launching again on this output_dir."
+        ) from exc
     record = {
         "pid": pid,
         "argv": list(plan.argv),
@@ -485,7 +493,11 @@ def _absolute_argv_path(raw: str | Path) -> Path:
 
 
 def _claim_launch_pid_file(pid_path: Path, *, output_dir: Path) -> None:
-    """Exclusive-create ``study.launch.pid`` before ``Popen`` (TOCTOU-safe)."""
+    """Exclusive-create ``study.launch.pid`` before ``Popen`` (TOCTOU-safe).
+
+    The in-flight placeholder is this process's pid (alive), not ``0``. A second
+    tab that treated ``0`` as dead could unlink the claim and double-spawn.
+    """
     existing = read_launch_pid_status(output_dir)
     if existing is not None and existing.alive:
         raise StudyLaunchError(
@@ -508,7 +520,7 @@ def _claim_launch_pid_file(pid_path: Path, *, output_dir: Path) -> None:
             "(O_EXCL lost); wait or use a different output_dir."
         ) from exc
     try:
-        os.write(fd, b"0\n")
+        os.write(fd, f"{os.getpid()}\n".encode("ascii"))
     finally:
         os.close(fd)
 
@@ -516,6 +528,31 @@ def _claim_launch_pid_file(pid_path: Path, *, output_dir: Path) -> None:
 def _release_launch_pid_claim(pid_path: Path) -> None:
     try:
         pid_path.unlink()
+    except OSError:
+        return
+
+
+def _record_child_pid(pid_path: Path, pid: int) -> None:
+    """Replace the in-flight parent-pid placeholder with the child pid."""
+    text = f"{int(pid)}\n"
+    try:
+        pid_path.write_text(text, encoding="utf-8")
+        return
+    except OSError:
+        fd = os.open(str(pid_path), os.O_WRONLY | os.O_TRUNC)
+        try:
+            os.write(fd, text.encode("ascii"))
+        finally:
+            os.close(fd)
+
+
+def _restore_launch_log(log_path: Path, previous: bytes | None) -> None:
+    """Undo truncation when ``Popen`` fails (plan: do not wipe a prior log)."""
+    try:
+        if previous is None:
+            log_path.unlink()
+        else:
+            log_path.write_bytes(previous)
     except OSError:
         return
 
@@ -576,10 +613,21 @@ def _write_launch_yaml(path: Path, spec: Mapping[str, Any]) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _child_env() -> dict[str, str]:
+    """Copy the parent env; force unbuffered child stdout into ``study.launch.log``."""
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
+
+
 def _popen_detach_kwargs() -> dict[str, Any]:
     if os.name == "nt":
+        # CREATE_NEW_PROCESS_GROUP: child outlives the Streamlit request / Ctrl+C.
+        # CREATE_NO_WINDOW: no extra console flash.
+        # Do **not** set DETACHED_PROCESS (0x8). That flag does not inherit
+        # redirected stdout/stderr, so study.launch.log stays empty, and
+        # CREATE_NO_WINDOW is ignored when combined with it (Win32).
         flags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
-        flags |= int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
         flags |= int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
         return {"creationflags": flags, "close_fds": True}
     return {"start_new_session": True, "close_fds": True}

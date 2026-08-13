@@ -1134,14 +1134,14 @@ added. §4.2.
 | | `--force` is a **separate** optional checkbox, **default off**, **not** implied by confirm, **not** implied by soft-resume. Distinct from promote `--force`. |
 | **Anti-double-start / Streamlit reruns (locked)** | |
 | | Spawn **only** on an explicit `st.button(...)` (or equivalent) **true** branch. Tab switches, Inspect Refresh, Validate/Preview, download clicks, and widget-default reruns must **not** respawn. Do **not** store `should_launch=True` in `st.session_state` that fires on every subsequent rerun. |
-| | **Exclusive pid claim before `Popen`:** if `study.launch.pid` exists and `launch_pid_is_alive(pid)` → refuse. If the pid is dead or the file is empty/invalid → unlink (stale). Then exclusive-create the pid file (`os.O_CREAT` + `os.O_EXCL` + `os.O_WRONLY`) to claim the slot **before** `Popen`. Write the real pid after spawn. If `Popen` fails, unlink the claim. A second tab that loses `O_EXCL` must refuse (no TOCTOU double-spawn). |
+| | **Exclusive pid claim before `Popen`:** if `study.launch.pid` exists and `launch_pid_is_alive(pid)` → refuse. If the pid is dead or the file is empty/invalid → unlink (stale). Then exclusive-create the pid file (`os.O_CREAT` + `os.O_EXCL` + `os.O_WRONLY`) to claim the slot **before** `Popen`. The in-flight placeholder is **this process's pid** (alive), never `0` (which `launch_pid_is_alive` treats as dead and would let a second tab steal the claim). Write the child pid after spawn. If `Popen` fails, unlink the claim and restore any prior `study.launch.log`. A second tab that loses `O_EXCL` must refuse (no TOCTOU double-spawn). |
 | | **`launch_pid_is_alive(pid)` (stdlib only; no `psutil`):** POSIX: `os.kill(pid, 0)` — `ProcessLookupError` → dead, `PermissionError` → alive. **Windows: never `os.kill`** (not an existence probe; can signal/terminate). Use `ctypes` `OpenProcess` query (e.g. `PROCESS_QUERY_LIMITED_INFORMATION` / `SYNCHRONIZE`) + `CloseHandle`. `pid <= 0` → not alive. PID reuse after a finished study is an accepted local-single-user limitation; document it. |
 | | The child CLI still takes `.study.lock`; a concurrent human CLI on the same dir fails closed there. D9 must not probe/hold that lock in the Streamlit process. |
 | | No auto-retry, no queue, no watchdog that restarts a dead child. |
 | **Detach / progress (locked)** | |
 | | `subprocess.Popen` — **not** `run` / `check_call` / `wait` / `communicate` on the Streamlit request. `shell=False`; argv is a sequence. |
 | | POSIX: `start_new_session=True` so Streamlit exit/SIGHUP does not kill the study; `close_fds=True` so the child does not inherit Streamlit sockets. |
-| | Windows: `creationflags` = `subprocess.CREATE_NEW_PROCESS_GROUP` combined with `subprocess.DETACHED_PROCESS` (optional `CREATE_NO_WINDOW` to avoid a console flash). Do not use `CREATE_NEW_CONSOLE`. |
+| | Windows: `creationflags` = `subprocess.CREATE_NEW_PROCESS_GROUP` combined with `subprocess.CREATE_NO_WINDOW`. Do **not** set `DETACHED_PROCESS` (redirected stdout/stderr are not inherited, so `study.launch.log` stays empty; Win32 also ignores `CREATE_NO_WINDOW` when combined with it). Do not use `CREATE_NEW_CONSOLE`. Child env must set `PYTHONUNBUFFERED=1` so the log is not block-buffered. |
 | | Redirect child stdout+stderr to `{output_dir}/study.launch.log`. **Truncate** that log on each new **successful** spawn (open `'w'` at `Popen` time) so the file matches this launch. Do not truncate when spawn is refused. |
 | | Write `{output_dir}/study.launch.pid` and `{output_dir}/study.launch.json` (`pid`, `argv`, **pinned** `study_identity_hash`, `run_count`, `output_dir`, `confirm`, `force`, `started_at`, log path, launch yaml path). |
 | | Return immediately with pid + “watch **Inspect → Refresh** / ledger; log at `study.launch.log`”. Showing last N lines of that log on the launch pane is allowed (not a job queue). |
@@ -1179,6 +1179,7 @@ added. §4.2.
 | | ☑ Exclusive pid claim before `Popen` (mocked `O_EXCL` race → second spawn refused) |
 | | ☑ Second spawn refused while launch pid is alive (mocked) |
 | | ☑ `launch_pid_is_alive` on Windows does not call `os.kill` (AST or monkeypatch guard) |
+| | ☑ Windows spawn flags omit `DETACHED_PROCESS`; include `CREATE_NO_WINDOW` + `CREATE_NEW_PROCESS_GROUP`; child env `PYTHONUNBUFFERED=1` |
 | | ☑ Streamlit rerun without a new button click does not call spawn (no sticky `should_launch`) |
 | | ☑ `preview.py` still must **not** import `thesistester.study.execute` / `run_study` / `run_batch` (existing AST guard stays green) |
 | | ☑ `launch.py` AST/import guard: no `thesistester.study.execute` / `run_study` / `run_batch` / `promote_study` / `STUDY.run` |
@@ -1215,8 +1216,10 @@ existing file. Do not rewrite study.output_dir inside the launch YAML. Write
 study.launch.yaml (NOT study.spec.yaml). Display the pinned hash on the pane.
 
 Popen detached: POSIX start_new_session=True and close_fds=True; Windows
-CREATE_NEW_PROCESS_GROUP + DETACHED_PROCESS (optional CREATE_NO_WINDOW; never
-CREATE_NEW_CONSOLE). Log to study.launch.log (truncate only on successful spawn).
+CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW (never DETACHED_PROCESS — it drops
+redirected stdout so study.launch.log stays empty; never CREATE_NEW_CONSOLE).
+Child env PYTHONUNBUFFERED=1. Log to study.launch.log (truncate only on successful
+spawn).
 Exclusive-create study.launch.pid (O_EXCL) BEFORE Popen; stale dead-pid files may be
 unlinked. launch_pid_is_alive: POSIX os.kill(pid, 0); Windows ctypes OpenProcess —
 NEVER os.kill on Windows. No psutil. pid + study.launch.json.
@@ -1498,7 +1501,7 @@ Recommended workflow after post-MVP sequence (§12):
 69. Confirm triple hash is the **pinned** spec (`pinned_study_identity_hash`); **never** `StudyPreview.study_identity_hash`. YAML round-trip hash test. Show pinned hash on the launch pane.  
 70. Pin helper iterates `("path", "subtimeframe_path")`. Pipeline: normalize → pin → sandbox → hash → write.  
 71. Exclusive-create `study.launch.pid` (`O_EXCL`) **before** `Popen`; stale dead-pid unlink. Portable `launch_pid_is_alive`: POSIX `os.kill(pid, 0)`; **Windows never `os.kill`** (`ctypes` `OpenProcess`). No `psutil`. PID reuse accepted (local single-user).  
-72. Detach flags named: POSIX `start_new_session=True` + `close_fds=True`; Windows `CREATE_NEW_PROCESS_GROUP` + `DETACHED_PROCESS` (optional `CREATE_NO_WINDOW`). Argv is a list; `shell=False`.  
+72. Detach flags named: POSIX `start_new_session=True` + `close_fds=True`; Windows `CREATE_NEW_PROCESS_GROUP` + `CREATE_NO_WINDOW` (**not** `DETACHED_PROCESS`). Child env `PYTHONUNBUFFERED=1`. Argv is a list; `shell=False`.  
 73. Package `__init__.py` already imports `execute` (D8); D9 invariant is do not **call** `run_study` / do not take `.study.lock` in the UI. Lazy `__init__` out of D9 scope.  
 74. Prefer new `output_dir` for UI launches; existing CLI dir identity mismatch refuses without `--force`. Start Streamlit from repo root. Copy-ready prompt + risks + `STUDY_RUNNER.md` §RS-D9 updated.
 
@@ -1507,3 +1510,7 @@ Recommended workflow after post-MVP sequence (§12):
 75. `thesistester/study/launch.py` + Studies **Run via CLI** / **Bind confirm** / **Confirm and run** on the Preview pane; detached `Popen`; `study.launch.yaml` (not `study.spec.yaml`); exclusive pid claim; pinned-hash confirm.  
 76. USER_GUIDE H2 `Studies viewer (read-only)` extended (no new H2 / no HC allowlist change).  
 77. Sequenced post-MVP track through RS-D9 marked complete; parked D1/D3/D6 unchanged.
+
+### 18.13 RS-D9 Windows log-handle follow-up
+
+78. Windows spawn must **not** set `DETACHED_PROCESS` when stdout/stderr are redirected to `study.launch.log` (handles are not inherited; log stays empty; `CREATE_NO_WINDOW` is ignored when combined with it). Use `CREATE_NEW_PROCESS_GROUP` + `CREATE_NO_WINDOW`. Child env `PYTHONUNBUFFERED=1`. Streamlit `Ignoring changed path` under `results/` is the file watcher, not the study log.

@@ -56,7 +56,8 @@ import `thesistester.study.execute`.
 `run_study()` in-process. Over `confirm_above_runs`, require the same two-step
 bound triple as RS6, hashed on the **pinned** spec (not the preview hash).
 Pin both `dataset.path` and `dataset.subtimeframe_path`. Exclusive pid claim
-before `Popen`; Windows pid-alive must not use `os.kill`. See `docs/STUDY_RUNNER.md`
+before `Popen`; Windows pid-alive must not use `os.kill`. Windows spawn must
+not set `DETACHED_PROCESS` (empty `study.launch.log`). See `docs/STUDY_RUNNER.md`
 §RS-D9 and plan §12.10.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /

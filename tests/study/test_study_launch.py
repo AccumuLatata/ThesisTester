@@ -199,6 +199,9 @@ def test_spawn_writes_launch_yaml_not_spec_and_pins_dataset(tmp_path: Path):
     assert kwargs.get("start_new_session") is True or "creationflags" in kwargs
     assert kwargs.get("close_fds") is True
     assert kwargs.get("shell") is False
+    env = kwargs.get("env")
+    assert isinstance(env, dict)
+    assert env.get("PYTHONUNBUFFERED") == "1"
     assert (plan.output_dir / LAUNCH_YAML_NAME).is_file()
     assert not (plan.output_dir / "study.spec.yaml").exists()
     payload = yaml.safe_load((plan.output_dir / LAUNCH_YAML_NAME).read_text(encoding="utf-8"))
@@ -231,6 +234,55 @@ def test_second_spawn_refused_while_pid_alive(tmp_path: Path):
     with pytest.raises(StudyLaunchError, match="already running"):
         spawn_launch(plan, popen=fake_popen)
     assert calls["n"] == 1
+
+
+def test_inflight_parent_pid_claim_refuses_nested_spawn(tmp_path: Path):
+    plan = _plan(tmp_path)
+    nested = {"refused": False}
+
+    def fake_popen(argv, **kwargs):
+        pid_text = (plan.output_dir / LAUNCH_PID_NAME).read_text(encoding="utf-8").strip()
+        assert pid_text == str(os.getpid())
+        with pytest.raises(StudyLaunchError, match="already running"):
+            spawn_launch(plan, popen=lambda *a, **k: _FakeProc(1))
+        nested["refused"] = True
+        return _FakeProc(4242)
+
+    spawn_launch(plan, popen=fake_popen)
+    assert nested["refused"] is True
+    assert (plan.output_dir / LAUNCH_PID_NAME).read_text(encoding="utf-8").strip() == "4242"
+
+
+def test_child_pid_persists_if_path_write_text_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    plan = _plan(tmp_path)
+    original = Path.write_text
+
+    def flaky(self, data, encoding="utf-8", **kwargs):
+        if self.name == LAUNCH_PID_NAME and "4242" in str(data):
+            raise OSError("simulated write_text failure")
+        return original(self, data, encoding=encoding, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", flaky)
+    result = spawn_launch(plan, popen=lambda *a, **k: _FakeProc(4242))
+    assert result.pid == 4242
+    assert (plan.output_dir / LAUNCH_PID_NAME).read_text(encoding="utf-8").strip() == "4242"
+
+
+def test_popen_failure_restores_prior_log_and_releases_claim(tmp_path: Path):
+    plan = _plan(tmp_path)
+    plan.output_dir.mkdir(parents=True, exist_ok=True)
+    log = plan.output_dir / LAUNCH_LOG_NAME
+    log.write_text("prior-run\n", encoding="utf-8")
+
+    def boom(*_a, **_k):
+        raise OSError("spawn failed")
+
+    with pytest.raises(OSError, match="spawn failed"):
+        spawn_launch(plan, popen=boom)
+    assert log.read_text(encoding="utf-8") == "prior-run\n"
+    assert not (plan.output_dir / LAUNCH_PID_NAME).exists()
 
 
 def test_build_study_run_argv_parity():
@@ -283,6 +335,36 @@ def test_launch_module_import_allow_list():
                 assert alias.name not in banned
     assert "STUDY.run" not in source
     assert "def launch_pid_is_alive" in source
+    assert "PYTHONUNBUFFERED" in source
+
+
+def test_windows_detach_kwargs_omit_detached_process(monkeypatch):
+    """DETACHED_PROCESS drops redirected stdout; CREATE_NO_WINDOW must stand alone."""
+    import subprocess
+
+    from thesistester.study import launch as launch_mod
+
+    monkeypatch.setattr(launch_mod.os, "name", "nt")
+    kwargs = launch_mod._popen_detach_kwargs()
+    flags = int(kwargs["creationflags"])
+    detached = int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
+    no_window = int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+    new_group = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
+    assert flags & detached == 0
+    assert flags & no_window == no_window
+    assert flags & new_group == new_group
+    assert kwargs.get("close_fds") is True
+    assert "start_new_session" not in kwargs
+
+
+def test_posix_detach_kwargs_use_new_session(monkeypatch):
+    from thesistester.study import launch as launch_mod
+
+    monkeypatch.setattr(launch_mod.os, "name", "posix")
+    kwargs = launch_mod._popen_detach_kwargs()
+    assert kwargs.get("start_new_session") is True
+    assert kwargs.get("close_fds") is True
+    assert "creationflags" not in kwargs
 
 
 def test_preview_yaml_still_loads_example():

@@ -992,7 +992,9 @@ confirm_above_runs, study.launch.yaml
 4. Run: set a **new** CLI output dir (UI launches pin `dataset.path` and
    `dataset.subtimeframe_path` absolute — launch refuses a missing CSV).
    Under threshold: **Run via CLI**. Over: **Bind confirm** then
-   **Confirm and run**. Log: `study.launch.log`.
+   **Confirm and run**. Child log: `study.launch.log`. Streamlit
+   `Ignoring changed path` under `results/` is the watcher, not that log —
+   use Inspect **Refresh** / the ledger for cell progress.
 
 **What it is not.**
 
