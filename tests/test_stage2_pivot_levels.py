@@ -47,20 +47,26 @@ def _minute_bars_from_bucket_highs(
     *,
     bucket_minutes: int,
     start: str = "2026-06-02 09:30:00",
+    bucket_lows: list[float] | None = None,
 ) -> pd.DataFrame:
+    if bucket_lows is None:
+        bucket_lows = [high - 1.0 for high in bucket_highs]
+    if len(bucket_lows) != len(bucket_highs):
+        raise ValueError("bucket_highs and bucket_lows must have the same length.")
+
     rows: list[dict] = []
     start_ts = pd.Timestamp(start, tz=TZ)
-    for bucket_index, bucket_high in enumerate(bucket_highs):
+    for bucket_index, (bucket_high, bucket_low) in enumerate(zip(bucket_highs, bucket_lows)):
         bucket_start = start_ts + pd.Timedelta(minutes=bucket_index * bucket_minutes)
         for minute in range(bucket_minutes):
             ts = bucket_start + pd.Timedelta(minutes=minute)
             rows.append(
                 {
                     "timestamp": ts,
-                    "open": bucket_high - 0.5,
+                    "open": (bucket_high + bucket_low) / 2.0,
                     "high": bucket_high,
-                    "low": bucket_high - 1.0,
-                    "close": bucket_high - 0.25,
+                    "low": bucket_low,
+                    "close": bucket_low + 0.25,
                     "volume": 100.0,
                 }
             )
@@ -148,6 +154,97 @@ def test_5min_pivot_from_1min_source_is_hidden_until_confirmation():
 
     assert result["Pivot_5m_High"].iloc[:15].isna().all()
     assert result["Pivot_5m_High"].iloc[15:].eq(20.0).all()
+
+
+def test_5min_default_fractal_is_five_candle_center_extreme():
+    """Default left=2/right=2 is the 5-candle 5m pattern, delayed until bar 5 closes.
+
+    5m highs ``[10, 12, 25, 14, 11, 13]``: candle 3 (25) is strictly higher than
+    the two 5m candles on each side. The level is the pivot candle's high, but
+    it is not exposed at that candle — only from ``pivot_open + 3 * 5min``
+    (09:40 + 15m = 09:55), i.e. after the two right-side 5m candles have closed.
+    """
+    df = _minute_bars_from_bucket_highs(
+        [10.0, 12.0, 25.0, 14.0, 11.0, 13.0],
+        bucket_minutes=5,
+        bucket_lows=[9.0, 11.0, 8.0, 13.0, 10.0, 12.0],
+    )
+
+    result = compute_pivot_levels(
+        df,
+        enabled=True,
+        pivot_timeframes=["5min"],
+        pivot_left=2,
+        pivot_right=2,
+    )
+
+    # 25 one-minute bars = 09:30 .. 09:54; first actionable 1m bar is 09:55.
+    assert result["Pivot_5m_High"].iloc[:25].isna().all()
+    assert result["Pivot_5m_High"].iloc[25:].eq(25.0).all()
+    assert result["Pivot_5m_Low"].iloc[:25].isna().all()
+    assert result["Pivot_5m_Low"].iloc[25:].eq(8.0).all()
+    assert df["timestamp"].iloc[25] == pd.Timestamp("2026-06-02 09:55:00", tz=TZ)
+
+
+def test_5min_later_fractal_stays_hidden_until_right_window_closes():
+    """A second 5m pivot high is detected on the HTF series but unpublished
+    until its own confirmation close exists on the 1m timeline."""
+    df = _minute_bars_from_bucket_highs(
+        [10.0, 12.0, 25.0, 14.0, 11.0, 13.0, 30.0, 20.0, 18.0],
+        bucket_minutes=5,
+    )
+
+    result = compute_pivot_levels(
+        df,
+        enabled=True,
+        pivot_timeframes=["5min"],
+        pivot_left=2,
+        pivot_right=2,
+    )
+
+    # Last 1m bar is 10:14; the 30.0 pivot at 10:00 confirms at 10:15.
+    assert result["Pivot_5m_High"].iloc[25:].eq(25.0).all()
+    assert 30.0 not in set(result["Pivot_5m_High"].dropna().tolist())
+    assert df["timestamp"].iloc[-1] == pd.Timestamp("2026-06-02 10:14:00", tz=TZ)
+
+
+def test_5min_pivot_ignores_1min_five_candle_wicks():
+    """A 1m five-candle spike is a 1m pivot, not a 5m pivot.
+
+    The 50-tick wick sits inside the first 5m bucket, so on 5m candles that
+    bucket's high is 50 and the later 20-high 5m bar is not a 5m pivot high.
+    """
+    rows: list[dict] = []
+    start_ts = pd.Timestamp("2026-06-02 09:30:00", tz=TZ)
+    bucket_highs = [10.0, 12.0, 20.0, 14.0, 11.0, 13.0, 12.0]
+    for bucket_index, bucket_high in enumerate(bucket_highs):
+        bucket_start = start_ts + pd.Timedelta(minutes=bucket_index * 5)
+        for minute in range(5):
+            ts = bucket_start + pd.Timedelta(minutes=minute)
+            high = 50.0 if bucket_index == 0 and minute == 2 else bucket_high
+            rows.append(
+                {
+                    "timestamp": ts,
+                    "open": bucket_high - 0.5,
+                    "high": high,
+                    "low": bucket_high - 1.0,
+                    "close": bucket_high - 0.25,
+                    "volume": 100.0,
+                }
+            )
+    df = pd.DataFrame(rows)
+
+    result = compute_pivot_levels(
+        df,
+        enabled=True,
+        pivot_timeframes=["5min", "1min"],
+        pivot_left=2,
+        pivot_right=2,
+    )
+
+    assert result["Pivot_5m_High"].isna().all()
+    assert 50.0 in set(result["Pivot_1m_High"].dropna().tolist())
+    assert 20.0 not in set(result["Pivot_5m_High"].dropna().tolist())
 
 
 def test_30min_pivot_from_1min_source_is_hidden_until_confirmation():

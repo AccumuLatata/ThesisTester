@@ -79,7 +79,7 @@ future-shock tests and/or code inspection.
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
 | `Pivot_1m_High / Pivot_1m_Low` | strict fractal comparison on native bars | **Yes** | A pivot at bar `k` is exposed only from `pivot_bar_open + (pivot_right + 1) * 1min` onward | Requires enough left/right candles; before the first confirmed pivot the column is `NaN` | `tests/test_stage2_pivot_levels.py::test_native_1min_pivot_high_tracks_latest_confirmed_level`, `tests/test_stage2_pivot_levels.py::test_native_1min_pivot_low_respects_confirmation_delay` |
-| `Pivot_5m_*`, `Pivot_30m_*`, `Pivot_4h_*` | strict fractal comparison on resampled candles, merged back with `merge_asof(direction="backward")` | **Yes** | Exposed only after the higher-timeframe pivot candle closes and the full right-side confirmation window also closes (`pivot_bar_open + (pivot_right + 1) * timeframe`) | Requires base data at or below the requested pivot timeframe; no upsampling from larger source bars | `tests/test_stage2_pivot_levels.py::test_5min_pivot_from_1min_source_is_hidden_until_confirmation`, `tests/test_stage2_pivot_levels.py::test_30min_pivot_from_1min_source_is_hidden_until_confirmation`, `tests/test_stage2_pivot_levels.py::test_pivot_levels_are_point_in_time_safe_under_future_shock` |
+| `Pivot_5m_*`, `Pivot_30m_*`, `Pivot_4h_*` | strict fractal comparison on resampled candles, merged back with `merge_asof(direction="backward")` | **Yes** | Exposed only after the higher-timeframe pivot candle closes and the full right-side confirmation window also closes (`pivot_bar_open + (pivot_right + 1) * timeframe`). Default `left=right=2` is the 5-candle HTF pattern; the overlay is a delayed latest-confirmed scalar, not a marker on the pivot candle. | Requires base data at or below the requested pivot timeframe; no upsampling from larger source bars; neighbor tests are positional (session-gap empty buckets are dropped) | `tests/test_stage2_pivot_levels.py::test_5min_pivot_from_1min_source_is_hidden_until_confirmation`, `tests/test_stage2_pivot_levels.py::test_5min_default_fractal_is_five_candle_center_extreme`, `tests/test_stage2_pivot_levels.py::test_5min_later_fractal_stays_hidden_until_right_window_closes`, `tests/test_stage2_pivot_levels.py::test_5min_pivot_ignores_1min_five_candle_wicks`, `tests/test_stage2_pivot_levels.py::test_30min_pivot_from_1min_source_is_hidden_until_confirmation`, `tests/test_stage2_pivot_levels.py::test_pivot_levels_are_point_in_time_safe_under_future_shock` |
 
 ### Developing session VWAP — `levels/session_vwap.py`
 
@@ -276,7 +276,11 @@ Contract reference: `docs/otf-filter.md` §6 / §13b.
 8. **Confirmed pivots are latest-confirmed scalar levels only.** The pivot engine does
    not emit historical pivot-instance columns. It keeps only the most recent confirmed
    high and low per supported timeframe, and it does not yet classify sweeps, SFPs,
-   breakers, reclaims, or retests.
+   breakers, reclaims, or retests. Chart overlays therefore step at confirmation time
+   (default 5m: 15 minutes after the pivot 5m bar opens) and hold that price; they do
+   not annotate the pivot candle itself. The 5-candle fractal is computed on the pivot
+   timeframe, so `Pivot_5m_*` on a 1m candlestick chart will not match 5 consecutive
+   1m wicks.
 
 9. **`dVWAP_RTH` and `dVWAP` use bar-level typical price.** `typical_price = (high + low + close) / 3`
    is a bar-level approximation. True intrabar VWAP would require tick data but would not

@@ -70,6 +70,14 @@ def _resolve_pivot_source(
 
 
 def _detect_pivot_mask(series: pd.Series, *, left: int, right: int, comparator) -> pd.Series:
+    """Return a boolean mask of fractal extremes on *series*.
+
+    Default ``left=2``, ``right=2`` is the 5-candle pattern: candle 3 is a
+    pivot high (low) iff its high (low) is strictly more extreme than the two
+    preceding candles and the two following candles. Detection uses the
+    source timeframe's candles (native 1m, or resampled 5m/30m/4h), not the
+    base-chart candle count.
+    """
     mask = series.notna()
     for offset in range(1, left + 1):
         mask &= comparator(series, series.shift(offset))
@@ -97,6 +105,10 @@ def _latest_confirmed_pivot_series(
 
     events = source_df.loc[pivot_mask, ["timestamp"]].copy()
     events["pivot_value"] = prices.loc[pivot_mask].to_numpy()
+    # Source timestamps are bar opens. The last right-side candle closes at
+    # pivot_open + (right + 1) * timeframe; merge_asof exposes the level only
+    # from that instant forward (latest-confirmed scalar, not a marker on the
+    # pivot candle itself).
     events["align_timestamp"] = events["timestamp"] + (right + 1) * pd.to_timedelta(timeframe)
     events = events.sort_values(["align_timestamp", "timestamp"]).drop_duplicates(
         subset=["align_timestamp"], keep="last"
@@ -139,8 +151,14 @@ def compute_pivot_levels(
         supported timeframes.
     pivot_left:
         Number of left-side candles required for fractal confirmation.
+        Default 2 means the center candle must be more extreme than the two
+        preceding candles on the **pivot timeframe**.
     pivot_right:
         Number of right-side candles required for fractal confirmation.
+        Default 2 plus the pivot candle itself is the 5-candle pattern. The
+        level is published only after those right-side candles close
+        (``pivot_bar_open + (pivot_right + 1) * timeframe``), so chart overlays
+        lag the pivot candle rather than sitting on it.
     enabled:
         Master gate.  When ``False`` (the default), returns an empty DataFrame
         immediately so that no new columns are added by ``compute_all_levels``.

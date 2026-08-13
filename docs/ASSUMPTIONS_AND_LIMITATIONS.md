@@ -229,8 +229,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - The Levels page and headless API enable confirmed pivots in their built-in configuration. Direct `compute_all_levels` calls retain `pivots_enabled=False` by default.
 - Supported pivot timeframe settings remain exactly `1min`, `5min`, `30min`, and `4h`.
 - Default fractal settings are `pivot_left=2` and `pivot_right=2`, matching the 5-candle pivot convention.
-- Each pivot column holds the latest confirmed pivot high/low for its timeframe; before the first confirmed pivot exists, the value is `NaN`.
-- Confirmed pivots are delayed by right-side confirmation and are not real-time swing predictions.
+- The 5-candle pattern is evaluated on the **pivot timeframe's** candles (resampled 5m/30m/4h, or native 1m). A `Pivot_5m_*` overlay on a 1-minute chart will not line up with 5 consecutive 1m wicks.
+- Each pivot column holds the latest confirmed pivot high/low for that timeframe; before the first confirmed pivot exists, the value is `NaN`.
+- Confirmed pivots are delayed by right-side confirmation and are not real-time swing predictions. The backtest/levels chart draws this delayed scalar as a stepped hold — it does **not** mark the dotted line on the pivot candle itself. For default `right=2`, a 5m pivot at bar-open `T` becomes visible at `T + 15min` (after the two following 5m candles close).
+- Fractal neighbor tests are positional on the resampled HTF series. Session gaps drop empty buckets, so a 5m pivot near a halt/ETH reopen may use the last pre-gap 5m candles as left-side neighbors.
 - Confirmed pivots do not encode SFP, liquidity sweep, breaker, reclaim, or retest semantics.
 
 ### 5b) Developing session VWAPs (`dVWAP_RTH`, `dVWAP`) are opt-in
@@ -477,8 +479,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.
   Do not confuse them with `pdOpen/pwOpen/pmOpen`.
 - Confirmed pivots require enough left/right candles to become knowable and expose only
-  the latest confirmed scalar levels. Historical pivot-instance columns and higher-order
-  classifications (SFP, breaker, reclaim, retest) are not implemented yet.
+  the latest confirmed scalar levels. On a 1m chart the `Pivot_5m_*` line stays flat
+  until two later 5m candles close, then holds that price; it is not drawn on the
+  pivot candle. Historical pivot-instance columns and higher-order classifications
+  (SFP, breaker, reclaim, retest) are not implemented yet.
 - `dVWAP_RTH` and `dVWAP` use bar-level typical price `(H+L+C)/3`. True intrabar
   VWAP would require tick data. Since signals are treated as bar-close confirmed,
   this is documented intent, not a bug.
