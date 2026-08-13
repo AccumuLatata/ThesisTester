@@ -178,9 +178,14 @@ def test_pages_studies_preview_has_no_execute_controls():
                 and slice_node.id == "STUDIES_PREVIEW_CACHED_YAML_KEY"
             ):
                 written_keys.add(STUDIES_PREVIEW_CACHED_YAML_KEY)
-            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_OUTPUT_DIR_KEY":
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_LAUNCH_OUTPUT_DIR_KEY"
+            ):
                 written_keys.add(STUDIES_LAUNCH_OUTPUT_DIR_KEY)
-            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_APPROVAL_KEY":
+            elif (
+                isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_APPROVAL_KEY"
+            ):
                 written_keys.add(STUDIES_LAUNCH_APPROVAL_KEY)
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
