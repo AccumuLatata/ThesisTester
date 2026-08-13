@@ -388,7 +388,7 @@ def spawn_launch(
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
-                env=os.environ.copy(),
+                env=_child_env(),
                 shell=False,
                 **_popen_detach_kwargs(),
             )
@@ -576,10 +576,21 @@ def _write_launch_yaml(path: Path, spec: Mapping[str, Any]) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _child_env() -> dict[str, str]:
+    """Copy the parent env; force unbuffered child stdout into ``study.launch.log``."""
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
+
+
 def _popen_detach_kwargs() -> dict[str, Any]:
     if os.name == "nt":
+        # CREATE_NEW_PROCESS_GROUP: child outlives the Streamlit request / Ctrl+C.
+        # CREATE_NO_WINDOW: no extra console flash.
+        # Do **not** set DETACHED_PROCESS (0x8). That flag does not inherit
+        # redirected stdout/stderr, so study.launch.log stays empty, and
+        # CREATE_NO_WINDOW is ignored when combined with it (Win32).
         flags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
-        flags |= int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
         flags |= int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
         return {"creationflags": flags, "close_fds": True}
     return {"start_new_session": True, "close_fds": True}

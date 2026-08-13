@@ -5,6 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from thesistester.study.launch import (
+    LAUNCH_LOG_NAME,
     STUDIES_LAUNCH_APPROVAL_KEY,
     STUDIES_LAUNCH_OUTPUT_DIR_KEY,
     LaunchPlan,
@@ -313,6 +314,11 @@ def _render_launch_controls(preview: StudyPreview, yaml_text: str) -> None:
         if status is not None:
             state = "alive" if status.alive else "not alive"
             st.caption(f"Last launch pid `{status.pid}` ({state}).")
+        st.caption(
+            f"Child stdout/stderr → `{LAUNCH_LOG_NAME}` in the CLI output dir "
+            "(Inspect **Refresh** / ledger for cell progress; Streamlit "
+            "`Ignoring changed path` under results/ is the watcher, not this log)."
+        )
 
     if plan is not None and not plan.needs_confirm:
         if st.button("Run via CLI", type="primary"):

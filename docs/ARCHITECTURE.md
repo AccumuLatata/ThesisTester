@@ -62,7 +62,8 @@ ledger loaders — no in-app expand/run/promote and no classic research
 in-memory `expand_study`, cap 2_000; no `study.execute` import). **RS-D9**
 spawns the existing CLI `study run` from that pane
 (`thesistester/study/launch.py`; detached `Popen`; pin both dataset path keys;
-confirm bound to the **pinned** identity hash; no in-process `run_study`).
+confirm bound to the **pinned** identity hash; Windows omits `DETACHED_PROCESS`
+so `study.launch.log` inherits stdout; no in-process `run_study`).
 `thesistester.study.execute` imports on Windows: exclusive `.study.lock` uses
 POSIX `fcntl.flock` or Windows `msvcrt.locking`
 (fail-closed; released on process exit). Study execution sets
