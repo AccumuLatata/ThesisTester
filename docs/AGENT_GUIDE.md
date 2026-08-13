@@ -53,8 +53,11 @@ import `thesistester.study.execute`.
 
 **RS-D9:** Studies Preview pane may spawn the existing CLI
 (`python -m thesistester study run`) as a detached subprocess. Do not call
-the in-process runner from the page. Over `confirm_above_runs`, require the
-same two-step bound triple as RS6. See `docs/STUDY_RUNNER.md` §RS-D9.
+`run_study()` in-process. Over `confirm_above_runs`, require the same two-step
+bound triple as RS6, hashed on the **pinned** spec (not the preview hash).
+Pin both `dataset.path` and `dataset.subtimeframe_path`. Exclusive pid claim
+before `Popen`; Windows pid-alive must not use `os.kill`. See `docs/STUDY_RUNNER.md`
+§RS-D9 and plan §12.10.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:

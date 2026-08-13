@@ -500,12 +500,14 @@ python -m thesistester study run study.launch.yaml --output-dir <dir> [--confirm
 | Rule | Behavior |
 |---|---|
 | Single runner | Child is CLI `study run` → `run_study`. The page does **not** call `run_study()` in-process or dispatch `STUDY.run` |
-| Confirm | `run_count >= confirm_above_runs` → **Bind confirm** (bound triple `{study_identity_hash, run_count, output_dir}`) then **Confirm and run** with `--confirm`. Under threshold: **Run via CLI** without `--confirm` |
-| YAML | Writes `{output_dir}/study.launch.yaml` with pinned dataset paths. Never clobbers inspect `study.spec.yaml`. `run_study` still writes `study.spec.yaml` after gates. Re-previewing **changed** YAML clears armed confirm and reseeds CLI `output_dir` from the new Spec |
-| Identity | Pinned absolute dataset paths change `study_identity_hash` vs a CLI run of the same relative YAML under `examples/studies/`. Prefer a **new** `output_dir` for UI launches |
-| Detach | `Popen` (`start_new_session` / Windows new process group); log `study.launch.log`; pid `study.launch.pid` (Windows PID probe via `OpenProcess`, not `os.kill(0)`). Progress = Inspect **Refresh** (honors the current Inspect path field) |
-| Not a queue | No scheduler / retry / kill UI. Streamlit reruns do not respawn. Refuse if launch pid is still alive |
+| Confirm | `run_count >= confirm_above_runs` → **Bind confirm** then **Confirm and run** with `--confirm`. Bound triple `{pinned_study_identity_hash, run_count, resolved_output_dir}` is hashed **after pin** — never `StudyPreview.study_identity_hash`. Under threshold: **Run via CLI** without `--confirm` |
+| YAML | Writes `{output_dir}/study.launch.yaml`. Pin **both** `dataset.path` and `dataset.subtimeframe_path` (viewer roots then cwd). Never clobber inspect `study.spec.yaml`. Refuse if a pinned CSV is missing. Do not rewrite `study.output_dir` in the launch YAML. Re-previewing **changed** YAML clears armed confirm and reseeds CLI `output_dir` from the new Spec |
+| Identity | Prefer a **new** `output_dir`. Launching into an existing CLI dir with a different identity refuses without `--force` |
+| Detach | `Popen` (`shell=False`; POSIX new session + `close_fds`; Windows `CREATE_NEW_PROCESS_GROUP` + `DETACHED_PROCESS`). Exclusive `O_EXCL` pid claim before spawn. Windows PID probe via `OpenProcess`, not `os.kill`. Progress = Inspect **Refresh** (honors the current Inspect path field) + `study.launch.log` |
+| Not a queue | No scheduler / retry / kill UI. Streamlit reruns do not respawn. Refuse if launch pid is still alive or `O_EXCL` is lost |
 | Cap | `preview.expanded is False` (over 2_000) refuses launch from the page |
+
+Preview does not require the dataset CSV to exist; **launch does** (pinned path must be a file). Start Streamlit from the repo root.
 
 ---
 
