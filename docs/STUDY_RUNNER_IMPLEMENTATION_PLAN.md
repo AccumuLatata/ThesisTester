@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + RS-D8 authoring-preview sequence + **RS-D9 CLI-launch sequence** + **RS-D9 review contracts**: pin both dataset keys, pinned-hash confirm, exclusive/portable pid)  
-**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 complete**. **Next: RS-D9** (Studies CLI-launch button). Parked: RS-D1 / RS-D3 / RS-D6  
+**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9 complete**. Parked: RS-D1 / RS-D3 / RS-D6
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -190,7 +190,7 @@ thesistester/study/
   rollup.py            # RS-D4: per-cell diagnostic rollup (compose-only) ✅
   viewer.py            # RS-D2: read-only Studies viewer helpers ✅
   preview.py           # RS-D8: validate + expand dry-run preview (no execute)
-  launch.py            # RS-D9: argv builder + detached `study run` spawn (no execute import)
+  launch.py            # RS-D9: argv builder + detached `study run` spawn (no execute import) ✅
 docs/STUDY_RUNNER.md   # living operator contract ✅
 tests/study/           # unit + golden expand fixtures ✅
 examples/studies/      # stage-first example YAML ✅
@@ -985,7 +985,7 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 ### 12.8 First implementable PR (kickoff)
 
-**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, RS-D5 ✅, and RS-D8 ✅ shipped.** Next implementable PR is **RS-D9 only** (§12.10). Parked items (§12.7) stay out unless this plan is amended.
+**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, RS-D5 ✅, RS-D8 ✅, and RS-D9 ✅ shipped.** Sequenced post-MVP track complete; parked items (§12.7) stay out unless this plan is amended.
 
 Historical D7 implementer notes (kept for audit):
 
@@ -1078,7 +1078,7 @@ added. §4.2.
 
 ---
 
-### 12.10 RS-D9 — Studies CLI-launch button (spawn existing `study run`) — ☐ Next
+### 12.10 RS-D9 — Studies CLI-launch button (spawn existing `study run`) — ✅
 
 | | |
 |---|---|
@@ -1384,7 +1384,7 @@ Recommended workflow after post-MVP sequence (§12):
 | RS-D4 Per-cell diagnostic rollup | ✅ |
 | RS-D5 Grok Bot routine pack | ✅ |
 | RS-D8 Studies authoring preview | ✅ |
-| RS-D9 Studies CLI-launch button | ☐ Next (§12.10) |
+| RS-D9 Studies CLI-launch button | ✅ |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |
 
 ---
@@ -1493,11 +1493,17 @@ Recommended workflow after post-MVP sequence (§12):
 67. USER_GUIDE: prefer extending H2 `Studies viewer (read-only)`; HC §7.1.4 allowlist only if a new H2 is added.  
 68. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = **RS-D9 only**. Parked D1/D3/D6 unchanged.
 
-### 18.11 RS-D9 review-contract amend (this amendment)
+### 18.11 RS-D9 review-contract amend
 
 69. Confirm triple hash is the **pinned** spec (`pinned_study_identity_hash`); **never** `StudyPreview.study_identity_hash`. YAML round-trip hash test. Show pinned hash on the launch pane.  
 70. Pin helper iterates `("path", "subtimeframe_path")`. Pipeline: normalize → pin → sandbox → hash → write.  
 71. Exclusive-create `study.launch.pid` (`O_EXCL`) **before** `Popen`; stale dead-pid unlink. Portable `launch_pid_is_alive`: POSIX `os.kill(pid, 0)`; **Windows never `os.kill`** (`ctypes` `OpenProcess`). No `psutil`. PID reuse accepted (local single-user).  
 72. Detach flags named: POSIX `start_new_session=True` + `close_fds=True`; Windows `CREATE_NEW_PROCESS_GROUP` + `DETACHED_PROCESS` (optional `CREATE_NO_WINDOW`). Argv is a list; `shell=False`.  
 73. Package `__init__.py` already imports `execute` (D8); D9 invariant is do not **call** `run_study` / do not take `.study.lock` in the UI. Lazy `__init__` out of D9 scope.  
-74. Prefer new `output_dir` for UI launches; existing CLI dir identity mismatch refuses without `--force`. Start Streamlit from repo root. Copy-ready prompt + risks + `STUDY_RUNNER.md` §RS-D9 updated.  
+74. Prefer new `output_dir` for UI launches; existing CLI dir identity mismatch refuses without `--force`. Start Streamlit from repo root. Copy-ready prompt + risks + `STUDY_RUNNER.md` §RS-D9 updated.
+
+### 18.12 RS-D9 ship
+
+75. `thesistester/study/launch.py` + Studies **Run via CLI** / **Bind confirm** / **Confirm and run** on the Preview pane; detached `Popen`; `study.launch.yaml` (not `study.spec.yaml`); exclusive pid claim; pinned-hash confirm.  
+76. USER_GUIDE H2 `Studies viewer (read-only)` extended (no new H2 / no HC allowlist change).  
+77. Sequenced post-MVP track through RS-D9 marked complete; parked D1/D3/D6 unchanged.

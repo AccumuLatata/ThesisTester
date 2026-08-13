@@ -179,6 +179,15 @@ def test_pages_studies_is_read_only_source():
                 and slice_node.id == "STUDIES_PREVIEW_CACHED_YAML_KEY"
             ):
                 written_keys.add("studies_preview_cached_yaml")
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_LAUNCH_OUTPUT_DIR_KEY"
+            ):
+                written_keys.add("studies_launch_output_dir")
+            elif (
+                isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_APPROVAL_KEY"
+            ):
+                written_keys.add("studies_launch_approval")
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
             else:
@@ -193,6 +202,8 @@ def test_pages_studies_is_read_only_source():
         "studies_preview_yaml",
         "studies_preview_cached",
         "studies_preview_cached_yaml",
+        "studies_launch_output_dir",
+        "studies_launch_approval",
     }
     assert not (written_keys & CLASSIC_RESEARCH_SESSION_KEYS)
 

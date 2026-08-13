@@ -17,7 +17,7 @@ runner for independent batches:
 python -m thesistester run experiment.yaml --workers 4
 ```
 
-### Research Study Runner (RS1–RS5 + post-MVP through RS-D9 plan)
+### Research Study Runner (RS1–RS5 + post-MVP through RS-D9)
 
 For closed multi-factor confluence studies, use the additive Study Runner (see
 `docs/STUDY_RUNNER.md`). It expands a StudySpec to an R18 experiment, then
@@ -51,12 +51,13 @@ host): `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + copy-ready prompts under
 validate + in-memory expand (cell count / confirm gate). `preview.py` must not
 import `thesistester.study.execute`.
 
-**RS-D9 (sequenced):** Studies Preview pane may spawn the existing CLI
+**RS-D9:** Studies Preview pane may spawn the existing CLI
 (`python -m thesistester study run`) as a detached subprocess. Do not call
 `run_study()` in-process. Over `confirm_above_runs`, require the same two-step
 bound triple as RS6, hashed on the **pinned** spec (not the preview hash).
 Pin both `dataset.path` and `dataset.subtimeframe_path`. Exclusive pid claim
-before `Popen`; Windows pid-alive must not use `os.kill`. See plan §12.10.
+before `Popen`; Windows pid-alive must not use `os.kill`. See `docs/STUDY_RUNNER.md`
+§RS-D9 and plan §12.10.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:

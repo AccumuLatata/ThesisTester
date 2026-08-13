@@ -911,7 +911,9 @@ other than the last bar in the dataset.
   `.study.lock` (POSIX `fcntl.flock` or Windows `msvcrt.locking`). The lock is
   advisory and released when the process exits; a crashed run does not leave a
   stale lock file that blocks later runs. Opening the Studies viewer does not
-  acquire the lock.
+  acquire the lock. RS-D9 CLI-spawn from the Studies page also does **not**
+  acquire `.study.lock` in the Streamlit process — the child `study run` holds
+  it.
 
 ## Research Study Runner ranking (RS4)
 
