@@ -236,6 +236,38 @@ def test_second_spawn_refused_while_pid_alive(tmp_path: Path):
     assert calls["n"] == 1
 
 
+def test_inflight_parent_pid_claim_refuses_nested_spawn(tmp_path: Path):
+    plan = _plan(tmp_path)
+    nested = {"refused": False}
+
+    def fake_popen(argv, **kwargs):
+        pid_text = (plan.output_dir / LAUNCH_PID_NAME).read_text(encoding="utf-8").strip()
+        assert pid_text == str(os.getpid())
+        with pytest.raises(StudyLaunchError, match="already running"):
+            spawn_launch(plan, popen=lambda *a, **k: _FakeProc(1))
+        nested["refused"] = True
+        return _FakeProc(4242)
+
+    spawn_launch(plan, popen=fake_popen)
+    assert nested["refused"] is True
+    assert (plan.output_dir / LAUNCH_PID_NAME).read_text(encoding="utf-8").strip() == "4242"
+
+
+def test_popen_failure_restores_prior_log_and_releases_claim(tmp_path: Path):
+    plan = _plan(tmp_path)
+    plan.output_dir.mkdir(parents=True, exist_ok=True)
+    log = plan.output_dir / LAUNCH_LOG_NAME
+    log.write_text("prior-run\n", encoding="utf-8")
+
+    def boom(*_a, **_k):
+        raise OSError("spawn failed")
+
+    with pytest.raises(OSError, match="spawn failed"):
+        spawn_launch(plan, popen=boom)
+    assert log.read_text(encoding="utf-8") == "prior-run\n"
+    assert not (plan.output_dir / LAUNCH_PID_NAME).exists()
+
+
 def test_build_study_run_argv_parity():
     argv = build_study_run_argv(
         launch_yaml="/tmp/out/study.launch.yaml",

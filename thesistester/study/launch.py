@@ -378,6 +378,7 @@ def spawn_launch(
     pid_path = plan.output_dir / LAUNCH_PID_NAME
     json_path = plan.output_dir / LAUNCH_JSON_NAME
     _claim_launch_pid_file(pid_path, output_dir=plan.output_dir)
+    previous_log = log_path.read_bytes() if log_path.is_file() else None
     try:
         _write_launch_yaml(plan.launch_yaml_path, plan.pinned_spec)
         log_handle = open(log_path, "w", encoding="utf-8")
@@ -394,6 +395,7 @@ def spawn_launch(
             )
         except Exception:
             log_handle.close()
+            _restore_launch_log(log_path, previous_log)
             raise
         log_handle.close()
     except Exception:
@@ -485,7 +487,11 @@ def _absolute_argv_path(raw: str | Path) -> Path:
 
 
 def _claim_launch_pid_file(pid_path: Path, *, output_dir: Path) -> None:
-    """Exclusive-create ``study.launch.pid`` before ``Popen`` (TOCTOU-safe)."""
+    """Exclusive-create ``study.launch.pid`` before ``Popen`` (TOCTOU-safe).
+
+    The in-flight placeholder is this process's pid (alive), not ``0``. A second
+    tab that treated ``0`` as dead could unlink the claim and double-spawn.
+    """
     existing = read_launch_pid_status(output_dir)
     if existing is not None and existing.alive:
         raise StudyLaunchError(
@@ -508,7 +514,7 @@ def _claim_launch_pid_file(pid_path: Path, *, output_dir: Path) -> None:
             "(O_EXCL lost); wait or use a different output_dir."
         ) from exc
     try:
-        os.write(fd, b"0\n")
+        os.write(fd, f"{os.getpid()}\n".encode("ascii"))
     finally:
         os.close(fd)
 
@@ -516,6 +522,17 @@ def _claim_launch_pid_file(pid_path: Path, *, output_dir: Path) -> None:
 def _release_launch_pid_claim(pid_path: Path) -> None:
     try:
         pid_path.unlink()
+    except OSError:
+        return
+
+
+def _restore_launch_log(log_path: Path, previous: bytes | None) -> None:
+    """Undo truncation when ``Popen`` fails (plan: do not wipe a prior log)."""
+    try:
+        if previous is None:
+            log_path.unlink()
+        else:
+            log_path.write_bytes(previous)
     except OSError:
         return
 
