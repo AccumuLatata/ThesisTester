@@ -981,7 +981,7 @@ confirm_above_runs, study.launch.yaml
 | Load example / Copy spec | Example YAML, or `study.spec.yaml` from Inspect | Copy needs a loaded Inspect dir |
 | CLI output directory | Spawn target for `study run` | Not the Inspect dir; stay under cwd/store; do not reuse another study’s dir after switching YAML |
 | Run via CLI | Spawn without `--confirm` when under threshold | Not in-process execute; watch Inspect → Refresh |
-| Bind confirm / Confirm and run | Two-step `{hash, run_count, output_dir}` then `--confirm` | One click cannot bind and spawn |
+| Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash. One click cannot bind and spawn |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
 
 **How to use.**
@@ -989,10 +989,10 @@ confirm_above_runs, study.launch.yaml
 1. CLI `study expand` → `study run` → `study report`, or preview YAML first.
 2. Open **Studies**. Inspect: paste `output_dir`, Load, Refresh while in flight.
 3. Preview: paste YAML (or Load example) → Validate / Preview.
-4. Run: set a **new** CLI output dir (UI launches pin dataset paths absolute,
-   which changes identity vs CLI-from-`examples/studies/`). Under threshold:
-   **Run via CLI**. Over: **Bind confirm** then **Confirm and run**. Log:
-   `study.launch.log`.
+4. Run: set a **new** CLI output dir (UI launches pin `dataset.path` and
+   `dataset.subtimeframe_path` absolute — launch refuses a missing CSV).
+   Under threshold: **Run via CLI**. Over: **Bind confirm** then
+   **Confirm and run**. Log: `study.launch.log`.
 
 **What it is not.**
 

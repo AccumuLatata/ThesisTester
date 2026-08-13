@@ -22,6 +22,7 @@ from thesistester.study.launch import (
     build_launch_plan,
     build_study_run_argv,
     default_output_dir_from_yaml,
+    launch_pid_is_alive,
     pid_is_alive,
     plan_with_confirm,
     planned_argv,
@@ -191,16 +192,27 @@ def test_spawn_writes_launch_yaml_not_spec_and_pins_dataset(tmp_path: Path):
     result = spawn_launch(plan, popen=fake_popen)
     assert result.pid == 4242
     assert captured["argv"] == list(plan.argv)
+    out_flag = plan.argv.index("--output-dir")
+    assert Path(plan.argv[out_flag + 1]).is_absolute()
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
     assert kwargs.get("start_new_session") is True or "creationflags" in kwargs
+    assert kwargs.get("close_fds") is True
+    assert kwargs.get("shell") is False
     assert (plan.output_dir / LAUNCH_YAML_NAME).is_file()
     assert not (plan.output_dir / "study.spec.yaml").exists()
     payload = yaml.safe_load((plan.output_dir / LAUNCH_YAML_NAME).read_text(encoding="utf-8"))
     pinned_path = Path(payload["study"]["dataset"]["path"])
     assert pinned_path.is_absolute()
     assert pinned_path == bars.resolve()
-    assert payload["study"]["output_dir"] == str(plan.output_dir)
+    assert payload["study"]["output_dir"] == "results/studies/pdPOC_ma_confluence_battery"
+    from thesistester.study.expand import study_identity_hash
+    from thesistester.study.schema import normalize_study_spec, validate_study_spec
+
+    round_trip = study_identity_hash(validate_study_spec(normalize_study_spec(payload)))
+    assert round_trip == plan.study_identity_hash
+    preview = preview_study_yaml(_example_yaml())
+    assert plan.study_identity_hash != preview.study_identity_hash
     assert (plan.output_dir / LAUNCH_LOG_NAME).is_file()
     assert (plan.output_dir / LAUNCH_PID_NAME).read_text(encoding="utf-8").strip() == "4242"
     assert (plan.output_dir / LAUNCH_JSON_NAME).is_file()
@@ -270,6 +282,7 @@ def test_launch_module_import_allow_list():
             for alias in node.names:
                 assert alias.name not in banned
     assert "STUDY.run" not in source
+    assert "def launch_pid_is_alive" in source
 
 
 def test_preview_yaml_still_loads_example():
@@ -313,7 +326,8 @@ def test_reset_launch_session_reseeds_output_dir_when_yaml_changes():
 
 
 def test_pid_is_alive_self_and_missing():
-    assert pid_is_alive(os.getpid()) is True
+    assert launch_pid_is_alive(os.getpid()) is True
+    assert pid_is_alive is launch_pid_is_alive
     assert pid_is_alive(0) is False
     assert pid_is_alive(-1) is False
     assert pid_is_alive(2**30) is False
@@ -370,3 +384,79 @@ def test_pid_is_alive_windows_openprocess(monkeypatch: pytest.MonkeyPatch):
     assert kernel.closed is True
     assert launch_mod._pid_is_alive_windows(8) is True
     assert launch_mod._pid_is_alive_windows(9) is False
+
+
+def test_windows_pid_alive_does_not_call_os_kill(monkeypatch: pytest.MonkeyPatch):
+    import thesistester.study.launch as launch_mod
+
+    def boom(*_a, **_k):
+        raise AssertionError("os.kill must not run on Windows")
+
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(os, "kill", boom)
+    monkeypatch.setattr(launch_mod, "_pid_is_alive_windows", lambda pid: pid == 42)
+    assert launch_mod.launch_pid_is_alive(42) is True
+    assert launch_mod.launch_pid_is_alive(7) is False
+
+
+def test_missing_pinned_csv_refuses(tmp_path: Path):
+    spec = yaml.safe_load(_example_yaml())
+    missing = tmp_path / "data" / "missing.csv"
+    spec["study"]["dataset"]["path"] = str(missing)
+    text = yaml.safe_dump(spec, sort_keys=False)
+    with pytest.raises(StudyLaunchError, match="not an existing file"):
+        build_launch_plan(
+            text,
+            cached_yaml=text,
+            expanded=True,
+            run_count=40,
+            output_dir_raw=str(tmp_path / "out"),
+            roots=(tmp_path,),
+        )
+
+
+def test_pins_subtimeframe_path(tmp_path: Path):
+    bars = _write_bars(tmp_path)
+    stf = tmp_path / "data" / "es_15s.csv"
+    stf.write_text("ts,open,high,low,close,volume\n", encoding="utf-8")
+    spec = yaml.safe_load(_example_yaml())
+    spec["study"]["dataset"]["subtimeframe_path"] = "data/es_15s.csv"
+    text = yaml.safe_dump(spec, sort_keys=False)
+    plan = build_launch_plan(
+        text,
+        cached_yaml=text,
+        expanded=True,
+        run_count=40,
+        output_dir_raw=str(tmp_path / "out/study1"),
+        roots=(tmp_path,),
+    )
+    result = spawn_launch(plan, popen=lambda *a, **k: _FakeProc(11))
+    payload = yaml.safe_load(result.launch_yaml_path.read_text(encoding="utf-8"))
+    assert Path(payload["study"]["dataset"]["path"]) == bars.resolve()
+    assert Path(payload["study"]["dataset"]["subtimeframe_path"]) == stf.resolve()
+
+
+def test_confirm_rejects_preview_hash(tmp_path: Path):
+    plan = _plan(tmp_path, run_count=200)
+    preview = preview_study_yaml(_example_yaml())
+    assert plan.study_identity_hash != preview.study_identity_hash
+    stale = {
+        "study_identity_hash": preview.study_identity_hash,
+        "run_count": plan.run_count,
+        "output_dir": str(plan.output_dir.resolve()),
+    }
+    with pytest.raises(StudyLaunchError, match="bound approval"):
+        plan_with_confirm(plan, stale)
+    confirmed = plan_with_confirm(plan, approval_payload(plan))
+    assert confirmed.study_identity_hash == plan.study_identity_hash
+
+
+def test_excl_lost_refuses_second_claim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    plan = _plan(tmp_path)
+
+    def boom(*_a, **_k):
+        raise FileExistsError("claimed")
+
+    monkeypatch.setattr(os, "open", boom)
+    with pytest.raises(StudyLaunchError, match="O_EXCL"):
+        spawn_launch(plan, popen=lambda *a, **k: _FakeProc(99))

@@ -147,9 +147,9 @@ def build_study_run_argv(
         "thesistester",
         "study",
         "run",
-        str(Path(launch_yaml)),
+        str(_absolute_argv_path(launch_yaml)),
         "--output-dir",
-        str(Path(output_dir)),
+        str(_absolute_argv_path(output_dir)),
     ]
     if workers is not None:
         argv.extend(["--workers", str(int(workers))])
@@ -160,12 +160,12 @@ def build_study_run_argv(
     return argv
 
 
-def pid_is_alive(pid: int) -> bool:
+def launch_pid_is_alive(pid: int) -> bool:
     """True when ``pid`` still exists on this host (stdlib only).
 
     POSIX uses ``os.kill(pid, 0)``. Windows does not treat signal ``0`` as an
     existence probe (``os.kill`` maps to ``TerminateProcess``), so use
-    ``OpenProcess`` via ``ctypes`` instead.
+    ``OpenProcess`` via ``ctypes`` instead — never ``os.kill`` on NT.
     """
     pid_n = int(pid)
     if pid_n <= 0:
@@ -181,6 +181,9 @@ def pid_is_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+pid_is_alive = launch_pid_is_alive
 
 
 def _pid_is_alive_windows(pid: int) -> bool:
@@ -225,7 +228,7 @@ def read_launch_pid_status(output_dir: str | Path) -> LaunchPidStatus | None:
         pid = int(path.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return None
-    return LaunchPidStatus(pid=pid, alive=pid_is_alive(pid))
+    return LaunchPidStatus(pid=pid, alive=launch_pid_is_alive(pid))
 
 
 def build_launch_plan(
@@ -266,10 +269,10 @@ def build_launch_plan(
     allowed_roots = _roots_or_default(roots)
     pinned = _pinned_normalized_spec(yaml_text, roots=allowed_roots)
     output_dir = resolve_launch_output_dir(output_dir_raw, roots=allowed_roots)
-    study = dict(pinned.get("study") or {})
-    study["output_dir"] = str(output_dir)
-    pinned["study"] = study
+    # Do not rewrite study.output_dir in the launch YAML — the child uses
+    # absolute --output-dir. Rewriting would change the identity hash.
     identity = study_identity_hash(pinned)
+    study = dict(pinned.get("study") or {})
     confirm_above = int(study.get("confirm_above_runs", 200))
     needs_confirm = run_count_n >= confirm_above
     launch_yaml_path = output_dir / LAUNCH_YAML_NAME
@@ -370,34 +373,32 @@ def spawn_launch(
     if (not plan.needs_confirm) and plan.confirm:
         raise StudyLaunchError("Refusing to pass --confirm under confirm_above_runs.")
 
-    existing = read_launch_pid_status(plan.output_dir)
-    if existing is not None and existing.alive:
-        raise StudyLaunchError(
-            f"A CLI study launch is already running (pid {existing.pid}) on "
-            f"{plan.output_dir}; wait for it to finish or use a different output_dir."
-        )
-
     plan.output_dir.mkdir(parents=True, exist_ok=True)
-    _write_launch_yaml(plan.launch_yaml_path, plan.pinned_spec)
     log_path = plan.output_dir / LAUNCH_LOG_NAME
     pid_path = plan.output_dir / LAUNCH_PID_NAME
     json_path = plan.output_dir / LAUNCH_JSON_NAME
-
-    log_handle = open(log_path, "w", encoding="utf-8")
+    _claim_launch_pid_file(pid_path, output_dir=plan.output_dir)
     try:
-        proc = popen(
-            list(plan.argv),
-            cwd=str(Path.cwd()),
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            env=os.environ.copy(),
-            **_popen_detach_kwargs(),
-        )
-    except Exception:
+        _write_launch_yaml(plan.launch_yaml_path, plan.pinned_spec)
+        log_handle = open(log_path, "w", encoding="utf-8")
+        try:
+            proc = popen(
+                list(plan.argv),
+                cwd=str(Path.cwd()),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                env=os.environ.copy(),
+                shell=False,
+                **_popen_detach_kwargs(),
+            )
+        except Exception:
+            log_handle.close()
+            raise
         log_handle.close()
+    except Exception:
+        _release_launch_pid_claim(pid_path)
         raise
-    log_handle.close()
 
     pid = int(getattr(proc, "pid"))
     pid_path.write_text(f"{pid}\n", encoding="utf-8")
@@ -476,6 +477,49 @@ def _pinned_normalized_spec(
     return pinned
 
 
+def _absolute_argv_path(raw: str | Path) -> Path:
+    path = Path(raw).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (Path.cwd() / path).resolve()
+
+
+def _claim_launch_pid_file(pid_path: Path, *, output_dir: Path) -> None:
+    """Exclusive-create ``study.launch.pid`` before ``Popen`` (TOCTOU-safe)."""
+    existing = read_launch_pid_status(output_dir)
+    if existing is not None and existing.alive:
+        raise StudyLaunchError(
+            f"A CLI study launch is already running (pid {existing.pid}) on "
+            f"{output_dir}; wait for it to finish or use a different output_dir."
+        )
+    if pid_path.is_file():
+        try:
+            pid_path.unlink()
+        except OSError as exc:
+            raise StudyLaunchError(
+                f"Could not clear stale launch pid file {pid_path}: {exc}"
+            ) from exc
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    try:
+        fd = os.open(str(pid_path), flags)
+    except FileExistsError as exc:
+        raise StudyLaunchError(
+            f"A CLI study launch claim already exists on {output_dir} "
+            "(O_EXCL lost); wait or use a different output_dir."
+        ) from exc
+    try:
+        os.write(fd, b"0\n")
+    finally:
+        os.close(fd)
+
+
+def _release_launch_pid_claim(pid_path: Path) -> None:
+    try:
+        pid_path.unlink()
+    except OSError:
+        return
+
+
 def _pin_dataset_paths(spec: dict[str, Any], *, roots: Sequence[Path]) -> None:
     """Pin relative dataset paths (search-roots-then-cwd); sandbox the result.
 
@@ -500,13 +544,22 @@ def _pin_dataset_paths(spec: dict[str, Any], *, roots: Sequence[Path]) -> None:
             pinned = path.resolve()
         else:
             found: Path | None = None
-            for root in resolved_roots:
+            search_roots = list(resolved_roots)
+            if cwd not in search_roots:
+                search_roots.append(cwd)
+            for root in search_roots:
                 candidate = (root / path).resolve()
                 if candidate.is_file():
                     found = candidate
                     break
             pinned = found if found is not None else (cwd / path).resolve()
-        dataset[key] = str(_ensure_within_roots(pinned, resolved_roots, label=f"dataset.{key}"))
+        pinned = _ensure_within_roots(pinned, resolved_roots, label=f"dataset.{key}")
+        if not pinned.is_file():
+            raise StudyLaunchError(
+                f"Pinned dataset.{key} is not an existing file: {pinned}. "
+                "Preview may succeed without the CSV; launch requires it."
+            )
+        dataset[key] = str(pinned)
     study["dataset"] = dataset
     spec["study"] = study
 
@@ -527,5 +580,6 @@ def _popen_detach_kwargs() -> dict[str, Any]:
     if os.name == "nt":
         flags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
         flags |= int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008))
-        return {"creationflags": flags}
-    return {"start_new_session": True}
+        flags |= int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+        return {"creationflags": flags, "close_fds": True}
+    return {"start_new_session": True, "close_fds": True}

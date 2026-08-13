@@ -304,6 +304,10 @@ def _render_launch_controls(preview: StudyPreview, yaml_text: str) -> None:
         stored = None
 
     if plan is not None:
+        st.caption(
+            f"Pinned identity `{plan.study_identity_hash}` "
+            "(confirm binds this hash, not the unpinned preview hash)."
+        )
         st.code(format_argv(planned_argv(plan)), language="text")
         status = read_launch_pid_status(plan.output_dir)
         if status is not None:
