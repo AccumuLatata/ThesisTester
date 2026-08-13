@@ -253,6 +253,23 @@ def test_inflight_parent_pid_claim_refuses_nested_spawn(tmp_path: Path):
     assert (plan.output_dir / LAUNCH_PID_NAME).read_text(encoding="utf-8").strip() == "4242"
 
 
+def test_child_pid_persists_if_path_write_text_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    plan = _plan(tmp_path)
+    original = Path.write_text
+
+    def flaky(self, data, encoding="utf-8", **kwargs):
+        if self.name == LAUNCH_PID_NAME and "4242" in str(data):
+            raise OSError("simulated write_text failure")
+        return original(self, data, encoding=encoding, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", flaky)
+    result = spawn_launch(plan, popen=lambda *a, **k: _FakeProc(4242))
+    assert result.pid == 4242
+    assert (plan.output_dir / LAUNCH_PID_NAME).read_text(encoding="utf-8").strip() == "4242"
+
+
 def test_popen_failure_restores_prior_log_and_releases_claim(tmp_path: Path):
     plan = _plan(tmp_path)
     plan.output_dir.mkdir(parents=True, exist_ok=True)

@@ -403,7 +403,13 @@ def spawn_launch(
         raise
 
     pid = int(getattr(proc, "pid"))
-    pid_path.write_text(f"{pid}\n", encoding="utf-8")
+    try:
+        _record_child_pid(pid_path, pid)
+    except OSError as exc:
+        raise StudyLaunchError(
+            f"Started CLI pid {pid} but could not persist {pid_path}: {exc}. "
+            "Stop that process before launching again on this output_dir."
+        ) from exc
     record = {
         "pid": pid,
         "argv": list(plan.argv),
@@ -524,6 +530,20 @@ def _release_launch_pid_claim(pid_path: Path) -> None:
         pid_path.unlink()
     except OSError:
         return
+
+
+def _record_child_pid(pid_path: Path, pid: int) -> None:
+    """Replace the in-flight parent-pid placeholder with the child pid."""
+    text = f"{int(pid)}\n"
+    try:
+        pid_path.write_text(text, encoding="utf-8")
+        return
+    except OSError:
+        fd = os.open(str(pid_path), os.O_WRONLY | os.O_TRUNC)
+        try:
+            os.write(fd, text.encode("ascii"))
+        finally:
+            os.close(fd)
 
 
 def _restore_launch_log(log_path: Path, previous: bytes | None) -> None:
