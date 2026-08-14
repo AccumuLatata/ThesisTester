@@ -3,7 +3,10 @@
 **Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** + **RS-D8** + **RS-D9** landed. Parked: RS-D1 / RS-D3 / RS-D6.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`  
-**Study Builder (UX, planned):** `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB0 locked; SB1–SB3 not started). Form compiler onto this page’s existing Preview pane — does not change inspect / preview / CLI-spawn semantics.
+**Study Builder:** `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md`. **SB1** compiler
+(`thesistester.study.builder`) emits / hydrates canonical `schema_version: 1`
+StudySpec YAML. The Build tab (SB2–SB3) is not shipped. Does not change
+inspect / preview / CLI-spawn semantics.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -537,3 +540,22 @@ Parked items stay out of the critical path unless that plan is amended.
 | 7 | **RS-D9** ✅ | Studies CLI-launch button (spawn existing `study run`; no in-process execute) |
 
 Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).
+
+---
+
+## SB1 — StudyDraft compiler (no UI)
+
+Pure helper `thesistester.study.builder`: `StudyDraft` →
+`validate_study_spec(normalize_study_spec(emit(draft)))`. Hydrate is the inverse
+for identity-hash round-trip. Pages will import this module directly (same
+pattern as `launch.py`). **No Streamlit. No execute / launch / preview import.**
+
+| API | Role |
+|---|---|
+| `default_study_draft` | Valid 2-cell default (1×1×2×1×1) |
+| `emit_study_spec` / `emit_study_yaml` | Canonical YAML; `mode_rules` for listed modes only; batteries always have `enabled` |
+| `hydrate_study_draft` / `hydrate_study_yaml` | Lossless vs `load_study_spec` identity hash on the golden + examples |
+| `builder_token_catalog` | `sorted(closed_level_token_set(levels))` |
+| `OTF_PRESETS` | Off / 5m / 15m / 30m / combo chips (SB2) |
+
+Execute remains `python -m thesistester study run`. The Studies Build tab is SB2.
