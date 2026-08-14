@@ -48,6 +48,7 @@ Engine / data contracts:
 - [STUDY_RUNNER_IMPLEMENTATION_PLAN.md](STUDY_RUNNER_IMPLEMENTATION_PLAN.md) (RS — MVP RS1–RS5 ✅; §12 through RS-D9 ✅; parked D1/D3/D6)
 - [STUDY_RUNNER.md](STUDY_RUNNER.md) (RS operator contract; RS1–RS5 + post-MVP through RS-D9)
 - [STUDY_RUNNER_GROK_ROUTINE_PACK.md](STUDY_RUNNER_GROK_ROUTINE_PACK.md) (RS-D5 external Grok coworker routines; copy-ready prompts under `examples/studies/agents/`)
+- [STUDY_BUILDER_IMPLEMENTATION_PLAN.md](STUDY_BUILDER_IMPLEMENTATION_PLAN.md) (SB — Study Builder UX; SB0 plan-locked; SB1–SB3 not started; does not change RS execute/preview/launch)
 
 ## Research (demoted snapshots)
 

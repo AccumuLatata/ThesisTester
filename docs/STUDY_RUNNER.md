@@ -2,7 +2,8 @@
 
 **Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** + **RS-D8** + **RS-D9** landed. Parked: RS-D1 / RS-D3 / RS-D6.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
-**Package:** `thesistester.study`
+**Package:** `thesistester.study`  
+**Study Builder (UX, planned):** `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB0 locked; SB1–SB3 not started). Form compiler onto this page’s existing Preview pane — does not change inspect / preview / CLI-spawn semantics.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.

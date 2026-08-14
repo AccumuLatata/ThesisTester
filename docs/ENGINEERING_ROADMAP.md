@@ -18,6 +18,7 @@ Assistant-related contracts:
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |
 | Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (SW); evidence `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` | ✅ **Engineering-signed (SW0–SW7 + SW2b)** — Focus → Admit → Grid/WFA inherit; cutoff skip audit; C1–C9; default-off; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
 | Research Study Runner | `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (RS); operator `docs/STUDY_RUNNER.md`; Grok pack `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` | ✅ **RS1–RS5 MVP + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9**; parked D1/D3/D6 |
+| Study Builder (UX) | `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB) | 📝 **SB0 plan-locked**; SB1–SB3 not started. Emits canonical StudySpec YAML onto the existing Studies Preview pane; no in-process execute; no new factor axes |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1210,3 +1211,24 @@ from that page (no in-process `run_study`; two-step confirm on the **pinned**
 hash; pin both dataset path keys; exclusive pid claim; not a job queue);
 combinatorial fishing mitigated by confirm gates, stage-first examples
 (40 vs 800), and multiple-testing honesty.
+
+## Study Builder (SB0–SB3) 📝 Plan-locked
+
+Additive Studies **Build** tab that compiles a closed `StudyDraft` into
+`schema_version: 1` YAML and applies it to the existing Preview textarea.
+Inspect, Preview, CLI spawn, expand, execute, promote, and report stay
+behavior-identical. Not a Setup Builder clone; not an NL compiler.
+
+**Canonical spec:** `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| SB0 | Plan lock + docs index ✅ |
+| SB1 | Pure `StudyDraft` emit / hydrate compiler (no UI) |
+| SB2 | Build tab P0 + live strip + Apply to Preview |
+| SB3 | Stage / report / hydrate / download + docs closeout |
+
+**Regression posture:** no `engine/` edits; no StudySpec / expand / launch /
+execute behavior change; no golden regeneration; Studies-scoped session keys
+only; USER_GUIDE extends H2 `Studies viewer (read-only)` (no new H2). Parked
+RS-D1 / D3 / D6 stay parked.
