@@ -22,7 +22,12 @@ from thesistester.study.builder import (
 )
 from thesistester.study.expand import expand_study, study_identity_hash
 from thesistester.study.preview import preview_study_spec
-from thesistester.study.schema import StudySpecError, load_study_spec
+from thesistester.study.schema import (
+    StudySpecError,
+    load_study_spec,
+    normalize_study_spec,
+    validate_study_spec,
+)
 
 GOLDEN_STUDY = Path("tests/fixtures/study/golden_study.yaml")
 PDPOC_EXAMPLE = Path("examples/studies/pdPOC_ma_confluence_battery.yaml")
@@ -65,6 +70,28 @@ def test_identity_hash_roundtrip_pdpoc_example():
 def test_identity_hash_roundtrip_dopen_example():
     original, roundtrip = _roundtrip_hash(DOPEN_EXAMPLE)
     assert original == roundtrip
+
+
+def test_explicit_null_group_by_roundtrip():
+    """``group_by: null`` must not become the normalize-invented default list."""
+    spec = load_study_spec(GOLDEN_STUDY)
+    spec["study"]["report"]["group_by"] = None
+    spec = validate_study_spec(normalize_study_spec(spec))
+    assert spec["study"]["report"]["group_by"] is None
+    roundtrip = emit_study_spec(hydrate_study_draft(spec))
+    assert roundtrip["study"]["report"]["group_by"] is None
+    assert study_identity_hash(spec) == study_identity_hash(roundtrip)
+
+
+def test_explicit_null_description_roundtrip():
+    """Schema-valid ``description: null`` must survive hydrate → emit."""
+    spec = load_study_spec(GOLDEN_STUDY)
+    spec["study"]["description"] = None
+    spec = validate_study_spec(normalize_study_spec(spec))
+    assert spec["study"]["description"] is None
+    roundtrip = emit_study_spec(hydrate_study_draft(spec))
+    assert roundtrip["study"]["description"] is None
+    assert study_identity_hash(spec) == study_identity_hash(roundtrip)
 
 
 def test_pdpoc_hydrate_stage_and_preview():

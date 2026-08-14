@@ -136,7 +136,7 @@ class StudyDraft:
     """Authoring state for a canonical ``schema_version: 1`` StudySpec."""
 
     name: str = "untitled_study"
-    description: str = ""
+    description: str | None = ""
     output_dir: str | None = None
     workers: int = 1
     confirm_above_runs: int = 200
@@ -149,9 +149,7 @@ class StudyDraft:
     levels: dict[str, Any] = field(default_factory=_default_levels)
     core_level: list[str] = field(default_factory=lambda: ["pdPOC"])
     partner_levels: list[list[str]] = field(default_factory=lambda: [["SMA_50_1min"]])
-    confluence_mode: list[str] = field(
-        default_factory=lambda: ["global_cluster", "anchor_rules"]
-    )
+    confluence_mode: list[str] = field(default_factory=lambda: ["global_cluster", "anchor_rules"])
     trigger: list[str] = field(default_factory=lambda: ["touch"])
     trigger_timeframe: list[str] = field(default_factory=lambda: ["base"])
     otf: list[dict[str, Any]] | None = None
@@ -176,6 +174,7 @@ class StudyDraft:
     secondary_metrics: list[str] = field(default_factory=_default_secondary_metrics)
     min_trades: int = 30
     group_by: list[str] | None = None
+    emit_group_by: bool = False
     otf_baseline: dict[str, Any] = field(default_factory=_default_otf_baseline)
     multiple_testing: str = "warn"
     stage_mode: str | None = None
@@ -205,9 +204,7 @@ def draft_warnings(draft: StudyDraft) -> tuple[str, ...]:
     for index, partner_set in enumerate(draft.partner_levels):
         overlap = cores.intersection(str(token) for token in partner_set)
         if overlap:
-            warnings.append(
-                f"partner_levels[{index}] intersects core_level: {sorted(overlap)}"
-            )
+            warnings.append(f"partner_levels[{index}] intersects core_level: {sorted(overlap)}")
     return tuple(warnings)
 
 
@@ -303,6 +300,10 @@ def _emit_report(draft: StudyDraft) -> dict[str, Any]:
     }
     if draft.group_by is not None:
         report["group_by"] = list(draft.group_by)
+    elif draft.emit_group_by:
+        # Explicit YAML null must be re-emitted. Omitting the key lets
+        # normalize_study_spec invent the factor-derived default list.
+        report["group_by"] = None
     return report
 
 
@@ -400,8 +401,9 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
     """Populate a draft from a raw or normalized StudySpec mapping.
 
     Hydrate is not a second validator. Emit validates. Identity-hash
-    round-trip requires preserving report lists, battery extras, dataset
-    extras, and original OTF dicts (do not expand them to the full
+    round-trip requires preserving report lists, explicit ``group_by`` /
+    ``description`` nulls, battery extras, dataset extras, and original
+    OTF dicts (do not expand them to the full
     ``normalize_otf_filter_config`` key set).
     """
     payload = _require_mapping(spec, section="StudySpec")
@@ -415,6 +417,11 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
     levels_map = dict(levels) if isinstance(levels, Mapping) else {}
 
     name = str(study.get("name") or "untitled_study")
+    if "description" in study:
+        raw_description = study["description"]
+        description = None if raw_description is None else str(raw_description)
+    else:
+        description = ""
     output_dir = study.get("output_dir")
     output_dir_str = str(output_dir).strip() if isinstance(output_dir, str) else None
     if output_dir_str == _default_output_dir(name):
@@ -423,9 +430,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
         stored_output_dir = output_dir_str
 
     dataset_extra = {
-        key: copy.deepcopy(value)
-        for key, value in dataset.items()
-        if key not in _DATASET_KNOWN
+        key: copy.deepcopy(value) for key, value in dataset.items() if key not in _DATASET_KNOWN
     }
     source_timezone = dataset.get("source_timezone")
     format_profile = dataset.get("format_profile")
@@ -475,6 +480,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
                 ]
 
     group_by_raw = report_map.get("group_by")
+    emit_group_by = "group_by" in report_map
     group_by = [str(item) for item in group_by_raw] if isinstance(group_by_raw, list) else None
 
     secondary = report_map.get("secondary_metrics")
@@ -486,7 +492,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
 
     return StudyDraft(
         name=name,
-        description=str(study.get("description") or ""),
+        description=description,
         output_dir=stored_output_dir,
         workers=int(study.get("workers") or 1),
         confirm_above_runs=int(study.get("confirm_above_runs") or 200),
@@ -494,9 +500,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
         instrument=str(dataset.get("instrument") or ""),
         source_timezone=str(source_timezone) if isinstance(source_timezone, str) else None,
         format_profile=str(format_profile) if isinstance(format_profile, str) else None,
-        subtimeframe_path=(
-            str(subtimeframe_path) if isinstance(subtimeframe_path, str) else None
-        ),
+        subtimeframe_path=(str(subtimeframe_path) if isinstance(subtimeframe_path, str) else None),
         dataset_extra=dataset_extra,
         levels=copy.deepcopy(levels_map),
         core_level=[str(token) for token in (factors.get("core_level") or [])],
@@ -522,11 +526,11 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
         ),
         emit_entry_window="entry_window" in constants,
         backtest=copy.deepcopy(dict(constants.get("backtest") or {})),
-        grid=_with_enabled(constants.get("grid") if isinstance(constants.get("grid"), Mapping) else {}),
+        grid=_with_enabled(
+            constants.get("grid") if isinstance(constants.get("grid"), Mapping) else {}
+        ),
         validation=_with_enabled(
-            constants.get("validation")
-            if isinstance(constants.get("validation"), Mapping)
-            else {}
+            constants.get("validation") if isinstance(constants.get("validation"), Mapping) else {}
         ),
         walk_forward=_with_enabled(
             constants.get("walk_forward")
@@ -538,6 +542,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
         secondary_metrics=secondary_metrics,
         min_trades=int(report_map.get("min_trades", 30)),
         group_by=group_by,
+        emit_group_by=emit_group_by,
         otf_baseline=_with_enabled(
             report_map.get("otf_baseline")
             if isinstance(report_map.get("otf_baseline"), Mapping)
