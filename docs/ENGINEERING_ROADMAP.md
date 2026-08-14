@@ -1232,3 +1232,11 @@ behavior-identical. Not a Setup Builder clone; not an NL compiler.
 execute behavior change; no golden regeneration; Studies-scoped session keys
 only; USER_GUIDE extends H2 `Studies viewer (read-only)` (no new H2). Parked
 RS-D1 / D3 / D6 stay parked.
+
+## Studies Inspect ledger progress (additive)
+
+Inspect shows `done/total` + current `running` cell names from the loaded
+ledger (`summarize_ledger_progress` in `thesistester/study/viewer.py`).
+Refresh remains explicit. Ledger-only fallback when `results_index.csv` is
+not written yet. Not a job queue; no auto-refresh; no engine / golden /
+schema change.

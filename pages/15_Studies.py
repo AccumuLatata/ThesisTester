@@ -263,6 +263,29 @@ def _render_inspect() -> None:
     )
 
     st.markdown("### Ledger status")
+    progress = model.ledger_progress
+    if progress.total > 0:
+        st.progress(progress.fraction)
+        parts = [f"{progress.done}/{progress.total} cells complete"]
+        if progress.running_ids:
+            shown = ", ".join(f"`{name}`" for name in progress.running_ids[:3])
+            extra = (
+                f" (+{len(progress.running_ids) - 3} more)"
+                if len(progress.running_ids) > 3
+                else ""
+            )
+            parts.append(f"running: {shown}{extra}")
+        elif progress.running_count:
+            parts.append(f"{progress.running_count} running")
+        if progress.pending:
+            parts.append(f"{progress.pending} pending")
+        st.caption(" · ".join(parts) + ". Cell-status counts, not a quality metric.")
+    if not model.report_present:
+        st.caption(
+            "Ledger-only view: `results_index.csv` not written yet "
+            "(first cell still running). Ranked tables stay empty until Refresh "
+            "after the index appears."
+        )
     if model.ledger_summary:
         source = "ledger" if model.ledger_present else "results_index status"
         st.caption(f"Counts from {source}. Click Refresh while a CLI `study run` is in flight.")

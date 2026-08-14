@@ -914,6 +914,10 @@ other than the last bar in the dataset.
   acquire the lock. RS-D9 CLI-spawn from the Studies page also does **not**
   acquire `.study.lock` in the Streamlit process — the child `study run` holds
   it.
+- Inspect **ledger progress** is cell-status counts
+  (`ok` + `failed` + `skipped` over `run_count`), not a quality metric, ETA,
+  or validated edge. A ledger-only view (readable `study.ledger.json`, missing
+  `results_index.csv`) shows that progress without ranked / OTF overview.
 - Study cells use `cache_policy=read_write` and fsync published artifacts.
   On Windows, file `fsync` uses a writable handle (`FlushFileBuffers` rejects
   `O_RDONLY` with `EBADF`). A remaining fsync or close OS error is skipped; the

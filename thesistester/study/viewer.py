@@ -3,6 +3,10 @@
 Loads completed study artifacts via ``report_study`` / ``load_ledger``. Does not
 execute cells, promote drafts, rewrite overview artifacts, or mutate classic
 research session state.
+
+Inspect progress is derived from the already-loaded ledger / overview counts
+(``ok`` + ``failed`` + ``skipped`` over ``run_count``). It is not a quality
+metric, ETA, or job queue.
 """
 
 from __future__ import annotations
@@ -16,7 +20,14 @@ import pandas as pd
 
 from thesistester.persistence.local_store import get_store_root
 from thesistester.study.ledger import load_ledger
-from thesistester.study.report import StudyReportError, StudyReportResult, report_study
+from thesistester.study.report import (
+    RESULTS_INDEX,
+    StudyReportError,
+    StudyReportResult,
+    report_study,
+)
+
+TERMINAL_LEDGER_STATUSES = frozenset({"ok", "failed", "skipped"})
 
 CLASSIC_RESEARCH_SESSION_KEYS = frozenset(
     {
@@ -98,6 +109,96 @@ def _index_status_counts(overview: pd.DataFrame) -> dict[str, int]:
     return counts
 
 
+def _cell_ids_with_status(ledger: Mapping[str, Any] | None, status: str) -> tuple[str, ...]:
+    if ledger is None:
+        return ()
+    cells = ledger.get("cells")
+    if not isinstance(cells, Mapping):
+        return ()
+    names: list[str] = []
+    for name, cell in cells.items():
+        if isinstance(cell, Mapping):
+            cell_status = str(cell.get("status") or "unknown")
+        else:
+            cell_status = "unknown"
+        if cell_status == status:
+            names.append(str(name))
+    return tuple(sorted(names))
+
+
+def _running_ids_from_overview(overview: pd.DataFrame) -> tuple[str, ...]:
+    if overview is None or overview.empty:
+        return ()
+    if "status" not in overview.columns or "run_name" not in overview.columns:
+        return ()
+    mask = overview["status"].astype(str) == "running"
+    names = overview.loc[mask, "run_name"].astype(str).tolist()
+    return tuple(sorted(name for name in names if name.strip()))
+
+
+@dataclass(frozen=True)
+class StudyLedgerProgress:
+    """Cell-status progress for Inspect. Not a quality or ETA metric."""
+
+    done: int
+    total: int
+    pending: int
+    running_count: int
+    running_ids: tuple[str, ...]
+    in_flight: bool
+    fraction: float
+
+
+def summarize_ledger_progress(
+    ledger_summary: Mapping[str, int] | None,
+    *,
+    run_count: int | None = None,
+    running_ids: Sequence[str] = (),
+) -> StudyLedgerProgress:
+    """Derive done/total progress from ledger (or index) status counts.
+
+    ``done`` is terminal statuses only (``ok`` + ``failed`` + ``skipped``).
+    ``total`` is ``max(counted cells, declared run_count)``.
+    """
+    summary = dict(ledger_summary or {})
+    done = 0
+    pending = 0
+    running_count = 0
+    counted = 0
+    for status, raw in summary.items():
+        try:
+            count = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if count < 0:
+            continue
+        counted += count
+        key = str(status)
+        if key in TERMINAL_LEDGER_STATUSES:
+            done += count
+        elif key == "pending":
+            pending += count
+        elif key == "running":
+            running_count += count
+    declared = 0
+    if isinstance(run_count, int) and not isinstance(run_count, bool) and run_count > 0:
+        declared = run_count
+    total = max(counted, declared)
+    fraction = (done / total) if total else 0.0
+    fraction = min(1.0, max(0.0, float(fraction)))
+    ids = tuple(str(name) for name in running_ids if str(name).strip())
+    running_count = max(running_count, len(ids))
+    return StudyLedgerProgress(
+        done=done,
+        total=total,
+        pending=pending,
+        running_count=running_count,
+        running_ids=ids,
+        in_flight=pending > 0 or running_count > 0,
+        fraction=fraction,
+    )
+
+
 def _read_identity(study_dir: Path) -> tuple[str | None, int | None, str | None]:
     """Return (study_identity_hash, run_count, study_name) best-effort."""
     identity_hash: str | None = None
@@ -146,6 +247,8 @@ class StudyViewerModel:
     run_count: int | None
     ledger_summary: dict[str, int]
     ledger_present: bool
+    report_present: bool
+    ledger_progress: StudyLedgerProgress
     report: StudyReportResult
     ranked_display: pd.DataFrame
     low_n_display: pd.DataFrame
@@ -153,6 +256,31 @@ class StudyViewerModel:
     otf_delta_display: pd.DataFrame
     overview_md: str
     overview_csv_text: str
+
+
+def _placeholder_report(*, study_name: str) -> StudyReportResult:
+    """Empty report when ``results_index.csv`` is not written yet (in-flight)."""
+    empty = pd.DataFrame()
+    return StudyReportResult(
+        overview=empty,
+        ranked=empty,
+        low_n=empty,
+        unresolved=empty,
+        group_summaries={},
+        otf_delta=empty,
+        markdown=(
+            "# Ledger-only Inspect view\n\n"
+            f"`{RESULTS_INDEX}` is not written yet. Cell progress comes from "
+            "`study.ledger.json`. Ranked / low-N / OTF tables stay empty until "
+            "Refresh after the index appears.\n"
+        ),
+        paths={},
+        primary_metric="expectancy_r",
+        min_trades=30,
+        multiple_testing="warn",
+        best_cell_suppressed=False,
+        study_name=study_name,
+    )
 
 
 def _display_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
@@ -174,28 +302,49 @@ def load_study_view(
     *,
     roots: Sequence[Path] | None = None,
 ) -> StudyViewerModel:
-    """Load ledger + report for a completed study directory (no writes/backtests)."""
+    """Load ledger + report for a study directory (no writes/backtests).
+
+    A readable ledger plus missing ``results_index.csv`` (first cell still
+    running) yields a ledger-only model: progress is shown, ranked tables
+    stay empty. Other report failures still raise ``StudyViewerError``.
+    """
     root = resolve_study_dir(study_dir, roots=roots)
-    try:
-        # Viewer must not rewrite overview artifacts on a completed study dir.
-        report = report_study(root, write_artifacts=False)
-    except StudyReportError as exc:
-        raise StudyViewerError(str(exc)) from exc
 
     # Ledger is optional; corrupt JSON must not hard-fail the Studies page.
     try:
         ledger = load_ledger(root)
         ledger_summary = _ledger_status_counts(ledger)
+        running_ids = _cell_ids_with_status(ledger, "running")
     except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, TypeError):
         ledger = None
         ledger_summary = {}
-    if not ledger_summary:
-        ledger_summary = _index_status_counts(report.overview)
+        running_ids = ()
 
     identity_hash, run_count, spec_name = _read_identity(root)
+    report_present = True
+    try:
+        # Viewer must not rewrite overview artifacts on a completed study dir.
+        report = report_study(root, write_artifacts=False)
+    except StudyReportError as exc:
+        if RESULTS_INDEX in str(exc) and ledger is not None:
+            report_present = False
+            report = _placeholder_report(study_name=spec_name or root.name)
+        else:
+            raise StudyViewerError(str(exc)) from exc
+
+    if not ledger_summary:
+        ledger_summary = _index_status_counts(report.overview)
+    if not running_ids:
+        running_ids = _running_ids_from_overview(report.overview)
+
     if run_count is None:
         run_count = int(len(report.overview)) if not report.overview.empty else None
     study_name = report.study_name or spec_name or root.name
+    ledger_progress = summarize_ledger_progress(
+        ledger_summary,
+        run_count=run_count,
+        running_ids=running_ids,
+    )
 
     ranked_cols = [
         "run_name",
@@ -216,6 +365,8 @@ def load_study_view(
         run_count=run_count,
         ledger_summary=ledger_summary,
         ledger_present=ledger is not None,
+        report_present=report_present,
+        ledger_progress=ledger_progress,
         report=report,
         ranked_display=_display_columns(report.ranked, ranked_cols),
         low_n_display=_display_columns(
