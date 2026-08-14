@@ -217,9 +217,14 @@ untouched). Study runs do **not** call `run_batch`; they loop
 | File | Role |
 |---|---|
 | `study.spec.yaml` / `study.expansion.json` / `experiment.yaml` | From expand |
-| `study.ledger.json` | Per-cell status (`pending`/`running`/`ok`/`failed`) + confirm record |
+| `study.ledger.json` | Per-cell status (`pending`/`running`/`ok`/`failed`) + confirm record + `error` |
 | `*.research.zip` | Per-ok-cell bundles |
 | `results_index.csv` | R18 metric columns + `bundle_path` + study `status` |
+
+`study run` prints `Cell status: ok=… failed=…` and, when any cell failed, the
+unique `cells.*.error` strings (capped) so a shared ingest/config fault is
+visible without opening the ledger. Full per-cell text stays in
+`study.ledger.json`.
 
 ### Cost hints
 
@@ -339,6 +344,9 @@ Draft rules:
 |---|---|
 | Active `stage.filter` (`touch` + `base`) | **40** |
 | Full cartesian (phase-2; remove/widen stage on this example) | **800** |
+
+MNQ dOpen × MA / 3c: `examples/studies/dopen_ma_3c_mnq.yaml` — **8** cells (no
+stage filter) plus a per-cell 4×5 SL/TP grid inside the $40 / $500 envelope.
 
 CI/golden miniatures remain under `tests/fixtures/study/` (2×2×2). Do not run the
 800-cell grid in CI.

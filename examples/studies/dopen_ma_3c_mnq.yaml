@@ -1,0 +1,118 @@
+# Research Study Runner — dOpen × MA partners × 3c (1m) on MNQ
+#
+# Thesis: current-session daily open (dOpen) with one MA partner, entered on
+# a 1-minute 3c. Pairwise cells (not all four MAs at once) so each partner
+# can be ranked. dOpen is the current-period open, not pdOpen.
+#
+# Active cartesian = 8 cells
+#   1 core × 4 partners × 2 modes × 1 trigger × 1 tf  (OTF omitted → off)
+# Each cell also runs a 4×5 SL/TP grid (20 cells) inside the $40 / $500 cap.
+#
+# MNQ money map (tick_size=0.25, point_value=$2 → $0.50 / tick):
+#   $40 max risk   = 80 ticks SL
+#   $500 max profit = 1000 ticks TP
+#   $0.50 / side fee → $1.00 round-turn
+#
+# Time-of-day R is not a StudySpec factor. After `study run`, rank
+# `entry_rth_segment` / `entry_hour_bucket` on each cell's trades
+# (Time Analysis page or `thesistester.api.run_time_analysis`).
+# Segments (America/New_York): pre_rth | rth_open_30m | rth_morning |
+# rth_midday | rth_afternoon | rth_power_hour | post_rth.
+#
+# Usage:
+#   python -m thesistester study expand examples/studies/dopen_ma_3c_mnq.yaml \
+#     --output-dir out/dopen_ma_3c_mnq
+#   python -m thesistester study run examples/studies/dopen_ma_3c_mnq.yaml \
+#     --output-dir out/dopen_ma_3c_mnq
+#   python -m thesistester study report out/dopen_ma_3c_mnq
+#
+# Grid/validation/walk_forward dominate runtime; this study enables grid only.
+# Descriptive ranking ≠ validated edge (see docs/ASSUMPTIONS_AND_LIMITATIONS.md).
+# One month of 3c+confluence is often low-N — check the report low-N section.
+#
+# If study run reports ok=0 / failed=N, read cells.*.error in study.ledger.json
+# (CLI now reprints unique errors). Shared failures are almost always ingest:
+#   format_profile: quantower_history_exporter  → semicolon History Exporter
+#   format_profile: canonical                   → comma timestamp,open,high,low,close,volume
+# Then re-run the same output_dir (failed cells resume; no --force needed).
+
+schema_version: 1
+study:
+  name: dopen_ma_3c_mnq
+  description: >
+    dOpen × EMA21/SMA50 (1m and 5m) confluence battery, 3c entry on 1m,
+    MNQ, $0.50/side commission, SL/TP grid capped at $40 risk / $500 profit.
+  output_dir: results/studies/dopen_ma_3c_mnq
+  workers: 1
+  confirm_above_runs: 200
+
+  dataset:
+    path: "C:\\dev\\ThesisTester\\data\\MNQ AMP Futures (Rithmic), Time - Time - 1m, 6_1_2026 120000 AM-6_30_2026 120000 AM_b518c6ca-a0af-4533-88b6-78a7ff81ea81.csv"
+    instrument: MNQ
+    source_timezone: America/New_York
+    format_profile: quantower_history_exporter
+
+  levels:
+    sma_lengths: [50]
+    ema_lengths: [21]
+    sma_timeframes: [1min, 5min]
+    ema_timeframes: [1min, 5min]
+
+  constants:
+    direction: both
+    tolerance_ticks: 0
+    min_confluences: 2
+    max_confluences: 2
+    min_valid_confluences: 1
+    naked_only: false
+    naked_requirement: any
+    trigger_params: {}
+    entry_window: null
+    backtest:
+      stop_loss_ticks: 80
+      take_profit_ticks: 1000
+      exposure_policy: single_position
+      commission_per_side: 0.5
+      slippage_ticks: 0.0
+      flat_by_session_close: false
+      intrabar_model: sl_first
+    grid:
+      enabled: true
+      stop_loss_ticks_values: [20, 40, 60, 80]
+      take_profit_ticks_values: [80, 160, 400, 800, 1000]
+      commission_per_side: 0.5
+      slippage_ticks: 0.0
+      exposure_policy: single_position
+      ranking_metric: expectancy_r
+      min_trades: 10
+      max_grid_cells: 500
+    validation: {enabled: false}
+    walk_forward: {enabled: false}
+
+  factors:
+    core_level: [dOpen]
+    partner_levels:
+      - [EMA_21_1min]
+      - [EMA_21_5min]
+      - [SMA_50_1min]
+      - [SMA_50_5min]
+    confluence_mode: [global_cluster, anchor_rules]
+    trigger: [3c]
+    trigger_timeframe: [1min]
+
+  mode_rules:
+    global_cluster:
+      selected_levels: ["${core_level}", "${partner_levels...}"]
+    anchor_rules:
+      selected_levels: []
+      anchor_level: "${core_level}"
+      confluence_rules:
+        from_partners: required
+
+  report:
+    primary_metric: expectancy_r
+    secondary_metrics: [profit_factor, max_drawdown_r, trade_count, total_r]
+    min_trades: 10
+    group_by: [partner_levels, confluence_mode]
+    otf_baseline: {enabled: false}
+    multiple_testing: warn
