@@ -180,8 +180,8 @@ def _fsync_file(path: Path) -> None:
     Windows ``FlushFileBuffers`` (``os.fsync``) requires a writable handle.
     ``O_RDONLY`` + ``fsync`` raises ``OSError: [Errno 9] Bad file descriptor``
     and used to abort every ``study run`` cell under ``cache_policy=read_write``.
-    Open ``O_RDWR`` on NT; treat remaining fsync OS errors as skip-not-fatal
-    (same posture as :func:`_fsync_dir`).
+    Open ``O_RDWR`` on NT; treat remaining fsync/close OS errors as
+    skip-not-fatal (same posture as :func:`_fsync_dir`).
     """
     flags = os.O_RDWR if os.name == "nt" else os.O_RDONLY
     try:
@@ -193,7 +193,11 @@ def _fsync_file(path: Path) -> None:
     except OSError:
         pass
     finally:
-        os.close(fd)
+        # Close-time EBADF/EIO must not abort artifact publish (study cells).
+        try:
+            os.close(fd)
+        except OSError:
+            pass
 
 
 def _fsync_dir(path: Path) -> None:
@@ -209,7 +213,10 @@ def _fsync_dir(path: Path) -> None:
     except OSError:
         pass
     finally:
-        os.close(fd)
+        try:
+            os.close(fd)
+        except OSError:
+            pass
 
 
 def _hash_file_bytes(path: Path) -> str:

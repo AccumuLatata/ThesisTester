@@ -338,13 +338,15 @@ Draft rules:
 
 ### Example
 
-`examples/studies/pdPOC_ma_confluence_battery.yaml`  
-MNQ dOpen × MA / 3c example: `examples/studies/dopen_ma_3c_mnq.yaml` (8 cells + per-cell SL/TP grid).
+`examples/studies/pdPOC_ma_confluence_battery.yaml`
 
 | Expansion | Cells |
 |---|---|
 | Active `stage.filter` (`touch` + `base`) | **40** |
 | Full cartesian (phase-2; remove/widen stage on this example) | **800** |
+
+MNQ dOpen × MA / 3c: `examples/studies/dopen_ma_3c_mnq.yaml` — **8** cells (no
+stage filter) plus a per-cell 4×5 SL/TP grid inside the $40 / $500 envelope.
 
 CI/golden miniatures remain under `tests/fixtures/study/` (2×2×2). Do not run the
 800-cell grid in CI.

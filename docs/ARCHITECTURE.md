@@ -129,7 +129,7 @@ Keys derive from `DataIdentity` / `LevelsIdentity` (data keys include
 `format_profile` for cache correctness). Writes use temp-dir + fsync + atomic
 rename under `fcntl` locks; concurrent writers reuse a verified completed
 artifact. File `fsync` uses `O_RDWR` on Windows (`FlushFileBuffers` rejects
-read-only handles with `EBADF`); remaining fsync OS errors are skipped. `read_verified_*` returns `ArtifactMiss` for missing, corrupt
+read-only handles with `EBADF`); remaining fsync/close OS errors are skipped. `read_verified_*` returns `ArtifactMiss` for missing, corrupt
 (including non-numeric schema/engine version fields),
 incomplete, schema-drift, engine-incompatible, or path-escape cases and never
 raises those conditions into a cold compute path.

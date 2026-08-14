@@ -399,6 +399,38 @@ def test_anchor_emits_placeholder_min_max_confluences():
             assert run["setup"]["max_confluences"] == 1
 
 
+def test_example_dopen_ma_3c_mnq_expands_to_8():
+    """Shipped MNQ example must stay a valid 8-cell StudySpec (format_profile intact)."""
+    from thesistester.config import INSTRUMENTS
+    from thesistester.study.schema import load_study_spec
+
+    example = Path(__file__).resolve().parents[2] / "examples" / "studies" / "dopen_ma_3c_mnq.yaml"
+    spec = load_study_spec(example)
+    expansion = expand_study(spec)
+    assert expansion.run_count == 8
+    run = expansion.experiment["runs"][0]
+    assert run["dataset"]["instrument"] == "MNQ"
+    assert run["dataset"]["format_profile"] == "quantower_history_exporter"
+    assert run["grid"]["enabled"] is True
+    sl = list(run["grid"]["stop_loss_ticks_values"])
+    tp = list(run["grid"]["take_profit_ticks_values"])
+    assert sl == [20, 40, 60, 80]
+    assert tp == [80, 160, 400, 800, 1000]
+    inst = INSTRUMENTS["MNQ"]
+    dollars_per_tick = inst.tick_size * inst.point_value
+    assert max(sl) * dollars_per_tick == 40.0
+    assert max(tp) * dollars_per_tick == 500.0
+    modes = {factors["confluence_mode"] for factors in expansion.factor_map.values()}
+    partners = {tuple(factors["partner_levels"]) for factors in expansion.factor_map.values()}
+    assert modes == {"global_cluster", "anchor_rules"}
+    assert partners == {
+        ("EMA_21_1min",),
+        ("EMA_21_5min",),
+        ("SMA_50_1min",),
+        ("SMA_50_5min",),
+    }
+
+
 def test_run_name_respects_max_length():
     from thesistester.study.naming import _MAX_RUN_NAME_LEN, build_run_name
 
