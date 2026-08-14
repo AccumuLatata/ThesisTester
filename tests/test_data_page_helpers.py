@@ -888,6 +888,7 @@ def test_bundle_import_then_data_navigation_keeps_levels(monkeypatch):
     data_page = _import_data_page_module(session_state)
     assert DATA_PAGE_INVALIDATE_SOURCE_KEY not in session_state
     assert session_state.get(data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY, 0) >= 1
+    assert session_state.get(data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0) >= 1
     assert not data_page._should_apply_source_dataset(
         file_present=True,
         source="Sample data",
@@ -929,10 +930,20 @@ def test_consume_data_page_source_invalidation_increments_uploader_nonce():
     session_state = {
         data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY: True,
         data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY: 2,
+        data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY: 4,
     }
 
     assert data_page._consume_data_page_source_invalidation(session_state) is True
     assert data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY not in session_state
     assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
+    assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
     assert data_page._consume_data_page_source_invalidation(session_state) is False
     assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
+    assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+
+
+def test_session_has_primary_data_requires_dataframe():
+    data_page = _import_data_page_module({})
+    assert data_page._session_has_primary_data({}) is False
+    assert data_page._session_has_primary_data({"data": None}) is False
+    assert data_page._session_has_primary_data({"data": pd.DataFrame({"timestamp": [1]})}) is True

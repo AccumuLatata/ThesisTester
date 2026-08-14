@@ -271,16 +271,25 @@ def _invalidate_primary_csv_uploader() -> None:
     )
 
 
-def _consume_data_page_source_invalidation(session_state=None) -> bool:
-    """Drop leftover primary-CSV widget state after a research-bundle import.
+def _session_has_primary_data(session_state=None) -> bool:
+    """True when the session holds a primary OHLCV frame (bundle/upload/saved)."""
+    state = st.session_state if session_state is None else session_state
+    return isinstance(state.get("data"), pd.DataFrame)
 
-    Must run before the primary ``st.file_uploader`` is instantiated so a
-    prior Upload CSV value cannot replace the restored session dataset.
+
+def _consume_data_page_source_invalidation(session_state=None) -> bool:
+    """Drop leftover CSV widget state after a research-bundle import.
+
+    Must run before ``st.file_uploader`` widgets are instantiated so a prior
+    Upload CSV or lower-timeframe file cannot replace the restored session.
+    A leftover lower CSV would re-apply on signature mismatch and clear
+    execution dependents (trades / signals / grid).
     """
     state = st.session_state if session_state is None else session_state
     if not state.pop(DATA_PAGE_INVALIDATE_SOURCE_KEY, False):
         return False
     state[PRIMARY_CSV_UPLOADER_NONCE_KEY] = int(state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0)) + 1
+    state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = int(state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
     return True
 
 
@@ -1408,7 +1417,7 @@ explicit_sample_load = bool(st.session_state.pop(LOAD_SAMPLE_REQUESTED_KEY, Fals
 use_source_dataset = _should_apply_source_dataset(
     file_present=file is not None,
     source=source,
-    has_session_data="data" in st.session_state,
+    has_session_data=_session_has_primary_data(),
     explicit_sample_load=explicit_sample_load,
 )
 
@@ -1511,7 +1520,7 @@ if use_source_dataset:
             )
     except (DataValidationError, ValueError) as exc:
         st.error(str(exc))
-elif "data" in st.session_state:
+elif _session_has_primary_data():
     if source == "Sample data":
         st.info(
             "Session already has data. The sample file is not applied automatically "

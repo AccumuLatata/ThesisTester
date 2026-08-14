@@ -1157,8 +1157,10 @@ Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when
 a file is present. `apply_research_bundle_to_session` sets the one-shot
 `_data_page_invalidate_source` flag so the Data page increments
-`_primary_csv_uploader_nonce` before instantiating the uploader — a leftover
-CSV widget value must not replace a just-imported session dataset.
+`_primary_csv_uploader_nonce` and `_subtimeframe_uploader_nonce` before
+instantiating uploaders — a leftover primary or lower-TF CSV widget must not
+replace a just-imported session dataset (a leftover lower file would re-apply
+on signature mismatch and clear execution dependents).
 
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
