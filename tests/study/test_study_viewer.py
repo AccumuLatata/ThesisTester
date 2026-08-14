@@ -192,9 +192,7 @@ def test_pages_studies_is_read_only_source():
                 isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_APPROVAL_KEY"
             ):
                 written_keys.add("studies_launch_approval")
-            elif (
-                isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_BUILDER_DRAFT_KEY"
-            ):
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_BUILDER_DRAFT_KEY":
                 written_keys.add(STUDIES_BUILDER_DRAFT_KEY)
             elif (
                 isinstance(slice_node, ast.Name)

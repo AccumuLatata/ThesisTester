@@ -191,9 +191,7 @@ def test_pages_studies_preview_has_no_execute_controls():
                 isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_APPROVAL_KEY"
             ):
                 written_keys.add(STUDIES_LAUNCH_APPROVAL_KEY)
-            elif (
-                isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_BUILDER_DRAFT_KEY"
-            ):
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_BUILDER_DRAFT_KEY":
                 written_keys.add(STUDIES_BUILDER_DRAFT_KEY)
             elif (
                 isinstance(slice_node, ast.Name)
