@@ -175,9 +175,23 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _fsync_file(path: Path) -> None:
-    fd = os.open(path, os.O_RDONLY)
+    """Best-effort durability flush after an artifact write.
+
+    Windows ``FlushFileBuffers`` (``os.fsync``) requires a writable handle.
+    ``O_RDONLY`` + ``fsync`` raises ``OSError: [Errno 9] Bad file descriptor``
+    and used to abort every ``study run`` cell under ``cache_policy=read_write``.
+    Open ``O_RDWR`` on NT; treat remaining fsync OS errors as skip-not-fatal
+    (same posture as :func:`_fsync_dir`).
+    """
+    flags = os.O_RDWR if os.name == "nt" else os.O_RDONLY
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return
     try:
         os.fsync(fd)
+    except OSError:
+        pass
     finally:
         os.close(fd)
 

@@ -423,3 +423,34 @@ def test_source_binding_key_separates_ingestion_mode_and_derivation_policy():
     assert primary != derive
     assert derive != other_policy
     assert primary == source_binding_key(**common)
+
+
+def test_fsync_file_swallows_ebadf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from thesistester.persistence import execution_artifacts as ea
+
+    path = tmp_path / "artifact.json"
+    path.write_text("{}", encoding="utf-8")
+
+    def _boom(_fd: int) -> None:
+        raise OSError(9, "Bad file descriptor")
+
+    monkeypatch.setattr(ea.os, "fsync", _boom)
+    ea._fsync_file(path)
+
+
+def test_fsync_file_opens_rdwr_on_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from thesistester.persistence import execution_artifacts as ea
+
+    path = tmp_path / "artifact.json"
+    path.write_text("{}", encoding="utf-8")
+    seen: dict[str, int] = {}
+    real_open = ea.os.open
+
+    def _spy(name, flags, *args, **kwargs):
+        seen["flags"] = int(flags)
+        return real_open(name, flags, *args, **kwargs)
+
+    monkeypatch.setattr(ea.os, "name", "nt")
+    monkeypatch.setattr(ea.os, "open", _spy)
+    ea._fsync_file(path)
+    assert seen["flags"] & ea.os.O_RDWR

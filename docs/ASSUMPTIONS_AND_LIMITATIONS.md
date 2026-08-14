@@ -914,6 +914,10 @@ other than the last bar in the dataset.
   acquire the lock. RS-D9 CLI-spawn from the Studies page also does **not**
   acquire `.study.lock` in the Streamlit process — the child `study run` holds
   it.
+- Study cells use `cache_policy=read_write` and fsync published artifacts.
+  On Windows, file `fsync` uses a writable handle (`FlushFileBuffers` rejects
+  `O_RDONLY` with `EBADF`). A remaining fsync OS error is skipped; the atomic
+  publish still proceeds. This is durability best-effort, not a failed cell.
 
 ## Research Study Runner ranking (RS4)
 
