@@ -46,6 +46,7 @@ from thesistester.app_state import (
     bootstrap_active_saved_dataset,
     restore_saved_dataset_provenance,
 )
+from thesistester.research_bundle import DATA_PAGE_INVALIDATE_SOURCE_KEY
 from thesistester.persistence import (
     clear_active_dataset_id,
     compute_dataset_id,
@@ -87,6 +88,7 @@ DERIVED_PARENT_DIAGNOSTICS_KEY = "derived_parent_diagnostics"
 SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
 SUBTIMEFRAME_UPLOADER_NONCE_KEY = "_subtimeframe_uploader_nonce"
 PRIMARY_CSV_UPLOADER_NONCE_KEY = "_primary_csv_uploader_nonce"
+LOAD_SAMPLE_REQUESTED_KEY = "_load_sample_data_requested"
 SUBTIMEFRAME_FALLBACK_BARS_KEY = "subtimeframe_fallback_parent_bars"
 SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY = "_subtimeframe_compatibility_report"
 SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY = "_subtimeframe_compatibility_signature"
@@ -267,6 +269,46 @@ def _invalidate_primary_csv_uploader() -> None:
     st.session_state[PRIMARY_CSV_UPLOADER_NONCE_KEY] = (
         int(st.session_state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0)) + 1
     )
+
+
+def _consume_data_page_source_invalidation(session_state=None) -> bool:
+    """Drop leftover primary-CSV widget state after a research-bundle import.
+
+    Must run before the primary ``st.file_uploader`` is instantiated so a
+    prior Upload CSV value cannot replace the restored session dataset.
+    """
+    state = st.session_state if session_state is None else session_state
+    if not state.pop(DATA_PAGE_INVALIDATE_SOURCE_KEY, False):
+        return False
+    state[PRIMARY_CSV_UPLOADER_NONCE_KEY] = int(state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0)) + 1
+    return True
+
+
+def _should_apply_source_dataset(
+    *,
+    file_present: bool,
+    source: str,
+    has_session_data: bool,
+    explicit_sample_load: bool = False,
+) -> bool:
+    """Return True when the Data page should ingest the selected source file.
+
+    Sample data is a first-visit convenience for empty sessions. It must not
+    replace in-session data (research-bundle import, prior upload, or saved
+    dataset) merely because Source still defaults to Sample on navigation.
+    Upload CSV still applies whenever a file is present — that is an explicit
+    new-data action and resets dependents via ``dataset_id`` change.
+    Sample applies when the session is empty or the user clicks Load sample data.
+    """
+    if not file_present:
+        return False
+    if source == "Upload CSV":
+        return True
+    if source != "Sample data":
+        return False
+    if explicit_sample_load:
+        return True
+    return not has_session_data
 
 
 def _on_ingestion_mode_change() -> None:
@@ -1168,6 +1210,7 @@ st.caption(
 render_classic_nav_prefill_caption(target_page="pages/1_Data.py")
 
 bootstrap_active_saved_dataset()
+_consume_data_page_source_invalidation()
 
 flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
 if flash_message:
@@ -1361,8 +1404,12 @@ else:
     if file is None:
         st.error("Sample data not found.")
 
-use_source_dataset = file is not None and (
-    source == "Upload CSV" or ACTIVE_SAVED_DATASET_KEY not in st.session_state
+explicit_sample_load = bool(st.session_state.pop(LOAD_SAMPLE_REQUESTED_KEY, False))
+use_source_dataset = _should_apply_source_dataset(
+    file_present=file is not None,
+    source=source,
+    has_session_data="data" in st.session_state,
+    explicit_sample_load=explicit_sample_load,
 )
 
 if use_source_dataset:
@@ -1465,6 +1512,16 @@ if use_source_dataset:
     except (DataValidationError, ValueError) as exc:
         st.error(str(exc))
 elif "data" in st.session_state:
+    if source == "Sample data":
+        st.info(
+            "Session already has data. The sample file is not applied automatically "
+            "when you open this page. Load sample data only if you want to replace "
+            "the current dataset (this resets levels and downstream results when "
+            "the dataset identity changes)."
+        )
+        if st.button("Load sample data"):
+            st.session_state[LOAD_SAMPLE_REQUESTED_KEY] = True
+            st.rerun()
     _render_dataset_summary(
         st.session_state["data"],
         instrument=st.session_state.get("instrument", inst),

@@ -778,3 +778,79 @@ def test_upload_csv_default_ingestion_mode_is_15s_primary_not_api_default():
             "validation": {"enabled": False},
         }
     )
+
+
+def test_should_apply_source_dataset_sample_only_when_session_empty():
+    data_page = _import_data_page_module({})
+
+    assert data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=False,
+    )
+    assert not data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=True,
+    )
+    assert data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=True,
+        explicit_sample_load=True,
+    )
+
+
+def test_should_apply_source_dataset_upload_when_file_present():
+    data_page = _import_data_page_module({})
+
+    assert data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Upload CSV",
+        has_session_data=True,
+    )
+    assert not data_page._should_apply_source_dataset(
+        file_present=False,
+        source="Upload CSV",
+        has_session_data=True,
+    )
+    assert not data_page._should_apply_source_dataset(
+        file_present=False,
+        source="Sample data",
+        has_session_data=False,
+    )
+
+
+def test_should_apply_source_dataset_keeps_bundle_import_on_sample_navigation():
+    """Reproduce: import bundle (session has data+levels) then open Data.
+
+    Source defaults to Sample. Auto-applying sample would change dataset_id
+    and clear levels. Navigation must keep the imported session.
+    """
+    data_page = _import_data_page_module(
+        {
+            "data": pd.DataFrame({"timestamp": [1]}),
+            "levels": pd.DataFrame({"level": [1.0]}),
+            "dataset_id": "bundle-dataset",
+        }
+    )
+
+    assert not data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=True,
+    )
+
+
+def test_consume_data_page_source_invalidation_increments_uploader_nonce():
+    data_page = _import_data_page_module({})
+    session_state = {
+        data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY: True,
+        data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY: 2,
+    }
+
+    assert data_page._consume_data_page_source_invalidation(session_state) is True
+    assert data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY not in session_state
+    assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
+    assert data_page._consume_data_page_source_invalidation(session_state) is False
+    assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3

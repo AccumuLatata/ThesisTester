@@ -69,7 +69,7 @@ message size, MessageSizeError
 | Control | Meaning | Common pitfall |
 |---|---|---|
 | `Instrument` | Contract metadata (tick size, point value) | Wrong instrument → wrong R and costs |
-| `Source` | `Sample data` or `Upload CSV` | — |
+| `Source` | `Sample data` or `Upload CSV` | Sample auto-loads only on an empty session; it does not replace imported or already-loaded data when you navigate back |
 | `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; use R12 `subtimeframe_conservative` unless Build empty bars is on |
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
@@ -87,6 +87,12 @@ message size, MessageSizeError
 5. Set **Futures roll assumptions** → **Validate roll metadata**.
 6. Name the dataset → **Save dataset locally** when you want reuse.
 
+Navigating back to Data keeps the current session dataset (research-bundle
+import, prior upload, or saved dataset). Sample data is applied only when the
+session is empty, or when you click **Load sample data**. Uploading a new CSV
+or loading a different saved dataset replaces the session dataset and clears
+levels and downstream results when the dataset identity changes.
+
 **What it is not.**
 
 - Not a live data feed or broker connection.
@@ -96,6 +102,9 @@ message size, MessageSizeError
   success.
 - `MessageSizeError` is Streamlit's frontend websocket limit (repo default
   400 MB), not a RAM ceiling. Headless `python -m thesistester` has no such cap.
+- Opening the Data page does not reset an already-loaded session (bundle
+  import, prior upload, or saved dataset). Reset happens only when you load a
+  new dataset.
 
 **Related pages.** Levels (next); Backtest may need lower TF data for some
 intrabar models.
@@ -725,7 +734,9 @@ snapshot, hash identity, restore session, record and discuss, portable state
 1. Build research state across classic pages.
 2. Review **Export preview** → **Download research bundle**.
 3. On another session: upload the zip → review contents → **Import bundle into
-   session** → open the listed pages.
+   session** → open the listed pages. Imported dataset and levels stay in
+   session when you open Data; they reset only if you load a new dataset
+   (upload CSV, **Load sample data**, or a different saved dataset).
 4. Optionally use **Record and discuss this run** / **Discuss this run** when a
    thesis context is active.
 

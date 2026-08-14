@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from thesistester.research_bundle import (
+    DATA_PAGE_INVALIDATE_SOURCE_KEY,
     apply_research_bundle_to_session,
     build_research_bundle,
     canonical_bundle_hash,
@@ -132,6 +133,7 @@ def test_dataset_only_roundtrip_restores_data_and_metadata():
     assert restored_state["base_interval"] == "1min"
     assert restored_state["source_timezone"] == "America/New_York"
     assert restored_state["exchange_timezone"] == "America/New_York"
+    assert restored_state[DATA_PAGE_INVALIDATE_SOURCE_KEY] is True
 
 
 def test_dataset_only_import_clears_stale_downstream_artifacts():

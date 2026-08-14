@@ -1153,9 +1153,16 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 
 Path citations only (no line numbers). Line anchors drift across page renumbers and edits; treat producing/consuming paths as the contract, not offsets.
 
+Data-page source application: Sample data is ingested only when `data` is
+absent or the user clicks **Load sample data**. Upload CSV still applies when
+a file is present. `apply_research_bundle_to_session` sets the one-shot
+`_data_page_invalidate_source` flag so the Data page increments
+`_primary_csv_uploader_nonce` before instantiating the uploader — a leftover
+CSV widget value must not replace a just-imported session dataset.
+
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
-| `data` | Data (`pages/1_Data.py`) | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Report/Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV/session columns |
+| `data` | Data (`pages/1_Data.py`), Research Bundle import | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Report/Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV/session columns. Data page Sample auto-load applies only to empty sessions; navigation must not replace in-session bars. |
 | `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
 | `raw_data` | NinjaTrader capture, data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated NinjaTrader 3/5-field capture or tick/trade rows restored from `raw.parquet`; never consumed by the bar engine. A canonical-only resave preserves an existing sidecar and its provenance. |
 | `raw_interval` | Data capture profiles / saved-dataset bootstrap | Local dataset provenance | Inferred raw capture interval restored from saved metadata and preserved with an existing raw sidecar |

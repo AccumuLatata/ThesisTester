@@ -26,6 +26,9 @@ BUNDLE_SCHEMA_VERSION = 1
 BUNDLE_KIND = "thesistester_research_bundle"
 MANIFEST_FILENAME = "manifest.json"
 IDENTITY_META_FILENAME = identity_meta_filename()
+# One-shot Data-page signal: drop leftover primary-CSV widget state so a
+# prior Upload CSV value cannot replace the just-imported session dataset.
+DATA_PAGE_INVALIDATE_SOURCE_KEY = "_data_page_invalidate_source"
 
 _DATASET_META_KEYS = (
     "dataset_id",
@@ -1066,6 +1069,12 @@ def apply_research_bundle_to_session(
         session_state["backtest_entry_window_enabled"] = False
         if "backtest_entry_window_enabled" not in restored_keys:
             restored_keys.append("backtest_entry_window_enabled")
+
+    # Data page Source defaults to Sample and may still hold a prior CSV in
+    # the uploader. Ask that page to drop the leftover widget so navigation
+    # cannot clobber this restore (sample auto-load is separately gated on
+    # empty sessions only).
+    session_state[DATA_PAGE_INVALIDATE_SOURCE_KEY] = True
 
     return {
         "cleared_keys": sorted(set(cleared_keys)),
