@@ -23,6 +23,13 @@ Tool configuration is centralized in `pyproject.toml` (`ruff`, `pytest`, `covera
 CI jobs and the golden-master regeneration guard are defined in `.github/workflows/ci.yml`;
 the golden fixture contract lives in `tests/fixtures/golden/README.md`.
 
+Streamlit server limits live in checkout-local `.streamlit/config.toml` (not
+packaged): `server.maxUploadSize = 350` (file uploader, MB) and
+`server.maxMessageSize = 400` (websocket/protobuf payload, MB; upstream default
+200). `MessageSizeError` is that transport cap — independent of host RAM and of
+the R18/CLI path, which never serializes frames to the browser. Restart the
+Streamlit process after changing either value.
+
 R9 introduced **no** `st.session_state` keys and no engine/analytics behavior change, so the
 contract table below is unchanged by it.
 

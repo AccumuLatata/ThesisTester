@@ -1,2 +1,7 @@
 [server]
+# File-uploader cap (MB). Independent of the frontend websocket payload.
 maxUploadSize = 350
+# Websocket/protobuf payload cap (MB). Streamlit default is 200.
+# Large 15s Quantower frames serialize well above that (observed 380.4 MB).
+# Host RAM is not this limit; restart Streamlit after changing it.
+maxMessageSize = 400
