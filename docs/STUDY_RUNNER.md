@@ -561,5 +561,6 @@ pattern as `launch.py`). **No Streamlit. No execute / launch / preview import.**
 | `OTF_PRESETS` | Off / 5m / 15m / 30m / combo chips (SB2) |
 
 Execute remains `python -m thesistester study run`. The Studies **Build StudySpec**
-tab (SB2) calls emit + `preview_study_spec` on the page; Apply to Preview does
-not spawn CLI.
+tab (SB2) calls emit + `preview_study_spec` on the page; Apply to Preview writes
+the Preview textarea key before that widget mounts (Build body runs first) and
+does not spawn CLI.

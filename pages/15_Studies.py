@@ -76,9 +76,11 @@ from thesistester.study.builder import (
     WIDGET_KEY_VWAP_WINDOWS,
     WIDGET_KEY_WORKERS,
     _partner_set_widget_key,
+    apply_grid_tick_widgets,
     apply_levels_tf_mode,
     builder_token_catalog,
     coerce_partner_levels,
+    coerce_whole_number,
     default_study_draft,
     draft_from_mapping,
     draft_to_mapping,
@@ -90,9 +92,8 @@ from thesistester.study.builder import (
     infer_tf_mode,
     levels_advanced_enabled,
     ma_length_options,
-    otf_from_preset_ids,
+    otf_for_selected_presets,
     otf_preset_ids,
-    parse_csv_ints,
     parse_csv_tokens,
 )
 from thesistester.study.launch import (
@@ -582,7 +583,9 @@ def _ensure_builder_draft() -> StudyDraft:
 def _sync_builder_widgets(draft: StudyDraft) -> None:
     """Overwrite widget keys before widgets instantiate (hydrate / start-from-example)."""
     st.session_state[WIDGET_KEY_NAME] = draft.name
-    st.session_state[WIDGET_KEY_DESCRIPTION] = "" if draft.description is None else draft.description
+    st.session_state[WIDGET_KEY_DESCRIPTION] = (
+        "" if draft.description is None else draft.description
+    )
     st.session_state[WIDGET_KEY_WORKERS] = int(draft.workers)
     st.session_state[WIDGET_KEY_CONFIRM_ABOVE_RUNS] = int(draft.confirm_above_runs)
     st.session_state[WIDGET_KEY_OUTPUT_DIR] = draft.output_dir or ""
@@ -612,9 +615,7 @@ def _sync_builder_widgets(draft: StudyDraft) -> None:
         draft.levels.get("poc_windows", DEFAULT_LEVELS_SETTINGS["poc_windows"])
     )
     st.session_state[WIDGET_KEY_PREV30M_ENABLED] = bool(
-        draft.levels.get(
-            "prev30m_vwap_enabled", DEFAULT_LEVELS_SETTINGS["prev30m_vwap_enabled"]
-        )
+        draft.levels.get("prev30m_vwap_enabled", DEFAULT_LEVELS_SETTINGS["prev30m_vwap_enabled"])
     )
     st.session_state[WIDGET_KEY_PIVOTS_ENABLED] = bool(
         draft.levels.get("pivots_enabled", DEFAULT_LEVELS_SETTINGS["pivots_enabled"])
@@ -689,6 +690,14 @@ def _int_list(values: Any) -> list[int]:
     return out
 
 
+def _session_int_list(key: str, fallback: Any = None) -> list[int]:
+    """Read a multiselect list without treating ``[]`` as missing (falsy ``or``)."""
+    raw = st.session_state.get(key)
+    if raw is None:
+        return _int_list(fallback)
+    return _int_list(raw)
+
+
 def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     """Collect widget values onto a copy of ``base`` (preserves stage/report/pass-through)."""
     draft = draft_from_mapping(draft_to_mapping(base))
@@ -710,16 +719,10 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.format_profile = profile or None
 
     levels = copy.deepcopy(dict(draft.levels))
-    sma_lengths = _int_list(st.session_state.get(WIDGET_KEY_SMA_LENGTHS))
-    ema_lengths = _int_list(st.session_state.get(WIDGET_KEY_EMA_LENGTHS))
-    if sma_lengths:
-        levels["sma_lengths"] = sma_lengths
-    else:
-        levels.pop("sma_lengths", None)
-    if ema_lengths:
-        levels["ema_lengths"] = ema_lengths
-    else:
-        levels.pop("ema_lengths", None)
+    # Persist [] when the operator clears lengths. Omitting the key lets
+    # closed_level_token_set merge DEFAULT_LEVELS_SETTINGS [50, 200] / [9, 21].
+    levels["sma_lengths"] = _session_int_list(WIDGET_KEY_SMA_LENGTHS)
+    levels["ema_lengths"] = _session_int_list(WIDGET_KEY_EMA_LENGTHS)
     levels = apply_levels_tf_mode(
         levels,
         "sma_timeframes",
@@ -775,23 +778,20 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.trigger_timeframe = [
         str(item) for item in (st.session_state.get(WIDGET_KEY_TRIGGER_TIMEFRAME) or [])
     ]
-    draft.otf = otf_from_preset_ids(
-        [str(item) for item in (st.session_state.get(WIDGET_KEY_OTF) or [])]
+    draft.otf = otf_for_selected_presets(
+        [str(item) for item in (st.session_state.get(WIDGET_KEY_OTF) or [])],
+        draft.otf,
     )
     draft.direction_as_factor = (
         st.session_state.get(WIDGET_KEY_DIRECTION_MODE) == DIRECTION_MODE_FACTOR
     )
-    draft.direction_constant = str(
-        st.session_state.get(WIDGET_KEY_DIRECTION_CONSTANT) or "both"
-    )
+    draft.direction_constant = str(st.session_state.get(WIDGET_KEY_DIRECTION_CONSTANT) or "both")
     draft.direction_values = [
         str(item) for item in (st.session_state.get(WIDGET_KEY_DIRECTION_VALUES) or [])
     ]
-    draft.tolerance_ticks = st.session_state.get(WIDGET_KEY_TOLERANCE_TICKS, 0)
+    draft.tolerance_ticks = coerce_whole_number(st.session_state.get(WIDGET_KEY_TOLERANCE_TICKS, 0))
     draft.naked_only = bool(st.session_state.get(WIDGET_KEY_NAKED_ONLY))
-    draft.naked_requirement = str(
-        st.session_state.get(WIDGET_KEY_NAKED_REQUIREMENT) or "any"
-    )
+    draft.naked_requirement = str(st.session_state.get(WIDGET_KEY_NAKED_REQUIREMENT) or "any")
     backtest = copy.deepcopy(dict(draft.backtest))
     backtest["stop_loss_ticks"] = int(st.session_state.get(WIDGET_KEY_STOP_LOSS) or 8)
     backtest["take_profit_ticks"] = int(st.session_state.get(WIDGET_KEY_TAKE_PROFIT) or 16)
@@ -800,23 +800,15 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     backtest["exposure_policy"] = str(
         st.session_state.get(WIDGET_KEY_EXPOSURE_POLICY) or "single_position"
     )
-    backtest["intrabar_model"] = str(
-        st.session_state.get(WIDGET_KEY_INTRABAR_MODEL) or "sl_first"
-    )
-    backtest["flat_by_session_close"] = bool(
-        st.session_state.get(WIDGET_KEY_FLAT_BY_SESSION_CLOSE)
-    )
+    backtest["intrabar_model"] = str(st.session_state.get(WIDGET_KEY_INTRABAR_MODEL) or "sl_first")
+    backtest["flat_by_session_close"] = bool(st.session_state.get(WIDGET_KEY_FLAT_BY_SESSION_CLOSE))
     draft.backtest = backtest
-    grid = copy.deepcopy(dict(draft.grid))
-    grid["enabled"] = bool(st.session_state.get(WIDGET_KEY_BATTERY_GRID))
-    if grid["enabled"]:
-        sl_text = str(st.session_state.get(WIDGET_KEY_GRID_SL_VALUES) or "")
-        tp_text = str(st.session_state.get(WIDGET_KEY_GRID_TP_VALUES) or "")
-        if sl_text.strip():
-            grid["stop_loss_ticks_values"] = parse_csv_ints(sl_text)
-        if tp_text.strip():
-            grid["take_profit_ticks_values"] = parse_csv_ints(tp_text)
-    draft.grid = grid
+    draft.grid = apply_grid_tick_widgets(
+        draft.grid,
+        enabled=bool(st.session_state.get(WIDGET_KEY_BATTERY_GRID)),
+        sl_text=str(st.session_state.get(WIDGET_KEY_GRID_SL_VALUES) or ""),
+        tp_text=str(st.session_state.get(WIDGET_KEY_GRID_TP_VALUES) or ""),
+    )
     validation = copy.deepcopy(dict(draft.validation))
     validation["enabled"] = bool(st.session_state.get(WIDGET_KEY_BATTERY_VALIDATION))
     draft.validation = validation
@@ -893,8 +885,7 @@ def _render_ma_length_block(label: str, lengths_key: str, add_key: str, current:
         "step": 1,
         "key": add_key,
         "help": (
-            "Typed lengths appear in the multiselect on the next rerun; "
-            "select them to include."
+            "Typed lengths appear in the multiselect on the next rerun; select them to include."
         ),
     }
     if add_key not in st.session_state:
@@ -957,7 +948,7 @@ def _render_build() -> None:
             "SMA",
             WIDGET_KEY_SMA_LENGTHS,
             WIDGET_KEY_SMA_ADD_LENGTH,
-            _int_list(st.session_state.get(WIDGET_KEY_SMA_LENGTHS) or base.levels.get("sma_lengths")),
+            _session_int_list(WIDGET_KEY_SMA_LENGTHS, base.levels.get("sma_lengths")),
         )
         _render_tf_mode_block("SMA", WIDGET_KEY_SMA_TF_MODE, WIDGET_KEY_SMA_TIMEFRAMES)
     with length_cols[1]:
@@ -965,7 +956,7 @@ def _render_build() -> None:
             "EMA",
             WIDGET_KEY_EMA_LENGTHS,
             WIDGET_KEY_EMA_ADD_LENGTH,
-            _int_list(st.session_state.get(WIDGET_KEY_EMA_LENGTHS) or base.levels.get("ema_lengths")),
+            _session_int_list(WIDGET_KEY_EMA_LENGTHS, base.levels.get("ema_lengths")),
         )
         _render_tf_mode_block("EMA", WIDGET_KEY_EMA_TF_MODE, WIDGET_KEY_EMA_TIMEFRAMES)
     st.checkbox("Override windows / extras", key=WIDGET_KEY_LEVELS_ADVANCED)
@@ -981,27 +972,27 @@ def _render_build() -> None:
         apply_levels_tf_mode(
             {
                 **dict(base.levels),
-                "sma_lengths": _int_list(
-                    st.session_state.get(WIDGET_KEY_SMA_LENGTHS) or base.levels.get("sma_lengths")
-                )
-                or None,
-                "ema_lengths": _int_list(
-                    st.session_state.get(WIDGET_KEY_EMA_LENGTHS) or base.levels.get("ema_lengths")
-                )
-                or None,
+                "sma_lengths": _session_int_list(
+                    WIDGET_KEY_SMA_LENGTHS, base.levels.get("sma_lengths")
+                ),
+                "ema_lengths": _session_int_list(
+                    WIDGET_KEY_EMA_LENGTHS, base.levels.get("ema_lengths")
+                ),
             },
             "sma_timeframes",
-            str(st.session_state.get(WIDGET_KEY_SMA_TF_MODE) or infer_tf_mode(base.levels, "sma_timeframes")),
+            str(
+                st.session_state.get(WIDGET_KEY_SMA_TF_MODE)
+                or infer_tf_mode(base.levels, "sma_timeframes")
+            ),
             [str(item) for item in (st.session_state.get(WIDGET_KEY_SMA_TIMEFRAMES) or [])],
         ),
         "ema_timeframes",
-        str(st.session_state.get(WIDGET_KEY_EMA_TF_MODE) or infer_tf_mode(base.levels, "ema_timeframes")),
+        str(
+            st.session_state.get(WIDGET_KEY_EMA_TF_MODE)
+            or infer_tf_mode(base.levels, "ema_timeframes")
+        ),
         [str(item) for item in (st.session_state.get(WIDGET_KEY_EMA_TIMEFRAMES) or [])],
     )
-    if live_levels.get("sma_lengths") is None:
-        live_levels.pop("sma_lengths", None)
-    if live_levels.get("ema_lengths") is None:
-        live_levels.pop("ema_lengths", None)
     catalog = builder_token_catalog(live_levels)
     shown = ", ".join(catalog[:20])
     extra = f" … +{len(catalog) - 20} more" if len(catalog) > 20 else ""
@@ -1024,9 +1015,7 @@ def _render_build() -> None:
     if add_col.button("Add partner set"):
         draft = _draft_from_builder_widgets(base)
         draft.partner_levels = coerce_partner_levels(draft.partner_levels)
-        draft.partner_levels.append(
-            [_default_partner_token(catalog, draft.core_level)]
-        )
+        draft.partner_levels.append([_default_partner_token(catalog, draft.core_level)])
         st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(draft)
         st.session_state[STUDIES_BUILDER_PENDING_SYNC_KEY] = True
         st.rerun()
@@ -1125,7 +1114,9 @@ def _render_build() -> None:
         adv[2].number_input(
             "min_valid_confluences", min_value=1, step=1, key=WIDGET_KEY_MIN_VALID_CONFLUENCES
         )
-        st.selectbox("from_partners", options=list(_FROM_PARTNERS_OPTIONS), key=WIDGET_KEY_FROM_PARTNERS)
+        st.selectbox(
+            "from_partners", options=list(_FROM_PARTNERS_OPTIONS), key=WIDGET_KEY_FROM_PARTNERS
+        )
         st.caption(
             "entry_window / trigger_params are pass-through from the hydrated draft "
             "(SB2 does not clone Setup Builder’s entry-window block)."
@@ -1147,7 +1138,9 @@ def _render_build() -> None:
     st.markdown("### Actions")
     action_cols = st.columns(2)
     start_example = action_cols[0].button("Start from example")
-    apply_preview = action_cols[1].button("Apply to Preview", type="primary", disabled=preview is None)
+    apply_preview = action_cols[1].button(
+        "Apply to Preview", type="primary", disabled=preview is None
+    )
     if start_example:
         try:
             path = example_study_spec_path()
@@ -1173,11 +1166,14 @@ def _render_build() -> None:
         )
 
 
+# Visual tab order is Inspect | Preview | Build. Execute Build before Preview
+# so Apply can write STUDIES_PREVIEW_YAML_KEY (and reset the launch output-dir
+# widget) before those widgets instantiate — Streamlit rejects post-mount writes.
 with inspect_tab:
     _render_inspect()
 
-with preview_tab:
-    _render_preview()
-
 with build_tab:
     _render_build()
+
+with preview_tab:
+    _render_preview()

@@ -75,8 +75,10 @@ so `study.launch.log` inherits stdout; no in-process `run_study`).
 (`thesistester/study/builder.py` emit / hydrate; live strip calls
 `preview_study_spec`). Studies-scoped keys only:
 `studies_builder_draft` and `studies_builder_pending_sync` (plus
-`_study_builder_*` widget keys). Build does not write classic research
-`st.session_state` keys and does not spawn CLI.
+`_study_builder_*` widget keys). The Build tab body executes before Preview
+so Apply can write `studies_preview_yaml` (and reseed the launch output-dir
+widget) before those widgets instantiate. Build does not write classic
+research `st.session_state` keys and does not spawn CLI.
 `thesistester.study.execute` imports on Windows: exclusive `.study.lock` uses
 POSIX `fcntl.flock` or Windows `msvcrt.locking`
 (fail-closed; released on process exit). Study execution sets

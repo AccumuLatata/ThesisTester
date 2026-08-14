@@ -16,9 +16,11 @@ from thesistester.study.builder import (
     TF_MODE_EXPLICIT,
     TF_MODE_NO_MA,
     TF_MODE_PRODUCT_DEFAULT,
+    apply_grid_tick_widgets,
     apply_levels_tf_mode,
     builder_token_catalog,
     coerce_partner_levels,
+    coerce_whole_number,
     default_study_draft,
     draft_from_mapping,
     draft_to_mapping,
@@ -28,6 +30,7 @@ from thesistester.study.builder import (
     hydrate_study_draft,
     hydrate_study_yaml,
     infer_tf_mode,
+    otf_for_selected_presets,
     otf_from_preset_ids,
     otf_preset_ids,
     parse_csv_ints,
@@ -325,9 +328,7 @@ def test_draft_mapping_roundtrip_preserves_partner_sets():
 
 
 def test_coerce_partner_levels_never_returns_flat_list():
-    assert coerce_partner_levels(["SMA_50_1min", "EMA_21_1min"]) == [
-        ["SMA_50_1min", "EMA_21_1min"]
-    ]
+    assert coerce_partner_levels(["SMA_50_1min", "EMA_21_1min"]) == [["SMA_50_1min", "EMA_21_1min"]]
     assert coerce_partner_levels([["SMA_50_1min"], ["EMA_21_1min"]]) == [
         ["SMA_50_1min"],
         ["EMA_21_1min"],
@@ -405,3 +406,80 @@ def test_pages_studies_build_tab_source_contract():
     assert "run_study" not in page
     assert "expand_study" not in page
     assert "Honesty" in page
+    # Apply writes the Preview textarea key; Build body must run first.
+    assert page.index("with build_tab:") < page.index("with preview_tab:")
+
+
+def test_apply_grid_tick_widgets_empty_overwrites_stale():
+    grid = apply_grid_tick_widgets(
+        {
+            "enabled": True,
+            "stop_loss_ticks_values": [20, 40],
+            "take_profit_ticks_values": [80],
+            "max_grid_cells": 12,
+        },
+        enabled=True,
+        sl_text="  ",
+        tp_text="",
+    )
+    assert grid["enabled"] is True
+    assert grid["stop_loss_ticks_values"] == []
+    assert grid["take_profit_ticks_values"] == []
+    assert grid["max_grid_cells"] == 12
+    disabled = apply_grid_tick_widgets(
+        {
+            "enabled": True,
+            "stop_loss_ticks_values": [20, 40],
+            "take_profit_ticks_values": [80],
+        },
+        enabled=False,
+        sl_text="",
+        tp_text="99",
+    )
+    assert disabled["enabled"] is False
+    assert disabled["stop_loss_ticks_values"] == [20, 40]
+    assert disabled["take_profit_ticks_values"] == [80]
+
+
+def test_emit_empty_sma_lengths_does_not_invent_default_tokens():
+    draft = default_study_draft()
+    draft.levels["sma_lengths"] = []
+    draft.partner_levels = [["pdHigh"]]
+    spec = emit_study_spec(draft)
+    assert spec["study"]["levels"]["sma_lengths"] == []
+    catalog = builder_token_catalog(spec["study"]["levels"])
+    assert "SMA_50_1min" not in catalog
+    assert "SMA_200_1min" not in catalog
+
+
+def test_empty_ma_lengths_do_not_merge_product_default_lengths():
+    catalog = builder_token_catalog(
+        {
+            "sma_lengths": [],
+            "ema_lengths": [],
+            "sma_timeframes": ["1min"],
+            "ema_timeframes": ["1min"],
+        }
+    )
+    assert not any(token.startswith("SMA_") for token in catalog)
+    assert not any(token.startswith("EMA_") for token in catalog)
+    omitted = builder_token_catalog({"sma_timeframes": ["1min"]})
+    assert "SMA_50_1min" in omitted
+    assert "SMA_200_1min" in omitted
+
+
+def test_otf_for_selected_presets_keeps_original_dicts():
+    original = [{"enabled": False, "keep": True}]
+    kept = otf_for_selected_presets(["off"], original)
+    assert kept == original
+    assert kept is not original
+    rebuilt = otf_for_selected_presets(["off", "5m"], original)
+    assert rebuilt is not None
+    assert [entry.get("enabled") for entry in rebuilt] == [False, True]
+    assert "keep" not in rebuilt[0]
+
+
+def test_coerce_whole_number_preserves_int_yaml():
+    assert coerce_whole_number(0.0) == 0
+    assert isinstance(coerce_whole_number(0.0), int)
+    assert coerce_whole_number(0.5) == 0.5

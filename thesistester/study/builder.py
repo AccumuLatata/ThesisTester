@@ -378,6 +378,56 @@ def otf_from_preset_ids(ids: list[str] | tuple[str, ...]) -> list[dict[str, Any]
     ]
 
 
+def otf_for_selected_presets(
+    selected: list[str] | tuple[str, ...],
+    existing: list[Mapping[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    """Keep hydrated OTF dicts when chips are unchanged; rebuild only on edit.
+
+    Widget collect must not replace pass-through / custom OTF rows just because
+    the chips still match the resolved preset ids.
+    """
+    selected_set = {str(item) for item in selected if str(item) in OTF_PRESETS}
+    matched = {preset_id for preset_id in otf_preset_ids(existing) if preset_id is not None}
+    if selected_set == matched:
+        if existing is None:
+            return None
+        return [copy.deepcopy(dict(entry)) for entry in existing]
+    return otf_from_preset_ids(
+        [preset_id for preset_id in OTF_PRESET_ORDER if preset_id in selected_set]
+    )
+
+
+def apply_grid_tick_widgets(
+    grid: Mapping[str, Any],
+    *,
+    enabled: bool,
+    sl_text: str,
+    tp_text: str,
+) -> dict[str, Any]:
+    """Copy ``grid`` and apply SL/TP text widgets when the battery is on.
+
+    Empty fields become ``[]`` (do not keep hydrated / prior tick lists).
+    Disabled grid keeps pass-through extras.
+    """
+    out = copy.deepcopy(dict(grid))
+    out["enabled"] = enabled
+    if enabled:
+        out["stop_loss_ticks_values"] = parse_csv_ints(sl_text)
+        out["take_profit_ticks_values"] = parse_csv_ints(tp_text)
+    return out
+
+
+def coerce_whole_number(value: Any, default: int | float = 0) -> int | float:
+    """Keep integer YAML when a float widget stores a whole number (``0`` vs ``0.0``)."""
+    if value is None:
+        return default
+    number = float(value)
+    if number.is_integer():
+        return int(number)
+    return number
+
+
 def builder_token_catalog(levels: Mapping[str, Any] | None) -> tuple[str, ...]:
     """Sorted closed level tokens implied by ``levels`` + the static catalog."""
     return tuple(sorted(closed_level_token_set(levels)))
@@ -823,9 +873,11 @@ __all__ = [
     "WIDGET_KEY_VWAP_WINDOWS",
     "WIDGET_KEY_WORKERS",
     "_partner_set_widget_key",
+    "apply_grid_tick_widgets",
     "apply_levels_tf_mode",
     "builder_token_catalog",
     "coerce_partner_levels",
+    "coerce_whole_number",
     "default_study_draft",
     "draft_from_mapping",
     "draft_to_mapping",
@@ -838,6 +890,7 @@ __all__ = [
     "infer_tf_mode",
     "levels_advanced_enabled",
     "ma_length_options",
+    "otf_for_selected_presets",
     "otf_from_preset_ids",
     "otf_preset_ids",
     "parse_csv_ints",
