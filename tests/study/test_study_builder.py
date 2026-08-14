@@ -10,15 +10,36 @@ import yaml
 
 from thesistester.study.builder import (
     OTF_PRESETS,
+    STUDIES_BUILDER_DRAFT_KEY,
+    STUDIES_BUILDER_PENDING_SYNC_KEY,
     StudyDraft,
+    TF_MODE_EXPLICIT,
+    TF_MODE_NO_MA,
+    TF_MODE_PRODUCT_DEFAULT,
+    apply_levels_tf_mode,
     builder_token_catalog,
+    coerce_partner_levels,
     default_study_draft,
+    draft_from_mapping,
+    draft_to_mapping,
     draft_warnings,
     emit_study_spec,
     emit_study_yaml,
     hydrate_study_draft,
     hydrate_study_yaml,
+    infer_tf_mode,
+    otf_from_preset_ids,
     otf_preset_ids,
+    parse_csv_ints,
+)
+from thesistester.study.launch import (
+    STUDIES_LAUNCH_APPROVAL_KEY,
+    reset_launch_session_for_preview,
+)
+from thesistester.study.preview import (
+    STUDIES_PREVIEW_CACHED_KEY,
+    STUDIES_PREVIEW_CACHED_YAML_KEY,
+    STUDIES_PREVIEW_YAML_KEY,
 )
 from thesistester.study.expand import expand_study, study_identity_hash
 from thesistester.study.preview import preview_study_spec
@@ -293,3 +314,94 @@ def test_study_draft_type_is_dataclass():
     draft = default_study_draft()
     assert isinstance(draft, StudyDraft)
     assert draft.name == "untitled_study"
+
+
+def test_draft_mapping_roundtrip_preserves_partner_sets():
+    draft = default_study_draft()
+    draft.partner_levels = [["SMA_50_1min"], ["EMA_21_1min"]]
+    restored = draft_from_mapping(draft_to_mapping(draft))
+    assert restored.partner_levels == [["SMA_50_1min"], ["EMA_21_1min"]]
+    assert all(isinstance(item, list) for item in restored.partner_levels)
+
+
+def test_coerce_partner_levels_never_returns_flat_list():
+    assert coerce_partner_levels(["SMA_50_1min", "EMA_21_1min"]) == [
+        ["SMA_50_1min", "EMA_21_1min"]
+    ]
+    assert coerce_partner_levels([["SMA_50_1min"], ["EMA_21_1min"]]) == [
+        ["SMA_50_1min"],
+        ["EMA_21_1min"],
+    ]
+    assert coerce_partner_levels(None) == []
+
+
+def test_ema_21_5min_only_after_levels_imply_it():
+    default_catalog = builder_token_catalog(default_study_draft().levels)
+    assert "EMA_21_5min" not in default_catalog
+    implied = apply_levels_tf_mode(
+        {"ema_lengths": [21], "sma_lengths": [50]},
+        "ema_timeframes",
+        TF_MODE_EXPLICIT,
+        ["5min"],
+    )
+    implied = apply_levels_tf_mode(implied, "sma_timeframes", TF_MODE_NO_MA, [])
+    catalog = builder_token_catalog(implied)
+    assert "EMA_21_5min" in catalog
+    omitted = apply_levels_tf_mode(implied, "ema_timeframes", TF_MODE_PRODUCT_DEFAULT, [])
+    assert "ema_timeframes" not in omitted
+
+
+def test_infer_tf_mode_maps_omit_empty_explicit():
+    assert infer_tf_mode({}, "sma_timeframes") == TF_MODE_PRODUCT_DEFAULT
+    assert infer_tf_mode({"sma_timeframes": []}, "sma_timeframes") == TF_MODE_NO_MA
+    assert infer_tf_mode({"sma_timeframes": ["1min"]}, "sma_timeframes") == TF_MODE_EXPLICIT
+
+
+def test_otf_from_preset_ids_empty_omits_axis():
+    assert otf_from_preset_ids([]) is None
+    values = otf_from_preset_ids(["combo", "off"])
+    assert values is not None
+    assert [entry["enabled"] for entry in values] == [False, True]
+
+
+def test_parse_csv_ints():
+    assert parse_csv_ints("20, 40, 60") == [20, 40, 60]
+
+
+def test_apply_to_preview_sequence_clears_cache_and_approval():
+    yaml_text = emit_study_yaml(default_study_draft())
+    state = {
+        STUDIES_PREVIEW_CACHED_KEY: object(),
+        STUDIES_PREVIEW_CACHED_YAML_KEY: "old yaml",
+        STUDIES_LAUNCH_APPROVAL_KEY: {"run_count": 1},
+    }
+    prev_cached_yaml = state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)
+    state[STUDIES_PREVIEW_YAML_KEY] = yaml_text
+    state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
+    state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
+    reset_launch_session_for_preview(
+        state,
+        prev_cached_yaml=prev_cached_yaml if isinstance(prev_cached_yaml, str) else None,
+        new_yaml=yaml_text,
+    )
+    assert state[STUDIES_PREVIEW_YAML_KEY] == yaml_text
+    assert STUDIES_PREVIEW_CACHED_KEY not in state
+    assert STUDIES_PREVIEW_CACHED_YAML_KEY not in state
+    assert STUDIES_LAUNCH_APPROVAL_KEY not in state
+
+
+def test_pages_studies_build_tab_source_contract():
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    assert "Build StudySpec" in page
+    assert "Inspect output dir" in page
+    assert "Preview StudySpec" in page
+    assert "Apply to Preview" in page
+    assert "Start from example" in page
+    assert "preview_study_spec" in page
+    assert "example_study_spec_path" in page
+    assert "reset_launch_session_for_preview" in page
+    assert STUDIES_BUILDER_DRAFT_KEY in page or "STUDIES_BUILDER_DRAFT_KEY" in page
+    assert STUDIES_BUILDER_PENDING_SYNC_KEY in page or "STUDIES_BUILDER_PENDING_SYNC_KEY" in page
+    assert "run_study" not in page
+    assert "expand_study" not in page
+    assert "Honesty" in page

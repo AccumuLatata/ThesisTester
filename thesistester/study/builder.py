@@ -1,14 +1,15 @@
-"""SB1 StudyDraft compiler — emit / hydrate canonical StudySpec YAML.
+"""SB1/SB2 StudyDraft compiler — emit / hydrate / session ser-de.
 
 Pure helper: no Streamlit, no execute / launch / preview. Pages import this
 module directly. ``emit_study_spec`` is the only path into
-``validate_study_spec``.
+``validate_study_spec``. Widget key constants and ``draft_to_mapping`` /
+``draft_from_mapping`` are for the Studies Build tab session store.
 """
 
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Mapping
 
 import yaml
@@ -42,6 +43,57 @@ WIDGET_KEY_OTF = "_study_builder_otf"
 WIDGET_KEY_DIRECTION_MODE = "_study_builder_direction_mode"
 WIDGET_KEY_DIRECTION_CONSTANT = "_study_builder_direction_constant"
 WIDGET_KEY_DIRECTION_VALUES = "_study_builder_direction_values"
+WIDGET_KEY_CONFLUENCE_GLOBAL = "_study_builder_confluence_global"
+WIDGET_KEY_CONFLUENCE_ANCHOR = "_study_builder_confluence_anchor"
+WIDGET_KEY_SMA_LENGTHS = "_study_builder_sma_lengths"
+WIDGET_KEY_EMA_LENGTHS = "_study_builder_ema_lengths"
+WIDGET_KEY_SMA_ADD_LENGTH = "_study_builder_sma_add_length"
+WIDGET_KEY_EMA_ADD_LENGTH = "_study_builder_ema_add_length"
+WIDGET_KEY_SMA_TF_MODE = "_study_builder_sma_tf_mode"
+WIDGET_KEY_EMA_TF_MODE = "_study_builder_ema_tf_mode"
+WIDGET_KEY_SMA_TIMEFRAMES = "_study_builder_sma_timeframes"
+WIDGET_KEY_EMA_TIMEFRAMES = "_study_builder_ema_timeframes"
+WIDGET_KEY_LEVELS_ADVANCED = "_study_builder_levels_advanced"
+WIDGET_KEY_VWAP_WINDOWS = "_study_builder_vwap_windows"
+WIDGET_KEY_POC_WINDOWS = "_study_builder_poc_windows"
+WIDGET_KEY_PREV30M_ENABLED = "_study_builder_prev30m_enabled"
+WIDGET_KEY_PIVOTS_ENABLED = "_study_builder_pivots_enabled"
+WIDGET_KEY_PIVOT_TIMEFRAMES = "_study_builder_pivot_timeframes"
+WIDGET_KEY_TOLERANCE_TICKS = "_study_builder_tolerance_ticks"
+WIDGET_KEY_NAKED_ONLY = "_study_builder_naked_only"
+WIDGET_KEY_NAKED_REQUIREMENT = "_study_builder_naked_requirement"
+WIDGET_KEY_STOP_LOSS = "_study_builder_stop_loss"
+WIDGET_KEY_TAKE_PROFIT = "_study_builder_take_profit"
+WIDGET_KEY_COMMISSION = "_study_builder_commission"
+WIDGET_KEY_SLIPPAGE = "_study_builder_slippage"
+WIDGET_KEY_EXPOSURE_POLICY = "_study_builder_exposure_policy"
+WIDGET_KEY_INTRABAR_MODEL = "_study_builder_intrabar_model"
+WIDGET_KEY_FLAT_BY_SESSION_CLOSE = "_study_builder_flat_by_session_close"
+WIDGET_KEY_BATTERY_GRID = "_study_builder_battery_grid"
+WIDGET_KEY_BATTERY_VALIDATION = "_study_builder_battery_validation"
+WIDGET_KEY_BATTERY_WALK_FORWARD = "_study_builder_battery_walk_forward"
+WIDGET_KEY_GRID_SL_VALUES = "_study_builder_grid_sl_values"
+WIDGET_KEY_GRID_TP_VALUES = "_study_builder_grid_tp_values"
+WIDGET_KEY_MIN_CONFLUENCES = "_study_builder_min_confluences"
+WIDGET_KEY_MAX_CONFLUENCES = "_study_builder_max_confluences"
+WIDGET_KEY_MIN_VALID_CONFLUENCES = "_study_builder_min_valid_confluences"
+WIDGET_KEY_FROM_PARTNERS = "_study_builder_from_partners"
+
+COMMON_MA_LENGTHS = (9, 21, 50, 200)
+TF_MODE_PRODUCT_DEFAULT = "Product default TFs"
+TF_MODE_NO_MA = "No MA tokens"
+TF_MODE_EXPLICIT = "Explicit TFs"
+TF_MODE_OPTIONS = (TF_MODE_PRODUCT_DEFAULT, TF_MODE_NO_MA, TF_MODE_EXPLICIT)
+DIRECTION_MODE_CONSTANT = "Constant"
+DIRECTION_MODE_FACTOR = "Factor"
+DIRECTION_MODE_OPTIONS = (DIRECTION_MODE_CONSTANT, DIRECTION_MODE_FACTOR)
+_LEVELS_ADVANCED_KEYS = (
+    "vwap_windows",
+    "poc_windows",
+    "prev30m_vwap_enabled",
+    "pivots_enabled",
+    "pivot_timeframes",
+)
 
 _REQUIRED_FACTOR_AXES = (
     "core_level",
@@ -190,6 +242,140 @@ def default_study_draft() -> StudyDraft:
 def _partner_set_widget_key(index: int) -> str:
     """Stable Streamlit widget key for partner-set row ``index`` (SB2)."""
     return f"_study_builder_partner_set_{index}"
+
+
+def draft_to_mapping(draft: StudyDraft) -> dict[str, Any]:
+    """Serialize a draft for ``STUDIES_BUILDER_DRAFT_KEY`` (no Streamlit)."""
+    return copy.deepcopy(asdict(draft))
+
+
+def coerce_partner_levels(raw: Any) -> list[list[str]]:
+    """Always return list-of-lists. A flat token list becomes one set."""
+    if raw is None:
+        return []
+    if isinstance(raw, list) and raw and all(not isinstance(item, list) for item in raw):
+        tokens = list(dict.fromkeys(str(item) for item in raw if str(item).strip()))
+        return [tokens] if tokens else [[]]
+    out: list[list[str]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, list):
+                tokens = list(dict.fromkeys(str(token) for token in item if str(token).strip()))
+                out.append(tokens)
+            elif isinstance(item, str) and item.strip():
+                out.append([item.strip()])
+    return out
+
+
+def draft_from_mapping(payload: Mapping[str, Any] | None) -> StudyDraft:
+    """Rehydrate a ``StudyDraft`` from a session mapping."""
+    if not isinstance(payload, Mapping):
+        return default_study_draft()
+    known = {item.name for item in fields(StudyDraft)}
+    merged = asdict(default_study_draft())
+    for key, value in payload.items():
+        if key in known:
+            merged[key] = copy.deepcopy(value)
+    merged["partner_levels"] = coerce_partner_levels(merged.get("partner_levels"))
+    for list_field in (
+        "core_level",
+        "confluence_mode",
+        "trigger",
+        "trigger_timeframe",
+        "direction_values",
+        "secondary_metrics",
+    ):
+        raw = merged.get(list_field)
+        if not isinstance(raw, list):
+            merged[list_field] = []
+        else:
+            merged[list_field] = [str(item) for item in raw]
+    if merged.get("otf") is not None and not isinstance(merged["otf"], list):
+        merged["otf"] = None
+    if not isinstance(merged.get("levels"), dict):
+        merged["levels"] = _default_levels()
+    if not isinstance(merged.get("backtest"), dict):
+        merged["backtest"] = _default_backtest()
+    for battery in _BATTERY_KEYS:
+        if not isinstance(merged.get(battery), dict):
+            merged[battery] = _default_battery()
+    return StudyDraft(**merged)
+
+
+def infer_tf_mode(levels: Mapping[str, Any], key: str) -> str:
+    """Map a levels TF key to the SB2 radio label."""
+    if key not in levels or levels[key] is None:
+        return TF_MODE_PRODUCT_DEFAULT
+    value = levels[key]
+    if isinstance(value, list) and len(value) == 0:
+        return TF_MODE_NO_MA
+    return TF_MODE_EXPLICIT
+
+
+def apply_levels_tf_mode(
+    levels: Mapping[str, Any],
+    key: str,
+    mode: str,
+    selected: list[str] | None = None,
+) -> dict[str, Any]:
+    """Return a copy of ``levels`` with ``key`` omitted, ``[]``, or explicit TFs."""
+    out = copy.deepcopy(dict(levels))
+    if mode == TF_MODE_PRODUCT_DEFAULT:
+        out.pop(key, None)
+    elif mode == TF_MODE_NO_MA:
+        out[key] = []
+    else:
+        out[key] = [str(item) for item in (selected or [])]
+    return out
+
+
+def parse_csv_ints(text: str) -> list[int]:
+    """Parse comma-separated integers (grid SL/TP lists)."""
+    values: list[int] = []
+    for part in str(text).split(","):
+        stripped = part.strip()
+        if not stripped:
+            continue
+        values.append(int(stripped))
+    return values
+
+
+def parse_csv_tokens(text: str) -> list[str]:
+    """Parse comma-separated tokens (vwap/poc/pivot windows)."""
+    return [part.strip() for part in str(text).split(",") if part.strip()]
+
+
+def format_csv_values(values: Any) -> str:
+    """Join a list for a text widget."""
+    if not isinstance(values, list):
+        return ""
+    return ", ".join(str(item) for item in values)
+
+
+def levels_advanced_enabled(levels: Mapping[str, Any]) -> bool:
+    """True when the draft overrides optional window / pivot keys."""
+    return any(key in levels for key in _LEVELS_ADVANCED_KEYS)
+
+
+def ma_length_options(current: list[int], extra: int | None = None) -> list[int]:
+    """Common MA lengths plus any already-selected or typed extras."""
+    values = set(COMMON_MA_LENGTHS)
+    values.update(int(item) for item in current)
+    if extra is not None and int(extra) > 0:
+        values.add(int(extra))
+    return sorted(values)
+
+
+def otf_from_preset_ids(ids: list[str] | tuple[str, ...]) -> list[dict[str, Any]] | None:
+    """Build ``draft.otf`` from selected preset ids (order locked)."""
+    selected = {str(item) for item in ids}
+    if not selected:
+        return None
+    return [
+        copy.deepcopy(OTF_PRESETS[preset_id])
+        for preset_id in OTF_PRESET_ORDER
+        if preset_id in selected
+    ]
 
 
 def builder_token_catalog(levels: Mapping[str, Any] | None) -> tuple[str, ...]:
@@ -570,13 +756,27 @@ def hydrate_study_yaml(text: str) -> StudyDraft:
 
 # Re-export for SB2 widget rows without importing Streamlit here.
 __all__ = [
+    "COMMON_MA_LENGTHS",
+    "DIRECTION_MODE_CONSTANT",
+    "DIRECTION_MODE_FACTOR",
+    "DIRECTION_MODE_OPTIONS",
     "OTF_PRESETS",
     "OTF_PRESET_LABELS",
     "OTF_PRESET_ORDER",
     "STUDIES_BUILDER_DRAFT_KEY",
     "STUDIES_BUILDER_PENDING_SYNC_KEY",
     "StudyDraft",
+    "TF_MODE_EXPLICIT",
+    "TF_MODE_NO_MA",
+    "TF_MODE_OPTIONS",
+    "TF_MODE_PRODUCT_DEFAULT",
+    "WIDGET_KEY_BATTERY_GRID",
+    "WIDGET_KEY_BATTERY_VALIDATION",
+    "WIDGET_KEY_BATTERY_WALK_FORWARD",
+    "WIDGET_KEY_COMMISSION",
     "WIDGET_KEY_CONFIRM_ABOVE_RUNS",
+    "WIDGET_KEY_CONFLUENCE_ANCHOR",
+    "WIDGET_KEY_CONFLUENCE_GLOBAL",
     "WIDGET_KEY_CONFLUENCE_MODE",
     "WIDGET_KEY_CORE_LEVEL",
     "WIDGET_KEY_DATASET_PATH",
@@ -584,22 +784,62 @@ __all__ = [
     "WIDGET_KEY_DIRECTION_CONSTANT",
     "WIDGET_KEY_DIRECTION_MODE",
     "WIDGET_KEY_DIRECTION_VALUES",
+    "WIDGET_KEY_EMA_ADD_LENGTH",
+    "WIDGET_KEY_EMA_LENGTHS",
+    "WIDGET_KEY_EMA_TF_MODE",
+    "WIDGET_KEY_EMA_TIMEFRAMES",
+    "WIDGET_KEY_EXPOSURE_POLICY",
+    "WIDGET_KEY_FLAT_BY_SESSION_CLOSE",
     "WIDGET_KEY_FORMAT_PROFILE",
+    "WIDGET_KEY_FROM_PARTNERS",
+    "WIDGET_KEY_GRID_SL_VALUES",
+    "WIDGET_KEY_GRID_TP_VALUES",
     "WIDGET_KEY_INSTRUMENT",
+    "WIDGET_KEY_INTRABAR_MODEL",
+    "WIDGET_KEY_LEVELS_ADVANCED",
+    "WIDGET_KEY_MAX_CONFLUENCES",
+    "WIDGET_KEY_MIN_CONFLUENCES",
+    "WIDGET_KEY_MIN_VALID_CONFLUENCES",
+    "WIDGET_KEY_NAKED_ONLY",
+    "WIDGET_KEY_NAKED_REQUIREMENT",
     "WIDGET_KEY_NAME",
     "WIDGET_KEY_OTF",
     "WIDGET_KEY_OUTPUT_DIR",
+    "WIDGET_KEY_PIVOTS_ENABLED",
+    "WIDGET_KEY_PIVOT_TIMEFRAMES",
+    "WIDGET_KEY_POC_WINDOWS",
+    "WIDGET_KEY_PREV30M_ENABLED",
+    "WIDGET_KEY_SLIPPAGE",
+    "WIDGET_KEY_SMA_ADD_LENGTH",
+    "WIDGET_KEY_SMA_LENGTHS",
+    "WIDGET_KEY_SMA_TF_MODE",
+    "WIDGET_KEY_SMA_TIMEFRAMES",
     "WIDGET_KEY_SOURCE_TIMEZONE",
+    "WIDGET_KEY_STOP_LOSS",
+    "WIDGET_KEY_TAKE_PROFIT",
+    "WIDGET_KEY_TOLERANCE_TICKS",
     "WIDGET_KEY_TRIGGER",
     "WIDGET_KEY_TRIGGER_TIMEFRAME",
+    "WIDGET_KEY_VWAP_WINDOWS",
     "WIDGET_KEY_WORKERS",
     "_partner_set_widget_key",
+    "apply_levels_tf_mode",
     "builder_token_catalog",
+    "coerce_partner_levels",
     "default_study_draft",
+    "draft_from_mapping",
+    "draft_to_mapping",
     "draft_warnings",
     "emit_study_spec",
     "emit_study_yaml",
+    "format_csv_values",
     "hydrate_study_draft",
     "hydrate_study_yaml",
+    "infer_tf_mode",
+    "levels_advanced_enabled",
+    "ma_length_options",
+    "otf_from_preset_ids",
     "otf_preset_ids",
+    "parse_csv_ints",
+    "parse_csv_tokens",
 ]

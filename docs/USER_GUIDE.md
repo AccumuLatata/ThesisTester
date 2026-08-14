@@ -977,7 +977,11 @@ loads a study `output_dir` (ledger, ranked / low-N / unresolved, OTF Δ, overvie
 via `report_study(..., write_artifacts=False)`). **Preview** pastes canonical
 `schema_version: 1` YAML and expands in memory (cell count / `--confirm` gate).
 After a successful preview, **Run via CLI** spawns the same headless
-`python -m thesistester study run` process (detached).
+`python -m thesistester study run` process (detached). **Build StudySpec**
+authors the same YAML via widgets (`StudyDraft` → `emit_study_yaml`);
+**Apply to Preview** writes the Preview textarea and clears preview cache /
+launch approval — Validate / Preview is still required; Build does not spawn
+the CLI.
 
 **When to use it.** Inspect artifacts after a CLI run, or preview YAML then start
 that CLI without typing it. Promote stays CLI-only.

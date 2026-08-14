@@ -1,9 +1,100 @@
-"""RS-D2/RS-D8/RS-D9 — Studies inspect, preview, and CLI-spawn (no in-process execute)."""
+"""RS-D2/RS-D8/RS-D9 + SB2 — Studies inspect, preview, CLI-spawn, and Build tab."""
 
 from __future__ import annotations
 
+import copy
+from typing import Any
+
 import streamlit as st
 
+from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.engine.intrabar import VALID_INTRABAR_MODELS
+from thesistester.execution_defaults import EXPOSURE_POLICY_OPTIONS
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
+from thesistester.setup import TRIGGER_TIMEFRAME_CHOICES, VALID_TRIGGERS
+from thesistester.study.builder import (
+    DIRECTION_MODE_CONSTANT,
+    DIRECTION_MODE_FACTOR,
+    DIRECTION_MODE_OPTIONS,
+    OTF_PRESET_LABELS,
+    OTF_PRESET_ORDER,
+    STUDIES_BUILDER_DRAFT_KEY,
+    STUDIES_BUILDER_PENDING_SYNC_KEY,
+    StudyDraft,
+    TF_MODE_EXPLICIT,
+    TF_MODE_OPTIONS,
+    WIDGET_KEY_BATTERY_GRID,
+    WIDGET_KEY_BATTERY_VALIDATION,
+    WIDGET_KEY_BATTERY_WALK_FORWARD,
+    WIDGET_KEY_COMMISSION,
+    WIDGET_KEY_CONFIRM_ABOVE_RUNS,
+    WIDGET_KEY_CONFLUENCE_ANCHOR,
+    WIDGET_KEY_CONFLUENCE_GLOBAL,
+    WIDGET_KEY_CORE_LEVEL,
+    WIDGET_KEY_DATASET_PATH,
+    WIDGET_KEY_DESCRIPTION,
+    WIDGET_KEY_DIRECTION_CONSTANT,
+    WIDGET_KEY_DIRECTION_MODE,
+    WIDGET_KEY_DIRECTION_VALUES,
+    WIDGET_KEY_EMA_ADD_LENGTH,
+    WIDGET_KEY_EMA_LENGTHS,
+    WIDGET_KEY_EMA_TF_MODE,
+    WIDGET_KEY_EMA_TIMEFRAMES,
+    WIDGET_KEY_EXPOSURE_POLICY,
+    WIDGET_KEY_FLAT_BY_SESSION_CLOSE,
+    WIDGET_KEY_FORMAT_PROFILE,
+    WIDGET_KEY_FROM_PARTNERS,
+    WIDGET_KEY_GRID_SL_VALUES,
+    WIDGET_KEY_GRID_TP_VALUES,
+    WIDGET_KEY_INSTRUMENT,
+    WIDGET_KEY_INTRABAR_MODEL,
+    WIDGET_KEY_LEVELS_ADVANCED,
+    WIDGET_KEY_MAX_CONFLUENCES,
+    WIDGET_KEY_MIN_CONFLUENCES,
+    WIDGET_KEY_MIN_VALID_CONFLUENCES,
+    WIDGET_KEY_NAKED_ONLY,
+    WIDGET_KEY_NAKED_REQUIREMENT,
+    WIDGET_KEY_NAME,
+    WIDGET_KEY_OTF,
+    WIDGET_KEY_OUTPUT_DIR,
+    WIDGET_KEY_PIVOTS_ENABLED,
+    WIDGET_KEY_PIVOT_TIMEFRAMES,
+    WIDGET_KEY_POC_WINDOWS,
+    WIDGET_KEY_PREV30M_ENABLED,
+    WIDGET_KEY_SLIPPAGE,
+    WIDGET_KEY_SMA_ADD_LENGTH,
+    WIDGET_KEY_SMA_LENGTHS,
+    WIDGET_KEY_SMA_TF_MODE,
+    WIDGET_KEY_SMA_TIMEFRAMES,
+    WIDGET_KEY_SOURCE_TIMEZONE,
+    WIDGET_KEY_STOP_LOSS,
+    WIDGET_KEY_TAKE_PROFIT,
+    WIDGET_KEY_TOLERANCE_TICKS,
+    WIDGET_KEY_TRIGGER,
+    WIDGET_KEY_TRIGGER_TIMEFRAME,
+    WIDGET_KEY_VWAP_WINDOWS,
+    WIDGET_KEY_WORKERS,
+    _partner_set_widget_key,
+    apply_levels_tf_mode,
+    builder_token_catalog,
+    coerce_partner_levels,
+    default_study_draft,
+    draft_from_mapping,
+    draft_to_mapping,
+    draft_warnings,
+    emit_study_spec,
+    emit_study_yaml,
+    format_csv_values,
+    hydrate_study_yaml,
+    infer_tf_mode,
+    levels_advanced_enabled,
+    ma_length_options,
+    otf_from_preset_ids,
+    otf_preset_ids,
+    parse_csv_ints,
+    parse_csv_tokens,
+)
 from thesistester.study.launch import (
     LAUNCH_LOG_NAME,
     STUDIES_LAUNCH_APPROVAL_KEY,
@@ -27,6 +118,7 @@ from thesistester.study.preview import (
     STUDIES_PREVIEW_YAML_KEY,
     StudyPreview,
     example_study_spec_path,
+    preview_study_spec,
     preview_study_yaml,
 )
 from thesistester.study.schema import StudySpecError
@@ -42,8 +134,9 @@ from thesistester.study.viewer import (
 
 st.title("Studies")
 st.caption(
-    "Inspect a completed study output directory, or preview a canonical StudySpec "
-    "YAML (cell count / confirm gate). Run via CLI spawns the existing "
+    "Inspect a completed study output directory, preview a canonical StudySpec "
+    "YAML (cell count / confirm gate), or build one without typing YAML. "
+    "Run via CLI (Preview tab) spawns the existing "
     "`python -m thesistester study run` process. Promote stays on the CLI "
     "(or optional STUDY.* assistant tools)."
 )
@@ -56,7 +149,9 @@ st.info(
     "combinatorial screening size, not independent statistical tests."
 )
 
-inspect_tab, preview_tab = st.tabs(["Inspect output dir", "Preview StudySpec"])
+inspect_tab, preview_tab, build_tab = st.tabs(
+    ["Inspect output dir", "Preview StudySpec", "Build StudySpec"]
+)
 
 
 def _render_inspect() -> None:
@@ -461,8 +556,628 @@ def _render_preview() -> None:
     )
 
 
+_TRIGGER_OPTIONS = ("touch", "reject", "break", "reclaim", "3c")
+_DIRECTION_VALUES = ("long", "short", "both")
+_NAKED_REQUIREMENTS = ("any", "all")
+_FROM_PARTNERS_OPTIONS = ("required", "optional")
+_BUILDER_HONESTY = (
+    "**Honesty.** Combinatorial `run_count` is a screening size, not independent "
+    "statistical tests. Large factorials need `--confirm` (two-step Bind confirm "
+    "then Confirm and run on the Preview tab). Descriptive ranking after a run "
+    "is not a validated edge. The child process is "
+    "`python -m thesistester study run …`."
+)
+
+
+def _ensure_builder_draft() -> StudyDraft:
+    if STUDIES_BUILDER_DRAFT_KEY not in st.session_state:
+        st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(default_study_draft())
+        st.session_state[STUDIES_BUILDER_PENDING_SYNC_KEY] = True
+    draft = draft_from_mapping(st.session_state.get(STUDIES_BUILDER_DRAFT_KEY))
+    if st.session_state.pop(STUDIES_BUILDER_PENDING_SYNC_KEY, False):
+        _sync_builder_widgets(draft)
+    return draft
+
+
+def _sync_builder_widgets(draft: StudyDraft) -> None:
+    """Overwrite widget keys before widgets instantiate (hydrate / start-from-example)."""
+    st.session_state[WIDGET_KEY_NAME] = draft.name
+    st.session_state[WIDGET_KEY_DESCRIPTION] = "" if draft.description is None else draft.description
+    st.session_state[WIDGET_KEY_WORKERS] = int(draft.workers)
+    st.session_state[WIDGET_KEY_CONFIRM_ABOVE_RUNS] = int(draft.confirm_above_runs)
+    st.session_state[WIDGET_KEY_OUTPUT_DIR] = draft.output_dir or ""
+    st.session_state[WIDGET_KEY_DATASET_PATH] = draft.dataset_path
+    st.session_state[WIDGET_KEY_INSTRUMENT] = draft.instrument
+    st.session_state[WIDGET_KEY_SOURCE_TIMEZONE] = draft.source_timezone or ""
+    st.session_state[WIDGET_KEY_FORMAT_PROFILE] = draft.format_profile or ""
+    sma_lengths = [int(item) for item in (draft.levels.get("sma_lengths") or [])]
+    ema_lengths = [int(item) for item in (draft.levels.get("ema_lengths") or [])]
+    st.session_state[WIDGET_KEY_SMA_LENGTHS] = sma_lengths
+    st.session_state[WIDGET_KEY_EMA_LENGTHS] = ema_lengths
+    st.session_state[WIDGET_KEY_SMA_TF_MODE] = infer_tf_mode(draft.levels, "sma_timeframes")
+    st.session_state[WIDGET_KEY_EMA_TF_MODE] = infer_tf_mode(draft.levels, "ema_timeframes")
+    sma_tfs = draft.levels.get("sma_timeframes")
+    ema_tfs = draft.levels.get("ema_timeframes")
+    st.session_state[WIDGET_KEY_SMA_TIMEFRAMES] = (
+        [str(item) for item in sma_tfs] if isinstance(sma_tfs, list) else []
+    )
+    st.session_state[WIDGET_KEY_EMA_TIMEFRAMES] = (
+        [str(item) for item in ema_tfs] if isinstance(ema_tfs, list) else []
+    )
+    st.session_state[WIDGET_KEY_LEVELS_ADVANCED] = levels_advanced_enabled(draft.levels)
+    st.session_state[WIDGET_KEY_VWAP_WINDOWS] = format_csv_values(
+        draft.levels.get("vwap_windows", DEFAULT_LEVELS_SETTINGS["vwap_windows"])
+    )
+    st.session_state[WIDGET_KEY_POC_WINDOWS] = format_csv_values(
+        draft.levels.get("poc_windows", DEFAULT_LEVELS_SETTINGS["poc_windows"])
+    )
+    st.session_state[WIDGET_KEY_PREV30M_ENABLED] = bool(
+        draft.levels.get(
+            "prev30m_vwap_enabled", DEFAULT_LEVELS_SETTINGS["prev30m_vwap_enabled"]
+        )
+    )
+    st.session_state[WIDGET_KEY_PIVOTS_ENABLED] = bool(
+        draft.levels.get("pivots_enabled", DEFAULT_LEVELS_SETTINGS["pivots_enabled"])
+    )
+    st.session_state[WIDGET_KEY_PIVOT_TIMEFRAMES] = format_csv_values(
+        draft.levels.get("pivot_timeframes", DEFAULT_LEVELS_SETTINGS["pivot_timeframes"])
+    )
+    st.session_state[WIDGET_KEY_CORE_LEVEL] = list(draft.core_level)
+    for index, partner_set in enumerate(draft.partner_levels):
+        st.session_state[_partner_set_widget_key(index)] = list(partner_set)
+    st.session_state[WIDGET_KEY_CONFLUENCE_GLOBAL] = "global_cluster" in draft.confluence_mode
+    st.session_state[WIDGET_KEY_CONFLUENCE_ANCHOR] = "anchor_rules" in draft.confluence_mode
+    st.session_state[WIDGET_KEY_TRIGGER] = list(draft.trigger)
+    st.session_state[WIDGET_KEY_TRIGGER_TIMEFRAME] = list(draft.trigger_timeframe)
+    st.session_state[WIDGET_KEY_OTF] = [
+        preset_id for preset_id in otf_preset_ids(draft.otf) if preset_id is not None
+    ]
+    st.session_state[WIDGET_KEY_DIRECTION_MODE] = (
+        DIRECTION_MODE_FACTOR if draft.direction_as_factor else DIRECTION_MODE_CONSTANT
+    )
+    st.session_state[WIDGET_KEY_DIRECTION_CONSTANT] = draft.direction_constant
+    st.session_state[WIDGET_KEY_DIRECTION_VALUES] = list(draft.direction_values)
+    st.session_state[WIDGET_KEY_TOLERANCE_TICKS] = float(draft.tolerance_ticks)
+    st.session_state[WIDGET_KEY_NAKED_ONLY] = bool(draft.naked_only)
+    st.session_state[WIDGET_KEY_NAKED_REQUIREMENT] = draft.naked_requirement
+    backtest = draft.backtest
+    st.session_state[WIDGET_KEY_STOP_LOSS] = int(backtest.get("stop_loss_ticks") or 8)
+    st.session_state[WIDGET_KEY_TAKE_PROFIT] = int(backtest.get("take_profit_ticks") or 16)
+    st.session_state[WIDGET_KEY_COMMISSION] = float(backtest.get("commission_per_side") or 0.0)
+    st.session_state[WIDGET_KEY_SLIPPAGE] = float(backtest.get("slippage_ticks") or 0.0)
+    st.session_state[WIDGET_KEY_EXPOSURE_POLICY] = str(
+        backtest.get("exposure_policy") or "single_position"
+    )
+    st.session_state[WIDGET_KEY_INTRABAR_MODEL] = str(backtest.get("intrabar_model") or "sl_first")
+    st.session_state[WIDGET_KEY_FLAT_BY_SESSION_CLOSE] = bool(
+        backtest.get("flat_by_session_close", False)
+    )
+    st.session_state[WIDGET_KEY_BATTERY_GRID] = draft.grid.get("enabled") is True
+    st.session_state[WIDGET_KEY_BATTERY_VALIDATION] = draft.validation.get("enabled") is True
+    st.session_state[WIDGET_KEY_BATTERY_WALK_FORWARD] = draft.walk_forward.get("enabled") is True
+    st.session_state[WIDGET_KEY_GRID_SL_VALUES] = format_csv_values(
+        draft.grid.get("stop_loss_ticks_values")
+    )
+    st.session_state[WIDGET_KEY_GRID_TP_VALUES] = format_csv_values(
+        draft.grid.get("take_profit_ticks_values")
+    )
+    st.session_state[WIDGET_KEY_MIN_CONFLUENCES] = int(draft.min_confluences)
+    st.session_state[WIDGET_KEY_MAX_CONFLUENCES] = int(draft.max_confluences)
+    st.session_state[WIDGET_KEY_MIN_VALID_CONFLUENCES] = int(draft.min_valid_confluences)
+    st.session_state[WIDGET_KEY_FROM_PARTNERS] = draft.from_partners
+
+
+def _default_partner_token(catalog: tuple[str, ...], cores: list[str]) -> str:
+    core_set = {str(token) for token in cores}
+    for token in catalog:
+        if token not in core_set:
+            return token
+    if catalog:
+        return catalog[0]
+    return "pdPOC"
+
+
+def _int_list(values: Any) -> list[int]:
+    out: list[int] = []
+    if not isinstance(values, list):
+        return out
+    for item in values:
+        try:
+            out.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
+    """Collect widget values onto a copy of ``base`` (preserves stage/report/pass-through)."""
+    draft = draft_from_mapping(draft_to_mapping(base))
+    draft.name = str(st.session_state.get(WIDGET_KEY_NAME) or "").strip() or "untitled_study"
+    description = st.session_state.get(WIDGET_KEY_DESCRIPTION)
+    if base.description is None and (description is None or str(description) == ""):
+        draft.description = None
+    else:
+        draft.description = str(description or "")
+    output_raw = str(st.session_state.get(WIDGET_KEY_OUTPUT_DIR) or "").strip()
+    draft.output_dir = output_raw or None
+    draft.workers = int(st.session_state.get(WIDGET_KEY_WORKERS) or 1)
+    draft.confirm_above_runs = int(st.session_state.get(WIDGET_KEY_CONFIRM_ABOVE_RUNS) or 200)
+    draft.dataset_path = str(st.session_state.get(WIDGET_KEY_DATASET_PATH) or "").strip()
+    draft.instrument = str(st.session_state.get(WIDGET_KEY_INSTRUMENT) or draft.instrument)
+    timezone = str(st.session_state.get(WIDGET_KEY_SOURCE_TIMEZONE) or "").strip()
+    draft.source_timezone = timezone or None
+    profile = str(st.session_state.get(WIDGET_KEY_FORMAT_PROFILE) or "").strip()
+    draft.format_profile = profile or None
+
+    levels = copy.deepcopy(dict(draft.levels))
+    sma_lengths = _int_list(st.session_state.get(WIDGET_KEY_SMA_LENGTHS))
+    ema_lengths = _int_list(st.session_state.get(WIDGET_KEY_EMA_LENGTHS))
+    if sma_lengths:
+        levels["sma_lengths"] = sma_lengths
+    else:
+        levels.pop("sma_lengths", None)
+    if ema_lengths:
+        levels["ema_lengths"] = ema_lengths
+    else:
+        levels.pop("ema_lengths", None)
+    levels = apply_levels_tf_mode(
+        levels,
+        "sma_timeframes",
+        str(st.session_state.get(WIDGET_KEY_SMA_TF_MODE) or TF_MODE_EXPLICIT),
+        [str(item) for item in (st.session_state.get(WIDGET_KEY_SMA_TIMEFRAMES) or [])],
+    )
+    levels = apply_levels_tf_mode(
+        levels,
+        "ema_timeframes",
+        str(st.session_state.get(WIDGET_KEY_EMA_TF_MODE) or TF_MODE_EXPLICIT),
+        [str(item) for item in (st.session_state.get(WIDGET_KEY_EMA_TIMEFRAMES) or [])],
+    )
+    if st.session_state.get(WIDGET_KEY_LEVELS_ADVANCED):
+        levels["vwap_windows"] = parse_csv_tokens(
+            str(st.session_state.get(WIDGET_KEY_VWAP_WINDOWS) or "")
+        )
+        levels["poc_windows"] = parse_csv_tokens(
+            str(st.session_state.get(WIDGET_KEY_POC_WINDOWS) or "")
+        )
+        levels["prev30m_vwap_enabled"] = bool(st.session_state.get(WIDGET_KEY_PREV30M_ENABLED))
+        levels["pivots_enabled"] = bool(st.session_state.get(WIDGET_KEY_PIVOTS_ENABLED))
+        levels["pivot_timeframes"] = parse_csv_tokens(
+            str(st.session_state.get(WIDGET_KEY_PIVOT_TIMEFRAMES) or "")
+        )
+    else:
+        for key in (
+            "vwap_windows",
+            "poc_windows",
+            "prev30m_vwap_enabled",
+            "pivots_enabled",
+            "pivot_timeframes",
+        ):
+            levels.pop(key, None)
+    draft.levels = levels
+
+    draft.core_level = [str(item) for item in (st.session_state.get(WIDGET_KEY_CORE_LEVEL) or [])]
+    partner_sets: list[list[str]] = []
+    for index in range(max(len(base.partner_levels), 1)):
+        raw = st.session_state.get(_partner_set_widget_key(index))
+        if raw is None:
+            if index < len(base.partner_levels):
+                partner_sets.append(list(base.partner_levels[index]))
+            continue
+        partner_sets.append([str(item) for item in raw])
+    draft.partner_levels = coerce_partner_levels(partner_sets)
+    modes: list[str] = []
+    if st.session_state.get(WIDGET_KEY_CONFLUENCE_GLOBAL):
+        modes.append("global_cluster")
+    if st.session_state.get(WIDGET_KEY_CONFLUENCE_ANCHOR):
+        modes.append("anchor_rules")
+    draft.confluence_mode = modes
+    draft.trigger = [str(item) for item in (st.session_state.get(WIDGET_KEY_TRIGGER) or [])]
+    draft.trigger_timeframe = [
+        str(item) for item in (st.session_state.get(WIDGET_KEY_TRIGGER_TIMEFRAME) or [])
+    ]
+    draft.otf = otf_from_preset_ids(
+        [str(item) for item in (st.session_state.get(WIDGET_KEY_OTF) or [])]
+    )
+    draft.direction_as_factor = (
+        st.session_state.get(WIDGET_KEY_DIRECTION_MODE) == DIRECTION_MODE_FACTOR
+    )
+    draft.direction_constant = str(
+        st.session_state.get(WIDGET_KEY_DIRECTION_CONSTANT) or "both"
+    )
+    draft.direction_values = [
+        str(item) for item in (st.session_state.get(WIDGET_KEY_DIRECTION_VALUES) or [])
+    ]
+    draft.tolerance_ticks = st.session_state.get(WIDGET_KEY_TOLERANCE_TICKS, 0)
+    draft.naked_only = bool(st.session_state.get(WIDGET_KEY_NAKED_ONLY))
+    draft.naked_requirement = str(
+        st.session_state.get(WIDGET_KEY_NAKED_REQUIREMENT) or "any"
+    )
+    backtest = copy.deepcopy(dict(draft.backtest))
+    backtest["stop_loss_ticks"] = int(st.session_state.get(WIDGET_KEY_STOP_LOSS) or 8)
+    backtest["take_profit_ticks"] = int(st.session_state.get(WIDGET_KEY_TAKE_PROFIT) or 16)
+    backtest["commission_per_side"] = float(st.session_state.get(WIDGET_KEY_COMMISSION) or 0.0)
+    backtest["slippage_ticks"] = float(st.session_state.get(WIDGET_KEY_SLIPPAGE) or 0.0)
+    backtest["exposure_policy"] = str(
+        st.session_state.get(WIDGET_KEY_EXPOSURE_POLICY) or "single_position"
+    )
+    backtest["intrabar_model"] = str(
+        st.session_state.get(WIDGET_KEY_INTRABAR_MODEL) or "sl_first"
+    )
+    backtest["flat_by_session_close"] = bool(
+        st.session_state.get(WIDGET_KEY_FLAT_BY_SESSION_CLOSE)
+    )
+    draft.backtest = backtest
+    grid = copy.deepcopy(dict(draft.grid))
+    grid["enabled"] = bool(st.session_state.get(WIDGET_KEY_BATTERY_GRID))
+    if grid["enabled"]:
+        sl_text = str(st.session_state.get(WIDGET_KEY_GRID_SL_VALUES) or "")
+        tp_text = str(st.session_state.get(WIDGET_KEY_GRID_TP_VALUES) or "")
+        if sl_text.strip():
+            grid["stop_loss_ticks_values"] = parse_csv_ints(sl_text)
+        if tp_text.strip():
+            grid["take_profit_ticks_values"] = parse_csv_ints(tp_text)
+    draft.grid = grid
+    validation = copy.deepcopy(dict(draft.validation))
+    validation["enabled"] = bool(st.session_state.get(WIDGET_KEY_BATTERY_VALIDATION))
+    draft.validation = validation
+    walk_forward = copy.deepcopy(dict(draft.walk_forward))
+    walk_forward["enabled"] = bool(st.session_state.get(WIDGET_KEY_BATTERY_WALK_FORWARD))
+    draft.walk_forward = walk_forward
+    draft.min_confluences = int(st.session_state.get(WIDGET_KEY_MIN_CONFLUENCES) or 2)
+    draft.max_confluences = int(st.session_state.get(WIDGET_KEY_MAX_CONFLUENCES) or 2)
+    draft.min_valid_confluences = int(st.session_state.get(WIDGET_KEY_MIN_VALID_CONFLUENCES) or 1)
+    draft.from_partners = str(st.session_state.get(WIDGET_KEY_FROM_PARTNERS) or "required")
+    return draft
+
+
+def _apply_builder_draft_to_preview(draft: StudyDraft) -> str:
+    """Locked SB2 Apply to Preview sequence (§4.7). Does not spawn or auto-preview."""
+    yaml_text = emit_study_yaml(draft)
+    prev_cached_yaml = st.session_state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)
+    st.session_state[STUDIES_PREVIEW_YAML_KEY] = yaml_text
+    st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
+    st.session_state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
+    reset_launch_session_for_preview(
+        st.session_state,
+        prev_cached_yaml=prev_cached_yaml if isinstance(prev_cached_yaml, str) else None,
+        new_yaml=yaml_text,
+    )
+    return yaml_text
+
+
+def _render_builder_live_strip(draft: StudyDraft) -> tuple[StudyPreview | None, Exception | None]:
+    try:
+        spec = emit_study_spec(draft)
+        preview = preview_study_spec(spec)
+    except (StudySpecError, ValueError) as exc:
+        st.error(str(exc))
+        return None, exc
+    st.subheader(preview.study_name or draft.name)
+    cols = st.columns(4)
+    shown_count = preview.run_count if preview.expanded else preview.effective_run_count_estimate
+    cols[0].metric("Cells (effective)", shown_count)
+    cols[1].metric("Full cartesian", preview.cartesian_product)
+    cols[2].metric("Workers", preview.workers)
+    cols[3].metric("Needs --confirm", "yes" if preview.needs_confirm else "no")
+    st.caption(
+        f"confirm_above_runs={preview.confirm_above_runs} · "
+        f"expanded={preview.expanded} · "
+        f"identity `{preview.study_identity_hash}` "
+        "(launch re-hashes after dataset pin)"
+    )
+    if preview.cap_warning:
+        st.warning(preview.cap_warning)
+    st.write("Axis sizes:", preview.axis_sizes)
+    if preview.effective_run_count_estimate != preview.cartesian_product:
+        st.caption(
+            f"Staged/matched estimate {preview.effective_run_count_estimate} vs "
+            f"unstaged cartesian {preview.cartesian_product}."
+        )
+    st.write("Battery flags:", preview.battery_enabled)
+    for line in preview.hint_lines:
+        if line.startswith("WARNING"):
+            st.warning(line)
+        else:
+            st.caption(line)
+    st.info(_BUILDER_HONESTY)
+    return preview, None
+
+
+def _render_ma_length_block(label: str, lengths_key: str, add_key: str, current: list[int]) -> None:
+    extra_raw = st.session_state.get(add_key)
+    extra = int(extra_raw) if extra_raw not in (None, "") else None
+    options = ma_length_options(current, extra)
+    st.multiselect(f"{label} lengths", options=options, key=lengths_key)
+    add_kwargs: dict[str, Any] = {
+        "min_value": 1,
+        "step": 1,
+        "key": add_key,
+        "help": (
+            "Typed lengths appear in the multiselect on the next rerun; "
+            "select them to include."
+        ),
+    }
+    if add_key not in st.session_state:
+        add_kwargs["value"] = 9
+    st.number_input(f"Add {label} length", **add_kwargs)
+
+
+def _render_tf_mode_block(label: str, mode_key: str, tfs_key: str) -> None:
+    st.radio(f"{label} timeframes", options=list(TF_MODE_OPTIONS), key=mode_key)
+    if st.session_state.get(mode_key) == TF_MODE_EXPLICIT:
+        st.multiselect(
+            f"{label} explicit TFs",
+            options=list(SUPPORTED_INDICATOR_TIMEFRAMES),
+            key=tfs_key,
+        )
+
+
+def _render_build() -> None:
+    base = _ensure_builder_draft()
+    st.caption(
+        "Author a closed StudySpec. Apply to Preview writes YAML onto the Preview tab — "
+        "Validate / Preview is still required. This tab does not spawn CLI. "
+        "Launch still refuses a missing dataset CSV; preview does not need the file."
+    )
+
+    st.markdown("### Identity")
+    st.text_input("Study name", key=WIDGET_KEY_NAME)
+    st.text_input("Description", key=WIDGET_KEY_DESCRIPTION)
+    id_cols = st.columns(3)
+    id_cols[0].number_input("Workers", min_value=1, step=1, key=WIDGET_KEY_WORKERS)
+    id_cols[1].number_input(
+        "confirm_above_runs", min_value=1, step=1, key=WIDGET_KEY_CONFIRM_ABOVE_RUNS
+    )
+    id_cols[2].text_input(
+        "Output dir (optional)",
+        key=WIDGET_KEY_OUTPUT_DIR,
+        placeholder="results/studies/<name>",
+    )
+
+    st.markdown("### Dataset")
+    st.text_input("Dataset path", key=WIDGET_KEY_DATASET_PATH)
+    instrument_options = list(INSTRUMENTS.keys())
+    if base.instrument and base.instrument not in instrument_options:
+        instrument_options = [base.instrument, *instrument_options]
+    st.selectbox("Instrument", options=instrument_options, key=WIDGET_KEY_INSTRUMENT)
+    timezone_options = ["", *TIMEZONE_OPTIONS]
+    if base.source_timezone and base.source_timezone not in timezone_options:
+        timezone_options = [base.source_timezone, *timezone_options]
+    st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
+    st.text_input(
+        "Format profile (optional)",
+        key=WIDGET_KEY_FORMAT_PROFILE,
+        help="Empty omits the key.",
+    )
+
+    st.markdown("### Levels → tokens")
+    length_cols = st.columns(2)
+    with length_cols[0]:
+        _render_ma_length_block(
+            "SMA",
+            WIDGET_KEY_SMA_LENGTHS,
+            WIDGET_KEY_SMA_ADD_LENGTH,
+            _int_list(st.session_state.get(WIDGET_KEY_SMA_LENGTHS) or base.levels.get("sma_lengths")),
+        )
+        _render_tf_mode_block("SMA", WIDGET_KEY_SMA_TF_MODE, WIDGET_KEY_SMA_TIMEFRAMES)
+    with length_cols[1]:
+        _render_ma_length_block(
+            "EMA",
+            WIDGET_KEY_EMA_LENGTHS,
+            WIDGET_KEY_EMA_ADD_LENGTH,
+            _int_list(st.session_state.get(WIDGET_KEY_EMA_LENGTHS) or base.levels.get("ema_lengths")),
+        )
+        _render_tf_mode_block("EMA", WIDGET_KEY_EMA_TF_MODE, WIDGET_KEY_EMA_TIMEFRAMES)
+    st.checkbox("Override windows / extras", key=WIDGET_KEY_LEVELS_ADVANCED)
+    if st.session_state.get(WIDGET_KEY_LEVELS_ADVANCED):
+        with st.expander("vwap / poc / prev30m / pivots", expanded=True):
+            st.text_input("vwap_windows", key=WIDGET_KEY_VWAP_WINDOWS)
+            st.text_input("poc_windows", key=WIDGET_KEY_POC_WINDOWS)
+            st.checkbox("prev30m_vwap_enabled", key=WIDGET_KEY_PREV30M_ENABLED)
+            st.checkbox("pivots_enabled", key=WIDGET_KEY_PIVOTS_ENABLED)
+            st.text_input("pivot_timeframes", key=WIDGET_KEY_PIVOT_TIMEFRAMES)
+
+    live_levels = apply_levels_tf_mode(
+        apply_levels_tf_mode(
+            {
+                **dict(base.levels),
+                "sma_lengths": _int_list(
+                    st.session_state.get(WIDGET_KEY_SMA_LENGTHS) or base.levels.get("sma_lengths")
+                )
+                or None,
+                "ema_lengths": _int_list(
+                    st.session_state.get(WIDGET_KEY_EMA_LENGTHS) or base.levels.get("ema_lengths")
+                )
+                or None,
+            },
+            "sma_timeframes",
+            str(st.session_state.get(WIDGET_KEY_SMA_TF_MODE) or infer_tf_mode(base.levels, "sma_timeframes")),
+            [str(item) for item in (st.session_state.get(WIDGET_KEY_SMA_TIMEFRAMES) or [])],
+        ),
+        "ema_timeframes",
+        str(st.session_state.get(WIDGET_KEY_EMA_TF_MODE) or infer_tf_mode(base.levels, "ema_timeframes")),
+        [str(item) for item in (st.session_state.get(WIDGET_KEY_EMA_TIMEFRAMES) or [])],
+    )
+    if live_levels.get("sma_lengths") is None:
+        live_levels.pop("sma_lengths", None)
+    if live_levels.get("ema_lengths") is None:
+        live_levels.pop("ema_lengths", None)
+    catalog = builder_token_catalog(live_levels)
+    shown = ", ".join(catalog[:20])
+    extra = f" … +{len(catalog) - 20} more" if len(catalog) > 20 else ""
+    st.caption(f"**Closed tokens ({len(catalog)}):** {shown}{extra}")
+
+    st.markdown("### Factors")
+    core_options = list(dict.fromkeys([*catalog, *base.core_level]))
+    st.multiselect("core_level", options=core_options, key=WIDGET_KEY_CORE_LEVEL)
+    st.caption("partner_levels is always a list of sets (list-of-lists).")
+    partner_count = max(len(base.partner_levels), 1)
+    for index in range(partner_count):
+        current = list(base.partner_levels[index]) if index < len(base.partner_levels) else []
+        options = list(dict.fromkeys([*catalog, *current]))
+        st.multiselect(
+            f"Partner set {index + 1}",
+            options=options,
+            key=_partner_set_widget_key(index),
+        )
+    add_col, remove_col = st.columns(2)
+    if add_col.button("Add partner set"):
+        draft = _draft_from_builder_widgets(base)
+        draft.partner_levels = coerce_partner_levels(draft.partner_levels)
+        draft.partner_levels.append(
+            [_default_partner_token(catalog, draft.core_level)]
+        )
+        st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(draft)
+        st.session_state[STUDIES_BUILDER_PENDING_SYNC_KEY] = True
+        st.rerun()
+    if remove_col.button("Remove last partner set", disabled=partner_count <= 1):
+        draft = _draft_from_builder_widgets(base)
+        if len(draft.partner_levels) > 1:
+            draft.partner_levels = draft.partner_levels[:-1]
+        st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(draft)
+        st.session_state[STUDIES_BUILDER_PENDING_SYNC_KEY] = True
+        st.rerun()
+    mode_cols = st.columns(2)
+    mode_cols[0].checkbox("global_cluster", key=WIDGET_KEY_CONFLUENCE_GLOBAL)
+    mode_cols[1].checkbox("anchor_rules", key=WIDGET_KEY_CONFLUENCE_ANCHOR)
+    trigger_options = [item for item in _TRIGGER_OPTIONS if item in VALID_TRIGGERS]
+    st.multiselect("trigger", options=trigger_options, key=WIDGET_KEY_TRIGGER)
+    st.multiselect(
+        "trigger_timeframe",
+        options=list(TRIGGER_TIMEFRAME_CHOICES),
+        key=WIDGET_KEY_TRIGGER_TIMEFRAME,
+        help="30min is not a valid trigger timeframe.",
+    )
+    st.pills(
+        "OTF presets",
+        options=list(OTF_PRESET_ORDER),
+        format_func=lambda preset_id: OTF_PRESET_LABELS.get(preset_id, preset_id),
+        selection_mode="multi",
+        key=WIDGET_KEY_OTF,
+        help="No chips → OTF axis omitted (expand treats as off).",
+    )
+    st.radio("Direction", options=list(DIRECTION_MODE_OPTIONS), key=WIDGET_KEY_DIRECTION_MODE)
+    if st.session_state.get(WIDGET_KEY_DIRECTION_MODE) == DIRECTION_MODE_FACTOR:
+        st.multiselect(
+            "Direction factor values",
+            options=list(_DIRECTION_VALUES),
+            key=WIDGET_KEY_DIRECTION_VALUES,
+        )
+    else:
+        st.selectbox(
+            "Direction constant",
+            options=list(_DIRECTION_VALUES),
+            key=WIDGET_KEY_DIRECTION_CONSTANT,
+        )
+
+    st.markdown("### Constants")
+    const_cols = st.columns(3)
+    const_cols[0].number_input(
+        "tolerance_ticks", min_value=0.0, step=0.5, key=WIDGET_KEY_TOLERANCE_TICKS
+    )
+    const_cols[1].checkbox("naked_only", key=WIDGET_KEY_NAKED_ONLY)
+    const_cols[2].selectbox(
+        "naked_requirement", options=list(_NAKED_REQUIREMENTS), key=WIDGET_KEY_NAKED_REQUIREMENT
+    )
+    st.markdown("#### Backtest (required)")
+    bt_cols = st.columns(4)
+    bt_cols[0].number_input("stop_loss_ticks", min_value=1, step=1, key=WIDGET_KEY_STOP_LOSS)
+    bt_cols[1].number_input("take_profit_ticks", min_value=1, step=1, key=WIDGET_KEY_TAKE_PROFIT)
+    bt_cols[2].number_input(
+        "commission_per_side", min_value=0.0, step=0.25, key=WIDGET_KEY_COMMISSION
+    )
+    bt_cols[3].number_input("slippage_ticks", min_value=0.0, step=0.25, key=WIDGET_KEY_SLIPPAGE)
+    bt2 = st.columns(3)
+    exposure_options = list(EXPOSURE_POLICY_OPTIONS)
+    current_exposure = str(base.backtest.get("exposure_policy") or "single_position")
+    if current_exposure not in exposure_options:
+        exposure_options = [current_exposure, *exposure_options]
+    bt2[0].selectbox("exposure_policy", options=exposure_options, key=WIDGET_KEY_EXPOSURE_POLICY)
+    intrabar_options = sorted(VALID_INTRABAR_MODELS)
+    current_intrabar = str(base.backtest.get("intrabar_model") or "sl_first")
+    if current_intrabar not in intrabar_options:
+        intrabar_options = [current_intrabar, *intrabar_options]
+    bt2[1].selectbox("intrabar_model", options=intrabar_options, key=WIDGET_KEY_INTRABAR_MODEL)
+    bt2[2].checkbox("flat_by_session_close", key=WIDGET_KEY_FLAT_BY_SESSION_CLOSE)
+    st.markdown("#### Batteries")
+    bat_cols = st.columns(3)
+    bat_cols[0].checkbox("grid.enabled", key=WIDGET_KEY_BATTERY_GRID)
+    bat_cols[1].checkbox("validation.enabled", key=WIDGET_KEY_BATTERY_VALIDATION)
+    bat_cols[2].checkbox("walk_forward.enabled", key=WIDGET_KEY_BATTERY_WALK_FORWARD)
+    if st.session_state.get(WIDGET_KEY_BATTERY_GRID):
+        st.text_input(
+            "grid stop_loss_ticks_values",
+            key=WIDGET_KEY_GRID_SL_VALUES,
+            help="Comma-separated ints. Required when grid is enabled.",
+        )
+        st.text_input(
+            "grid take_profit_ticks_values",
+            key=WIDGET_KEY_GRID_TP_VALUES,
+            help="Comma-separated ints. Required when grid is enabled.",
+        )
+    with st.expander("Advanced constants", expanded=False):
+        st.caption(
+            "expand overrides min/max confluences for global_cluster; these are not factor axes."
+        )
+        adv = st.columns(3)
+        adv[0].number_input("min_confluences", min_value=1, step=1, key=WIDGET_KEY_MIN_CONFLUENCES)
+        adv[1].number_input("max_confluences", min_value=1, step=1, key=WIDGET_KEY_MAX_CONFLUENCES)
+        adv[2].number_input(
+            "min_valid_confluences", min_value=1, step=1, key=WIDGET_KEY_MIN_VALID_CONFLUENCES
+        )
+        st.selectbox("from_partners", options=list(_FROM_PARTNERS_OPTIONS), key=WIDGET_KEY_FROM_PARTNERS)
+        st.caption(
+            "entry_window / trigger_params are pass-through from the hydrated draft "
+            "(SB2 does not clone Setup Builder’s entry-window block)."
+        )
+
+    try:
+        draft = _draft_from_builder_widgets(base)
+    except (TypeError, ValueError) as exc:
+        st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(base)
+        st.error(str(exc))
+        return
+    st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(draft)
+    for warning in draft_warnings(draft):
+        st.warning(warning)
+
+    st.markdown("### Live strip")
+    preview, emit_error = _render_builder_live_strip(draft)
+
+    st.markdown("### Actions")
+    action_cols = st.columns(2)
+    start_example = action_cols[0].button("Start from example")
+    apply_preview = action_cols[1].button("Apply to Preview", type="primary", disabled=preview is None)
+    if start_example:
+        try:
+            path = example_study_spec_path()
+            hydrated = hydrate_study_yaml(path.read_text(encoding="utf-8"))
+        except StudySpecError as exc:
+            st.error(str(exc))
+            return
+        st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(hydrated)
+        st.session_state[STUDIES_BUILDER_PENDING_SYNC_KEY] = True
+        st.rerun()
+    if apply_preview:
+        if emit_error is not None:
+            st.error(str(emit_error))
+            return
+        try:
+            _apply_builder_draft_to_preview(draft)
+        except (StudySpecError, ValueError) as exc:
+            st.error(str(exc))
+            return
+        st.success(
+            "YAML is on the Preview tab — use **Validate / Preview**, then existing "
+            "Run via CLI / Bind confirm. This tab does not spawn the CLI."
+        )
+
+
 with inspect_tab:
     _render_inspect()
 
 with preview_tab:
     _render_preview()
+
+with build_tab:
+    _render_build()
