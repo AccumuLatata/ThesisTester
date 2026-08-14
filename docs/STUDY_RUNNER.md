@@ -3,12 +3,12 @@
 **Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** + **RS-D8** + **RS-D9** landed. Parked: RS-D1 / RS-D3 / RS-D6.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`  
-**Study Builder:** `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md`. **SB1** compiler
-(`thesistester.study.builder`) emits / hydrates canonical `schema_version: 1`
-StudySpec YAML. **SB2** adds the **Build StudySpec** tab on Studies
-(Apply to Preview → existing Preview / CLI-spawn). SB3 (stage / report /
-hydrate / download) is not shipped. Does not change inspect / preview /
-CLI-spawn semantics.
+**Study Builder:** `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md`. **SB1–SB3** ✅.
+Compiler `thesistester.study.builder` emits / hydrates canonical
+`schema_version: 1` YAML. Studies **Build StudySpec** authors via widgets,
+Apply to Preview, hydrate from Preview / Inspect spec, download YAML.
+Execute is still CLI (`study run` / Preview **Run via CLI**). Does not change
+inspect / preview / CLI-spawn semantics.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -545,7 +545,33 @@ Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor typ
 
 ---
 
-## SB1 — StudyDraft compiler (no UI)
+## SB — Study Builder (operator contract)
+
+**Status:** SB1–SB3 landed. Plan: `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md`.
+
+Build compiles a closed `StudyDraft` into the same `schema_version: 1` StudySpec
+the CLI already runs. It does **not** execute cells, spawn `study run`, promote,
+or mutate classic research session state.
+
+| Step | What happens | What does not happen |
+|---|---|---|
+| Widgets / Start from example / Load Preview / Copy spec | Hydrate `StudyDraft` (pending-sync widget overwrite) | No NL/shorthand compiler; tokens stay in `closed_level_token_set` |
+| Live strip | Page calls `preview_study_spec(emit_study_spec(draft))` | No cartesian math on the page; over-cap still uses the preview estimate |
+| Apply to Preview | `emit_study_yaml` → `STUDIES_PREVIEW_YAML_KEY`; pop preview cache; `reset_launch_session_for_preview` | No auto-preview; no CLI spawn; no `study.launch.yaml` |
+| Validate / Preview → Run via CLI | Existing RS-D8 / RS-D9 on the Preview tab | Build has no Run / Bind confirm / Promote |
+| Download StudySpec YAML | Browser download of `emit_study_yaml` | Not a store write; never defaults to the Inspect dir’s `study.spec.yaml` |
+
+Stage: **Full cartesian** omits `stage`; **Filter** writes `include` keys whose
+values are ⊆ current factor widgets (pdPOC example: `trigger=[touch]`,
+`trigger_timeframe=[base]` → 40 vs 800); **Explicit cells** is delete-only
+(promote draft / YAML hydrate is the add path). Empty `stage.cells` fails emit.
+Filter / `group_by` / delete-row pickers drop stale session values when a
+domain shrinks (Streamlit rejects selected values that are not in `options`).
+
+Report: `primary_metric`, `min_trades`, `multiple_testing`, `group_by` ⊆ declared
+factors (empty omits the key so normalize applies the default), `otf_baseline.enabled`.
+
+### SB1 compiler (no Streamlit)
 
 Pure helper `thesistester.study.builder`: `StudyDraft` →
 `validate_study_spec(normalize_study_spec(emit(draft)))`. Hydrate is the inverse
@@ -558,9 +584,7 @@ pattern as `launch.py`). **No Streamlit. No execute / launch / preview import.**
 | `emit_study_spec` / `emit_study_yaml` | Canonical YAML; `mode_rules` for listed modes only; batteries always have `enabled` |
 | `hydrate_study_draft` / `hydrate_study_yaml` | Lossless vs `load_study_spec` identity hash on the golden + examples |
 | `builder_token_catalog` | `sorted(closed_level_token_set(levels))` |
-| `OTF_PRESETS` | Off / 5m / 15m / 30m / combo chips (SB2) |
+| `OTF_PRESETS` | Off / 5m / 15m / 30m / combo chips |
 
-Execute remains `python -m thesistester study run`. The Studies **Build StudySpec**
-tab (SB2) calls emit + `preview_study_spec` on the page; Apply to Preview writes
-the Preview textarea key before that widget mounts (Build body runs first) and
-does not spawn CLI.
+Execute remains `python -m thesistester study run`. Apply to Preview writes the
+Preview textarea key before that widget mounts (Build body runs first).
