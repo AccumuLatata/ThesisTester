@@ -96,6 +96,10 @@ def mark_cell(
         cell["started_at"] = _utc_now()
     if finished:
         cell["finished_at"] = _utc_now()
+    if status == "running":
+        # Do not keep a prior cell's error / finished_at across a new attempt.
+        cell["error"] = None
+        cell["finished_at"] = None
     if error is not None:
         cell["error"] = error
     elif status == "ok":

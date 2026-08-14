@@ -594,6 +594,21 @@ def test_mark_cell_can_clear_bundle_path():
     assert ledger["cells"]["c1"]["bundle_path"] is None
 
 
+def test_mark_cell_running_clears_stale_error_and_finished_at():
+    from thesistester.study.ledger import empty_ledger, mark_cell
+
+    ledger = empty_ledger(study_identity_hash="h", run_names=["c1"])
+    ledger = mark_cell(
+        ledger, "c1", status="failed", error="OSError: [Errno 9] Bad file descriptor", finished=True
+    )
+    ledger = mark_cell(ledger, "c1", status="running", started=True)
+    cell = ledger["cells"]["c1"]
+    assert cell["status"] == "running"
+    assert cell["error"] is None
+    assert cell["finished_at"] is None
+    assert cell["started_at"] is not None
+
+
 def test_index_nan_pf_wr_become_null():
     bundle = _fake_bundle_bytes("nan_cell")
     row = build_index_row_from_state(
