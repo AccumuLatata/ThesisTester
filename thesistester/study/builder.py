@@ -610,6 +610,18 @@ def constrain_group_by(
     return [axis for axis in selected if axis in factor_keys]
 
 
+def clamp_widget_selection(selected: Any, options: list[Any]) -> list[Any]:
+    """Keep only values still in ``options`` (Streamlit multiselect fail-closed).
+
+    Session keys survive factor-domain shrinks. A selected value that is not
+    in ``options`` raises on the next rerun and bricks the Build tab.
+    """
+    if not isinstance(selected, list):
+        return []
+    allowed = set(options)
+    return [item for item in selected if item in allowed]
+
+
 def builder_token_catalog(levels: Mapping[str, Any] | None) -> tuple[str, ...]:
     """Sorted closed level tokens implied by ``levels`` + the static catalog."""
     return tuple(sorted(closed_level_token_set(levels)))
@@ -1074,6 +1086,7 @@ __all__ = [
     "apply_grid_tick_widgets",
     "apply_levels_tf_mode",
     "builder_token_catalog",
+    "clamp_widget_selection",
     "coerce_partner_levels",
     "coerce_whole_number",
     "collect_stage_include",

@@ -565,6 +565,8 @@ Stage: **Full cartesian** omits `stage`; **Filter** writes `include` keys whose
 values are ⊆ current factor widgets (pdPOC example: `trigger=[touch]`,
 `trigger_timeframe=[base]` → 40 vs 800); **Explicit cells** is delete-only
 (promote draft / YAML hydrate is the add path). Empty `stage.cells` fails emit.
+Filter / `group_by` / delete-row pickers drop stale session values when a
+domain shrinks (Streamlit rejects selected values that are not in `options`).
 
 Report: `primary_metric`, `min_trades`, `multiple_testing`, `group_by` ⊆ declared
 factors (empty omits the key so normalize applies the default), `otf_baseline.enabled`.

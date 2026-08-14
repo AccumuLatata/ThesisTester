@@ -94,6 +94,7 @@ from thesistester.study.builder import (
     builder_token_catalog,
     coerce_partner_levels,
     coerce_whole_number,
+    clamp_widget_selection,
     collect_stage_include,
     constrain_group_by,
     declared_factor_domains,
@@ -705,7 +706,8 @@ def _sync_builder_widgets(draft: StudyDraft) -> None:
             if isinstance(raw_include, list)
             else []
         )
-        st.session_state[_stage_include_widget_key(axis)] = labels
+        allowed = [format_stage_value(axis, item) for item in domains[axis]]
+        st.session_state[_stage_include_widget_key(axis)] = clamp_widget_selection(labels, allowed)
     st.session_state[WIDGET_KEY_EXPLICIT_DELETE] = []
     st.session_state[WIDGET_KEY_PRIMARY_METRIC] = draft.primary_metric
     st.session_state[WIDGET_KEY_MIN_TRADES] = int(draft.min_trades)
@@ -749,6 +751,16 @@ def _session_int_list(key: str, fallback: Any = None) -> list[int]:
     if raw is None:
         return _int_list(fallback)
     return _int_list(raw)
+
+
+def _clamp_session_multiselect(key: str, options: list[Any]) -> None:
+    """Drop stale session selections before the widget mounts (Streamlit crash)."""
+    raw = st.session_state.get(key)
+    if raw is None:
+        return
+    clamped = clamp_widget_selection(raw, options)
+    if list(raw) != clamped:
+        st.session_state[key] = clamped
 
 
 def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
@@ -1012,6 +1024,7 @@ def _render_builder_stage(partial: StudyDraft) -> None:
         )
         for axis, domain in domains.items():
             labels = [format_stage_value(axis, item) for item in domain]
+            _clamp_session_multiselect(_stage_include_widget_key(axis), labels)
             st.multiselect(
                 f"include.{axis}",
                 options=labels,
@@ -1034,6 +1047,7 @@ def _render_builder_stage(partial: StudyDraft) -> None:
         st.dataframe(rows, hide_index=True, width="stretch")
         st.caption("Delete selected rows only. Promote draft / YAML hydrate is the add path.")
         delete_options = list(range(len(cells)))
+        _clamp_session_multiselect(WIDGET_KEY_EXPLICIT_DELETE, delete_options)
         st.multiselect(
             "Rows to delete",
             options=delete_options,
@@ -1064,9 +1078,11 @@ def _render_builder_report(partial: StudyDraft) -> None:
     report_cols[1].selectbox(
         "multiple_testing", options=testing_options, key=WIDGET_KEY_MULTIPLE_TESTING
     )
+    group_options = sorted(factor_keys)
+    _clamp_session_multiselect(WIDGET_KEY_GROUP_BY, group_options)
     st.multiselect(
         "group_by",
-        options=sorted(factor_keys),
+        options=group_options,
         key=WIDGET_KEY_GROUP_BY,
         help="Only declared factor axes. Empty omits the key (normalize default) unless the draft had explicit null.",
     )

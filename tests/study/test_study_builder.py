@@ -19,6 +19,7 @@ from thesistester.study.builder import (
     apply_grid_tick_widgets,
     apply_levels_tf_mode,
     builder_token_catalog,
+    clamp_widget_selection,
     coerce_partner_levels,
     coerce_whole_number,
     collect_stage_include,
@@ -595,6 +596,13 @@ def test_delete_stage_cells_and_empty_emit_fails():
     draft.stage_cells = []
     with pytest.raises(StudySpecError, match="non-empty stage.cells"):
         emit_study_spec(draft)
+
+
+def test_clamp_widget_selection_drops_stale_values():
+    assert clamp_widget_selection(["touch", "reject", "gone"], ["touch", "break"]) == ["touch"]
+    assert clamp_widget_selection(["otf", "trigger"], ["trigger", "partner_levels"]) == ["trigger"]
+    assert clamp_widget_selection([0, 2, 5], [0, 1, 2]) == [0, 2]
+    assert clamp_widget_selection("not-a-list", ["touch"]) == []
 
 
 def test_group_by_cannot_include_undeclared_axes():
