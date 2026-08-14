@@ -71,9 +71,10 @@ spawns the existing CLI `study run` from that pane
 (`thesistester/study/launch.py`; detached `Popen`; pin both dataset path keys;
 confirm bound to the **pinned** identity hash; Windows omits `DETACHED_PROCESS`
 so `study.launch.log` inherits stdout; no in-process `run_study`).
-**SB2** adds a third **Build StudySpec** tab on the same page
-(`thesistester/study/builder.py` emit / hydrate; live strip calls
-`preview_study_spec`). Studies-scoped keys only:
+**SB2–SB3** add a third **Build StudySpec** tab on the same page
+(`thesistester/study/builder.py` emit / hydrate / stage / report; live strip
+calls `preview_study_spec`; Apply / hydrate / download stay Studies-scoped).
+Studies-scoped keys only:
 `studies_builder_draft` and `studies_builder_pending_sync` (plus
 `_study_builder_*` widget keys). The Build tab body executes before Preview
 so Apply can write `studies_preview_yaml` (and reseed the launch output-dir
@@ -1091,7 +1092,7 @@ Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`,
 `pages/10_Validation.py`, `pages/11_Report_Export.py`,
 `pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`,
-`pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 inspect + RS-D8 preview + RS-D9 CLI spawn + SB2 Build tab;
+`pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 inspect + RS-D8 preview + RS-D9 CLI spawn + SB2/SB3 Build tab;
 not part of the classic research mutate path). Studies builder session keys
 are `studies_builder_draft` and `studies_builder_pending_sync` only.
 
@@ -1163,7 +1164,7 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 
 Path citations only (no line numbers). Line anchors drift across page renumbers and edits; treat producing/consuming paths as the contract, not offsets.
 
-Studies Build (SB2) adds `studies_builder_draft` and `studies_builder_pending_sync`
+Studies Build (SB2–SB3) adds `studies_builder_draft` and `studies_builder_pending_sync`
 on `pages/15_Studies.py` only. Those keys are not classic research state and
 must not be read from Data / Levels / Setup Builder.
 

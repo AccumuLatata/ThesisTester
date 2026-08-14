@@ -1,4 +1,4 @@
-"""SB1/SB2 StudyDraft compiler — emit / hydrate / session ser-de.
+"""SB1–SB3 StudyDraft compiler — emit / hydrate / session ser-de / stage helpers.
 
 Pure helper: no Streamlit, no execute / launch / preview. Pages import this
 module directly. ``emit_study_spec`` is the only path into
@@ -78,6 +78,33 @@ WIDGET_KEY_MIN_CONFLUENCES = "_study_builder_min_confluences"
 WIDGET_KEY_MAX_CONFLUENCES = "_study_builder_max_confluences"
 WIDGET_KEY_MIN_VALID_CONFLUENCES = "_study_builder_min_valid_confluences"
 WIDGET_KEY_FROM_PARTNERS = "_study_builder_from_partners"
+WIDGET_KEY_STAGE_MODE = "_study_builder_stage_mode"
+WIDGET_KEY_EXPLICIT_DELETE = "_study_builder_explicit_delete"
+WIDGET_KEY_PRIMARY_METRIC = "_study_builder_primary_metric"
+WIDGET_KEY_MIN_TRADES = "_study_builder_min_trades"
+WIDGET_KEY_MULTIPLE_TESTING = "_study_builder_multiple_testing"
+WIDGET_KEY_GROUP_BY = "_study_builder_group_by"
+WIDGET_KEY_OTF_BASELINE = "_study_builder_otf_baseline"
+
+STAGE_MODE_FULL = "Full cartesian"
+STAGE_MODE_FILTER = "Filter"
+STAGE_MODE_EXPLICIT = "Explicit cells"
+STAGE_MODE_OPTIONS = (STAGE_MODE_FULL, STAGE_MODE_FILTER, STAGE_MODE_EXPLICIT)
+PRIMARY_METRIC_OPTIONS = (
+    "expectancy_r",
+    "total_r",
+    "max_drawdown_r",
+    "trade_count",
+    "profit_factor",
+)
+MULTIPLE_TESTING_OPTIONS = ("warn", "error")
+PREFERRED_REPORT_GROUP_BY = (
+    "partner_levels",
+    "confluence_mode",
+    "trigger",
+    "trigger_timeframe",
+    "otf",
+)
 
 COMMON_MA_LENGTHS = (9, 21, 50, 200)
 TF_MODE_PRODUCT_DEFAULT = "Product default TFs"
@@ -242,6 +269,11 @@ def default_study_draft() -> StudyDraft:
 def _partner_set_widget_key(index: int) -> str:
     """Stable Streamlit widget key for partner-set row ``index`` (SB2)."""
     return f"_study_builder_partner_set_{index}"
+
+
+def _stage_include_widget_key(axis: str) -> str:
+    """Stable Streamlit widget key for a stage-filter include axis (SB3)."""
+    return f"_study_builder_stage_include_{axis}"
 
 
 def draft_to_mapping(draft: StudyDraft) -> dict[str, Any]:
@@ -445,6 +477,137 @@ def coerce_whole_number(value: Any, default: int | float = 0) -> int | float:
     if number.is_integer():
         return int(number)
     return number
+
+
+def infer_stage_mode_label(stage_mode: str | None) -> str:
+    """Map draft ``stage_mode`` to the SB3 radio label."""
+    if stage_mode == "filter":
+        return STAGE_MODE_FILTER
+    if stage_mode == "explicit_cells":
+        return STAGE_MODE_EXPLICIT
+    return STAGE_MODE_FULL
+
+
+def stage_mode_from_label(label: str) -> str | None:
+    """Map the SB3 radio label to ``draft.stage_mode`` (``None`` = omit stage)."""
+    if label == STAGE_MODE_FILTER:
+        return "filter"
+    if label == STAGE_MODE_EXPLICIT:
+        return "explicit_cells"
+    return None
+
+
+def declared_factor_domains(draft: StudyDraft) -> dict[str, list[Any]]:
+    """Current factor-widget domains, in emit axis order."""
+    domains: dict[str, list[Any]] = {
+        "core_level": list(draft.core_level),
+        "partner_levels": [list(partner_set) for partner_set in draft.partner_levels],
+        "confluence_mode": list(draft.confluence_mode),
+        "trigger": list(draft.trigger),
+        "trigger_timeframe": list(draft.trigger_timeframe),
+    }
+    if draft.otf is not None:
+        domains["otf"] = copy.deepcopy(draft.otf)
+    if draft.direction_as_factor:
+        domains["direction"] = list(draft.direction_values)
+    return domains
+
+
+def format_stage_value(axis: str, value: Any) -> str:
+    """Stable picker / table label for a factor value."""
+    if axis == "partner_levels":
+        if isinstance(value, list):
+            return "+".join(str(token) for token in value)
+        return str(value)
+    if axis == "otf":
+        if isinstance(value, Mapping):
+            matched = otf_preset_ids([value])
+            if matched and matched[0] is not None:
+                return str(matched[0])
+            if value.get("enabled") is False:
+                return "off"
+            timeframes = value.get("timeframes")
+            if isinstance(timeframes, list) and timeframes:
+                return "+".join(str(item) for item in timeframes)
+        return "custom"
+    return str(value)
+
+
+def resolve_stage_label(axis: str, label: str, domain: list[Any]) -> Any | None:
+    """Return the domain member whose label equals ``label``, else ``None``."""
+    target = str(label)
+    for item in domain:
+        if format_stage_value(axis, item) == target:
+            return copy.deepcopy(item) if isinstance(item, (dict, list)) else item
+    return None
+
+
+def collect_stage_include(
+    domains: Mapping[str, list[Any]],
+    selected_labels: Mapping[str, list[str]],
+) -> dict[str, list[Any]]:
+    """Build ``stage.include`` from picker labels. Values are ⊆ ``domains``."""
+    include: dict[str, list[Any]] = {}
+    for axis, labels in selected_labels.items():
+        if axis not in domains:
+            continue
+        domain = list(domains[axis])
+        values: list[Any] = []
+        seen: set[str] = set()
+        for label in labels:
+            resolved = resolve_stage_label(axis, str(label), domain)
+            if resolved is None:
+                continue
+            key = format_stage_value(axis, resolved)
+            if key in seen:
+                continue
+            seen.add(key)
+            values.append(resolved)
+        if values:
+            include[axis] = values
+    return include
+
+
+def delete_stage_cells(
+    cells: list[Mapping[str, Any]],
+    indices: set[int] | frozenset[int],
+) -> list[dict[str, Any]]:
+    """Drop selected explicit-cell rows. Does not invent replacements."""
+    return [
+        copy.deepcopy(dict(cell))
+        for index, cell in enumerate(cells)
+        if index not in indices and isinstance(cell, Mapping)
+    ]
+
+
+def explicit_cell_row_label(index: int, cell: Mapping[str, Any]) -> str:
+    """One-line label for the delete-row picker."""
+    parts: list[str] = []
+    for axis in (
+        "core_level",
+        "partner_levels",
+        "confluence_mode",
+        "trigger",
+        "trigger_timeframe",
+        "otf",
+        "direction",
+    ):
+        if axis in cell:
+            parts.append(format_stage_value(axis, cell[axis]))
+    return f"{index}: " + " · ".join(parts) if parts else f"{index}: cell"
+
+
+def preferred_group_by(factor_keys: set[str] | frozenset[str]) -> list[str]:
+    """Normalize default: preferred axes that exist on this study."""
+    return [axis for axis in PREFERRED_REPORT_GROUP_BY if axis in factor_keys]
+
+
+def constrain_group_by(
+    selected: list[str],
+    factor_keys: set[str] | frozenset[str],
+) -> list[str]:
+    """Drop group_by axes that are not declared factors."""
+    return [axis for axis in selected if axis in factor_keys]
 
 
 def builder_token_catalog(levels: Mapping[str, Any] | None) -> tuple[str, ...]:
@@ -830,9 +993,16 @@ __all__ = [
     "DIRECTION_MODE_CONSTANT",
     "DIRECTION_MODE_FACTOR",
     "DIRECTION_MODE_OPTIONS",
+    "MULTIPLE_TESTING_OPTIONS",
     "OTF_PRESETS",
     "OTF_PRESET_LABELS",
     "OTF_PRESET_ORDER",
+    "PREFERRED_REPORT_GROUP_BY",
+    "PRIMARY_METRIC_OPTIONS",
+    "STAGE_MODE_EXPLICIT",
+    "STAGE_MODE_FILTER",
+    "STAGE_MODE_FULL",
+    "STAGE_MODE_OPTIONS",
     "STUDIES_BUILDER_DRAFT_KEY",
     "STUDIES_BUILDER_PENDING_SYNC_KEY",
     "StudyDraft",
@@ -858,24 +1028,30 @@ __all__ = [
     "WIDGET_KEY_EMA_LENGTHS",
     "WIDGET_KEY_EMA_TF_MODE",
     "WIDGET_KEY_EMA_TIMEFRAMES",
+    "WIDGET_KEY_EXPLICIT_DELETE",
     "WIDGET_KEY_EXPOSURE_POLICY",
     "WIDGET_KEY_FLAT_BY_SESSION_CLOSE",
     "WIDGET_KEY_FORMAT_PROFILE",
     "WIDGET_KEY_FROM_PARTNERS",
     "WIDGET_KEY_GRID_SL_VALUES",
     "WIDGET_KEY_GRID_TP_VALUES",
+    "WIDGET_KEY_GROUP_BY",
     "WIDGET_KEY_INSTRUMENT",
     "WIDGET_KEY_INTRABAR_MODEL",
     "WIDGET_KEY_LEVELS_ADVANCED",
     "WIDGET_KEY_MAX_CONFLUENCES",
     "WIDGET_KEY_MIN_CONFLUENCES",
+    "WIDGET_KEY_MIN_TRADES",
     "WIDGET_KEY_MIN_VALID_CONFLUENCES",
+    "WIDGET_KEY_MULTIPLE_TESTING",
     "WIDGET_KEY_NAKED_ONLY",
     "WIDGET_KEY_NAKED_REQUIREMENT",
     "WIDGET_KEY_NAME",
     "WIDGET_KEY_OTF",
+    "WIDGET_KEY_OTF_BASELINE",
     "WIDGET_KEY_OUTPUT_DIR",
     "WIDGET_KEY_PIVOTS_ENABLED",
+    "WIDGET_KEY_PRIMARY_METRIC",
     "WIDGET_KEY_PIVOT_TIMEFRAMES",
     "WIDGET_KEY_POC_WINDOWS",
     "WIDGET_KEY_PREV30M_ENABLED",
@@ -885,6 +1061,7 @@ __all__ = [
     "WIDGET_KEY_SMA_TF_MODE",
     "WIDGET_KEY_SMA_TIMEFRAMES",
     "WIDGET_KEY_SOURCE_TIMEZONE",
+    "WIDGET_KEY_STAGE_MODE",
     "WIDGET_KEY_STOP_LOSS",
     "WIDGET_KEY_TAKE_PROFIT",
     "WIDGET_KEY_TOLERANCE_TICKS",
@@ -893,20 +1070,28 @@ __all__ = [
     "WIDGET_KEY_VWAP_WINDOWS",
     "WIDGET_KEY_WORKERS",
     "_partner_set_widget_key",
+    "_stage_include_widget_key",
     "apply_grid_tick_widgets",
     "apply_levels_tf_mode",
     "builder_token_catalog",
     "coerce_partner_levels",
     "coerce_whole_number",
+    "collect_stage_include",
+    "constrain_group_by",
+    "declared_factor_domains",
     "default_study_draft",
+    "delete_stage_cells",
     "draft_from_mapping",
     "draft_to_mapping",
     "draft_warnings",
     "emit_study_spec",
     "emit_study_yaml",
+    "explicit_cell_row_label",
     "format_csv_values",
+    "format_stage_value",
     "hydrate_study_draft",
     "hydrate_study_yaml",
+    "infer_stage_mode_label",
     "infer_tf_mode",
     "levels_advanced_enabled",
     "ma_length_options",
@@ -915,5 +1100,8 @@ __all__ = [
     "otf_preset_ids",
     "parse_csv_ints",
     "parse_csv_tokens",
+    "preferred_group_by",
     "require_enabled_grid_ticks",
+    "resolve_stage_label",
+    "stage_mode_from_label",
 ]

@@ -983,12 +983,13 @@ authors the same YAML via widgets (`StudyDraft` → `emit_study_yaml`);
 launch approval — Validate / Preview is still required; Build does not spawn
 the CLI.
 
-**When to use it.** Inspect artifacts after a CLI run, or preview YAML then start
-that CLI without typing it. Promote stays CLI-only.
+**When to use it.** Inspect artifacts after a CLI run; author a StudySpec on
+**Build** without typing YAML; preview YAML then start that CLI. Promote stays
+CLI-only.
 
 **Related terms.** Studies viewer, study output directory, study ledger,
 ranked cells, low-N, OTF delta, bundle_path, StudySpec preview, run_count,
-confirm_above_runs, study.launch.yaml
+confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 
 **Key settings.**
 
@@ -1002,18 +1003,30 @@ confirm_above_runs, study.launch.yaml
 | Run via CLI | Spawn without `--confirm` when under threshold | Not in-process execute; watch Inspect → Refresh |
 | Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash. One click cannot bind and spawn |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
+| Build StudySpec | Widgets → `emit_study_yaml` (closed tokens, stage, report) | Not a runner; does not spawn CLI |
+| Start from example / Load Preview / Copy spec | Hydrate pdPOC example, Preview YAML, or Inspect `study.spec.yaml` | Copy-on-Build hydrates the draft; Preview Copy still only fills the textarea |
+| Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ current factor widgets; explicit table is delete-only |
+| Apply to Preview | Writes Preview YAML; clears preview cache + launch approval | Validate / Preview still required |
+| Download StudySpec YAML | Browser download of emitted YAML | Not a store write; not the Inspect dir’s `study.spec.yaml` |
 
 **How to use.**
 
-1. CLI `study expand` → `study run` → `study report`, or preview YAML first.
+1. CLI `study expand` → `study run` → `study report`, or author on Build / preview YAML first.
 2. Open **Studies**. Inspect: paste `output_dir`, Load, Refresh while in flight.
-3. Preview: paste YAML (or Load example) → Validate / Preview.
-4. Run: set a **new** CLI output dir (UI launches pin `dataset.path` and
+3. **Build StudySpec** (optional): Start from example (pdPOC stage-first, 40 vs 800)
+   or pick core / partners / modes / triggers / OTF from the closed catalog.
+   Stage Filter keeps include values ⊆ current factor widgets. Explicit cells
+   is delete-only (hydrate a promote draft or Preview YAML to add rows).
+   Live strip is combinatorial screening, not a validated edge.
+4. **Apply to Preview**. Switch to Preview → **Validate / Preview** (still required).
+5. Run: set a **new** CLI output dir (UI launches pin `dataset.path` and
    `dataset.subtimeframe_path` absolute — launch refuses a missing CSV).
    Under threshold: **Run via CLI**. Over: **Bind confirm** then
    **Confirm and run**. Child log: `study.launch.log`. Streamlit
    `Ignoring changed path` under `results/` is the watcher, not that log —
    use Inspect **Refresh** / the ledger for cell progress.
+6. Promote drafts: paste or Copy spec into Preview, **Load YAML from Preview**
+   on Build, delete loser rows, Apply, then Validate / Preview → Run via CLI.
 
 **What it is not.**
 

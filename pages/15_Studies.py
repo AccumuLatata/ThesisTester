@@ -1,4 +1,4 @@
-"""RS-D2/RS-D8/RS-D9 + SB2 — Studies inspect, preview, CLI-spawn, and Build tab."""
+"""RS-D2/RS-D8/RS-D9 + SB2/SB3 — Studies inspect, preview, CLI-spawn, and Build tab."""
 
 from __future__ import annotations
 
@@ -17,8 +17,13 @@ from thesistester.study.builder import (
     DIRECTION_MODE_CONSTANT,
     DIRECTION_MODE_FACTOR,
     DIRECTION_MODE_OPTIONS,
+    MULTIPLE_TESTING_OPTIONS,
     OTF_PRESET_LABELS,
     OTF_PRESET_ORDER,
+    PRIMARY_METRIC_OPTIONS,
+    STAGE_MODE_EXPLICIT,
+    STAGE_MODE_FILTER,
+    STAGE_MODE_OPTIONS,
     STUDIES_BUILDER_DRAFT_KEY,
     STUDIES_BUILDER_PENDING_SYNC_KEY,
     StudyDraft,
@@ -44,20 +49,26 @@ from thesistester.study.builder import (
     WIDGET_KEY_EXPOSURE_POLICY,
     WIDGET_KEY_FLAT_BY_SESSION_CLOSE,
     WIDGET_KEY_FORMAT_PROFILE,
+    WIDGET_KEY_EXPLICIT_DELETE,
     WIDGET_KEY_FROM_PARTNERS,
     WIDGET_KEY_GRID_SL_VALUES,
     WIDGET_KEY_GRID_TP_VALUES,
+    WIDGET_KEY_GROUP_BY,
     WIDGET_KEY_INSTRUMENT,
     WIDGET_KEY_INTRABAR_MODEL,
     WIDGET_KEY_LEVELS_ADVANCED,
     WIDGET_KEY_MAX_CONFLUENCES,
     WIDGET_KEY_MIN_CONFLUENCES,
+    WIDGET_KEY_MIN_TRADES,
     WIDGET_KEY_MIN_VALID_CONFLUENCES,
+    WIDGET_KEY_MULTIPLE_TESTING,
     WIDGET_KEY_NAKED_ONLY,
     WIDGET_KEY_NAKED_REQUIREMENT,
     WIDGET_KEY_NAME,
     WIDGET_KEY_OTF,
+    WIDGET_KEY_OTF_BASELINE,
     WIDGET_KEY_OUTPUT_DIR,
+    WIDGET_KEY_PRIMARY_METRIC,
     WIDGET_KEY_PIVOTS_ENABLED,
     WIDGET_KEY_PIVOT_TIMEFRAMES,
     WIDGET_KEY_POC_WINDOWS,
@@ -68,6 +79,7 @@ from thesistester.study.builder import (
     WIDGET_KEY_SMA_TF_MODE,
     WIDGET_KEY_SMA_TIMEFRAMES,
     WIDGET_KEY_SOURCE_TIMEZONE,
+    WIDGET_KEY_STAGE_MODE,
     WIDGET_KEY_STOP_LOSS,
     WIDGET_KEY_TAKE_PROFIT,
     WIDGET_KEY_TOLERANCE_TICKS,
@@ -76,25 +88,35 @@ from thesistester.study.builder import (
     WIDGET_KEY_VWAP_WINDOWS,
     WIDGET_KEY_WORKERS,
     _partner_set_widget_key,
+    _stage_include_widget_key,
     apply_grid_tick_widgets,
     apply_levels_tf_mode,
     builder_token_catalog,
     coerce_partner_levels,
     coerce_whole_number,
+    collect_stage_include,
+    constrain_group_by,
+    declared_factor_domains,
     default_study_draft,
+    delete_stage_cells,
     draft_from_mapping,
     draft_to_mapping,
     draft_warnings,
     emit_study_spec,
     emit_study_yaml,
+    explicit_cell_row_label,
     format_csv_values,
+    format_stage_value,
     hydrate_study_yaml,
+    infer_stage_mode_label,
     infer_tf_mode,
     levels_advanced_enabled,
     ma_length_options,
     otf_for_selected_presets,
     otf_preset_ids,
     parse_csv_tokens,
+    preferred_group_by,
+    stage_mode_from_label,
 )
 from thesistester.study.launch import (
     LAUNCH_LOG_NAME,
@@ -296,21 +318,29 @@ def _render_inspect() -> None:
         st.markdown(model.overview_md)
 
 
-def _copy_spec_from_loaded_dir() -> bool:
+def _read_loaded_study_spec_text() -> str | None:
+    """Read Inspect ``study.spec.yaml`` (sandboxed). None after a visible error."""
     active_dir = st.session_state.get(STUDIES_VIEWER_DIR_KEY)
     if not isinstance(active_dir, str) or not active_dir.strip():
         st.error("Load a study output directory on the Inspect tab first.")
-        return False
+        return None
     try:
         root = resolve_study_dir(active_dir, roots=default_study_viewer_roots())
     except StudyViewerError as exc:
         st.error(str(exc))
-        return False
+        return None
     spec_path = root / "study.spec.yaml"
     if not spec_path.is_file():
         st.error(f"No study.spec.yaml under {root}")
+        return None
+    return spec_path.read_text(encoding="utf-8")
+
+
+def _copy_spec_from_loaded_dir() -> bool:
+    text = _read_loaded_study_spec_text()
+    if text is None:
         return False
-    st.session_state[STUDIES_PREVIEW_YAML_KEY] = spec_path.read_text(encoding="utf-8")
+    st.session_state[STUDIES_PREVIEW_YAML_KEY] = text
     _clear_launch_session()
     return True
 
@@ -666,6 +696,29 @@ def _sync_builder_widgets(draft: StudyDraft) -> None:
     st.session_state[WIDGET_KEY_MAX_CONFLUENCES] = int(draft.max_confluences)
     st.session_state[WIDGET_KEY_MIN_VALID_CONFLUENCES] = int(draft.min_valid_confluences)
     st.session_state[WIDGET_KEY_FROM_PARTNERS] = draft.from_partners
+    st.session_state[WIDGET_KEY_STAGE_MODE] = infer_stage_mode_label(draft.stage_mode)
+    domains = declared_factor_domains(draft)
+    for axis in domains:
+        raw_include = draft.stage_include.get(axis) if draft.stage_mode == "filter" else None
+        labels = (
+            [format_stage_value(axis, item) for item in raw_include]
+            if isinstance(raw_include, list)
+            else []
+        )
+        st.session_state[_stage_include_widget_key(axis)] = labels
+    st.session_state[WIDGET_KEY_EXPLICIT_DELETE] = []
+    st.session_state[WIDGET_KEY_PRIMARY_METRIC] = draft.primary_metric
+    st.session_state[WIDGET_KEY_MIN_TRADES] = int(draft.min_trades)
+    st.session_state[WIDGET_KEY_MULTIPLE_TESTING] = draft.multiple_testing
+    factor_keys = set(domains)
+    if draft.group_by is not None:
+        group_by_widget = constrain_group_by(list(draft.group_by), factor_keys)
+    elif draft.emit_group_by:
+        group_by_widget = []
+    else:
+        group_by_widget = preferred_group_by(factor_keys)
+    st.session_state[WIDGET_KEY_GROUP_BY] = group_by_widget
+    st.session_state[WIDGET_KEY_OTF_BASELINE] = draft.otf_baseline.get("enabled") is True
 
 
 def _default_partner_token(catalog: tuple[str, ...], cores: list[str]) -> str:
@@ -819,6 +872,44 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.max_confluences = int(st.session_state.get(WIDGET_KEY_MAX_CONFLUENCES) or 2)
     draft.min_valid_confluences = int(st.session_state.get(WIDGET_KEY_MIN_VALID_CONFLUENCES) or 1)
     draft.from_partners = str(st.session_state.get(WIDGET_KEY_FROM_PARTNERS) or "required")
+    domains = declared_factor_domains(draft)
+    factor_keys = set(domains)
+    if WIDGET_KEY_STAGE_MODE in st.session_state:
+        draft.stage_mode = stage_mode_from_label(str(st.session_state[WIDGET_KEY_STAGE_MODE]))
+        if draft.stage_mode == "filter":
+            selected_labels = {
+                axis: [
+                    str(item)
+                    for item in (st.session_state.get(_stage_include_widget_key(axis)) or [])
+                ]
+                for axis in domains
+            }
+            draft.stage_include = collect_stage_include(domains, selected_labels)
+    if WIDGET_KEY_PRIMARY_METRIC in st.session_state:
+        draft.primary_metric = str(st.session_state[WIDGET_KEY_PRIMARY_METRIC])
+        if draft.primary_metric not in PRIMARY_METRIC_OPTIONS:
+            draft.primary_metric = "expectancy_r"
+    if WIDGET_KEY_MIN_TRADES in st.session_state:
+        draft.min_trades = int(st.session_state[WIDGET_KEY_MIN_TRADES] or 0)
+    if WIDGET_KEY_MULTIPLE_TESTING in st.session_state:
+        draft.multiple_testing = str(st.session_state[WIDGET_KEY_MULTIPLE_TESTING])
+        if draft.multiple_testing not in MULTIPLE_TESTING_OPTIONS:
+            draft.multiple_testing = "warn"
+    if WIDGET_KEY_GROUP_BY in st.session_state:
+        selected_group = constrain_group_by(
+            [str(item) for item in (st.session_state.get(WIDGET_KEY_GROUP_BY) or [])],
+            factor_keys,
+        )
+        if selected_group:
+            draft.group_by = selected_group
+            draft.emit_group_by = True
+        else:
+            draft.group_by = None
+            draft.emit_group_by = bool(base.emit_group_by and base.group_by is None)
+    if WIDGET_KEY_OTF_BASELINE in st.session_state:
+        baseline = copy.deepcopy(dict(draft.otf_baseline))
+        baseline["enabled"] = bool(st.session_state[WIDGET_KEY_OTF_BASELINE])
+        draft.otf_baseline = baseline
     return draft
 
 
@@ -901,6 +992,85 @@ def _render_tf_mode_block(label: str, mode_key: str, tfs_key: str) -> None:
             options=list(SUPPORTED_INDICATOR_TIMEFRAMES),
             key=tfs_key,
         )
+
+
+def _hydrate_builder_draft(draft: StudyDraft) -> None:
+    st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(draft)
+    st.session_state[STUDIES_BUILDER_PENDING_SYNC_KEY] = True
+    st.rerun()
+
+
+def _render_builder_stage(partial: StudyDraft) -> None:
+    st.markdown("### Stage")
+    st.radio("Stage mode", options=list(STAGE_MODE_OPTIONS), key=WIDGET_KEY_STAGE_MODE)
+    mode = st.session_state.get(WIDGET_KEY_STAGE_MODE)
+    domains = declared_factor_domains(partial)
+    if mode == STAGE_MODE_FILTER:
+        st.caption(
+            "Include pickers are ⊆ the current factor widgets. Empty axis → omitted. "
+            "Filter requires at least one include key."
+        )
+        for axis, domain in domains.items():
+            labels = [format_stage_value(axis, item) for item in domain]
+            st.multiselect(
+                f"include.{axis}",
+                options=labels,
+                key=_stage_include_widget_key(axis),
+            )
+    elif mode == STAGE_MODE_EXPLICIT:
+        cells = list(partial.stage_cells)
+        if not cells:
+            st.warning(
+                "explicit_cells is empty — hydrate a promote draft or Preview YAML. "
+                "Emit refuses an empty cell list. No add-cell constructor."
+            )
+            return
+        rows = []
+        for index, cell in enumerate(cells):
+            row = {"#": index}
+            for axis, value in cell.items():
+                row[axis] = format_stage_value(axis, value)
+            rows.append(row)
+        st.dataframe(rows, hide_index=True, width="stretch")
+        st.caption("Delete selected rows only. Promote draft / YAML hydrate is the add path.")
+        delete_options = list(range(len(cells)))
+        st.multiselect(
+            "Rows to delete",
+            options=delete_options,
+            format_func=lambda index: explicit_cell_row_label(index, cells[index]),
+            key=WIDGET_KEY_EXPLICIT_DELETE,
+        )
+        if st.button("Delete selected rows"):
+            selected = {
+                int(item) for item in (st.session_state.get(WIDGET_KEY_EXPLICIT_DELETE) or [])
+            }
+            draft = _draft_from_builder_widgets(partial)
+            draft.stage_cells = delete_stage_cells(draft.stage_cells, selected)
+            _hydrate_builder_draft(draft)
+
+
+def _render_builder_report(partial: StudyDraft) -> None:
+    st.markdown("### Report")
+    factor_keys = set(declared_factor_domains(partial))
+    metric_options = list(PRIMARY_METRIC_OPTIONS)
+    if partial.primary_metric not in metric_options:
+        metric_options = [partial.primary_metric, *metric_options]
+    st.selectbox("primary_metric", options=metric_options, key=WIDGET_KEY_PRIMARY_METRIC)
+    report_cols = st.columns(2)
+    report_cols[0].number_input("min_trades", min_value=0, step=1, key=WIDGET_KEY_MIN_TRADES)
+    testing_options = list(MULTIPLE_TESTING_OPTIONS)
+    if partial.multiple_testing not in testing_options:
+        testing_options = [partial.multiple_testing, *testing_options]
+    report_cols[1].selectbox(
+        "multiple_testing", options=testing_options, key=WIDGET_KEY_MULTIPLE_TESTING
+    )
+    st.multiselect(
+        "group_by",
+        options=sorted(factor_keys),
+        key=WIDGET_KEY_GROUP_BY,
+        help="Only declared factor axes. Empty omits the key (normalize default) unless the draft had explicit null.",
+    )
+    st.checkbox("otf_baseline.enabled", key=WIDGET_KEY_OTF_BASELINE)
 
 
 def _render_build() -> None:
@@ -1122,6 +1292,10 @@ def _render_build() -> None:
             "(SB2 does not clone Setup Builder’s entry-window block)."
         )
 
+    partial = _draft_from_builder_widgets(base)
+    _render_builder_stage(partial)
+    _render_builder_report(partial)
+
     try:
         draft = _draft_from_builder_widgets(base)
     except (TypeError, ValueError) as exc:
@@ -1136,9 +1310,11 @@ def _render_build() -> None:
     preview, emit_error = _render_builder_live_strip(draft)
 
     st.markdown("### Actions")
-    action_cols = st.columns(2)
+    action_cols = st.columns(4)
     start_example = action_cols[0].button("Start from example")
-    apply_preview = action_cols[1].button(
+    load_preview = action_cols[1].button("Load YAML from Preview tab")
+    copy_loaded = action_cols[2].button("Copy spec from loaded dir")
+    apply_preview = action_cols[3].button(
         "Apply to Preview", type="primary", disabled=preview is None
     )
     if start_example:
@@ -1148,9 +1324,26 @@ def _render_build() -> None:
         except StudySpecError as exc:
             st.error(str(exc))
             return
-        st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(hydrated)
-        st.session_state[STUDIES_BUILDER_PENDING_SYNC_KEY] = True
-        st.rerun()
+        _hydrate_builder_draft(hydrated)
+    if load_preview:
+        raw = str(st.session_state.get(STUDIES_PREVIEW_YAML_KEY) or "")
+        if not raw.strip():
+            st.error("Preview YAML is empty.")
+            return
+        try:
+            _hydrate_builder_draft(hydrate_study_yaml(raw))
+        except StudySpecError as exc:
+            st.error(str(exc))
+            return
+    if copy_loaded:
+        text = _read_loaded_study_spec_text()
+        if text is None:
+            return
+        try:
+            _hydrate_builder_draft(hydrate_study_yaml(text))
+        except StudySpecError as exc:
+            st.error(str(exc))
+            return
     if apply_preview:
         if emit_error is not None:
             st.error(str(emit_error))
@@ -1164,6 +1357,19 @@ def _render_build() -> None:
             "YAML is on the Preview tab — use **Validate / Preview**, then existing "
             "Run via CLI / Bind confirm. This tab does not spawn the CLI."
         )
+    if preview is not None:
+        try:
+            yaml_text = emit_study_yaml(draft)
+        except (StudySpecError, ValueError):
+            yaml_text = None
+        if yaml_text is not None:
+            st.download_button(
+                "Download StudySpec YAML",
+                data=yaml_text if yaml_text.endswith("\n") else yaml_text + "\n",
+                file_name=f"{draft.name or 'study'}.yaml",
+                mime="text/yaml",
+                help="Browser download of emit_study_yaml. Not a store write; not the Inspect study.spec.yaml path.",
+            )
 
 
 # Visual tab order is Inspect | Preview | Build. Execute Build before Preview

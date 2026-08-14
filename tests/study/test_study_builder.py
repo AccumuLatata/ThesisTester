@@ -21,7 +21,11 @@ from thesistester.study.builder import (
     builder_token_catalog,
     coerce_partner_levels,
     coerce_whole_number,
+    collect_stage_include,
+    constrain_group_by,
+    declared_factor_domains,
     default_study_draft,
+    delete_stage_cells,
     draft_from_mapping,
     draft_to_mapping,
     draft_warnings,
@@ -34,6 +38,7 @@ from thesistester.study.builder import (
     otf_from_preset_ids,
     otf_preset_ids,
     parse_csv_ints,
+    preferred_group_by,
 )
 from thesistester.study.launch import (
     STUDIES_LAUNCH_APPROVAL_KEY,
@@ -408,6 +413,10 @@ def test_pages_studies_build_tab_source_contract():
     assert "Honesty" in page
     # Apply writes the Preview textarea key; Build body must run first.
     assert page.index("with build_tab:") < page.index("with preview_tab:")
+    assert "Load YAML from Preview tab" in page
+    assert "Download StudySpec YAML" in page
+    assert "Delete selected rows" in page
+    assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]
 
 
 def test_emit_rejects_enabled_grid_without_tick_lists():
@@ -500,3 +509,98 @@ def test_coerce_whole_number_preserves_int_yaml():
     assert coerce_whole_number(0.0) == 0
     assert isinstance(coerce_whole_number(0.0), int)
     assert coerce_whole_number(0.5) == 0.5
+
+
+def test_pdpoc_full_cartesian_is_800_and_needs_confirm():
+    draft = hydrate_study_draft(load_study_spec(PDPOC_EXAMPLE))
+    draft.stage_mode = None
+    preview = preview_study_spec(emit_study_spec(draft))
+    assert preview.cartesian_product == 800
+    assert preview.effective_run_count_estimate == 800
+    assert preview.run_count == 800
+    assert preview.needs_confirm is True
+
+
+def test_collect_stage_include_stays_inside_domains():
+    domains = {
+        "trigger": ["touch", "reject"],
+        "trigger_timeframe": ["base", "1min"],
+        "partner_levels": [["SMA_50_1min"], ["EMA_21_5min"]],
+    }
+    include = collect_stage_include(
+        domains,
+        {
+            "trigger": ["touch", "not_a_trigger"],
+            "trigger_timeframe": ["base"],
+            "partner_levels": ["EMA_21_5min"],
+            "core_level": ["pdPOC"],
+        },
+    )
+    assert include == {
+        "trigger": ["touch"],
+        "trigger_timeframe": ["base"],
+        "partner_levels": [["EMA_21_5min"]],
+    }
+    draft = hydrate_study_draft(load_study_spec(PDPOC_EXAMPLE))
+    draft.stage_mode = "filter"
+    draft.stage_include = include
+    # pdPOC domains include these values; emit + preview is 40 vs 800 when
+    # trigger/timeframe are the only includes (partner include would narrow).
+    draft.stage_include = {"trigger": ["touch"], "trigger_timeframe": ["base"]}
+    preview = preview_study_spec(emit_study_spec(draft))
+    assert preview.run_count == 40
+    assert preview.cartesian_product == 800
+
+
+def test_preview_yaml_hydrate_emit_identity_hash():
+    yaml_text = emit_study_yaml(hydrate_study_draft(load_study_spec(PDPOC_EXAMPLE)))
+    again = emit_study_spec(hydrate_study_yaml(yaml_text))
+    original = load_study_spec(PDPOC_EXAMPLE)
+    assert study_identity_hash(original) == study_identity_hash(again)
+
+
+def test_dopen_hydrate_preview_is_eight_cells():
+    draft = hydrate_study_draft(load_study_spec(DOPEN_EXAMPLE))
+    assert draft.format_profile == "quantower_history_exporter"
+    assert draft.grid["stop_loss_ticks_values"] == [20, 40, 60, 80]
+    assert draft.grid["take_profit_ticks_values"] == [80, 160, 400, 800, 1000]
+    preview = preview_study_spec(emit_study_spec(draft))
+    assert preview.run_count == 8
+    assert preview.needs_confirm is False
+
+
+def test_delete_stage_cells_and_empty_emit_fails():
+    draft = hydrate_study_draft(load_study_spec(PDPOC_EXAMPLE))
+    spec = emit_study_spec(draft)
+    factors = spec["study"]["factors"]
+
+    def _copy_value(value):
+        if isinstance(value, list):
+            return list(value)
+        if isinstance(value, dict):
+            return dict(value)
+        return value
+
+    cell_a = {axis: _copy_value(factors[axis][0]) for axis in factors}
+    cell_b = {
+        axis: _copy_value(factors[axis][1] if len(factors[axis]) > 1 else factors[axis][0])
+        for axis in factors
+    }
+    draft.stage_mode = "explicit_cells"
+    draft.stage_cells = [cell_a, cell_b]
+    remaining = delete_stage_cells(draft.stage_cells, {0})
+    assert len(remaining) == 1
+    draft.stage_cells = remaining
+    assert len(emit_study_spec(draft)["study"]["stage"]["cells"]) == 1
+    draft.stage_cells = []
+    with pytest.raises(StudySpecError, match="non-empty stage.cells"):
+        emit_study_spec(draft)
+
+
+def test_group_by_cannot_include_undeclared_axes():
+    keys = set(declared_factor_domains(default_study_draft()))
+    assert "otf" not in keys
+    assert constrain_group_by(["otf", "trigger", "not_a_factor"], keys) == ["trigger"]
+    preferred = preferred_group_by(keys)
+    assert "otf" not in preferred
+    assert "trigger" in preferred

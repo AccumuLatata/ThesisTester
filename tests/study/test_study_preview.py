@@ -206,6 +206,12 @@ def test_pages_studies_preview_has_no_execute_controls():
                 and slice_node.func.id == "_partner_set_widget_key"
             ):
                 continue
+            elif (
+                isinstance(slice_node, ast.Call)
+                and isinstance(slice_node.func, ast.Name)
+                and slice_node.func.id == "_stage_include_widget_key"
+            ):
+                continue
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
             else:
