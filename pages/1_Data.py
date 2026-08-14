@@ -290,6 +290,18 @@ def _consume_data_page_source_invalidation(session_state=None) -> bool:
         return False
     state[PRIMARY_CSV_UPLOADER_NONCE_KEY] = int(state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0)) + 1
     state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = int(state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
+    # Signatures are Data-page widget keys, not bundle-managed. A stale hash
+    # from the pre-import upload would skip an explicit re-upload of the same
+    # file after restore (session would keep the imported lower frame).
+    for key in (
+        SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
+        SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY,
+        SUBTIMEFRAME_DUPLICATE_REPORT_KEY,
+        SUBTIMEFRAME_DUPLICATE_SOURCE_KEY,
+        SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY,
+        SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY,
+    ):
+        state.pop(key, None)
     return True
 
 

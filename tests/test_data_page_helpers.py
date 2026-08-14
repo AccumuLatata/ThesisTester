@@ -931,12 +931,18 @@ def test_consume_data_page_source_invalidation_increments_uploader_nonce():
         data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY: True,
         data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY: 2,
         data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY: 4,
+        data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY: "canonical:stale",
+        data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY: "canonical:stale",
+        data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY: "canonical:stale",
     }
 
     assert data_page._consume_data_page_source_invalidation(session_state) is True
     assert data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY not in session_state
     assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
     assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+    assert data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY not in session_state
+    assert data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY not in session_state
+    assert data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY not in session_state
     assert data_page._consume_data_page_source_invalidation(session_state) is False
     assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
     assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
