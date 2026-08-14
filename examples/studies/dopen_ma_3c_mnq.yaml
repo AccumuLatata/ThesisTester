@@ -29,6 +29,12 @@
 # Grid/validation/walk_forward dominate runtime; this study enables grid only.
 # Descriptive ranking ≠ validated edge (see docs/ASSUMPTIONS_AND_LIMITATIONS.md).
 # One month of 3c+confluence is often low-N — check the report low-N section.
+#
+# If study run reports ok=0 / failed=N, read cells.*.error in study.ledger.json
+# (CLI now reprints unique errors). Shared failures are almost always ingest:
+#   format_profile: quantower_history_exporter  → semicolon History Exporter
+#   format_profile: canonical                   → comma timestamp,open,high,low,close,volume
+# Then re-run the same output_dir (failed cells resume; no --force needed).
 
 schema_version: 1
 study:

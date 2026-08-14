@@ -17,6 +17,37 @@ from thesistester.study.report import StudyReportError, report_study
 from thesistester.study.rollup import StudyRollupError, rollup_study
 from thesistester.study.schema import StudySpecError
 
+_FAILED_ERROR_PRINT_CAP = 5
+
+
+def failed_cell_error_lines(
+    cells: dict,
+    run_names: list[str],
+    *,
+    max_unique: int = _FAILED_ERROR_PRINT_CAP,
+) -> list[str]:
+    """Return summary lines for unique failed-cell errors (first example each)."""
+    unique: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for name in run_names:
+        cell = cells.get(name) or {}
+        if cell.get("status") != "failed":
+            continue
+        error = str(cell.get("error") or "unknown error")
+        if error in seen:
+            continue
+        seen.add(error)
+        unique.append((name, error))
+    if not unique:
+        return []
+    shown = unique[: max(0, int(max_unique))]
+    lines = ["Failed cell errors (unique):"]
+    lines.extend(f"  {name}: {error}" for name, error in shown)
+    extra = len(unique) - len(shown)
+    if extra > 0:
+        lines.append(f"  … +{extra} more unique error(s) in study.ledger.json")
+    return lines
+
 
 def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``study`` command group on the root CLI parser."""
@@ -191,6 +222,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     ok = sum(1 for name in run_names if (cells.get(name) or {}).get("status") == "ok")
     failed = sum(1 for name in run_names if (cells.get(name) or {}).get("status") == "failed")
     print(f"Cell status: ok={ok} failed={failed}")
+    for line in failed_cell_error_lines(cells, run_names):
+        print(line)
     return os.EX_OK if failed == 0 else 1
 
 

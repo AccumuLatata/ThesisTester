@@ -795,3 +795,21 @@ def test_study_package_imports_when_fcntl_missing():
     )
     assert result.returncode == 0, result.stderr
     assert "import-ok" in result.stdout
+
+
+def test_failed_cell_error_lines_dedupes_and_caps():
+    from thesistester.study.cli_study import failed_cell_error_lines
+
+    cells = {
+        "a": {"status": "failed", "error": "DataValidationError: missing columns"},
+        "b": {"status": "ok", "error": None},
+        "c": {"status": "failed", "error": "DataValidationError: missing columns"},
+        "d": {"status": "failed", "error": "FileNotFoundError: bars.csv"},
+        "e": {"status": "failed", "error": "ValueError: boom"},
+    }
+    lines = failed_cell_error_lines(cells, ["a", "b", "c", "d", "e"], max_unique=2)
+    assert lines[0] == "Failed cell errors (unique):"
+    assert lines[1].startswith("  a: DataValidationError: missing columns")
+    assert lines[2].startswith("  d: FileNotFoundError: bars.csv")
+    assert lines[3] == "  … +1 more unique error(s) in study.ledger.json"
+    assert failed_cell_error_lines(cells, ["b"]) == []
