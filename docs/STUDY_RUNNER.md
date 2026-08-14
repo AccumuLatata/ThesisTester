@@ -333,7 +333,8 @@ Draft rules:
 
 ### Example
 
-`examples/studies/pdPOC_ma_confluence_battery.yaml`
+`examples/studies/pdPOC_ma_confluence_battery.yaml`  
+MNQ dOpen × MA / 3c example: `examples/studies/dopen_ma_3c_mnq.yaml` (8 cells + per-cell SL/TP grid).
 
 | Expansion | Cells |
 |---|---|
