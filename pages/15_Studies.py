@@ -753,14 +753,15 @@ def _session_int_list(key: str, fallback: Any = None) -> list[int]:
     return _int_list(raw)
 
 
-def _clamp_session_multiselect(key: str, options: list[Any]) -> None:
-    """Drop stale session selections before the widget mounts (Streamlit crash)."""
+def _clamped_multiselect(key: str, options: list[Any]) -> list[Any] | None:
+    """Return a clamped selection when session values left ``options``, else None."""
     raw = st.session_state.get(key)
     if raw is None:
-        return
+        return None
     clamped = clamp_widget_selection(raw, options)
     if list(raw) != clamped:
-        st.session_state[key] = clamped
+        return clamped
+    return None
 
 
 def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
@@ -1024,7 +1025,10 @@ def _render_builder_stage(partial: StudyDraft) -> None:
         )
         for axis, domain in domains.items():
             labels = [format_stage_value(axis, item) for item in domain]
-            _clamp_session_multiselect(_stage_include_widget_key(axis), labels)
+            include_key = _stage_include_widget_key(axis)
+            clamped_include = _clamped_multiselect(include_key, labels)
+            if clamped_include is not None:
+                st.session_state[_stage_include_widget_key(axis)] = clamped_include
             st.multiselect(
                 f"include.{axis}",
                 options=labels,
@@ -1047,7 +1051,9 @@ def _render_builder_stage(partial: StudyDraft) -> None:
         st.dataframe(rows, hide_index=True, width="stretch")
         st.caption("Delete selected rows only. Promote draft / YAML hydrate is the add path.")
         delete_options = list(range(len(cells)))
-        _clamp_session_multiselect(WIDGET_KEY_EXPLICIT_DELETE, delete_options)
+        clamped_delete = _clamped_multiselect(WIDGET_KEY_EXPLICIT_DELETE, delete_options)
+        if clamped_delete is not None:
+            st.session_state[WIDGET_KEY_EXPLICIT_DELETE] = clamped_delete
         st.multiselect(
             "Rows to delete",
             options=delete_options,
@@ -1079,7 +1085,9 @@ def _render_builder_report(partial: StudyDraft) -> None:
         "multiple_testing", options=testing_options, key=WIDGET_KEY_MULTIPLE_TESTING
     )
     group_options = sorted(factor_keys)
-    _clamp_session_multiselect(WIDGET_KEY_GROUP_BY, group_options)
+    clamped_group = _clamped_multiselect(WIDGET_KEY_GROUP_BY, group_options)
+    if clamped_group is not None:
+        st.session_state[WIDGET_KEY_GROUP_BY] = clamped_group
     st.multiselect(
         "group_by",
         options=group_options,
