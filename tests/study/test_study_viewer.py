@@ -13,6 +13,10 @@ import pytest
 
 from thesistester.study.ledger import empty_ledger, save_ledger
 from thesistester.study.report import OVERVIEW_CSV, OVERVIEW_MD, OTF_DELTA_CSV, report_study
+from thesistester.study.builder import (
+    STUDIES_BUILDER_DRAFT_KEY,
+    STUDIES_BUILDER_PENDING_SYNC_KEY,
+)
 from thesistester.study.viewer import (
     CLASSIC_RESEARCH_SESSION_KEYS,
     STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
@@ -188,6 +192,21 @@ def test_pages_studies_is_read_only_source():
                 isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_APPROVAL_KEY"
             ):
                 written_keys.add("studies_launch_approval")
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_BUILDER_DRAFT_KEY":
+                written_keys.add(STUDIES_BUILDER_DRAFT_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_BUILDER_PENDING_SYNC_KEY"
+            ):
+                written_keys.add(STUDIES_BUILDER_PENDING_SYNC_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id.startswith("WIDGET_KEY_"):
+                continue
+            elif (
+                isinstance(slice_node, ast.Call)
+                and isinstance(slice_node.func, ast.Name)
+                and slice_node.func.id == "_partner_set_widget_key"
+            ):
+                continue
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
             else:
@@ -204,7 +223,11 @@ def test_pages_studies_is_read_only_source():
         "studies_preview_cached_yaml",
         "studies_launch_output_dir",
         "studies_launch_approval",
+        STUDIES_BUILDER_DRAFT_KEY,
+        STUDIES_BUILDER_PENDING_SYNC_KEY,
     }
+    assert STUDIES_BUILDER_DRAFT_KEY in written_keys
+    assert STUDIES_BUILDER_PENDING_SYNC_KEY in written_keys
     assert not (written_keys & CLASSIC_RESEARCH_SESSION_KEYS)
 
 

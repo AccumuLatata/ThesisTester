@@ -686,7 +686,7 @@ No Streamlit AppTest required if AST + pure helpers cover the contract (same pos
 |---|---|---|
 | SB0 | Plan lock + index | ✅ this PR |
 | SB1 | Pure StudyDraft compiler | Not started |
-| SB2 | Build tab P0 + Apply to Preview | Not started |
+| SB2 | Build tab P0 + Apply to Preview | This PR |
 | SB3 | Stage / report / hydrate / download + docs closeout | Not started |
 
 Parked (not in SB): RS-D1 NL compiler; RS-D6 new factor axes; templates marketplace; study library; in-process execute; promote UI; entry-window widget clone.

@@ -9,6 +9,10 @@ import pytest
 import yaml
 
 from thesistester.study.expand import expand_study
+from thesistester.study.builder import (
+    STUDIES_BUILDER_DRAFT_KEY,
+    STUDIES_BUILDER_PENDING_SYNC_KEY,
+)
 from thesistester.study.launch import (
     STUDIES_LAUNCH_APPROVAL_KEY,
     STUDIES_LAUNCH_OUTPUT_DIR_KEY,
@@ -187,6 +191,21 @@ def test_pages_studies_preview_has_no_execute_controls():
                 isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_APPROVAL_KEY"
             ):
                 written_keys.add(STUDIES_LAUNCH_APPROVAL_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_BUILDER_DRAFT_KEY":
+                written_keys.add(STUDIES_BUILDER_DRAFT_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_BUILDER_PENDING_SYNC_KEY"
+            ):
+                written_keys.add(STUDIES_BUILDER_PENDING_SYNC_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id.startswith("WIDGET_KEY_"):
+                continue
+            elif (
+                isinstance(slice_node, ast.Call)
+                and isinstance(slice_node.func, ast.Name)
+                and slice_node.func.id == "_partner_set_widget_key"
+            ):
+                continue
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
             else:
@@ -195,6 +214,9 @@ def test_pages_studies_preview_has_no_execute_controls():
     assert "Run via CLI" in page
     assert "Confirm and run" in page
     assert "Bind confirm" in page
+    assert "Build StudySpec" in page
+    assert "Apply to Preview" in page
+    assert "preview_study_spec" in page
     assert written_keys <= {
         STUDIES_VIEWER_DIR_KEY,
         "studies_viewer_path_input",
@@ -205,7 +227,11 @@ def test_pages_studies_preview_has_no_execute_controls():
         STUDIES_PREVIEW_CACHED_YAML_KEY,
         STUDIES_LAUNCH_OUTPUT_DIR_KEY,
         STUDIES_LAUNCH_APPROVAL_KEY,
+        STUDIES_BUILDER_DRAFT_KEY,
+        STUDIES_BUILDER_PENDING_SYNC_KEY,
     }
+    assert STUDIES_BUILDER_DRAFT_KEY in written_keys
+    assert STUDIES_BUILDER_PENDING_SYNC_KEY in written_keys
     assert STUDIES_VIEWER_CACHED_MODEL_KEY in written_keys
     assert STUDIES_PREVIEW_CACHED_KEY in written_keys
     assert STUDIES_LAUNCH_OUTPUT_DIR_KEY in written_keys

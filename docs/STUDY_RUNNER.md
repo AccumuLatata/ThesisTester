@@ -5,8 +5,10 @@
 **Package:** `thesistester.study`  
 **Study Builder:** `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md`. **SB1** compiler
 (`thesistester.study.builder`) emits / hydrates canonical `schema_version: 1`
-StudySpec YAML. The Build tab (SB2–SB3) is not shipped. Does not change
-inspect / preview / CLI-spawn semantics.
+StudySpec YAML. **SB2** adds the **Build StudySpec** tab on Studies
+(Apply to Preview → existing Preview / CLI-spawn). SB3 (stage / report /
+hydrate / download) is not shipped. Does not change inspect / preview /
+CLI-spawn semantics.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -547,7 +549,7 @@ Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor typ
 
 Pure helper `thesistester.study.builder`: `StudyDraft` →
 `validate_study_spec(normalize_study_spec(emit(draft)))`. Hydrate is the inverse
-for identity-hash round-trip. Pages will import this module directly (same
+for identity-hash round-trip. Pages import this module directly (same
 pattern as `launch.py`). **No Streamlit. No execute / launch / preview import.**
 
 | API | Role |
@@ -558,4 +560,7 @@ pattern as `launch.py`). **No Streamlit. No execute / launch / preview import.**
 | `builder_token_catalog` | `sorted(closed_level_token_set(levels))` |
 | `OTF_PRESETS` | Off / 5m / 15m / 30m / combo chips (SB2) |
 
-Execute remains `python -m thesistester study run`. The Studies Build tab is SB2.
+Execute remains `python -m thesistester study run`. The Studies **Build StudySpec**
+tab (SB2) calls emit + `preview_study_spec` on the page; Apply to Preview writes
+the Preview textarea key before that widget mounts (Build body runs first) and
+does not spawn CLI.
