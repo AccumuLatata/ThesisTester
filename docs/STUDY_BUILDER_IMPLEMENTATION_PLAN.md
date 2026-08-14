@@ -1,7 +1,7 @@
 # Study Builder — Implementation Plan (SB)
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
-**Date:** 2026-08-14  
+**Date:** 2026-08-14 (amended: mode_rules emit-exactly-listed-modes; levels TF omit ≠ bare `SMA_N`; RS D8/D9 out-of-scope labels)  
 **Status:** **SB0 plan-locked.** SB1–SB3 not started.  
 **Series code:** **SB** (Study Builder)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
@@ -165,7 +165,9 @@ Expand refuses cells missing `confluence_mode` / `trigger` / `trigger_timeframe`
 - `otf` — omit entirely when `draft.otf is None` (do not emit `[{enabled: false}]` unless the operator selected the Off preset as an explicit factor value)
 - `direction` — emit as a factor list only when `direction_as_factor`; otherwise emit `constants.direction`
 
-**Canonical `mode_rules` — always emitted** (required cell axis `confluence_mode` is always present):
+**Canonical `mode_rules` — always present** (required cell axis `confluence_mode` is always a factor). Emit **exactly** the modes in `draft.confluence_mode`. Extra unused entries (`global_cluster` when the factor is only `anchor_rules`, or the reverse) change `study_identity_hash` and break hydrate → emit round-trip on singleton-mode / promote drafts. Schema requires an entry for each listed mode; it does not require the other allow-listed key.
+
+Templates (use only for modes that are present):
 
 ```yaml
 mode_rules:
@@ -178,13 +180,19 @@ mode_rules:
       from_partners: required   # or optional from draft.from_partners
 ```
 
-Do not expose template strings in the main UI. Advanced: `from_partners` radio only.
-
-If `confluence_mode` is a singleton, still emit **both** mode_rules entries only when both modes are in the factor list; emit exactly the modes present (schema: `mode_rules` must contain an entry for each listed mode).
+Do not expose template strings in the main UI. Advanced: `from_partners` radio only (ignored on emit when `anchor_rules` is not in `confluence_mode`).
 
 **Batteries:** if `grid` / `validation` / `walk_forward` are present on the draft (they always are), emit the mapping with an explicit boolean `enabled`. Never emit `{}`. Extra keys on those mappings survive hydrate → emit (grid value lists, etc.).
 
-**Levels:** emit `draft.levels` as-is after dropping `None` values. Tokens in factors must be in `closed_level_token_set(levels)` or emit raises `StudySpecError` with the existing schema wording.
+**Levels:** emit `draft.levels` as-is after dropping `None` values. Do **not** emit JSON `null` for `sma_timeframes` / `ema_timeframes` — `expand_study` → `validate_run_spec` requires a list when the key is present, so `null` fails the live strip. Tokens in factors must be in `closed_level_token_set(levels)` or emit raises `StudySpecError` with the existing schema wording.
+
+Timeframe-key semantics after `{**DEFAULT_LEVELS_SETTINGS, **levels}` (this is what `closed_level_token_set` uses):
+
+| Emit | Catalog / implied tokens |
+|---|---|
+| Key omitted | Product default TFs `1min`, `5min`, `30min` — **not** bare `SMA_N` |
+| `[]` | No MA tokens for that family |
+| Explicit list | Those suffixes only (`SMA_50_1min`, …) |
 
 **Partner-set vs core:** emit may warn via a helper `draft_warnings(draft) -> tuple[str, ...]` when any partner set intersects `core_level` (expand fails that cell). Emit still validates; do not silently drop tokens.
 
@@ -216,8 +224,9 @@ Rules:
 4. `direction` in factors → `direction_as_factor=True`. Else `direction_constant` from constants (default `both`).
 5. `stage` absent → `stage_mode=None`. `filter` / `explicit_cells` copy include/cells.
 6. `group_by` present → preserve list. Absent → `None` (emit omits; normalize fills).
-7. `mode_rules.anchor_rules.confluence_rules.from_partners` → `from_partners`. Emit **replaces** `mode_rules` with the canonical templates. Examples and the golden fixture already use those templates. Non-canonical `selected_levels` strings are not preserved (document; no test requires preserving invented templates).
+7. `mode_rules.anchor_rules.confluence_rules.from_partners` → `from_partners` when `anchor_rules` is present. Emit **replaces** `mode_rules` with the canonical templates **for listed modes only**. Examples and the golden fixture already use those templates. Non-canonical `selected_levels` strings are not preserved (document; no test requires preserving invented templates).
 8. `output_dir` equal to the normalize default may be stored as `None` or as the string; emit+normalize must hash-equal either way.
+9. Copy report fields as present (`primary_metric`, `secondary_metrics`, `min_trades`, `group_by`, `otf_baseline`, `multiple_testing`). Do not replace a shorter `secondary_metrics` list (golden fixture) with the draft default list — that breaks identity-hash round-trip.
 
 `hydrate_study_yaml(text) -> StudyDraft`: `yaml.safe_load` → mapping → `hydrate_study_draft`. Invalid YAML / non-mapping → `StudySpecError` (same class as schema).
 
@@ -247,7 +256,7 @@ def builder_token_catalog(levels: Mapping) -> tuple[str, ...]
 
 Returns `tuple(sorted(closed_level_token_set(levels)))`. Factor pickers use this list. Do not read session `levels` / `levels_settings`. Do not invent tokens.
 
-Static names come from `STUDY_STATIC_LEVEL_NAMES`. MA / rolling / prev30m / pivot tokens appear only when `draft.levels` implies them (existing `closed_level_token_set` rules: `None` timeframes → bare `SMA_N`; explicit `[]` → no MA tokens; prev30m/pivots only when enable flags are true).
+Static names come from `STUDY_STATIC_LEVEL_NAMES`. MA / rolling / prev30m / pivot tokens appear only when `draft.levels` **after DEFAULT merge** implies them (existing `closed_level_token_set` rules: omitted TF keys inherit `DEFAULT_LEVELS_SETTINGS` `1min`/`5min`/`30min`, not bare `SMA_N`; explicit `[]` → no MA tokens; prev30m/pivots inherit DEFAULT enable flags — both **on** unless the draft sets them false). Do not advertise a “bare `SMA_N`” emit path: study schema treats map-`None` as bare, but expand rejects `null` list fields.
 
 ### 4.6 Live strip (locked)
 
@@ -271,10 +280,11 @@ Builder emit failures (`StudySpecError`) show on the Build tab; they do not clea
 Button **Apply to Preview**:
 
 1. `yaml_text = emit_study_yaml(draft)`
-2. `st.session_state[STUDIES_PREVIEW_YAML_KEY] = yaml_text`
-3. Pop `STUDIES_PREVIEW_CACHED_KEY` and `STUDIES_PREVIEW_CACHED_YAML_KEY`
-4. `reset_launch_session_for_preview(...)` with `new_yaml=yaml_text` (existing helper)
-5. Success caption: YAML is on the Preview tab — use **Validate / Preview**, then existing Run via CLI / Bind confirm
+2. Capture `prev_cached_yaml = session_state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)` (string or `None`) **before** popping cache
+3. `st.session_state[STUDIES_PREVIEW_YAML_KEY] = yaml_text`
+4. Pop `STUDIES_PREVIEW_CACHED_KEY` and `STUDIES_PREVIEW_CACHED_YAML_KEY`
+5. `reset_launch_session_for_preview(session_state, prev_cached_yaml=prev_cached_yaml, new_yaml=yaml_text)` — existing helper; both kwargs are required. Always drops armed confirm; reseeds CLI `output_dir` when YAML changed
+6. Success caption: YAML is on the Preview tab — use **Validate / Preview**, then existing Run via CLI / Bind confirm
 
 Do **not** auto-call `preview_study_yaml`. Do **not** spawn CLI. Do **not** write `study.launch.yaml`. Do **not** switch Streamlit tabs programmatically (not reliable); the operator changes tab.
 
@@ -332,7 +342,7 @@ Render from `STUDIES_BUILDER_DRAFT_KEY`. On hydrate, set `STUDIES_BUILDER_PENDIN
 **Levels → tokens**
 
 - SMA / EMA lengths: comma-separated positive ints or small multiselect of common lengths `{9, 21, 50, 200}` plus a free “add length” number input
-- SMA / EMA timeframes: multiselect from `SUPPORTED_INDICATOR_TIMEFRAMES` (include a “bare / no suffix” representation: store `sma_timeframes: null` vs `[]` vs a list — UI: radio **Default bare** / **None (no MA tokens)** / **Explicit TFs**. Map: Default bare → key omitted or `None`; None → `[]`; Explicit → selected list)
+- SMA / EMA timeframes: multiselect from `SUPPORTED_INDICATOR_TIMEFRAMES`. UI radio **Product default TFs** / **No MA tokens** / **Explicit TFs**. Map: Product default → omit the key (catalog uses DEFAULT `1min`/`5min`/`30min`, not bare `SMA_N`); No MA tokens → `[]`; Explicit → selected list. Do not store or emit JSON `null` for these keys.
 - Optional expander: `vwap_windows`, `poc_windows`, `prev30m_vwap_enabled`, `pivots_enabled` + `pivot_timeframes`
 - Read-only caption: **Closed tokens (N):** first ~20 names + count. This is the picker domain
 
@@ -473,9 +483,10 @@ Do not merge SB2 before SB1. Do not merge SB3 before SB2. Do not start SB1 in th
 | | ☑ Identity-hash round-trip on golden fixture + both `examples/studies/*.yaml` (exclude `agents/`) |
 | | ☑ pdPOC hydrate: `stage_mode=="filter"`, include touch/base; emit preview estimate 40 vs cartesian 800 (call `preview_study_spec` **from the test**, not from `builder.py`) |
 | | ☑ dopen hydrate: `format_profile` + grid value lists survive; `otf is None`; trigger `[3c]` |
-| | ☑ Missing `mode_rules` on a hand-built draft: emit inserts canonical templates |
+| | ☑ Missing `mode_rules` on a hand-built draft: emit inserts canonical templates **for listed `confluence_mode` values only** (singleton mode → one `mode_rules` key) |
 | | ☑ `grid: {}` cannot be produced by emit; batteries always have `enabled` |
 | | ☑ Unknown token / `trigger_timeframe=30min` / empty partner set → `StudySpecError` |
+| | ☑ Emit never writes `sma_timeframes` / `ema_timeframes` as JSON `null` |
 | | ☑ `direction_as_factor` vs constant: only one of `factors.direction` / `constants.direction` as specified |
 | | ☑ OTF presets normalize; selecting off+5m aliases that collapse to the same canonical config fail closed |
 | | ☑ AST/import guard: `builder.py` does not import execute/launch/promote/preview/tools/viewer/cli |
@@ -493,11 +504,14 @@ execute.py, pages/, or study/__init__.py. builder.py must not import
 execute/launch/promote/preview/tools/viewer/cli. Emit always validates
 via normalize_study_spec + validate_study_spec. Always emit required
 factor axes core_level, partner_levels, confluence_mode, trigger,
-trigger_timeframe. Auto-insert canonical mode_rules. Batteries always
-have explicit enabled. Identity-hash round-trip must hold for
+trigger_timeframe. Auto-insert canonical mode_rules for listed
+confluence_mode values only (do not emit the unused mode). Batteries
+always have explicit enabled. Do not emit sma_timeframes/ema_timeframes
+null. Identity-hash round-trip must hold for
 tests/fixtures/study/golden_study.yaml and both examples/studies/*.yaml.
-Default draft expands to 2 cells. §4.2 regression: no engine/golden
-drift. Update docs/STUDY_RUNNER.md with a short SB compiler note only.
+Default draft expands to 2 cells. ENGINEERING_PROPOSAL.md §4.2: no
+engine/golden drift. Update docs/STUDY_RUNNER.md with a short SB
+compiler note only.
 ```
 
 ---
@@ -549,7 +563,7 @@ STUDIES_BUILDER_PENDING_SYNC_KEY). No engine/golden/schema/expand/
 launch/execute edits. Extend USER_GUIDE H2 Studies viewer (read-only)
 with a short Build/Apply sentence; no new H2. ARCHITECTURE session-key
 sentence. Extend test_study_preview / test_study_viewer AST allow-lists.
-§4.2.
+ENGINEERING_PROPOSAL.md §4.2.
 ```
 
 ---
@@ -593,7 +607,7 @@ H2 Studies viewer (read-only) with the full Build how-to — no new H2, no HC
 allowlist change. Add docs/STUDY_RUNNER.md §SB, AGENT_GUIDE pointer, roadmap
 SB1–SB3 complete. Optional one-liner in the Grok pack; do not rewrite it.
 Identity-hash round-trip: Preview YAML → hydrate → emit → same hash.
-§4.2.
+ENGINEERING_PROPOSAL.md §4.2.
 ```
 
 ---
