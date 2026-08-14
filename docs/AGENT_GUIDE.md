@@ -6,7 +6,11 @@ Regression-safe onboarding guide for contributors/agents working in ThesisTester
 ## Fast start
 1. Install deps: `pip install -r requirements.txt` (`README.md:7-10`).
 2. Run tests: `pytest -q` (`README.md:12-16`).
-3. Optional app run: `streamlit run app.py` (`README.md:7-10`).
+3. Optional app run: `streamlit run app.py` (`README.md:7-10`). Repo
+   `.streamlit/config.toml` sets `server.maxMessageSize = 400` (MB websocket
+   payload; Streamlit default is 200) and `server.maxUploadSize = 350`.
+   `MessageSizeError` is that transport cap, not host RAM. Restart Streamlit
+   after editing the file. Headless `python -m thesistester` is uncapped.
 
 ## Headless and agent operation (R18)
 

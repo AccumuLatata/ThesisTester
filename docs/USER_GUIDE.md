@@ -61,7 +61,8 @@ instrument, builds dataset identity, and records futures roll assumptions.
 
 **Related terms.** import, upload, CSV, Quantower, NinjaTrader, Sierra,
 Databento, timezone, instrument, sample data, format profile, ingestion mode,
-15-second primary, roll metadata, saved datasets, dataset identity
+15-second primary, roll metadata, saved datasets, dataset identity,
+message size, MessageSizeError
 
 **Key settings.**
 
@@ -74,6 +75,7 @@ Databento, timezone, instrument, sample data, format profile, ingestion mode,
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
 | Futures roll controls | `Roll method`, contract/adjustment/rule fields | Validate before trusting continuous history |
 | `Local dataset name` + **Save dataset locally** | Persist into the local store | Set `THESISTESTER_STORE_DIR` (`.env` or `scripts/set_store_dir.ps1`) so the store is explicit and durable |
+| Streamlit payload cap | `.streamlit/config.toml` `server.maxMessageSize` (400 MB) | `MessageSizeError` is the websocket cap, not host RAM. Restart Streamlit after changing it. Upload cap is separate (`maxUploadSize` 350 MB). |
 
 **How to use.**
 
@@ -92,6 +94,8 @@ Databento, timezone, instrument, sample data, format profile, ingestion mode,
 - Lower-timeframe dual-upload is optional/legacy and for replay diagnostics.
 - Format profiles are explicit; wrong profile → bad bars, not a soft warning-only
   success.
+- `MessageSizeError` is Streamlit's frontend websocket limit (repo default
+  400 MB), not a RAM ceiling. Headless `python -m thesistester` has no such cap.
 
 **Related pages.** Levels (next); Backtest may need lower TF data for some
 intrabar models.

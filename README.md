@@ -11,6 +11,12 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+`.streamlit/config.toml` raises Streamlit's websocket payload cap
+(`server.maxMessageSize`) to 400 MB (upstream default 200 MB) so large 15s
+frames can render. That limit is the browser transport, not host RAM.
+`server.maxUploadSize` stays 350 MB. Restart Streamlit after changing either
+value. Headless `python -m thesistester` has no websocket cap.
+
 Local persistence defaults to `.thesistester_store/` under the repo root. Set
 `THESISTESTER_STORE_DIR` for a durable absolute store (recommended on Windows and any
 environment where the checkout may be ephemeral). Resolution order: process env →
