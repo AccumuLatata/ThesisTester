@@ -778,3 +778,178 @@ def test_upload_csv_default_ingestion_mode_is_15s_primary_not_api_default():
             "validation": {"enabled": False},
         }
     )
+
+
+def test_should_apply_source_dataset_sample_only_when_session_empty():
+    data_page = _import_data_page_module({})
+
+    assert data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=False,
+    )
+    assert not data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=True,
+    )
+    assert data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=True,
+        explicit_sample_load=True,
+    )
+
+
+def test_should_apply_source_dataset_upload_when_file_present():
+    data_page = _import_data_page_module({})
+
+    assert data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Upload CSV",
+        has_session_data=True,
+    )
+    assert not data_page._should_apply_source_dataset(
+        file_present=False,
+        source="Upload CSV",
+        has_session_data=True,
+    )
+    assert not data_page._should_apply_source_dataset(
+        file_present=False,
+        source="Sample data",
+        has_session_data=False,
+    )
+
+
+def test_should_apply_source_dataset_keeps_bundle_import_on_sample_navigation():
+    """Reproduce: import bundle (session has data+levels) then open Data.
+
+    Source defaults to Sample. Auto-applying sample would change dataset_id
+    and clear levels. Navigation must keep the imported session.
+    """
+    data_page = _import_data_page_module(
+        {
+            "data": pd.DataFrame({"timestamp": [1]}),
+            "levels": pd.DataFrame({"level": [1.0]}),
+            "dataset_id": "bundle-dataset",
+        }
+    )
+
+    assert not data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=True,
+    )
+
+
+def test_bundle_import_then_data_navigation_keeps_levels(monkeypatch):
+    """Full reported loop: import bundle, open Data with Source=Sample.
+
+    Imported bars and levels must remain. Explicitly installing a different
+    dataset still clears dependents (upload / Load sample data).
+    """
+    from thesistester.research_bundle import (
+        DATA_PAGE_INVALIDATE_SOURCE_KEY,
+        apply_research_bundle_to_session,
+        build_research_bundle,
+        load_research_bundle,
+    )
+
+    imported_data = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                "2026-06-01 09:30:00", periods=2, freq="1min", tz="America/New_York"
+            ),
+            "open": [1.0, 2.0],
+            "high": [2.0, 3.0],
+            "low": [0.5, 1.5],
+            "close": [1.5, 2.5],
+            "volume": [10, 20],
+        }
+    )
+    bundle_bytes = build_research_bundle(
+        {
+            "data": imported_data,
+            "dataset_id": "bundle-dataset",
+            "instrument": "ES",
+            "base_interval": "1min",
+            "source_timezone": "America/New_York",
+            "exchange_timezone": "America/New_York",
+            "levels": pd.DataFrame({"level": [1.0]}),
+            "session_levels": pd.DataFrame({"session": ["RTH"]}),
+            "levels_settings": {"or_minutes": 5},
+        }
+    )
+    session_state: dict = {}
+    apply_research_bundle_to_session(load_research_bundle(bundle_bytes), session_state)
+    assert session_state[DATA_PAGE_INVALIDATE_SOURCE_KEY] is True
+
+    # Importing the page executes its body, including source invalidation.
+    data_page = _import_data_page_module(session_state)
+    assert DATA_PAGE_INVALIDATE_SOURCE_KEY not in session_state
+    assert session_state.get(data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY, 0) >= 1
+    assert session_state.get(data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0) >= 1
+    assert not data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data="data" in session_state,
+    )
+    assert "levels" in session_state
+    assert session_state["dataset_id"] == "bundle-dataset"
+
+    monkeypatch.setattr(data_page, "ensure_display_timezone", lambda *a, **k: None)
+    monkeypatch.setattr(data_page, "set_active_dataset_id", lambda *a, **k: None)
+    monkeypatch.setattr(data_page, "clear_active_dataset_id", lambda *a, **k: None)
+    replacement = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                "2026-07-01 09:30:00", periods=2, freq="1min", tz="America/New_York"
+            ),
+            "open": [10.0, 11.0],
+            "high": [12.0, 13.0],
+            "low": [9.0, 10.0],
+            "close": [11.0, 12.0],
+            "volume": [5, 6],
+        }
+    )
+    data_page._set_active_dataset_state(
+        replacement,
+        instrument="ES",
+        base_interval="1min",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        resampled_data={},
+        saved_dataset_id=None,
+    )
+    assert "levels" not in session_state
+    assert session_state["dataset_id"] != "bundle-dataset"
+
+
+def test_consume_data_page_source_invalidation_increments_uploader_nonce():
+    data_page = _import_data_page_module({})
+    session_state = {
+        data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY: True,
+        data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY: 2,
+        data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY: 4,
+        data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY: "canonical:stale",
+        data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY: "canonical:stale",
+        data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY: "canonical:stale",
+    }
+
+    assert data_page._consume_data_page_source_invalidation(session_state) is True
+    assert data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY not in session_state
+    assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
+    assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+    assert data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY not in session_state
+    assert data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY not in session_state
+    assert data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY not in session_state
+    assert data_page._consume_data_page_source_invalidation(session_state) is False
+    assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
+    assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+
+
+def test_session_has_primary_data_requires_dataframe():
+    data_page = _import_data_page_module({})
+    assert data_page._session_has_primary_data({}) is False
+    assert data_page._session_has_primary_data({"data": None}) is False
+    assert data_page._session_has_primary_data({"data": pd.DataFrame({"timestamp": [1]})}) is True
