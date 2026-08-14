@@ -64,6 +64,11 @@ before `Popen`; Windows pid-alive must not use `os.kill`. Windows spawn must
 not set `DETACHED_PROCESS` (empty `study.launch.log`). See `docs/STUDY_RUNNER.md`
 §RS-D9 and plan §12.10.
 
+**SB (planned):** Study Builder UX — `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md`.
+Form compiler to canonical StudySpec YAML on the existing Studies page. Do not
+start SB1–SB3 in an RS PR. Do not call `run_study()` from the Build tab. Parked
+RS-D1 / D3 / D6 stay parked.
+
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:
 

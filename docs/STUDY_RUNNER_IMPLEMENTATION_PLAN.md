@@ -1,11 +1,11 @@
 # Research Study Runner — Implementation Plan (RS)
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
-**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + RS-D8 authoring-preview sequence + **RS-D9 CLI-launch sequence** + **RS-D9 review contracts**: pin both dataset keys, pinned-hash confirm, exclusive/portable pid)  
-**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9 complete**. Parked: RS-D1 / RS-D3 / RS-D6
+**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + RS-D8 authoring-preview sequence + **RS-D9 CLI-launch sequence** + **RS-D9 review contracts**: pin both dataset keys, pinned-hash confirm, exclusive/portable pid; amended 2026-08-14: parked form-builder → separate **SB** series)  
+**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9 complete**. Parked: RS-D1 / RS-D3 / RS-D6. Study Builder UX: `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB0 locked; not an RS PR)
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
-**Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
+**Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`, `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB — form compiler; does not change this series’ execute/preview/launch contracts)  
 **Related but separate:** `docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` (within-trade level membership — **not** cross-setup factorial studies; do not merge concepts)  
 **Depends on (already shipped):** R18 headless API + batch CLI (`thesistester/api.py`, `thesistester/cli.py`), RunSpec validation, research bundles, `results_index.csv`, Study Runner package `thesistester/study/`
 
@@ -55,7 +55,7 @@ The runner must remain **independent of Streamlit day-to-day research**: no engi
 | Deterministic expand + golden fixtures | **RS6** default-off `STUDY.*` assistant capabilities | **RS-D3** `run_batch` continue-on-failure |
 | Confirm gate + cost hints | **RS-D2** Streamlit Studies **viewer** (artifacts-only) | **RS-D6** multi-partner / tolerance factor types |
 | Study-owned execute + per-cell ledger | **RS-D4** per-cell WFA/validation/overfitting diagnostic rollup | Auto-run promotion / scheduled studies |
-| Soft resume + workers + continue-on-failure (study layer) | **RS-D5** Grok Bot routine pack (external; after RS6) | UI factor builder / templates marketplace |
+| Soft resume + workers + continue-on-failure (study layer) | **RS-D5** Grok Bot routine pack (external; after RS6) | Templates marketplace |
 | Overview CSV/MD + OTF Δ + honesty | **RS-D8** Studies authoring preview (validate + expand dry-run + ledger watch) | Embedding Grok host / RabbitMQ / job queue / live MCP server |
 | Stage filter + promote → `explicit_cells` draft | **RS-D9** Studies CLI-launch button (spawn existing `study run`; no in-process execute) | |
 | Stage-first example (40) + documented full (800) | | |
@@ -881,7 +881,7 @@ Update STUDY_RUNNER.md (minimal agent recipe) + roadmap.
 | | Honesty banner: descriptive ranking ≠ validated edge; multiple-testing; min_trades |
 | | Optional: download / show `study.overview.md` / CSV text. **Do not** promise Research-Bundles deep-link-by-path (that page is upload/import oriented); listing `bundle_path` is enough |
 | | **Read-only inspect pane:** no in-app expand-to-disk / run / promote; must **not** mutate classic research `st.session_state` keys (levels/signals/trades/etc.). A StudySpec **preview textarea** is **RS-D8** (same page; still no execute) — do not add it in the D2 PR |
-| **Out of scope** | Factor builder UI; templates marketplace; auto-run; assistant NL; changing headless CLI; portfolio of studies cloud sync; **StudySpec paste/preview (RS-D8)** |
+| **Out of scope** | Factor builder UI (separate **SB** series); templates marketplace; auto-run; assistant NL; changing headless CLI; portfolio of studies cloud sync; **StudySpec paste/preview (RS-D8)** |
 | **Regression** | Classic pages unchanged in behavior; no engine edits; Help allowlist updated if USER_GUIDE gains H2; nav addition must not break existing page tests |
 | **Acceptance checklist** | |
 | | ☑ Can load a completed fixture study dir and show ranked/low-N/ledger without running backtests |
@@ -979,7 +979,9 @@ No product host embedding. No MCP server. No engine/pages. No default-on tools. 
 | **RS-D3** | `run_batch` continue-on-failure | Only if R18 replay parity with study ledger is required | Additive flag; default abort/write semantics stay identical |
 | **RS-D6** | Multi-partner clusters / tolerance sweeps | When a concrete study needs new factor types | `schema_version` bump; golden expand fixtures; no engine changes |
 
-Still **non-goals:** auto-promote to live thesis without human confirm; scheduled study daemon / job queue; UI factor marketplace; merging with confluence-combo attribution; greenfield in-product MCP server; **in-process** Streamlit `run_study` / `STUDY.run` from the Studies page (RS-D8 preview does not reopen this; **RS-D9** is CLI-spawn only and does not reopen in-process execute).
+Still **non-goals:** auto-promote to live thesis without human confirm; scheduled study daemon / job queue; UI factor **marketplace**; merging with confluence-combo attribution; greenfield in-product MCP server; **in-process** Streamlit `run_study` / `STUDY.run` from the Studies page (RS-D8 preview does not reopen this; **RS-D9** is CLI-spawn only and does not reopen in-process execute).
+
+**Study Builder (separate SB series):** the parked “form-based factor builder” is specified in `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB0–SB3). It emits canonical `schema_version: 1` YAML onto the existing Preview pane. It is **not** a marketplace, **not** an NL compiler (RS-D1 stays parked), and **not** new factor types (RS-D6 stays parked). Do not implement SB inside an RS PR.
 
 ---
 
@@ -1035,7 +1037,7 @@ Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
 | | **Required:** an explicit **Refresh** control on the inspect pane (Load already reloads on Streamlit rerun; Refresh makes in-flight CLI runs obvious) that reloads via existing `load_study_view` / `load_ledger` with `report_study(..., write_artifacts=False)` |
 | | **Optional:** auto-refresh, **default off**. Button-only is the expected Streamlit path; if auto-refresh is added it must stay off by default, only while `pending+running > 0`, interval ≥ 10s |
 | | Do not spawn subprocesses, workers, or `study run` from the page to “help” progress |
-| **Out of scope** | NL compiler (RS-D1); shorthand/alias StudySpec dialect; form-based factor builder / templates marketplace; in-app expand-to-disk as a substitute for CLI `study expand`; in-app execute / promote; auto-enabling `grid`/`validation`/`walk_forward`; new ConfirmationLevel values; MCP server; new nav page; engine / classic research page edits; golden regeneration; rewriting the RS-D5 Grok pack |
+| **Out of scope** | NL compiler (RS-D1); shorthand/alias StudySpec dialect; form-based factor builder (separate **SB** series — not RS-D8); templates marketplace; in-app expand-to-disk as a substitute for CLI `study expand`; in-app execute / promote; auto-enabling `grid`/`validation`/`walk_forward`; new ConfirmationLevel values; MCP server; new nav page; engine / classic research page edits; golden regeneration; rewriting the RS-D5 Grok pack |
 | **Regression** | |
 | | RS-D2 inspect path keeps working (load completed fixture dir → ranked/low-N/ledger, no writes) |
 | | `expand_study` golden fixtures unchanged (preview **calls** expand, does not change it) |
@@ -1154,7 +1156,7 @@ added. §4.2.
 | | Controls **still forbidden**: Promote; Enable batteries; Dispatch `STUDY.run`; in-process `run_study`; expand-to-disk; new nav page; classic research session mutation. |
 | | Honesty (required, visible with launch controls): combinatorial `run_count` is a **screening size**, not independent tests; large factorials need the two-step confirm; launching the CLI does not validate an edge; the child is the same `study run` as the terminal; prefer a **new** `output_dir` (existing CLI dir with a different identity refuses without `--force`); start Streamlit from the repo root. |
 | **Session state (locked)** | Studies-scoped keys only. New keys e.g. `studies_launch_output_dir`, `studies_launch_approval` (bound triple of **pinned** hash + run_count + resolved output_dir). Must **not** collide with `studies_viewer_path_input` / `STUDIES_VIEWER_*` / `STUDIES_PREVIEW_*`. Must **not** mutate `CLASSIC_RESEARCH_SESSION_KEYS`. Armed approval clears when YAML, **pinned** hash, run_count, or output_dir changes. |
-| **Out of scope** | NL compiler (RS-D1); shorthand/alias dialect; form-based factor builder; in-process execute; promote from the page; job queue / scheduler / kill UI; new CLI flags; `execute.py` / `cli_study.py` edits; `run_batch` continue (RS-D3); new factor types (RS-D6); MCP; engine / classic research pages; golden regeneration; rewriting the RS-D5 Grok pack; enabling `assistant.study_tools`; changing `PREVIEW_EXPAND_CAP` or `preview.py` import allow-list; writing `experiment.yaml` from the page; lazy `study/__init__.py` (optional hardening, not D9) |
+| **Out of scope** | NL compiler (RS-D1); shorthand/alias dialect; form-based factor builder (separate **SB** series — not RS-D9); in-process execute; promote from the page; job queue / scheduler / kill UI; new CLI flags; `execute.py` / `cli_study.py` edits; `run_batch` continue (RS-D3); new factor types (RS-D6); MCP; engine / classic research pages; golden regeneration; rewriting the RS-D5 Grok pack; enabling `assistant.study_tools`; changing `PREVIEW_EXPAND_CAP` or `preview.py` import allow-list; writing `experiment.yaml` from the page; lazy `study/__init__.py` (optional hardening, not D9) |
 | **Regression** | |
 | | RS-D8 preview behavior unchanged (cap, matched stage estimate, no `execute` import). |
 | | RS-D2 inspect + Refresh unchanged. |
@@ -1469,7 +1471,7 @@ Recommended workflow after post-MVP sequence (§12):
 ### 18.8 RS-D8 authoring-preview sequence (this amendment)
 
 48. Sequenced **RS-D8** after RS-D5: Studies **authoring preview** on the existing `pages/15_Studies.py` (no new nav slot).  
-49. Canonical `schema_version: 1` YAML only — **not** RS-D1 NL compiler, **not** a shorthand dialect, **not** a form-based factor builder (that remains parked marketplace/non-goal).  
+49. Canonical `schema_version: 1` YAML only — **not** RS-D1 NL compiler, **not** a shorthand dialect, **not** a form-based factor builder in D8 (builder is the separate SB series; marketplace stays a non-goal).  
 50. Preview = `yaml.safe_load` → normalize/validate → in-memory `expand_study` under `PREVIEW_EXPAND_CAP=2000`; show `run_count`, `cartesian_product`, matched staged vs unstaged, `needs_confirm`, `workers`, identity hash, constants battery flags.  
 51. **No** in-app `study run` / promote / expand-to-disk; execute remains CLI/RS6. Optional Save YAML is text-only under the RS-D2 path sandbox and **must not** default to inspect `study.spec.yaml`.  
 52. Progress = read-only ledger **Refresh** of an existing `output_dir` (auto-refresh optional default-off; button-only expected). Do not spawn execution from the page.  
