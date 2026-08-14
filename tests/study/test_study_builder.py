@@ -418,6 +418,27 @@ def test_pages_studies_build_tab_source_contract():
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
     assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]
+    assert 'key="_study_builder_copy_spec"' in page
+
+
+def test_pages_studies_unkeyed_buttons_have_unique_labels():
+    """Streamlit runs every tab body; duplicate unkeyed labels raise DuplicateElementId."""
+    tree = ast.parse(Path("pages/15_Studies.py").read_text(encoding="utf-8"))
+    unkeyed: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "button":
+            continue
+        if any(keyword.arg == "key" for keyword in node.keywords):
+            continue
+        if node.args and isinstance(node.args[0], ast.Constant):
+            label = node.args[0].value
+            if isinstance(label, str):
+                unkeyed.append(label)
+    duplicates = sorted({label for label in unkeyed if unkeyed.count(label) > 1})
+    assert duplicates == []
 
 
 def test_emit_rejects_enabled_grid_without_tick_lists():
