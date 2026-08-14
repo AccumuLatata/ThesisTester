@@ -398,6 +398,25 @@ def otf_for_selected_presets(
     )
 
 
+def require_enabled_grid_ticks(grid: Mapping[str, Any]) -> None:
+    """Fail closed when ``grid.enabled`` is missing required SL/TP lists.
+
+    StudySpec validation only checks ``enabled``. ``validate_run_spec`` (expand)
+    requires non-empty tick lists — but preview skips expand over
+    ``PREVIEW_EXPAND_CAP``, so emit must refuse here or Apply can write YAML
+    that cannot launch.
+    """
+    if grid.get("enabled") is not True:
+        return
+    for key in ("stop_loss_ticks_values", "take_profit_ticks_values"):
+        values = grid.get(key)
+        if not isinstance(values, list) or not values:
+            raise StudySpecError(f"constants.grid.{key} must be a non-empty list when grid.enabled")
+        for index, item in enumerate(values):
+            if isinstance(item, bool) or not isinstance(item, (int, float)) or float(item) <= 0:
+                raise StudySpecError(f"constants.grid.{key}[{index}] must be a number > 0")
+
+
 def apply_grid_tick_widgets(
     grid: Mapping[str, Any],
     *,
@@ -578,6 +597,7 @@ def emit_study_spec(draft: StudyDraft) -> dict[str, Any]:
     if stage is not None:
         study["stage"] = stage
     payload = {"schema_version": STUDY_SCHEMA_VERSION, "study": study}
+    require_enabled_grid_ticks(study["constants"]["grid"])
     return validate_study_spec(normalize_study_spec(payload))
 
 
@@ -895,4 +915,5 @@ __all__ = [
     "otf_preset_ids",
     "parse_csv_ints",
     "parse_csv_tokens",
+    "require_enabled_grid_ticks",
 ]

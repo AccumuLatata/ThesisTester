@@ -410,6 +410,23 @@ def test_pages_studies_build_tab_source_contract():
     assert page.index("with build_tab:") < page.index("with preview_tab:")
 
 
+def test_emit_rejects_enabled_grid_without_tick_lists():
+    draft = default_study_draft()
+    draft.grid = {"enabled": True, "stop_loss_ticks_values": [], "take_profit_ticks_values": []}
+    with pytest.raises(StudySpecError, match="stop_loss_ticks_values"):
+        emit_study_spec(draft)
+    draft.grid = {"enabled": True, "stop_loss_ticks_values": [20], "take_profit_ticks_values": []}
+    with pytest.raises(StudySpecError, match="take_profit_ticks_values"):
+        emit_study_spec(draft)
+    draft.grid = {
+        "enabled": True,
+        "stop_loss_ticks_values": [20, 40],
+        "take_profit_ticks_values": [80],
+    }
+    spec = emit_study_spec(draft)
+    assert spec["study"]["constants"]["grid"]["stop_loss_ticks_values"] == [20, 40]
+
+
 def test_apply_grid_tick_widgets_empty_overwrites_stale():
     grid = apply_grid_tick_widgets(
         {
