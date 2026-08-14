@@ -1335,11 +1335,16 @@ def _render_build() -> None:
 
     st.markdown("### Actions")
     action_cols = st.columns(4)
-    start_example = action_cols[0].button("Start from example")
-    load_preview = action_cols[1].button("Load YAML from Preview tab")
-    copy_loaded = action_cols[2].button("Copy spec from loaded dir")
+    start_example = action_cols[0].button("Start from example", key="_study_builder_start_example")
+    load_preview = action_cols[1].button(
+        "Load YAML from Preview tab", key="_study_builder_load_preview"
+    )
+    copy_loaded = action_cols[2].button("Copy spec from loaded dir", key="_study_builder_copy_spec")
     apply_preview = action_cols[3].button(
-        "Apply to Preview", type="primary", disabled=preview is None
+        "Apply to Preview",
+        type="primary",
+        disabled=preview is None,
+        key="_study_builder_apply_preview",
     )
     if start_example:
         try:
