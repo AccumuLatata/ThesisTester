@@ -996,7 +996,7 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 | Control | Meaning | Common pitfall |
 |---|---|---|
 | Study output directory | Completed study dir under cwd or local store | Extra-root paths are refused |
-| Load / Refresh | In-memory overview; Refresh watches a CLI run | Refresh uses the current path field (not only the last Load). Does not rewrite overview files or run cells. Progress bar is `ok+failed+skipped / run_count` from the ledger — not a quality metric or auto-refresh |
+| Load / Refresh | In-memory overview; Refresh watches a CLI run | Refresh uses the current path field (not only the last Load). Does not rewrite overview files or run cells |
 | Canonical YAML / Preview | `schema_version: 1` validate + expand (cap 2_000) | Shorthand keys fail closed; does not write `experiment.yaml`. Re-previewing a **changed** YAML reseeds CLI output dir |
 | Load example / Copy spec | Example YAML, or `study.spec.yaml` from Inspect | Copy needs a loaded Inspect dir |
 | CLI output directory | Spawn target for `study run` | Not the Inspect dir; stay under cwd/store; do not reuse another study’s dir after switching YAML |
@@ -1013,9 +1013,6 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 
 1. CLI `study expand` → `study run` → `study report`, or author on Build / preview YAML first.
 2. Open **Studies**. Inspect: paste `output_dir`, Load, Refresh while in flight.
-   Ledger status shows done/total plus the current `running` cell name(s).
-   Before `results_index.csv` exists (first cell), Inspect is ledger-only
-   (progress, empty ranked tables). No auto-refresh — click Refresh.
 3. **Build StudySpec** (optional): Start from example (pdPOC stage-first, 40 vs 800)
    or pick core / partners / modes / triggers / OTF from the closed catalog.
    Stage Filter keeps include values ⊆ current factor widgets. Explicit cells
