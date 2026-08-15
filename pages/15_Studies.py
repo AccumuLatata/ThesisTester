@@ -1225,12 +1225,11 @@ def _render_build() -> None:
         timezone_options = [base.source_timezone, *timezone_options]
     st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
     ingest_options = list(_INGESTION_MODE_OPTIONS)
-    if (
-        isinstance(base.ingestion_mode, str)
-        and base.ingestion_mode.strip()
-        and base.ingestion_mode not in ingest_options
-    ):
-        ingest_options = [base.ingestion_mode, *ingest_options]
+    raw_ingest = (
+        base.ingestion_mode.strip() if isinstance(base.ingestion_mode, str) else ""
+    )
+    if raw_ingest and raw_ingest not in ingest_options:
+        ingest_options = [raw_ingest, *ingest_options]
     if st.session_state.get(WIDGET_KEY_INGESTION_MODE) not in ingest_options:
         seeded = _resolved_builder_ingestion_mode(base.ingestion_mode)
         st.session_state[WIDGET_KEY_INGESTION_MODE] = seeded
@@ -1250,10 +1249,7 @@ def _render_build() -> None:
             "format profile or intrabar model."
         ),
     )
-    if (
-        st.session_state.get(WIDGET_KEY_INGESTION_MODE)
-        == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
-    ):
+    if st.session_state.get(WIDGET_KEY_INGESTION_MODE) == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
         st.caption(
             "15s-primary requires Quantower History Exporter (semicolon). "
             "Do not set subtimeframe_path. Recommended intrabar_model is "

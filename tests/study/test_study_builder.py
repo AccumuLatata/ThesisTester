@@ -589,6 +589,16 @@ def test_pages_studies_ingest_radio_source_contract():
     read_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_INGESTION_MODE" in read_body
     assert "draft.ingestion_mode" in read_body
+    assert "WIDGET_KEY_FORMAT_PROFILE" in read_body
+    assert "WIDGET_KEY_INTRABAR_MODEL" in read_body
+    ingest_assign = [
+        line
+        for line in read_body.splitlines()
+        if "draft.ingestion_mode" in line or "WIDGET_KEY_INGESTION_MODE" in line
+    ]
+    assert ingest_assign
+    assert all("WIDGET_KEY_FORMAT_PROFILE" not in line for line in ingest_assign)
+    assert all("WIDGET_KEY_INTRABAR_MODEL" not in line for line in ingest_assign)
     radios = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
