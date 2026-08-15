@@ -58,9 +58,7 @@ def test_study_emit_expand_run_experiment_is_15s_primary(tmp_path: Path):
     assert len(state["subtimeframe_data"]) == 8
     assert len(state["data"]) == 2
     assert len(state["subtimeframe_data"]) > len(state["data"])
-    assert state["backtest_intrabar_policy"]["intrabar_model"] == (
-        "subtimeframe_conservative"
-    )
+    assert state["backtest_intrabar_policy"]["intrabar_model"] == ("subtimeframe_conservative")
     assert state["backtest_intrabar_policy"]["subtimeframe_data_supplied"] is True
 
     replay = run_experiment(
