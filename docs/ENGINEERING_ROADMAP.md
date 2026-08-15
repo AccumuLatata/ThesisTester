@@ -19,7 +19,7 @@ Assistant-related contracts:
 | Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (SW); evidence `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` | ✅ **Engineering-signed (SW0–SW7 + SW2b)** — Focus → Admit → Grid/WFA inherit; cutoff skip audit; C1–C9; default-off; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
 | Research Study Runner | `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (RS); operator `docs/STUDY_RUNNER.md`; Grok pack `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` | ✅ **RS1–RS5 MVP + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9**; parked D1/D3/D6 |
 | Study Builder (UX) | `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB) | ✅ **SB1–SB3 complete**. Emits canonical StudySpec YAML onto the existing Studies Preview pane; no in-process execute; no new factor axes |
-| Study Ingest Alignment | `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA) | 📝 **SIA0 plan-locked. SIA1 landed**. SIA2–SIA3 not started. Studies authoring/defaults/examples only; execute stays `run_experiment`; no engine/Data edits |
+| Study Ingest Alignment | `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA) | 📝 **SIA0–SIA1 landed. SIA2 this PR**. SIA3 not started. Studies authoring/defaults/examples only; execute stays `run_experiment`; no engine/Data edits |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1247,7 +1247,7 @@ StudySpecs emit that existing `run_experiment` contract. Omitted
 |---|---|
 | SIA0 | Plan lock + docs index (this PR) |
 | SIA1 | Builder field / new-draft defaults / emit-hydrate / warnings / schema token |
-| SIA2 | Build tab ingest radio (no auto-rewrite of profile/intrabar) |
+| SIA2 | Build tab ingest radio (no auto-rewrite of profile/intrabar) — this PR |
 | SIA3 | pdPOC teaching example + docs + vendor-15s parity test |
 
 **Regression posture:** no `engine/` / `derive.py` / `api.py` loader edits; no

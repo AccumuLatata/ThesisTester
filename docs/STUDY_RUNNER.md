@@ -16,7 +16,8 @@ show an additive ledger progress strip (Refresh still explicit). Does not
 change preview / CLI-spawn / execute semantics.
 **SIA** (Study Ingest Alignment) is plan-locked:
 `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. **SIA1** landed
-(new drafts emit 15s-primary). SIA2–SIA3 not started. Omitted mode remains
+(new drafts emit 15s-primary). **SIA2** adds the Build ingest radio
+(no profile/intrabar rewrite). SIA3 not started. Omitted mode remains
 `primary`. Does not change execute/engine/Data.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic

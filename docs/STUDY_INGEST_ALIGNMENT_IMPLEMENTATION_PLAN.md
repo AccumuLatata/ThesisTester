@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-15  
-**Status:** **SIA0 plan-locked. SIA1 landed.** SIA2–SIA3 not started.  
+**Status:** **SIA0 plan-locked. SIA1 landed. SIA2 this PR.** SIA3 not started.  
 **Series code:** **SIA** (Study Ingest Alignment)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** Research Study Runner RS1–RS5 + RS-D8 + RS-D9; Study Builder SB1–SB3; 15s-primary ingest (`thesistester/data/derive.py`, `api._load_15s_primary_experiment_data`)  
@@ -210,7 +210,7 @@ path, instrument, source_timezone, format_profile, subtimeframe_path, ingestion_
 - `hydrate_study_draft` **must pass** `ingestion_mode` explicitly. Relying on the dataclass default is only safe because that default is locked to `primary` (§5.2).
 - `draft_from_mapping`: if the session payload **omits** `ingestion_mode`, set `primary` after overlay (do not keep `asdict(default_study_draft())`'s new-draft value). `draft_from_mapping(None)` still returns `default_study_draft()` (new draft).
 - If a pre-SIA session mapping stored the mode only in `dataset_extra["ingestion_mode"]`, `draft_from_mapping` / `hydrate_study_draft` promote it to the first-class field and drop it from extra (no double emit).
-- Until SIA2, `_draft_from_builder_widgets` copies `base` and does not invent ingest fields. Apply therefore preserves whatever hydrate / `default_study_draft()` set. Do not add a hidden rewrite in SIA1.
+- SIA2 reads `WIDGET_KEY_INGESTION_MODE` onto `draft.ingestion_mode`. Apply then emit writes the 15s key or omits `primary`. The radio does not rewrite `format_profile` or `intrabar_model`.
 
 ### 5.5 Schema (SIA1, narrow)
 
@@ -566,8 +566,8 @@ CLI `study expand|run|report|promote|rollup` remains the academic path and does 
 | Milestone | Intent | Status |
 |---|---|---|
 | SIA0 | Plan lock + index | ✅ |
-| SIA1 | Builder compiler: field, defaults, emit/hydrate, warnings, schema token | This PR |
-| SIA2 | Build tab ingest radio | Not started |
+| SIA1 | Builder compiler: field, defaults, emit/hydrate, warnings, schema token | ✅ |
+| SIA2 | Build tab ingest radio | This PR |
 | SIA3 | Example + docs + parity test | Not started |
 
 Parked (not in SIA): copy-from-session; Data/API loader dedup; classic Backtest default change; API omitted-mode default change; RS-D1 / D3 / D6.
