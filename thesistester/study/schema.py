@@ -13,6 +13,7 @@ from typing import Any, Mapping
 
 import yaml
 
+from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.levels.common import normalized_window_label
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
@@ -28,6 +29,7 @@ from thesistester.setup import (
 
 STUDY_SCHEMA_VERSION = 1
 RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+STUDY_INGESTION_MODES = frozenset({"primary", INGESTION_MODE_15S_PRIMARY_DERIVE_1M})
 
 
 # Static / session / profile names accepted without being implied by ``levels``.
@@ -399,6 +401,14 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         raise StudySpecError(
             "study.dataset.instrument is required (non-empty string; "
             "injected into every expanded setup)"
+        )
+    ingestion_mode = dataset.get("ingestion_mode")
+    if ingestion_mode is not None and (
+        not isinstance(ingestion_mode, str) or ingestion_mode not in STUDY_INGESTION_MODES
+    ):
+        raise StudySpecError(
+            "study.dataset.ingestion_mode must be one of "
+            f"{sorted(STUDY_INGESTION_MODES)!r} when present; got {ingestion_mode!r}"
         )
 
     levels = study.get("levels")
