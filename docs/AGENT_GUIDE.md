@@ -55,6 +55,10 @@ host): `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + copy-ready prompts under
 validate + in-memory expand (cell count / confirm gate). `preview.py` must not
 import `thesistester.study.execute`.
 
+**RS-D2 Inspect progress:** ledger `done/total` + running cell names on
+Studies Inspect. Explicit Refresh only — do not add auto-refresh, kill,
+retry, or in-process `run_study`.
+
 **RS-D9:** Studies Preview pane may spawn the existing CLI
 (`python -m thesistester study run`) as a detached subprocess. Do not call
 `run_study()` in-process. Over `confirm_above_runs`, require the same two-step

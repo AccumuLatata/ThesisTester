@@ -7,8 +7,9 @@
 Compiler `thesistester.study.builder` emits / hydrates canonical
 `schema_version: 1` YAML. Studies **Build StudySpec** authors via widgets,
 Apply to Preview, hydrate from Preview / Inspect spec, download YAML.
-Execute is still CLI (`study run` / Preview **Run via CLI**). Does not change
-inspect / preview / CLI-spawn semantics.
+Execute is still CLI (`study run` / Preview **Run via CLI**). Inspect may
+show an additive ledger progress strip (Refresh still explicit). Does not
+change preview / CLI-spawn / execute semantics.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -434,10 +435,16 @@ shell the CLI even when `[assistant.study_tools] enabled=false`.
 
 Streamlit page: **Studies** (`pages/15_Studies.py`).
 
-- Paste a completed study `output_dir` (must stay under repo cwd or local store).
+- Paste a study `output_dir` (completed or in-flight; must stay under repo cwd or local store).
 - Loads ledger + overview via `load_ledger` / `report_study(..., write_artifacts=False)`
   (no backtests; does **not** rewrite `study.overview.*` on disk).
 - Shows identity, ledger counts, ranked / low-N / unresolved, OTF Δ, `bundle_path`.
+- Inspect **ledger progress** (additive): `st.progress` from
+  `ok+failed+skipped / run_count` plus current `running` cell name(s).
+  Explicit **Refresh** still reloads; no auto-refresh, kill, or retry.
+  A readable ledger with a missing `results_index.csv` file (first cell still
+  running) is a ledger-only view — progress shown, ranked tables empty.
+  A present but unreadable or invalid index still errors (no fallback).
 - Overview MD/CSV downloads are served from the in-memory aggregate.
 - Honesty banner required; no expand / run / promote controls; only
   Studies-scoped session keys are written (`studies_viewer_study_dir` plus

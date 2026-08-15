@@ -17,6 +17,7 @@ from thesistester.study.builder import (
     STUDIES_BUILDER_DRAFT_KEY,
     STUDIES_BUILDER_PENDING_SYNC_KEY,
 )
+from thesistester.study.report import RESULTS_INDEX
 from thesistester.study.viewer import (
     CLASSIC_RESEARCH_SESSION_KEYS,
     STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
@@ -25,6 +26,7 @@ from thesistester.study.viewer import (
     StudyViewerError,
     load_study_view,
     resolve_study_dir,
+    summarize_ledger_progress,
 )
 from tests.study.test_study_report import _write_report_fixture
 
@@ -46,7 +48,13 @@ def test_load_study_view_from_fixture(tmp_path: Path):
     assert model.study_name == "pdPOC_rs4"
     assert model.run_count == 4
     assert model.ledger_present is True
+    assert model.report_present is True
     assert model.ledger_summary.get("ok") == 4
+    assert model.ledger_progress.done == 4
+    assert model.ledger_progress.total == 4
+    assert model.ledger_progress.in_flight is False
+    assert model.ledger_progress.fraction == 1.0
+    assert model.ledger_progress.running_ids == ()
     assert not model.ranked_display.empty
     assert "bundle_path" in model.ranked_display.columns
     assert list(model.ranked_display.columns) == list(dict.fromkeys(model.ranked_display.columns))
@@ -95,6 +103,151 @@ def test_resolve_study_dir_refuses_outside_roots(tmp_path: Path):
     assert resolved == inside.resolve()
 
 
+def test_summarize_ledger_progress_in_flight_and_empty():
+    empty = summarize_ledger_progress({}, run_count=None)
+    assert empty.done == 0
+    assert empty.total == 0
+    assert empty.fraction == 0.0
+    assert empty.in_flight is False
+
+    mid = summarize_ledger_progress(
+        {"ok": 2, "failed": 1, "skipped": 0, "running": 1, "pending": 8},
+        run_count=12,
+        running_ids=("cell_b", "cell_a"),
+    )
+    assert mid.done == 3
+    assert mid.total == 12
+    assert mid.pending == 8
+    assert mid.running_count == 2
+    assert mid.running_ids == ("cell_b", "cell_a")
+    assert mid.in_flight is True
+    assert mid.fraction == 0.25
+
+
+def test_load_study_view_progress_from_mixed_ledger(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "ok"
+    ledger["cells"][names[1]]["status"] = "failed"
+    ledger["cells"][names[2]]["status"] = "running"
+    ledger["cells"][names[3]]["status"] = "pending"
+    save_ledger(study_dir, ledger)
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert model.report_present is True
+    assert model.ledger_progress.done == 2
+    assert model.ledger_progress.total == 4
+    assert model.ledger_progress.pending == 1
+    assert model.ledger_progress.running_ids == (names[2],)
+    assert model.ledger_progress.in_flight is True
+    assert model.ledger_progress.fraction == 0.5
+
+
+def test_load_study_view_ledger_only_when_index_missing(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "running"
+    save_ledger(study_dir, ledger)
+    (study_dir / RESULTS_INDEX).unlink()
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert model.ledger_present is True
+    assert model.report_present is False
+    assert model.ledger_progress.running_ids == (names[0],)
+    assert model.ledger_progress.pending == 3
+    assert model.ledger_progress.total == 4
+    assert model.ranked_display.empty
+    assert not (study_dir / "study.overview.csv").exists()
+
+
+def test_load_study_view_missing_index_without_ledger_still_errors(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    (study_dir / RESULTS_INDEX).unlink()
+    with pytest.raises(StudyViewerError, match=RESULTS_INDEX):
+        load_study_view(study_dir, roots=(tmp_path.resolve(),))
+
+
+def test_load_study_view_invalid_index_with_ledger_still_errors(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "running"
+    save_ledger(study_dir, ledger)
+    (study_dir / RESULTS_INDEX).write_text("status,trade_count\nok,10\n", encoding="utf-8")
+    with pytest.raises(StudyViewerError, match="run_name"):
+        load_study_view(study_dir, roots=(tmp_path.resolve(),))
+
+
+def test_load_study_view_unreadable_index_with_ledger_still_errors(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    save_ledger(study_dir, ledger)
+    (study_dir / RESULTS_INDEX).write_text("not a csv\x00\x00", encoding="utf-8")
+    with pytest.raises(StudyViewerError, match=RESULTS_INDEX):
+        load_study_view(study_dir, roots=(tmp_path.resolve(),))
+
+
+def test_load_study_view_ledger_only_uses_spec_report_settings(tmp_path: Path):
+    import yaml
+
+    study_dir = _write_report_fixture(tmp_path, min_trades=5, multiple_testing="error")
+    spec_path = study_dir / "study.spec.yaml"
+    payload = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    payload["study"]["report"]["primary_metric"] = "profit_factor"
+    spec_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "running"
+    save_ledger(study_dir, ledger)
+    (study_dir / RESULTS_INDEX).unlink()
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert model.report_present is False
+    assert model.report.primary_metric == "profit_factor"
+    assert model.report.min_trades == 5
+    assert model.report.multiple_testing == "error"
+    assert model.report.best_cell_suppressed is True
+
+
+def test_load_study_view_index_directory_with_ledger_still_errors(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    save_ledger(study_dir, ledger)
+    index_path = study_dir / RESULTS_INDEX
+    index_path.unlink()
+    index_path.mkdir()
+    with pytest.raises(StudyViewerError, match=RESULTS_INDEX):
+        load_study_view(study_dir, roots=(tmp_path.resolve(),))
+
+
 def test_load_study_view_tolerates_corrupt_ledger(tmp_path: Path):
     study_dir = _write_report_fixture(tmp_path, min_trades=30)
     (study_dir / "study.ledger.json").write_text("{not-json", encoding="utf-8")
@@ -137,6 +290,12 @@ def test_pages_studies_is_read_only_source():
     assert page.is_file()
     source = page.read_text(encoding="utf-8")
     assert "load_study_view" in source
+    assert "st.progress" in source
+    assert "Ranked tables stay empty until Refresh after" in source
+    assert "results_index.csv` is absent" in source
+    assert "not written yet (first cell still running)" not in source
+    assert "run_every" not in source
+    assert "st.fragment" not in source
     assert "run_study" not in source
     assert "expand_study" not in source
     assert "promote_study" not in source
