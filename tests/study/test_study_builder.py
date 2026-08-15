@@ -484,6 +484,7 @@ def test_pages_studies_build_tab_source_contract():
     assert "CSV format profile" in page
     assert "Format profile (optional)" not in page
     assert "FORMAT_PROFILE_LABELS.get(key, str(key))" in page
+    assert "normalize_builder_format_profile(base.format_profile)" in page
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
     assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]

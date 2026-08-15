@@ -14,7 +14,6 @@ from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
 from thesistester.setup import TRIGGER_TIMEFRAME_CHOICES, VALID_TRIGGERS
 from thesistester.study.builder import (
-    DEFAULT_FORMAT_PROFILE,
     DIRECTION_MODE_CONSTANT,
     DIRECTION_MODE_FACTOR,
     DIRECTION_MODE_OPTIONS,
@@ -1161,15 +1160,17 @@ def _render_build() -> None:
         timezone_options = [base.source_timezone, *timezone_options]
     st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
     profile_options = list(FORMAT_PROFILE_LABELS)
-    current_profile = st.session_state.get(WIDGET_KEY_FORMAT_PROFILE)
     if (
-        isinstance(current_profile, str)
-        and current_profile.strip()
-        and current_profile not in profile_options
+        isinstance(base.format_profile, str)
+        and base.format_profile.strip()
+        and base.format_profile not in profile_options
     ):
-        profile_options = [current_profile, *profile_options]
-    elif current_profile not in FORMAT_PROFILE_LABELS:
-        st.session_state[WIDGET_KEY_FORMAT_PROFILE] = DEFAULT_FORMAT_PROFILE
+        profile_options = [base.format_profile, *profile_options]
+    if st.session_state.get(WIDGET_KEY_FORMAT_PROFILE) not in profile_options:
+        seeded = normalize_builder_format_profile(base.format_profile)
+        st.session_state[WIDGET_KEY_FORMAT_PROFILE] = seeded
+        if seeded not in profile_options:
+            profile_options = [seeded, *profile_options]
     st.selectbox(
         "CSV format profile",
         options=profile_options,
