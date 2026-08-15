@@ -82,7 +82,7 @@ def test_default_draft_emits_canonical_format_profile():
 
 
 def test_builder_format_profile_labels_follow_loader_when_present():
-    """pages/15_Studies.py imports FORMAT_PROFILE_LABELS from builder."""
+    """Builder still exposes the live loader catalog when present."""
     from thesistester.study import builder as builder_mod
 
     assert builder_mod.FORMAT_PROFILE_LABELS is LOADER_FORMAT_PROFILE_LABELS
@@ -507,6 +507,14 @@ def test_pages_studies_build_tab_source_contract():
     assert "Format profile (optional)" not in page
     assert "FORMAT_PROFILE_LABELS.get(key, str(key))" in page
     assert "normalize_builder_format_profile(base.format_profile)" in page
+    builder_import = page.split("from thesistester.study.builder import (")[1].split(")")[0]
+    assert "FORMAT_PROFILE_LABELS" not in builder_import
+    assert "normalize_builder_format_profile" not in builder_import
+    assert "from thesistester.study import builder" not in page
+    assert "from thesistester.data import loader as _data_loader" in page
+    assert "def _bind_format_profile_labels" in page
+    assert "isinstance(labels, dict) and labels" in page
+    assert "def normalize_builder_format_profile" in page
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
     assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]

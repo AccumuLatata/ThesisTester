@@ -8,6 +8,7 @@ from typing import Any
 import streamlit as st
 
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.data import loader as _data_loader
 from thesistester.engine.intrabar import VALID_INTRABAR_MODELS
 from thesistester.execution_defaults import EXPOSURE_POLICY_OPTIONS
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
@@ -18,7 +19,6 @@ from thesistester.study.builder import (
     DIRECTION_MODE_FACTOR,
     DIRECTION_MODE_OPTIONS,
     MULTIPLE_TESTING_OPTIONS,
-    FORMAT_PROFILE_LABELS,
     OTF_PRESET_LABELS,
     OTF_PRESET_ORDER,
     PRIMARY_METRIC_OPTIONS,
@@ -114,7 +114,6 @@ from thesistester.study.builder import (
     infer_tf_mode,
     levels_advanced_enabled,
     ma_length_options,
-    normalize_builder_format_profile,
     otf_for_selected_presets,
     otf_preset_ids,
     parse_csv_tokens,
@@ -157,6 +156,43 @@ from thesistester.study.viewer import (
     load_study_view,
     resolve_study_dir,
 )
+
+# Do not import FORMAT_PROFILE_LABELS or normalize_builder_format_profile from
+# builder. A stale builder.py raises ImportError and bricks the Studies page.
+# Prefer the live loader catalog (same object as Data). Fall back only when
+# that name is missing or not a non-empty dict. Page-local normalize matches
+# current builder semantics (blank → canonical; do not rewrite unknown tokens).
+# Do not getattr-normalize from builder: an older builder still clamps unknown
+# tokens to canonical.
+_FORMAT_PROFILE_LABELS_FALLBACK = {
+    "canonical": "Canonical / Quantower OHLCV",
+    "quantower_history_exporter": "Quantower History Exporter (semicolon)",
+    "ninjatrader": "NinjaTrader export",
+    "sierra_intraday": "Sierra Intraday CSV",
+    "databento_trades": "Databento trades CSV",
+    "tick_capture": "Generic tick capture CSV",
+    "second_capture": "Generic second capture CSV",
+}
+
+
+def _bind_format_profile_labels(loader_module: Any) -> dict[str, str]:
+    labels = getattr(loader_module, "FORMAT_PROFILE_LABELS", None)
+    if isinstance(labels, dict) and labels:
+        return labels
+    return dict(_FORMAT_PROFILE_LABELS_FALLBACK)
+
+
+FORMAT_PROFILE_LABELS = _bind_format_profile_labels(_data_loader)
+
+
+def normalize_builder_format_profile(value: Any) -> str:
+    if value is None:
+        return "canonical"
+    if isinstance(value, str):
+        token = value.strip()
+        return token or "canonical"
+    return "canonical"
+
 
 st.title("Studies")
 st.caption(
