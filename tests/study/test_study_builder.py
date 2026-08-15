@@ -27,6 +27,7 @@ from thesistester.study.builder import (
     TF_MODE_EXPLICIT,
     TF_MODE_NO_MA,
     TF_MODE_PRODUCT_DEFAULT,
+    WIDGET_KEY_INGESTION_MODE,
     apply_grid_tick_widgets,
     apply_levels_tf_mode,
     builder_token_catalog,
@@ -551,6 +552,56 @@ def test_pages_studies_build_tab_source_contract():
     assert "Delete selected rows" in page
     assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]
     assert 'key="_study_builder_copy_spec"' in page
+    assert "WIDGET_KEY_INGESTION_MODE" in page
+    assert "Recommended: 15-second primary — derive one-minute canonical" in page
+    assert "Legacy: one-minute primary (advanced)" in page
+
+
+def test_ingestion_mode_widget_key_is_studies_scoped():
+    import thesistester.study.builder as builder
+
+    assert WIDGET_KEY_INGESTION_MODE == "_study_builder_ingestion_mode"
+    assert "WIDGET_KEY_INGESTION_MODE" in builder.__all__
+
+
+def test_pages_studies_ingest_radio_source_contract():
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    dataset = page.split('st.markdown("### Dataset")')[1].split('st.markdown("### Levels')[0]
+    assert "WIDGET_KEY_INGESTION_MODE" in dataset
+    assert dataset.index("WIDGET_KEY_INGESTION_MODE") < dataset.index("CSV format profile")
+    assert "Recommended: 15-second primary — derive one-minute canonical" in dataset
+    assert "Legacy: one-minute primary (advanced)" in dataset
+    assert "subtimeframe_path" in dataset
+    assert "WIDGET_KEY_SUBTIMEFRAME" not in page
+    assert 'key="subtimeframe_path"' not in page
+    assert "from pages.1_Data" not in page
+    assert "import pages.1_Data" not in page
+    assert "from pages import" not in page
+    sync_body = page.split("def _sync_builder_widgets")[1].split("\ndef ")[0]
+    assert "WIDGET_KEY_INGESTION_MODE" in sync_body
+    assert "draft.ingestion_mode" in sync_body
+    read_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
+    assert "WIDGET_KEY_INGESTION_MODE" in read_body
+    assert "draft.ingestion_mode" in read_body
+    tree = ast.parse(page)
+    radios = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "radio":
+            continue
+        key_kw = next((keyword for keyword in node.keywords if keyword.arg == "key"), None)
+        if key_kw is None:
+            continue
+        value = key_kw.value
+        if isinstance(value, ast.Name) and value.id == "WIDGET_KEY_INGESTION_MODE":
+            radios.append(node)
+    assert len(radios) == 1
+    assert not any(keyword.arg == "on_change" for keyword in radios[0].keywords)
+    build = page.split("def _render_build")[1].split("with inspect_tab:")[0]
+    assert "run_study" not in build
+    assert "spawn_launch" not in build
 
 
 def test_pages_studies_unkeyed_buttons_have_unique_labels():

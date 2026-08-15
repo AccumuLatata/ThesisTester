@@ -9,6 +9,7 @@ import streamlit as st
 
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.data import loader as _data_loader
+from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.engine.intrabar import VALID_INTRABAR_MODELS
 from thesistester.execution_defaults import EXPOSURE_POLICY_OPTIONS
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
@@ -18,6 +19,7 @@ from thesistester.study.builder import (
     DIRECTION_MODE_CONSTANT,
     DIRECTION_MODE_FACTOR,
     DIRECTION_MODE_OPTIONS,
+    INGESTION_MODE_PRIMARY,
     MULTIPLE_TESTING_OPTIONS,
     OTF_PRESET_LABELS,
     OTF_PRESET_ORDER,
@@ -55,6 +57,7 @@ from thesistester.study.builder import (
     WIDGET_KEY_GRID_SL_VALUES,
     WIDGET_KEY_GRID_TP_VALUES,
     WIDGET_KEY_GROUP_BY,
+    WIDGET_KEY_INGESTION_MODE,
     WIDGET_KEY_INSTRUMENT,
     WIDGET_KEY_INTRABAR_MODEL,
     WIDGET_KEY_LEVELS_ADVANCED,
@@ -192,6 +195,26 @@ def normalize_builder_format_profile(value: Any) -> str:
         token = value.strip()
         return token or "canonical"
     return "canonical"
+
+
+# Page-local ingest labels. Do not import pages.1_Data (classic ingest UI).
+# Toggle must not rewrite format_profile or intrabar_model.
+_INGESTION_MODE_LABELS = {
+    INGESTION_MODE_15S_PRIMARY_DERIVE_1M: (
+        "Recommended: 15-second primary — derive one-minute canonical"
+    ),
+    INGESTION_MODE_PRIMARY: "Legacy: one-minute primary (advanced)",
+}
+_INGESTION_MODE_OPTIONS = (
+    INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+    INGESTION_MODE_PRIMARY,
+)
+
+
+def _resolved_builder_ingestion_mode(value: Any) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return INGESTION_MODE_PRIMARY
 
 
 st.title("Studies")
@@ -689,6 +712,9 @@ def _sync_builder_widgets(draft: StudyDraft) -> None:
     st.session_state[WIDGET_KEY_FORMAT_PROFILE] = normalize_builder_format_profile(
         draft.format_profile
     )
+    st.session_state[WIDGET_KEY_INGESTION_MODE] = _resolved_builder_ingestion_mode(
+        draft.ingestion_mode
+    )
     sma_lengths = [int(item) for item in (draft.levels.get("sma_lengths") or [])]
     ema_lengths = [int(item) for item in (draft.levels.get("ema_lengths") or [])]
     st.session_state[WIDGET_KEY_SMA_LENGTHS] = sma_lengths
@@ -848,6 +874,9 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.source_timezone = timezone or None
     draft.format_profile = normalize_builder_format_profile(
         st.session_state.get(WIDGET_KEY_FORMAT_PROFILE)
+    )
+    draft.ingestion_mode = _resolved_builder_ingestion_mode(
+        st.session_state.get(WIDGET_KEY_INGESTION_MODE)
     )
 
     levels = copy.deepcopy(dict(draft.levels))
@@ -1195,6 +1224,48 @@ def _render_build() -> None:
     if base.source_timezone and base.source_timezone not in timezone_options:
         timezone_options = [base.source_timezone, *timezone_options]
     st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
+    ingest_options = list(_INGESTION_MODE_OPTIONS)
+    if (
+        isinstance(base.ingestion_mode, str)
+        and base.ingestion_mode.strip()
+        and base.ingestion_mode not in ingest_options
+    ):
+        ingest_options = [base.ingestion_mode, *ingest_options]
+    if st.session_state.get(WIDGET_KEY_INGESTION_MODE) not in ingest_options:
+        seeded = _resolved_builder_ingestion_mode(base.ingestion_mode)
+        st.session_state[WIDGET_KEY_INGESTION_MODE] = seeded
+        if seeded not in ingest_options:
+            ingest_options = [seeded, *ingest_options]
+    # No on_change: emit/warnings handle profile and intrabar contradictions.
+    st.radio(
+        "Ingestion mode",
+        options=ingest_options,
+        format_func=lambda key: _INGESTION_MODE_LABELS.get(key, str(key)),
+        horizontal=True,
+        key=WIDGET_KEY_INGESTION_MODE,
+        help=(
+            "Recommended for Quantower 15-second exports: derive one-minute "
+            "canonical bars and retain 15s for R12. Legacy treats the file as "
+            "the decision timeframe. Changing this radio does not rewrite "
+            "format profile or intrabar model."
+        ),
+    )
+    if (
+        st.session_state.get(WIDGET_KEY_INGESTION_MODE)
+        == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    ):
+        st.caption(
+            "15s-primary requires Quantower History Exporter (semicolon). "
+            "Do not set subtimeframe_path. Recommended intrabar_model is "
+            "subtimeframe_conservative (sparse minutes). Launch still requires "
+            "the CSV on disk."
+        )
+    else:
+        st.caption(
+            "Legacy: the file is the decision timeframe. Optional "
+            "subtimeframe_path remains YAML/hydrate-only — this tab does not "
+            "add a subtimeframe path widget."
+        )
     profile_options = list(FORMAT_PROFILE_LABELS)
     if (
         isinstance(base.format_profile, str)

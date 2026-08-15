@@ -49,7 +49,7 @@ Engine / data contracts:
 - [STUDY_RUNNER.md](STUDY_RUNNER.md) (RS operator contract; RS1–RS5 + post-MVP through RS-D9)
 - [STUDY_RUNNER_GROK_ROUTINE_PACK.md](STUDY_RUNNER_GROK_ROUTINE_PACK.md) (RS-D5 external Grok coworker routines; copy-ready prompts under `examples/studies/agents/`)
 - [STUDY_BUILDER_IMPLEMENTATION_PLAN.md](STUDY_BUILDER_IMPLEMENTATION_PLAN.md) (SB — Study Builder UX; SB1–SB3 complete; does not change RS execute/preview/launch)
-- [STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md](STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md) (SIA — Studies authoring aligns to 15s-primary `run_experiment`; SIA0 plan-locked, SIA1 landed; does not change engine/Data/execute)
+- [STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md](STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md) (SIA — Studies authoring aligns to 15s-primary `run_experiment`; SIA0–SIA1 landed, SIA2 this PR; does not change engine/Data/execute)
 
 ## Research (demoted snapshots)
 

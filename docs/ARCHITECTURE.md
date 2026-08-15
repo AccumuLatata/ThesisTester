@@ -83,7 +83,8 @@ Build always writes `dataset.format_profile` from the R17 allow-list
 non-blank tokens fail emit).
 Studies-scoped keys only:
 `studies_builder_draft` and `studies_builder_pending_sync` (plus
-`_study_builder_*` widget keys). The Build tab body executes before Preview
+`_study_builder_*` widget keys, including `_study_builder_ingestion_mode`).
+The Build tab body executes before Preview
 so Apply can write `studies_preview_yaml` (and reseed the launch output-dir
 widget) before those widgets instantiate. Build does not write classic
 research `st.session_state` keys and does not spawn CLI.

@@ -74,7 +74,7 @@ StudySpec**; Apply to Preview then existing Validate / Preview → Run via CLI.
 Do not call `run_study()` from the Build tab. Parked RS-D1 / D3 / D6 stay parked.
 Operator contract: `docs/STUDY_RUNNER.md` §SB.
 
-**SIA (SIA1 landed; SIA2–SIA3 not started):** Studies authoring alignment
+**SIA (SIA1 landed; SIA2 this PR; SIA3 not started):** Studies authoring alignment
 to the Data-page 15s-primary RunSpec —
 `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. Do not implement SIA
 by importing `pages/1_Data.py`, reading classic `st.session_state`, or

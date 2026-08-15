@@ -42,6 +42,7 @@ WIDGET_KEY_DATASET_PATH = "_study_builder_dataset_path"
 WIDGET_KEY_INSTRUMENT = "_study_builder_instrument"
 WIDGET_KEY_SOURCE_TIMEZONE = "_study_builder_source_timezone"
 WIDGET_KEY_FORMAT_PROFILE = "_study_builder_format_profile"
+WIDGET_KEY_INGESTION_MODE = "_study_builder_ingestion_mode"
 DEFAULT_FORMAT_PROFILE = "canonical"
 INGESTION_MODE_PRIMARY = "primary"
 DEFAULT_NEW_DRAFT_DATASET_PATH = "data/es_15s.csv"
@@ -1216,6 +1217,7 @@ __all__ = [
     "WIDGET_KEY_GRID_SL_VALUES",
     "WIDGET_KEY_GRID_TP_VALUES",
     "WIDGET_KEY_GROUP_BY",
+    "WIDGET_KEY_INGESTION_MODE",
     "WIDGET_KEY_INSTRUMENT",
     "WIDGET_KEY_INTRABAR_MODEL",
     "WIDGET_KEY_LEVELS_ADVANCED",
