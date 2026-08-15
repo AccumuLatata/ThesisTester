@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from thesistester.data.loader import FORMAT_PROFILE_LABELS as LOADER_FORMAT_PROFILE_LABELS
 from thesistester.data.loader import FORMAT_PROFILES
 from thesistester.study.builder import (
     DEFAULT_FORMAT_PROFILE,
@@ -77,6 +78,14 @@ def _roundtrip_hash(path: Path) -> tuple[str, str]:
 def test_default_draft_emits_canonical_format_profile():
     spec = emit_study_spec(default_study_draft())
     assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+
+
+def test_builder_exports_format_profile_labels_without_loader_reexport():
+    """pages/15_Studies.py imports FORMAT_PROFILE_LABELS from builder."""
+    from thesistester.study import builder as builder_mod
+
+    assert builder_mod.FORMAT_PROFILE_LABELS == LOADER_FORMAT_PROFILE_LABELS
+    assert "quantower_history_exporter" in builder_mod.FORMAT_PROFILE_LABELS
 
 
 def test_normalize_builder_format_profile_allow_list():
