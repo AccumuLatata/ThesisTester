@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 import yaml
 
+from thesistester.data.loader import FORMAT_PROFILE_LABELS, FORMAT_PROFILES
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.schema import (
     STUDY_SCHEMA_VERSION,
@@ -35,6 +36,7 @@ WIDGET_KEY_DATASET_PATH = "_study_builder_dataset_path"
 WIDGET_KEY_INSTRUMENT = "_study_builder_instrument"
 WIDGET_KEY_SOURCE_TIMEZONE = "_study_builder_source_timezone"
 WIDGET_KEY_FORMAT_PROFILE = "_study_builder_format_profile"
+DEFAULT_FORMAT_PROFILE = "canonical"
 WIDGET_KEY_CORE_LEVEL = "_study_builder_core_level"
 WIDGET_KEY_CONFLUENCE_MODE = "_study_builder_confluence_mode"
 WIDGET_KEY_TRIGGER = "_study_builder_trigger"
@@ -222,7 +224,7 @@ class StudyDraft:
     dataset_path: str = "data/es_1m.csv"
     instrument: str = "ES"
     source_timezone: str | None = "America/New_York"
-    format_profile: str | None = None
+    format_profile: str = DEFAULT_FORMAT_PROFILE
     subtimeframe_path: str | None = None
     dataset_extra: dict[str, Any] = field(default_factory=dict)
     levels: dict[str, Any] = field(default_factory=_default_levels)
@@ -259,6 +261,24 @@ class StudyDraft:
     stage_mode: str | None = None
     stage_include: dict[str, list[Any]] = field(default_factory=dict)
     stage_cells: list[dict[str, Any]] = field(default_factory=list)
+
+
+def normalize_builder_format_profile(value: Any) -> str:
+    """Omitted / blank → ``canonical``. Non-blank tokens are stripped only.
+
+    ``run_experiment`` defaults **omitted** keys to ``canonical``; a present
+    unknown token is fail-closed at load time. Do not rewrite unknown tokens
+    to ``canonical`` (that would invent a profile and silently parse as
+    comma OHLCV). Emit rejects unknown non-blank tokens.
+    """
+    if value is None:
+        return DEFAULT_FORMAT_PROFILE
+    if isinstance(value, str):
+        token = value.strip()
+        if not token:
+            return DEFAULT_FORMAT_PROFILE
+        return token
+    return DEFAULT_FORMAT_PROFILE
 
 
 def default_study_draft() -> StudyDraft:
@@ -322,6 +342,7 @@ def draft_from_mapping(payload: Mapping[str, Any] | None) -> StudyDraft:
             merged[list_field] = []
         else:
             merged[list_field] = [str(item) for item in raw]
+    merged["format_profile"] = normalize_builder_format_profile(merged.get("format_profile"))
     if merged.get("otf") is not None and not isinstance(merged["otf"], list):
         merged["otf"] = None
     if not isinstance(merged.get("levels"), dict):
@@ -675,8 +696,12 @@ def _emit_dataset(draft: StudyDraft) -> dict[str, Any]:
     dataset: dict[str, Any] = {"path": draft.dataset_path, "instrument": draft.instrument}
     if draft.source_timezone:
         dataset["source_timezone"] = draft.source_timezone
-    if draft.format_profile:
-        dataset["format_profile"] = draft.format_profile
+    profile = normalize_builder_format_profile(draft.format_profile)
+    if profile not in FORMAT_PROFILES:
+        raise StudySpecError(
+            f"dataset.format_profile must be one of {list(FORMAT_PROFILES)}; got {profile!r}"
+        )
+    dataset["format_profile"] = profile
     if draft.subtimeframe_path:
         dataset["subtimeframe_path"] = draft.subtimeframe_path
     for key, value in draft.dataset_extra.items():
@@ -930,7 +955,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
         dataset_path=str(dataset.get("path") or ""),
         instrument=str(dataset.get("instrument") or ""),
         source_timezone=str(source_timezone) if isinstance(source_timezone, str) else None,
-        format_profile=str(format_profile) if isinstance(format_profile, str) else None,
+        format_profile=normalize_builder_format_profile(format_profile),
         subtimeframe_path=(str(subtimeframe_path) if isinstance(subtimeframe_path, str) else None),
         dataset_extra=dataset_extra,
         levels=copy.deepcopy(levels_map),
@@ -1002,12 +1027,14 @@ def hydrate_study_yaml(text: str) -> StudyDraft:
 # Re-export for SB2 widget rows without importing Streamlit here.
 __all__ = [
     "COMMON_MA_LENGTHS",
+    "DEFAULT_FORMAT_PROFILE",
     "DIRECTION_MODE_CONSTANT",
     "DIRECTION_MODE_FACTOR",
     "DIRECTION_MODE_OPTIONS",
     "MULTIPLE_TESTING_OPTIONS",
     "OTF_PRESETS",
     "OTF_PRESET_LABELS",
+    "FORMAT_PROFILE_LABELS",
     "OTF_PRESET_ORDER",
     "PREFERRED_REPORT_GROUP_BY",
     "PRIMARY_METRIC_OPTIONS",
@@ -1108,6 +1135,7 @@ __all__ = [
     "infer_tf_mode",
     "levels_advanced_enabled",
     "ma_length_options",
+    "normalize_builder_format_profile",
     "otf_for_selected_presets",
     "otf_from_preset_ids",
     "otf_preset_ids",

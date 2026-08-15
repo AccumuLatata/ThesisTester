@@ -110,7 +110,7 @@ Plain dataclass (or TypedDict + helpers). Source of truth for the Build tab. Not
 | `dataset_path` | `str` | `data/es_1m.csv` | Required string; file need not exist until launch |
 | `instrument` | `str` | `ES` | Required |
 | `source_timezone` | `str` | `America/New_York` | |
-| `format_profile` | `str \| None` | `None` | Omit when `None` |
+| `format_profile` | `str` | `canonical` | Always emit. Omitted / blank → `canonical` (runner default). Unknown non-blank tokens fail emit — do not rewrite them to `canonical` |
 | `subtimeframe_path` | `str \| None` | `None` | Omit when `None` |
 | `dataset_extra` | `dict` | `{}` | Pass-through unknown-to-builder dataset keys present on hydrate (lossless round-trip). Emit copies them after known keys. Must not invent keys |
 | `levels` | `dict` | `{sma_lengths: [50], ema_lengths: [21], sma_timeframes: [1min], ema_timeframes: [1min]}` | Keys ⊆ `DEFAULT_LEVELS_SETTINGS` |
@@ -210,11 +210,11 @@ study_identity_hash(roundtrip) == study_identity_hash(loaded)
 
 Applies to:
 
-- `tests/fixtures/study/golden_study.yaml`
-- `examples/studies/pdPOC_ma_confluence_battery.yaml`
-- `examples/studies/dopen_ma_3c_mnq.yaml`
+- `examples/studies/dopen_ma_3c_mnq.yaml` (declares `format_profile`)
 
 YAML **text** may differ (comments, key order). Identity hash is on the normalized mapping.
+
+**Exception — omitted `dataset.format_profile`:** hydrate treats omitted / blank as `canonical` and emit always writes the key. That matches `run_experiment`'s existing default (`dataset_config.get("format_profile", "canonical")`) — explicit YAML, not a runner change. Unknown non-blank tokens are preserved on hydrate and fail emit (same fail-closed path as `load_ohlcv`). First hydrate→emit of `tests/fixtures/study/golden_study.yaml` and `examples/studies/pdPOC_ma_confluence_battery.yaml` therefore differs in identity hash; a second hydrate→emit is stable. Do not rewrite those fixtures (expand golden-masters stay byte-identical).
 
 Rules:
 

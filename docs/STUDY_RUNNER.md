@@ -7,6 +7,10 @@
 Compiler `thesistester.study.builder` emits / hydrates canonical
 `schema_version: 1` YAML. Studies **Build StudySpec** authors via widgets,
 Apply to Preview, hydrate from Preview / Inspect spec, download YAML.
+Build always writes `dataset.format_profile` from the R17 allow-list
+(same labels as Data). Omitted / blank → `canonical` (runner default).
+Unknown non-blank tokens fail emit — they are not rewritten to `canonical`.
+History Exporter CSVs need **Quantower History Exporter (semicolon)**.
 Execute is still CLI (`study run` / Preview **Run via CLI**). Inspect may
 show an additive ledger progress strip (Refresh still explicit). Does not
 change preview / CLI-spawn / execute semantics.

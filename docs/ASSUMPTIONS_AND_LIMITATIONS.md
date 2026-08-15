@@ -610,6 +610,10 @@ other than the last bar in the dataset.
 - R17 vendor parsing is selected explicitly; ThesisTester does not infer a
   format from headers or file extension. Select the documented profile for the
   vendor export and verify the displayed canonical bars before research use.
+  The Studies Build tab always emits `dataset.format_profile` from that same
+  allow-list (omitted / blank → `canonical`; unknown non-blank tokens fail
+  emit). Omitting the key is no longer a builder path; CLI YAML that still
+  omits it keeps the runner default `canonical` until re-emitted.
 - R17 tick/second and Databento trade captures are resampled to one-minute
   OHLCV for the current bar engine. Preserved raw rows, including bid/ask, are
   capture-only and are not used for spread modeling or R12 subtimeframe fills.
