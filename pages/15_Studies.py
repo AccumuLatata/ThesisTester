@@ -302,7 +302,10 @@ def _render_inspect() -> None:
 
     st.markdown("### Ranked cells")
     if model.ranked_display.empty:
-        st.info("No ranked cells (check min_trades / ok status / primary metric).")
+        if not model.report_present:
+            st.info("Ranked tables stay empty until Refresh after `results_index.csv` appears.")
+        else:
+            st.info("No ranked cells (check min_trades / ok status / primary metric).")
     else:
         st.dataframe(model.ranked_display, hide_index=True, width="stretch")
 

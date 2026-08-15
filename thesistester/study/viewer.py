@@ -329,11 +329,11 @@ def load_study_view(
 ) -> StudyViewerModel:
     """Load ledger + report for a study directory (no writes/backtests).
 
-    A readable ledger plus a missing ``results_index.csv`` file (first cell
+    A readable ledger plus an absent ``results_index.csv`` path (first cell
     still running) yields a ledger-only model: progress is shown, ranked
-    tables stay empty. A present but unreadable or invalid index still
-    raises ``StudyViewerError`` — do not treat every index-related report
-    error as in-flight.
+    tables stay empty. A present path that is not a readable CSV — including
+    a directory, parse failure, or missing ``run_name`` — still raises
+    ``StudyViewerError``.
     """
     root = resolve_study_dir(study_dir, roots=roots)
 
@@ -349,7 +349,7 @@ def load_study_view(
 
     identity_hash, run_count, spec_name = _read_identity(root)
     index_path = root / RESULTS_INDEX
-    if ledger is not None and not index_path.is_file():
+    if ledger is not None and not index_path.exists():
         report_present = False
         primary, min_trades, multiple = _report_settings_from_spec(root)
         report = _placeholder_report(

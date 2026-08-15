@@ -232,6 +232,22 @@ def test_load_study_view_ledger_only_uses_spec_report_settings(tmp_path: Path):
     assert model.report.best_cell_suppressed is True
 
 
+def test_load_study_view_index_directory_with_ledger_still_errors(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    save_ledger(study_dir, ledger)
+    index_path = study_dir / RESULTS_INDEX
+    index_path.unlink()
+    index_path.mkdir()
+    with pytest.raises(StudyViewerError, match=RESULTS_INDEX):
+        load_study_view(study_dir, roots=(tmp_path.resolve(),))
+
+
 def test_load_study_view_tolerates_corrupt_ledger(tmp_path: Path):
     study_dir = _write_report_fixture(tmp_path, min_trades=30)
     (study_dir / "study.ledger.json").write_text("{not-json", encoding="utf-8")
@@ -275,6 +291,7 @@ def test_pages_studies_is_read_only_source():
     source = page.read_text(encoding="utf-8")
     assert "load_study_view" in source
     assert "st.progress" in source
+    assert "Ranked tables stay empty until Refresh after" in source
     assert "run_every" not in source
     assert "st.fragment" not in source
     assert "run_study" not in source
