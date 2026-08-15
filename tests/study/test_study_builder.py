@@ -204,11 +204,21 @@ def test_identity_hash_roundtrip_golden_emits_canonical_format_profile():
     assert study_identity_hash(loaded) != study_identity_hash(first)
 
 
-def test_identity_hash_roundtrip_pdpoc_example_emits_canonical_format_profile():
+def test_identity_hash_roundtrip_pdpoc_example_emits_15s_primary_contract():
     loaded = load_study_spec(PDPOC_EXAMPLE)
-    assert "format_profile" not in loaded["study"]["dataset"]
+    dataset = loaded["study"]["dataset"]
+    assert dataset["path"] == "data/es_15s.csv"
+    assert dataset["format_profile"] == "quantower_history_exporter"
+    assert dataset["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert loaded["study"]["constants"]["backtest"]["intrabar_model"] == (
+        "subtimeframe_conservative"
+    )
     first = emit_study_spec(hydrate_study_draft(loaded))
-    assert first["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+    assert first["study"]["dataset"]["format_profile"] == "quantower_history_exporter"
+    assert first["study"]["dataset"]["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert first["study"]["constants"]["backtest"]["intrabar_model"] == (
+        "subtimeframe_conservative"
+    )
     second = emit_study_spec(hydrate_study_draft(first))
     assert study_identity_hash(first) == study_identity_hash(second)
 
@@ -245,6 +255,9 @@ def test_explicit_null_description_roundtrip():
 def test_pdpoc_hydrate_stage_and_preview():
     loaded = load_study_spec(PDPOC_EXAMPLE)
     draft = hydrate_study_draft(loaded)
+    assert draft.ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert draft.format_profile == "quantower_history_exporter"
+    assert draft.backtest["intrabar_model"] == "subtimeframe_conservative"
     assert draft.stage_mode == "filter"
     assert draft.stage_include["trigger"] == ["touch"]
     assert draft.stage_include["trigger_timeframe"] == ["base"]
@@ -257,9 +270,15 @@ def test_pdpoc_hydrate_stage_and_preview():
 
 
 def test_dopen_hydrate_fields():
+    banner = DOPEN_EXAMPLE.read_text(encoding="utf-8")
+    assert "LEGACY 1m PRIMARY" in banner
+    assert "ingestion_mode: 15s_primary_derive_1m" in banner
     loaded = load_study_spec(DOPEN_EXAMPLE)
     draft = hydrate_study_draft(loaded)
+    assert draft.ingestion_mode == INGESTION_MODE_PRIMARY
+    assert "ingestion_mode" not in loaded["study"]["dataset"]
     assert draft.format_profile == "quantower_history_exporter"
+    assert draft.backtest["intrabar_model"] == "sl_first"
     assert draft.otf is None
     assert draft.trigger == ["3c"]
     assert draft.grid["enabled"] is True
@@ -268,6 +287,8 @@ def test_dopen_hydrate_fields():
     assert draft.emit_entry_window is True
     spec = emit_study_spec(draft)
     assert spec["study"]["dataset"]["format_profile"] == "quantower_history_exporter"
+    assert "ingestion_mode" not in spec["study"]["dataset"]
+    assert spec["study"]["constants"]["backtest"]["intrabar_model"] == "sl_first"
     assert spec["study"]["constants"]["grid"]["stop_loss_ticks_values"] == [20, 40, 60, 80]
     assert "otf" not in spec["study"]["factors"]
 
@@ -776,7 +797,8 @@ def test_preview_yaml_hydrate_emit_identity_hash():
     first = emit_study_spec(hydrate_study_draft(load_study_spec(PDPOC_EXAMPLE)))
     yaml_text = emit_study_yaml(hydrate_study_draft(first))
     again = emit_study_spec(hydrate_study_yaml(yaml_text))
-    assert first["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+    assert first["study"]["dataset"]["format_profile"] == "quantower_history_exporter"
+    assert first["study"]["dataset"]["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
     assert study_identity_hash(first) == study_identity_hash(again)
 
 
