@@ -4,6 +4,9 @@ Pure helper: no Streamlit, no execute / launch / preview. Pages import this
 module directly. ``emit_study_spec`` is the only path into
 ``validate_study_spec``. Widget key constants and ``draft_to_mapping`` /
 ``draft_from_mapping`` are for the Studies Build tab session store.
+
+SIA1: ``default_study_draft()`` emits the recommended 15s-primary RunSpec.
+``StudyDraft`` field defaults stay legacy-safe (``primary`` / ``sl_first``).
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from typing import Any, Mapping
 import yaml
 
 from thesistester.data import loader as _data_loader
+from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.data.loader import FORMAT_PROFILES
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.schema import (
@@ -38,6 +42,23 @@ WIDGET_KEY_INSTRUMENT = "_study_builder_instrument"
 WIDGET_KEY_SOURCE_TIMEZONE = "_study_builder_source_timezone"
 WIDGET_KEY_FORMAT_PROFILE = "_study_builder_format_profile"
 DEFAULT_FORMAT_PROFILE = "canonical"
+INGESTION_MODE_PRIMARY = "primary"
+DEFAULT_NEW_DRAFT_DATASET_PATH = "data/es_15s.csv"
+DEFAULT_NEW_DRAFT_FORMAT_PROFILE = "quantower_history_exporter"
+_DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
+_WARNING_15S_SL_FIRST = (
+    "15s-primary attaches 15s for R12, but backtest.intrabar_model is sl_first "
+    "(or omitted → sl_first). Data-page recommended model is subtimeframe_conservative."
+)
+_WARNING_QUANTOWER_PRIMARY = (
+    "Quantower profile with primary ingestion treats the CSV as the decision "
+    "timeframe. A 15-second History Exporter file needs "
+    "ingestion_mode=15s_primary_derive_1m to match the Data-page recommended path."
+)
+_WARNING_GRID_SL_FIRST = (
+    "grid.intrabar_model is sl_first (or omitted → sl_first) while backtest uses "
+    "observed replay. Grid cells will not use the 15s R12 path."
+)
 # Used only when loader.py is stale and lacks FORMAT_PROFILE_LABELS.
 # Prefer the live loader catalog so Studies and Data cannot drift at runtime.
 _FORMAT_PROFILE_LABELS_FALLBACK: dict[str, str] = {
@@ -166,6 +187,7 @@ _DATASET_KNOWN = (
     "source_timezone",
     "format_profile",
     "subtimeframe_path",
+    "ingestion_mode",
 )
 _LEVELS_NULL_FORBIDDEN = ("sma_timeframes", "ema_timeframes")
 _BATTERY_KEYS = ("grid", "validation", "walk_forward")
@@ -254,6 +276,7 @@ class StudyDraft:
     instrument: str = "ES"
     source_timezone: str | None = "America/New_York"
     format_profile: str = DEFAULT_FORMAT_PROFILE
+    ingestion_mode: str = INGESTION_MODE_PRIMARY
     subtimeframe_path: str | None = None
     dataset_extra: dict[str, Any] = field(default_factory=dict)
     levels: dict[str, Any] = field(default_factory=_default_levels)
@@ -311,8 +334,34 @@ def normalize_builder_format_profile(value: Any) -> str:
 
 
 def default_study_draft() -> StudyDraft:
-    """Return a valid 2-cell default draft (1×1×2×1×1)."""
-    return StudyDraft()
+    """Return a valid 2-cell new draft on the recommended 15s-primary contract.
+
+    ``StudyDraft()`` / ``_default_backtest()`` stay legacy-safe. Only this
+    factory applies path / Quantower / ``15s_primary_derive_1m`` /
+    ``subtimeframe_conservative``.
+    """
+    backtest = _default_backtest()
+    backtest["intrabar_model"] = "subtimeframe_conservative"
+    return StudyDraft(
+        dataset_path=DEFAULT_NEW_DRAFT_DATASET_PATH,
+        format_profile=DEFAULT_NEW_DRAFT_FORMAT_PROFILE,
+        ingestion_mode=INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        backtest=backtest,
+    )
+
+
+def _pop_extra_ingestion_mode(extra: dict[str, Any]) -> Any:
+    """Promote a pre-SIA ``dataset_extra.ingestion_mode`` and drop the duplicate."""
+    return extra.pop("ingestion_mode", None)
+
+
+def _resolved_ingestion_mode(value: Any, *, fallback: str = INGESTION_MODE_PRIMARY) -> str:
+    if value is None:
+        return fallback
+    if isinstance(value, str):
+        token = value.strip()
+        return token if token else fallback
+    return str(value)
 
 
 def _partner_set_widget_key(index: int) -> str:
@@ -381,6 +430,15 @@ def draft_from_mapping(payload: Mapping[str, Any] | None) -> StudyDraft:
     for battery in _BATTERY_KEYS:
         if not isinstance(merged.get(battery), dict):
             merged[battery] = _default_battery()
+    extra = merged.get("dataset_extra")
+    if not isinstance(extra, dict):
+        extra = {}
+        merged["dataset_extra"] = extra
+    extra_mode = _pop_extra_ingestion_mode(extra)
+    if "ingestion_mode" not in payload or merged.get("ingestion_mode") in (None, ""):
+        merged["ingestion_mode"] = _resolved_ingestion_mode(
+            extra_mode, fallback=INGESTION_MODE_PRIMARY
+        )
     return StudyDraft(**merged)
 
 
@@ -685,6 +743,26 @@ def draft_warnings(draft: StudyDraft) -> tuple[str, ...]:
         overlap = cores.intersection(str(token) for token in partner_set)
         if overlap:
             warnings.append(f"partner_levels[{index}] intersects core_level: {sorted(overlap)}")
+    mode = _resolved_ingestion_mode(draft.ingestion_mode)
+    backtest = draft.backtest if isinstance(draft.backtest, Mapping) else {}
+    backtest_model = backtest.get("intrabar_model")
+    if mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M and backtest_model in (
+        None,
+        "",
+        "sl_first",
+    ):
+        warnings.append(_WARNING_15S_SL_FIRST)
+    profile = normalize_builder_format_profile(draft.format_profile)
+    if mode == INGESTION_MODE_PRIMARY and profile == "quantower_history_exporter":
+        warnings.append(_WARNING_QUANTOWER_PRIMARY)
+    grid = draft.grid if isinstance(draft.grid, Mapping) else {}
+    grid_model = grid.get("intrabar_model")
+    if (
+        grid.get("enabled") is True
+        and grid_model in (None, "", "sl_first")
+        and backtest_model in {"subtimeframe", "subtimeframe_conservative"}
+    ):
+        warnings.append(_WARNING_GRID_SL_FIRST)
     return tuple(warnings)
 
 
@@ -731,8 +809,25 @@ def _emit_dataset(draft: StudyDraft) -> dict[str, Any]:
             f"dataset.format_profile must be one of {list(FORMAT_PROFILES)}; got {profile!r}"
         )
     dataset["format_profile"] = profile
-    if draft.subtimeframe_path:
-        dataset["subtimeframe_path"] = draft.subtimeframe_path
+    mode = _resolved_ingestion_mode(draft.ingestion_mode)
+    if mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+        if draft.subtimeframe_path:
+            raise StudySpecError(
+                "dataset.subtimeframe_path cannot be combined with "
+                f"ingestion_mode={INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
+            )
+        if profile not in _DERIVE_15S_SUPPORTED_PROFILES:
+            raise StudySpecError(
+                "dataset.format_profile must be one of "
+                f"{sorted(_DERIVE_15S_SUPPORTED_PROFILES)!r} when "
+                f"ingestion_mode={INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
+            )
+        dataset["ingestion_mode"] = mode
+    else:
+        if mode != INGESTION_MODE_PRIMARY:
+            dataset["ingestion_mode"] = mode
+        if draft.subtimeframe_path:
+            dataset["subtimeframe_path"] = draft.subtimeframe_path
     for key, value in draft.dataset_extra.items():
         if key in _DATASET_KNOWN:
             continue
@@ -920,6 +1015,10 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
     source_timezone = dataset.get("source_timezone")
     format_profile = dataset.get("format_profile")
     subtimeframe_path = dataset.get("subtimeframe_path")
+    raw_ingestion_mode = dataset.get("ingestion_mode")
+    if raw_ingestion_mode is None:
+        raw_ingestion_mode = _pop_extra_ingestion_mode(dataset_extra)
+    ingestion_mode = _resolved_ingestion_mode(raw_ingestion_mode)
 
     otf_raw = factors.get("otf")
     otf: list[dict[str, Any]] | None
@@ -985,6 +1084,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
         instrument=str(dataset.get("instrument") or ""),
         source_timezone=str(source_timezone) if isinstance(source_timezone, str) else None,
         format_profile=normalize_builder_format_profile(format_profile),
+        ingestion_mode=ingestion_mode,
         subtimeframe_path=(str(subtimeframe_path) if isinstance(subtimeframe_path, str) else None),
         dataset_extra=dataset_extra,
         levels=copy.deepcopy(levels_map),
@@ -1057,6 +1157,8 @@ def hydrate_study_yaml(text: str) -> StudyDraft:
 __all__ = [
     "COMMON_MA_LENGTHS",
     "DEFAULT_FORMAT_PROFILE",
+    "DEFAULT_NEW_DRAFT_DATASET_PATH",
+    "DEFAULT_NEW_DRAFT_FORMAT_PROFILE",
     "DIRECTION_MODE_CONSTANT",
     "DIRECTION_MODE_FACTOR",
     "DIRECTION_MODE_OPTIONS",
@@ -1064,6 +1166,7 @@ __all__ = [
     "OTF_PRESETS",
     "OTF_PRESET_LABELS",
     "FORMAT_PROFILE_LABELS",
+    "INGESTION_MODE_PRIMARY",
     "OTF_PRESET_ORDER",
     "PREFERRED_REPORT_GROUP_BY",
     "PRIMARY_METRIC_OPTIONS",

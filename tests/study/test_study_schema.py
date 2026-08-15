@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.study.schema import (
+    STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
     StudySpecError,
     closed_level_token_set,
@@ -346,6 +348,29 @@ def test_dataset_instrument_required():
     raw = _minimal_study()
     del raw["study"]["dataset"]["instrument"]
     with pytest.raises(StudySpecError, match="dataset.instrument is required"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_dataset_ingestion_mode_omitted_stays_legal():
+    raw = _minimal_study()
+    assert "ingestion_mode" not in raw["study"]["dataset"]
+    spec = validate_study_spec(normalize_study_spec(raw))
+    assert "ingestion_mode" not in spec["study"]["dataset"]
+
+
+def test_dataset_ingestion_mode_accepts_known_tokens():
+    for token in sorted(STUDY_INGESTION_MODES):
+        raw = _minimal_study()
+        raw["study"]["dataset"]["ingestion_mode"] = token
+        spec = validate_study_spec(normalize_study_spec(raw))
+        assert spec["study"]["dataset"]["ingestion_mode"] == token
+    assert INGESTION_MODE_15S_PRIMARY_DERIVE_1M in STUDY_INGESTION_MODES
+
+
+def test_dataset_ingestion_mode_rejects_unknown_token():
+    raw = _minimal_study()
+    raw["study"]["dataset"]["ingestion_mode"] = "ticks"
+    with pytest.raises(StudySpecError, match="ingestion_mode must be one of"):
         validate_study_spec(normalize_study_spec(raw))
 
 

@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 import yaml
 
+from thesistester.api import validate_run_spec
+from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.data.loader import FORMAT_PROFILE_LABELS as LOADER_FORMAT_PROFILE_LABELS
 from thesistester.data.loader import FORMAT_PROFILES
 from thesistester.study.builder import (
     DEFAULT_FORMAT_PROFILE,
+    DEFAULT_NEW_DRAFT_DATASET_PATH,
+    DEFAULT_NEW_DRAFT_FORMAT_PROFILE,
     FORMAT_PROFILE_LABELS,
+    INGESTION_MODE_PRIMARY,
     bind_format_profile_labels,
     OTF_PRESETS,
     STUDIES_BUILDER_DRAFT_KEY,
@@ -76,9 +82,33 @@ def _roundtrip_hash(path: Path) -> tuple[str, str]:
     return study_identity_hash(loaded), study_identity_hash(roundtrip)
 
 
-def test_default_draft_emits_canonical_format_profile():
+def test_default_draft_emits_15s_primary_contract():
     spec = emit_study_spec(default_study_draft())
+    dataset = spec["study"]["dataset"]
+    assert dataset["path"] == DEFAULT_NEW_DRAFT_DATASET_PATH
+    assert dataset["format_profile"] == DEFAULT_NEW_DRAFT_FORMAT_PROFILE
+    assert dataset["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert "subtimeframe_path" not in dataset
+    assert spec["study"]["constants"]["backtest"]["intrabar_model"] == (
+        "subtimeframe_conservative"
+    )
+    expansion = expand_study(spec)
+    assert expansion.run_count == 2
+    for run in expansion.experiment["runs"]:
+        validate_run_spec(run)
+
+
+def test_study_draft_field_defaults_stay_legacy_safe():
+    draft = StudyDraft()
+    assert draft.dataset_path == "data/es_1m.csv"
+    assert draft.format_profile == DEFAULT_FORMAT_PROFILE
+    assert draft.ingestion_mode == INGESTION_MODE_PRIMARY
+    assert draft.backtest["intrabar_model"] == "sl_first"
+    spec = emit_study_spec(draft)
+    assert "ingestion_mode" not in spec["study"]["dataset"]
     assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+    assert spec["study"]["dataset"]["path"] == "data/es_1m.csv"
+    assert spec["study"]["constants"]["backtest"]["intrabar_model"] == "sl_first"
 
 
 def test_builder_format_profile_labels_follow_loader_when_present():
@@ -115,10 +145,11 @@ def test_normalize_builder_format_profile_allow_list():
 
 def test_emit_blank_format_profile_writes_canonical():
     for raw in (None, "", "  "):
-        draft = default_study_draft()
+        draft = StudyDraft()
         draft.format_profile = raw  # type: ignore[assignment]
         spec = emit_study_spec(draft)
         assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+        assert "ingestion_mode" not in spec["study"]["dataset"]
 
 
 def test_emit_unknown_format_profile_fails_closed():
@@ -400,11 +431,14 @@ def test_builder_module_import_allow_list():
             assert "promote_study" not in names
             assert "run_study" not in names
             assert "preview_study_spec" not in names
+            assert not node.module.startswith("pages")
         if isinstance(node, ast.Import):
             for alias in node.names:
                 assert alias.name not in banned
+                assert not alias.name.startswith("pages")
     assert "run_study" not in source
     assert "STUDY.run" not in source
+    assert "pages.1_Data" not in source
 
 
 def test_study_draft_type_is_dataclass():
@@ -734,3 +768,93 @@ def test_group_by_cannot_include_undeclared_axes():
     preferred = preferred_group_by(keys)
     assert "otf" not in preferred
     assert "trigger" in preferred
+
+
+def test_hydrate_omitted_ingestion_mode_is_primary_and_reemit_omits_key():
+    loaded = load_study_spec(GOLDEN_STUDY)
+    assert "ingestion_mode" not in loaded["study"]["dataset"]
+    draft = hydrate_study_draft(loaded)
+    assert draft.ingestion_mode == INGESTION_MODE_PRIMARY
+    assert "intrabar_model" not in draft.backtest
+    spec = emit_study_spec(draft)
+    assert "ingestion_mode" not in spec["study"]["dataset"]
+    assert "intrabar_model" not in spec["study"]["constants"]["backtest"]
+
+
+def test_draft_from_mapping_pre_sia_session_is_primary():
+    payload = asdict(StudyDraft())
+    payload.pop("ingestion_mode")
+    restored = draft_from_mapping(payload)
+    assert restored.ingestion_mode == INGESTION_MODE_PRIMARY
+    assert restored.dataset_path == "data/es_1m.csv"
+    assert restored.format_profile == DEFAULT_FORMAT_PROFILE
+    assert restored.backtest["intrabar_model"] == "sl_first"
+    assert draft_from_mapping(None).ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+
+
+def test_hydrate_and_mapping_promote_ingestion_mode_from_extra():
+    spec = load_study_spec(GOLDEN_STUDY)
+    spec["study"]["dataset"]["format_profile"] = "quantower_history_exporter"
+    spec["study"]["dataset"]["ingestion_mode"] = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    spec["study"]["constants"]["backtest"]["intrabar_model"] = "subtimeframe_conservative"
+    draft = hydrate_study_draft(spec)
+    assert draft.ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert "ingestion_mode" not in draft.dataset_extra
+    emitted = emit_study_spec(draft)
+    assert emitted["study"]["dataset"]["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+
+    payload = asdict(StudyDraft())
+    payload.pop("ingestion_mode")
+    payload["dataset_extra"] = {
+        "ingestion_mode": INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        "data_artifact_key": "abc",
+    }
+    restored = draft_from_mapping(payload)
+    assert restored.ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert "ingestion_mode" not in restored.dataset_extra
+    assert restored.dataset_extra["data_artifact_key"] == "abc"
+
+
+def test_emit_15s_primary_rejects_subtimeframe_path_and_canonical_profile():
+    draft = default_study_draft()
+    draft.subtimeframe_path = "data/es_15s_lower.csv"
+    with pytest.raises(StudySpecError, match="subtimeframe_path cannot be combined"):
+        emit_study_spec(draft)
+    draft = default_study_draft()
+    draft.format_profile = DEFAULT_FORMAT_PROFILE
+    with pytest.raises(StudySpecError, match="format_profile must be one of"):
+        emit_study_spec(draft)
+
+
+def test_draft_warnings_sia_ingest_rows():
+    sl_first = default_study_draft()
+    sl_first.backtest["intrabar_model"] = "sl_first"
+    assert draft_warnings(sl_first) == (
+        "15s-primary attaches 15s for R12, but backtest.intrabar_model is sl_first "
+        "(or omitted → sl_first). Data-page recommended model is subtimeframe_conservative.",
+    )
+    omitted = default_study_draft()
+    omitted.backtest.pop("intrabar_model")
+    assert draft_warnings(omitted)[0].startswith("15s-primary attaches 15s for R12")
+
+    primary_quantower = StudyDraft()
+    primary_quantower.format_profile = "quantower_history_exporter"
+    assert draft_warnings(primary_quantower) == (
+        "Quantower profile with primary ingestion treats the CSV as the decision "
+        "timeframe. A 15-second History Exporter file needs "
+        "ingestion_mode=15s_primary_derive_1m to match the Data-page recommended path.",
+    )
+
+    grid_mismatch = default_study_draft()
+    grid_mismatch.grid = {
+        "enabled": True,
+        "stop_loss_ticks_values": [8],
+        "take_profit_ticks_values": [16],
+    }
+    warnings = draft_warnings(grid_mismatch)
+    assert (
+        "grid.intrabar_model is sl_first (or omitted → sl_first) while backtest uses "
+        "observed replay. Grid cells will not use the 15s R12 path."
+    ) in warnings
+    assert default_study_draft().ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert draft_warnings(default_study_draft()) == ()
