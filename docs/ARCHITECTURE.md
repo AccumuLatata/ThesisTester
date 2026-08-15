@@ -79,7 +79,8 @@ so `study.launch.log` inherits stdout; no in-process `run_study`).
 (`thesistester/study/builder.py` emit / hydrate / stage / report; live strip
 calls `preview_study_spec`; Apply / hydrate / download stay Studies-scoped).
 Build always writes `dataset.format_profile` from the R17 allow-list
-(`FORMAT_PROFILE_LABELS`; blank / unknown → `canonical`).
+(`FORMAT_PROFILE_LABELS`; omitted / blank → `canonical`; unknown
+non-blank tokens fail emit).
 Studies-scoped keys only:
 `studies_builder_draft` and `studies_builder_pending_sync` (plus
 `_study_builder_*` widget keys). The Build tab body executes before Preview

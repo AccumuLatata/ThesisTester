@@ -1160,12 +1160,20 @@ def _render_build() -> None:
     if base.source_timezone and base.source_timezone not in timezone_options:
         timezone_options = [base.source_timezone, *timezone_options]
     st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
-    if st.session_state.get(WIDGET_KEY_FORMAT_PROFILE) not in FORMAT_PROFILE_LABELS:
+    profile_options = list(FORMAT_PROFILE_LABELS)
+    current_profile = st.session_state.get(WIDGET_KEY_FORMAT_PROFILE)
+    if (
+        isinstance(current_profile, str)
+        and current_profile.strip()
+        and current_profile not in profile_options
+    ):
+        profile_options = [current_profile, *profile_options]
+    elif current_profile not in FORMAT_PROFILE_LABELS:
         st.session_state[WIDGET_KEY_FORMAT_PROFILE] = DEFAULT_FORMAT_PROFILE
     st.selectbox(
         "CSV format profile",
-        options=list(FORMAT_PROFILE_LABELS),
-        format_func=FORMAT_PROFILE_LABELS.get,
+        options=profile_options,
+        format_func=lambda key: FORMAT_PROFILE_LABELS.get(key, str(key)),
         help="Explicit selection only; ThesisTester never auto-detects vendor formats.",
         key=WIDGET_KEY_FORMAT_PROFILE,
     )

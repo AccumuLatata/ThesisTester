@@ -4,6 +4,8 @@ import pandas as pd
 import pytest
 
 from thesistester.data.loader import (
+    FORMAT_PROFILE_LABELS,
+    FORMAT_PROFILES,
     duplicate_timestamp_report,
     DataValidationError,
     format_interval,
@@ -17,6 +19,14 @@ from thesistester.data.resample import resample_ohlcv
 from thesistester.data.sessions import tag_session
 
 SAMPLE = Path(__file__).resolve().parents[1] / "sample_data" / "ES_sample_1m.csv"
+
+
+def test_format_profile_labels_match_allow_list_and_data_page_order():
+    assert set(FORMAT_PROFILE_LABELS) == set(FORMAT_PROFILES)
+    assert list(FORMAT_PROFILE_LABELS)[:2] == [
+        "canonical",
+        "quantower_history_exporter",
+    ]
 
 
 def test_sample_loads_clean():

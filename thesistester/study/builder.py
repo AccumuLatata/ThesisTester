@@ -264,16 +264,20 @@ class StudyDraft:
 
 
 def normalize_builder_format_profile(value: Any) -> str:
-    """Allow-list only. Blank / unknown → ``canonical`` (runner default).
+    """Omitted / blank → ``canonical``. Non-blank tokens are stripped only.
 
-    Does not invent profile tokens. ``run_experiment`` already uses
-    ``dataset_config.get("format_profile", "canonical")`` when the key is
-    omitted, so emitting ``canonical`` is explicit, not a runtime change.
+    ``run_experiment`` defaults **omitted** keys to ``canonical``; a present
+    unknown token is fail-closed at load time. Do not rewrite unknown tokens
+    to ``canonical`` (that would invent a profile and silently parse as
+    comma OHLCV). Emit rejects unknown non-blank tokens.
     """
+    if value is None:
+        return DEFAULT_FORMAT_PROFILE
     if isinstance(value, str):
         token = value.strip()
-        if token in FORMAT_PROFILES:
-            return token
+        if not token:
+            return DEFAULT_FORMAT_PROFILE
+        return token
     return DEFAULT_FORMAT_PROFILE
 
 
@@ -692,7 +696,12 @@ def _emit_dataset(draft: StudyDraft) -> dict[str, Any]:
     dataset: dict[str, Any] = {"path": draft.dataset_path, "instrument": draft.instrument}
     if draft.source_timezone:
         dataset["source_timezone"] = draft.source_timezone
-    dataset["format_profile"] = normalize_builder_format_profile(draft.format_profile)
+    profile = normalize_builder_format_profile(draft.format_profile)
+    if profile not in FORMAT_PROFILES:
+        raise StudySpecError(
+            f"dataset.format_profile must be one of {list(FORMAT_PROFILES)}; got {profile!r}"
+        )
+    dataset["format_profile"] = profile
     if draft.subtimeframe_path:
         dataset["subtimeframe_path"] = draft.subtimeframe_path
     for key, value in draft.dataset_extra.items():

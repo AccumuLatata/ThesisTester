@@ -1004,7 +1004,6 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 | Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash. One click cannot bind and spawn |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
 | Build StudySpec | Widgets → `emit_study_yaml` (closed tokens, stage, report) | Not a runner; does not spawn CLI |
-| CSV format profile | Required R17 allow-list (same labels as Data) | Empty used to omit the key → runner `canonical` (comma CSV). History Exporter is semicolon — select `Quantower History Exporter` |
 | Start from example / Load Preview / Copy spec | Hydrate pdPOC example, Preview YAML, or Inspect `study.spec.yaml` | Copy-on-Build hydrates the draft; Preview Copy still only fills the textarea |
 | Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ current factor widgets; explicit table is delete-only |
 | Apply to Preview | Writes Preview YAML; clears preview cache + launch approval | Validate / Preview still required |
@@ -1016,8 +1015,6 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 2. Open **Studies**. Inspect: paste `output_dir`, Load, Refresh while in flight.
 3. **Build StudySpec** (optional): Start from example (pdPOC stage-first, 40 vs 800)
    or pick core / partners / modes / triggers / OTF from the closed catalog.
-   Set **CSV format profile** to the same R17 profile as Data (History Exporter
-   CSVs need Quantower History Exporter — default `canonical` is comma OHLCV).
    Stage Filter keeps include values ⊆ current factor widgets. Explicit cells
    is delete-only (hydrate a promote draft or Preview YAML to add rows).
    Live strip is combinatorial screening, not a validated edge.

@@ -84,19 +84,32 @@ def test_normalize_builder_format_profile_allow_list():
     assert normalize_builder_format_profile(None) == DEFAULT_FORMAT_PROFILE
     assert normalize_builder_format_profile("") == DEFAULT_FORMAT_PROFILE
     assert normalize_builder_format_profile("  ") == DEFAULT_FORMAT_PROFILE
-    assert normalize_builder_format_profile("not_a_profile") == DEFAULT_FORMAT_PROFILE
+    assert normalize_builder_format_profile("not_a_profile") == "not_a_profile"
     assert (
         normalize_builder_format_profile("quantower_history_exporter")
         == "quantower_history_exporter"
     )
 
 
-def test_emit_blank_or_unknown_format_profile_writes_canonical():
-    for raw in (None, "", "  ", "not_a_profile"):
+def test_emit_blank_format_profile_writes_canonical():
+    for raw in (None, "", "  "):
         draft = default_study_draft()
         draft.format_profile = raw  # type: ignore[assignment]
         spec = emit_study_spec(draft)
         assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+
+
+def test_emit_unknown_format_profile_fails_closed():
+    draft = default_study_draft()
+    draft.format_profile = "not_a_profile"
+    with pytest.raises(StudySpecError, match="format_profile"):
+        emit_study_spec(draft)
+    spec = load_study_spec(GOLDEN_STUDY)
+    spec["study"]["dataset"]["format_profile"] = "not_a_profile"
+    hydrated = hydrate_study_draft(spec)
+    assert hydrated.format_profile == "not_a_profile"
+    with pytest.raises(StudySpecError, match="format_profile"):
+        emit_study_spec(hydrated)
 
 
 def test_emit_and_hydrate_quantower_format_profile():
@@ -470,6 +483,7 @@ def test_pages_studies_build_tab_source_contract():
     assert "Load YAML from Preview tab" in page
     assert "CSV format profile" in page
     assert "Format profile (optional)" not in page
+    assert "FORMAT_PROFILE_LABELS.get(key, str(key))" in page
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
     assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]
