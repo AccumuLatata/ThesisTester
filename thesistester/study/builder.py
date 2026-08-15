@@ -22,6 +22,7 @@ from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.data.loader import FORMAT_PROFILES
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.schema import (
+    STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
     StudySpecError,
     closed_level_token_set,
@@ -355,12 +356,15 @@ def _pop_extra_ingestion_mode(extra: dict[str, Any]) -> Any:
     return extra.pop("ingestion_mode", None)
 
 
+def _blank_ingestion_mode(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def _resolved_ingestion_mode(value: Any, *, fallback: str = INGESTION_MODE_PRIMARY) -> str:
-    if value is None:
+    if _blank_ingestion_mode(value):
         return fallback
     if isinstance(value, str):
-        token = value.strip()
-        return token if token else fallback
+        return value.strip()
     return str(value)
 
 
@@ -435,10 +439,12 @@ def draft_from_mapping(payload: Mapping[str, Any] | None) -> StudyDraft:
         extra = {}
         merged["dataset_extra"] = extra
     extra_mode = _pop_extra_ingestion_mode(extra)
-    if "ingestion_mode" not in payload or merged.get("ingestion_mode") in (None, ""):
+    if "ingestion_mode" not in payload or _blank_ingestion_mode(merged.get("ingestion_mode")):
         merged["ingestion_mode"] = _resolved_ingestion_mode(
             extra_mode, fallback=INGESTION_MODE_PRIMARY
         )
+    else:
+        merged["ingestion_mode"] = _resolved_ingestion_mode(merged.get("ingestion_mode"))
     return StudyDraft(**merged)
 
 
@@ -810,6 +816,11 @@ def _emit_dataset(draft: StudyDraft) -> dict[str, Any]:
         )
     dataset["format_profile"] = profile
     mode = _resolved_ingestion_mode(draft.ingestion_mode)
+    if mode not in STUDY_INGESTION_MODES:
+        raise StudySpecError(
+            "dataset.ingestion_mode must be one of "
+            f"{sorted(STUDY_INGESTION_MODES)!r} when present; got {mode!r}"
+        )
     if mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
         if draft.subtimeframe_path:
             raise StudySpecError(
@@ -824,8 +835,6 @@ def _emit_dataset(draft: StudyDraft) -> dict[str, Any]:
             )
         dataset["ingestion_mode"] = mode
     else:
-        if mode != INGESTION_MODE_PRIMARY:
-            dataset["ingestion_mode"] = mode
         if draft.subtimeframe_path:
             dataset["subtimeframe_path"] = draft.subtimeframe_path
     for key, value in draft.dataset_extra.items():
@@ -1016,7 +1025,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
     format_profile = dataset.get("format_profile")
     subtimeframe_path = dataset.get("subtimeframe_path")
     raw_ingestion_mode = dataset.get("ingestion_mode")
-    if raw_ingestion_mode is None:
+    if _blank_ingestion_mode(raw_ingestion_mode):
         raw_ingestion_mode = _pop_extra_ingestion_mode(dataset_extra)
     ingestion_mode = _resolved_ingestion_mode(raw_ingestion_mode)
 

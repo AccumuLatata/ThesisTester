@@ -15,10 +15,9 @@ Execute is still CLI (`study run` / Preview **Run via CLI**). Inspect may
 show an additive ledger progress strip (Refresh still explicit). Does not
 change preview / CLI-spawn / execute semantics.
 **SIA** (Study Ingest Alignment) is plan-locked:
-`docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. SIA1–SIA3 not started.
-It amends Studies **authoring/defaults/examples** so new specs can emit
-`dataset.ingestion_mode: 15s_primary_derive_1m` (existing `run_experiment`
-path). Omitted mode remains `primary`. Does not change execute/engine/Data.
+`docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. **SIA1** landed
+(new drafts emit 15s-primary). SIA2–SIA3 not started. Omitted mode remains
+`primary`. Does not change execute/engine/Data.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.

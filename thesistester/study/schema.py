@@ -403,7 +403,9 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
             "injected into every expanded setup)"
         )
     ingestion_mode = dataset.get("ingestion_mode")
-    if ingestion_mode is not None and ingestion_mode not in STUDY_INGESTION_MODES:
+    if ingestion_mode is not None and (
+        not isinstance(ingestion_mode, str) or ingestion_mode not in STUDY_INGESTION_MODES
+    ):
         raise StudySpecError(
             "study.dataset.ingestion_mode must be one of "
             f"{sorted(STUDY_INGESTION_MODES)!r} when present; got {ingestion_mode!r}"

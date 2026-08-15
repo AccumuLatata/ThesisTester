@@ -374,6 +374,13 @@ def test_dataset_ingestion_mode_rejects_unknown_token():
         validate_study_spec(normalize_study_spec(raw))
 
 
+def test_dataset_ingestion_mode_rejects_non_string():
+    raw = _minimal_study()
+    raw["study"]["dataset"]["ingestion_mode"] = True
+    with pytest.raises(StudySpecError, match="ingestion_mode must be one of"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
 def test_otf_canonical_duplicates_rejected():
     raw = _minimal_study()
     raw["study"]["factors"]["otf"] = [

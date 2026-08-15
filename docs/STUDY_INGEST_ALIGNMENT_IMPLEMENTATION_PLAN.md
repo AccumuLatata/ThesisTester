@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-15  
-**Status:** **SIA0 plan-locked.** SIA1–SIA3 not started.  
+**Status:** **SIA0 plan-locked. SIA1 landed.** SIA2–SIA3 not started.  
 **Series code:** **SIA** (Study Ingest Alignment)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** Research Study Runner RS1–RS5 + RS-D8 + RS-D9; Study Builder SB1–SB3; 15s-primary ingest (`thesistester/data/derive.py`, `api._load_15s_primary_experiment_data`)  
@@ -565,8 +565,8 @@ CLI `study expand|run|report|promote|rollup` remains the academic path and does 
 
 | Milestone | Intent | Status |
 |---|---|---|
-| SIA0 | Plan lock + index | This PR |
-| SIA1 | Builder compiler: field, defaults, emit/hydrate, warnings, schema token | Not started |
+| SIA0 | Plan lock + index | ✅ |
+| SIA1 | Builder compiler: field, defaults, emit/hydrate, warnings, schema token | This PR |
 | SIA2 | Build tab ingest radio | Not started |
 | SIA3 | Example + docs + parity test | Not started |
 

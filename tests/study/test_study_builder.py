@@ -89,9 +89,7 @@ def test_default_draft_emits_15s_primary_contract():
     assert dataset["format_profile"] == DEFAULT_NEW_DRAFT_FORMAT_PROFILE
     assert dataset["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
     assert "subtimeframe_path" not in dataset
-    assert spec["study"]["constants"]["backtest"]["intrabar_model"] == (
-        "subtimeframe_conservative"
-    )
+    assert spec["study"]["constants"]["backtest"]["intrabar_model"] == ("subtimeframe_conservative")
     expansion = expand_study(spec)
     assert expansion.run_count == 2
     for run in expansion.experiment["runs"]:
@@ -814,6 +812,13 @@ def test_hydrate_and_mapping_promote_ingestion_mode_from_extra():
     assert "ingestion_mode" not in restored.dataset_extra
     assert restored.dataset_extra["data_artifact_key"] == "abc"
 
+    blank = asdict(StudyDraft())
+    blank["ingestion_mode"] = "  "
+    blank["dataset_extra"] = {"ingestion_mode": INGESTION_MODE_15S_PRIMARY_DERIVE_1M}
+    promoted = draft_from_mapping(blank)
+    assert promoted.ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert "ingestion_mode" not in promoted.dataset_extra
+
 
 def test_emit_15s_primary_rejects_subtimeframe_path_and_canonical_profile():
     draft = default_study_draft()
@@ -823,6 +828,10 @@ def test_emit_15s_primary_rejects_subtimeframe_path_and_canonical_profile():
     draft = default_study_draft()
     draft.format_profile = DEFAULT_FORMAT_PROFILE
     with pytest.raises(StudySpecError, match="format_profile must be one of"):
+        emit_study_spec(draft)
+    draft = StudyDraft()
+    draft.ingestion_mode = "ticks"
+    with pytest.raises(StudySpecError, match="ingestion_mode must be one of"):
         emit_study_spec(draft)
 
 
