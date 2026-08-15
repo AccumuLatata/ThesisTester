@@ -14,10 +14,12 @@ from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
 from thesistester.setup import TRIGGER_TIMEFRAME_CHOICES, VALID_TRIGGERS
 from thesistester.study.builder import (
+    DEFAULT_FORMAT_PROFILE,
     DIRECTION_MODE_CONSTANT,
     DIRECTION_MODE_FACTOR,
     DIRECTION_MODE_OPTIONS,
     MULTIPLE_TESTING_OPTIONS,
+    FORMAT_PROFILE_LABELS,
     OTF_PRESET_LABELS,
     OTF_PRESET_ORDER,
     PRIMARY_METRIC_OPTIONS,
@@ -113,6 +115,7 @@ from thesistester.study.builder import (
     infer_tf_mode,
     levels_advanced_enabled,
     ma_length_options,
+    normalize_builder_format_profile,
     otf_for_selected_presets,
     otf_preset_ids,
     parse_csv_tokens,
@@ -648,7 +651,9 @@ def _sync_builder_widgets(draft: StudyDraft) -> None:
     st.session_state[WIDGET_KEY_DATASET_PATH] = draft.dataset_path
     st.session_state[WIDGET_KEY_INSTRUMENT] = draft.instrument
     st.session_state[WIDGET_KEY_SOURCE_TIMEZONE] = draft.source_timezone or ""
-    st.session_state[WIDGET_KEY_FORMAT_PROFILE] = draft.format_profile or ""
+    st.session_state[WIDGET_KEY_FORMAT_PROFILE] = normalize_builder_format_profile(
+        draft.format_profile
+    )
     sma_lengths = [int(item) for item in (draft.levels.get("sma_lengths") or [])]
     ema_lengths = [int(item) for item in (draft.levels.get("ema_lengths") or [])]
     st.session_state[WIDGET_KEY_SMA_LENGTHS] = sma_lengths
@@ -806,8 +811,9 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.instrument = str(st.session_state.get(WIDGET_KEY_INSTRUMENT) or draft.instrument)
     timezone = str(st.session_state.get(WIDGET_KEY_SOURCE_TIMEZONE) or "").strip()
     draft.source_timezone = timezone or None
-    profile = str(st.session_state.get(WIDGET_KEY_FORMAT_PROFILE) or "").strip()
-    draft.format_profile = profile or None
+    draft.format_profile = normalize_builder_format_profile(
+        st.session_state.get(WIDGET_KEY_FORMAT_PROFILE)
+    )
 
     levels = copy.deepcopy(dict(draft.levels))
     # Persist [] when the operator clears lengths. Omitting the key lets
@@ -1154,10 +1160,14 @@ def _render_build() -> None:
     if base.source_timezone and base.source_timezone not in timezone_options:
         timezone_options = [base.source_timezone, *timezone_options]
     st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
-    st.text_input(
-        "Format profile (optional)",
+    if st.session_state.get(WIDGET_KEY_FORMAT_PROFILE) not in FORMAT_PROFILE_LABELS:
+        st.session_state[WIDGET_KEY_FORMAT_PROFILE] = DEFAULT_FORMAT_PROFILE
+    st.selectbox(
+        "CSV format profile",
+        options=list(FORMAT_PROFILE_LABELS),
+        format_func=FORMAT_PROFILE_LABELS.get,
+        help="Explicit selection only; ThesisTester never auto-detects vendor formats.",
         key=WIDGET_KEY_FORMAT_PROFILE,
-        help="Empty omits the key.",
     )
 
     st.markdown("### Levels → tokens")

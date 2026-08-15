@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from thesistester.data.loader import FORMAT_PROFILES
 from thesistester.study.builder import (
+    DEFAULT_FORMAT_PROFILE,
+    FORMAT_PROFILE_LABELS,
     OTF_PRESETS,
     STUDIES_BUILDER_DRAFT_KEY,
     STUDIES_BUILDER_PENDING_SYNC_KEY,
@@ -35,6 +38,7 @@ from thesistester.study.builder import (
     hydrate_study_draft,
     hydrate_study_yaml,
     infer_tf_mode,
+    normalize_builder_format_profile,
     otf_for_selected_presets,
     otf_from_preset_ids,
     otf_preset_ids,
@@ -70,6 +74,42 @@ def _roundtrip_hash(path: Path) -> tuple[str, str]:
     return study_identity_hash(loaded), study_identity_hash(roundtrip)
 
 
+def test_default_draft_emits_canonical_format_profile():
+    spec = emit_study_spec(default_study_draft())
+    assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+
+
+def test_normalize_builder_format_profile_allow_list():
+    assert set(FORMAT_PROFILE_LABELS) == set(FORMAT_PROFILES)
+    assert normalize_builder_format_profile(None) == DEFAULT_FORMAT_PROFILE
+    assert normalize_builder_format_profile("") == DEFAULT_FORMAT_PROFILE
+    assert normalize_builder_format_profile("  ") == DEFAULT_FORMAT_PROFILE
+    assert normalize_builder_format_profile("not_a_profile") == DEFAULT_FORMAT_PROFILE
+    assert (
+        normalize_builder_format_profile("quantower_history_exporter")
+        == "quantower_history_exporter"
+    )
+
+
+def test_emit_blank_or_unknown_format_profile_writes_canonical():
+    for raw in (None, "", "  ", "not_a_profile"):
+        draft = default_study_draft()
+        draft.format_profile = raw  # type: ignore[assignment]
+        spec = emit_study_spec(draft)
+        assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+
+
+def test_emit_and_hydrate_quantower_format_profile():
+    draft = default_study_draft()
+    draft.format_profile = "quantower_history_exporter"
+    spec = emit_study_spec(draft)
+    assert spec["study"]["dataset"]["format_profile"] == "quantower_history_exporter"
+    again = hydrate_study_draft(spec)
+    assert again.format_profile == "quantower_history_exporter"
+    mapping = draft_from_mapping({"format_profile": None})
+    assert mapping.format_profile == DEFAULT_FORMAT_PROFILE
+
+
 def test_default_draft_expands_to_two_cells():
     spec = emit_study_spec(default_study_draft())
     expansion = expand_study(spec)
@@ -87,14 +127,25 @@ def test_default_draft_expands_to_two_cells():
     assert spec["study"]["constants"]["direction"] == "both"
 
 
-def test_identity_hash_roundtrip_golden():
-    original, roundtrip = _roundtrip_hash(GOLDEN_STUDY)
-    assert original == roundtrip
+def test_identity_hash_roundtrip_golden_emits_canonical_format_profile():
+    loaded = load_study_spec(GOLDEN_STUDY)
+    assert "format_profile" not in loaded["study"]["dataset"]
+    draft = hydrate_study_draft(loaded)
+    assert draft.format_profile == DEFAULT_FORMAT_PROFILE
+    first = emit_study_spec(draft)
+    assert first["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+    second = emit_study_spec(hydrate_study_draft(first))
+    assert study_identity_hash(first) == study_identity_hash(second)
+    assert study_identity_hash(loaded) != study_identity_hash(first)
 
 
-def test_identity_hash_roundtrip_pdpoc_example():
-    original, roundtrip = _roundtrip_hash(PDPOC_EXAMPLE)
-    assert original == roundtrip
+def test_identity_hash_roundtrip_pdpoc_example_emits_canonical_format_profile():
+    loaded = load_study_spec(PDPOC_EXAMPLE)
+    assert "format_profile" not in loaded["study"]["dataset"]
+    first = emit_study_spec(hydrate_study_draft(loaded))
+    assert first["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+    second = emit_study_spec(hydrate_study_draft(first))
+    assert study_identity_hash(first) == study_identity_hash(second)
 
 
 def test_identity_hash_roundtrip_dopen_example():
@@ -106,6 +157,7 @@ def test_explicit_null_group_by_roundtrip():
     """``group_by: null`` must not become the normalize-invented default list."""
     spec = load_study_spec(GOLDEN_STUDY)
     spec["study"]["report"]["group_by"] = None
+    spec["study"]["dataset"]["format_profile"] = DEFAULT_FORMAT_PROFILE
     spec = validate_study_spec(normalize_study_spec(spec))
     assert spec["study"]["report"]["group_by"] is None
     roundtrip = emit_study_spec(hydrate_study_draft(spec))
@@ -117,6 +169,7 @@ def test_explicit_null_description_roundtrip():
     """Schema-valid ``description: null`` must survive hydrate → emit."""
     spec = load_study_spec(GOLDEN_STUDY)
     spec["study"]["description"] = None
+    spec["study"]["dataset"]["format_profile"] = DEFAULT_FORMAT_PROFILE
     spec = validate_study_spec(normalize_study_spec(spec))
     assert spec["study"]["description"] is None
     roundtrip = emit_study_spec(hydrate_study_draft(spec))
@@ -415,6 +468,9 @@ def test_pages_studies_build_tab_source_contract():
     # Apply writes the Preview textarea key; Build body must run first.
     assert page.index("with build_tab:") < page.index("with preview_tab:")
     assert "Load YAML from Preview tab" in page
+    assert "CSV format profile" in page
+    assert "Format profile (optional)" not in page
+    assert "Empty omits the key" not in page
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
     assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]
@@ -575,10 +631,11 @@ def test_collect_stage_include_stays_inside_domains():
 
 
 def test_preview_yaml_hydrate_emit_identity_hash():
-    yaml_text = emit_study_yaml(hydrate_study_draft(load_study_spec(PDPOC_EXAMPLE)))
+    first = emit_study_spec(hydrate_study_draft(load_study_spec(PDPOC_EXAMPLE)))
+    yaml_text = emit_study_yaml(hydrate_study_draft(first))
     again = emit_study_spec(hydrate_study_yaml(yaml_text))
-    original = load_study_spec(PDPOC_EXAMPLE)
-    assert study_identity_hash(original) == study_identity_hash(again)
+    assert first["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
+    assert study_identity_hash(first) == study_identity_hash(again)
 
 
 def test_dopen_hydrate_preview_is_eight_cells():

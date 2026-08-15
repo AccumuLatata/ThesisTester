@@ -35,6 +35,17 @@ FORMAT_PROFILES = (
     "tick_capture",
     "second_capture",
 )
+# Display order matches the Data-page selectbox (canonical first, then History
+# Exporter). Keys must stay equal to FORMAT_PROFILES.
+FORMAT_PROFILE_LABELS: dict[str, str] = {
+    "canonical": "Canonical / Quantower OHLCV",
+    "quantower_history_exporter": "Quantower History Exporter (semicolon)",
+    "ninjatrader": "NinjaTrader export",
+    "sierra_intraday": "Sierra Intraday CSV",
+    "databento_trades": "Databento trades CSV",
+    "tick_capture": "Generic tick capture CSV",
+    "second_capture": "Generic second capture CSV",
+}
 FormatProfile = Literal[
     "canonical",
     "ninjatrader",

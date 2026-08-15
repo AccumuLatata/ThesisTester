@@ -20,6 +20,7 @@ from thesistester.data.derive import (
 )
 from thesistester.data.loader import (
     DataValidationError,
+    FORMAT_PROFILE_LABELS,
     ValidationReport,
     duplicate_timestamp_report,
     format_interval,
@@ -1358,15 +1359,7 @@ else:
     # Sample and would clobber the Upload-CSV recommended default.
     ingestion_mode = INGESTION_MODE_PRIMARY
 
-all_profile_options = {
-    "canonical": "Canonical / Quantower OHLCV",
-    "quantower_history_exporter": "Quantower History Exporter (semicolon)",
-    "ninjatrader": "NinjaTrader export",
-    "sierra_intraday": "Sierra Intraday CSV",
-    "databento_trades": "Databento trades CSV",
-    "tick_capture": "Generic tick capture CSV",
-    "second_capture": "Generic second capture CSV",
-}
+all_profile_options = dict(FORMAT_PROFILE_LABELS)
 if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
     profile_options = {
         key: label

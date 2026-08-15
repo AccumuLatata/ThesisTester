@@ -78,6 +78,8 @@ so `study.launch.log` inherits stdout; no in-process `run_study`).
 **SB2–SB3** add a third **Build StudySpec** tab on the same page
 (`thesistester/study/builder.py` emit / hydrate / stage / report; live strip
 calls `preview_study_spec`; Apply / hydrate / download stay Studies-scoped).
+Build always writes `dataset.format_profile` from the R17 allow-list
+(`FORMAT_PROFILE_LABELS`; blank / unknown → `canonical`).
 Studies-scoped keys only:
 `studies_builder_draft` and `studies_builder_pending_sync` (plus
 `_study_builder_*` widget keys). The Build tab body executes before Preview
