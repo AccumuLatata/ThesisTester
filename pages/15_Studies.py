@@ -189,9 +189,11 @@ def _render_inspect() -> None:
         "Study output directory",
         key="studies_viewer_path_input",
         help=(
-            "Absolute or repo-relative path to a completed study dir "
-            "(must contain study.spec.yaml / results_index.csv). "
-            "Paths must stay under the repo working directory or the local ThesisTester store."
+            "Absolute or repo-relative path to a study dir (must contain "
+            "study.spec.yaml; results_index.csv after the first cell finishes). "
+            "A readable study.ledger.json is enough for Inspect progress while "
+            "the first cell is still running. Paths must stay under the repo "
+            "working directory or the local ThesisTester store."
         ),
         placeholder="out/pdPOC_stage40",
     )
@@ -221,7 +223,7 @@ def _render_inspect() -> None:
     if not isinstance(active_dir, str) or not active_dir.strip():
         st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_KEY, None)
         st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY, None)
-        st.caption("Enter a completed study directory, then load artifacts.")
+        st.caption("Enter a study output directory, then load artifacts.")
         return
 
     # Streamlit executes every tab body on each script rerun. Cache the viewer
@@ -270,9 +272,7 @@ def _render_inspect() -> None:
         if progress.running_ids:
             shown = ", ".join(f"`{name}`" for name in progress.running_ids[:3])
             extra = (
-                f" (+{len(progress.running_ids) - 3} more)"
-                if len(progress.running_ids) > 3
-                else ""
+                f" (+{len(progress.running_ids) - 3} more)" if len(progress.running_ids) > 3 else ""
             )
             parts.append(f"running: {shown}{extra}")
         elif progress.running_count:

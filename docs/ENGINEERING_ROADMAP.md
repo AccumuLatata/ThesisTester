@@ -1238,5 +1238,5 @@ RS-D1 / D3 / D6 stay parked.
 Inspect shows `done/total` + current `running` cell names from the loaded
 ledger (`summarize_ledger_progress` in `thesistester/study/viewer.py`).
 Refresh remains explicit. Ledger-only fallback when `results_index.csv` is
-not written yet. Not a job queue; no auto-refresh; no engine / golden /
-schema change.
+absent (not when a present index is unreadable). Not a job queue; no
+auto-refresh; no engine / golden / schema change.

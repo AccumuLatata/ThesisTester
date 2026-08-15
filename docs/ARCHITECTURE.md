@@ -66,8 +66,9 @@ capabilities. **RS-D2** adds a **read-only** Streamlit Studies viewer
 ledger loaders — no in-app expand/run/promote and no classic research
 `st.session_state` mutation. Inspect renders ledger progress
 (`ok+failed+skipped / run_count` + running cell names) from the cached
-viewer model; Refresh still reloads. Missing `results_index.csv` with a
-readable ledger is ledger-only (no ranked overview). Not a job queue. **RS-D8** extends that same page with a
+viewer model; Refresh still reloads. A missing `results_index.csv` file with a
+readable ledger is ledger-only (no ranked overview); a present but
+unreadable/invalid index still errors. Not a job queue. **RS-D8** extends that same page with a
 **preview-only** StudySpec pane (`thesistester/study/preview.py`: validate +
 in-memory `expand_study`, cap 2_000; no `study.execute` import). **RS-D9**
 spawns the existing CLI `study run` from that pane

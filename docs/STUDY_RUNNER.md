@@ -442,8 +442,9 @@ Streamlit page: **Studies** (`pages/15_Studies.py`).
 - Inspect **ledger progress** (additive): `st.progress` from
   `ok+failed+skipped / run_count` plus current `running` cell name(s).
   Explicit **Refresh** still reloads; no auto-refresh, kill, or retry.
-  A readable ledger with missing `results_index.csv` (first cell still
+  A readable ledger with a missing `results_index.csv` file (first cell still
   running) is a ledger-only view — progress shown, ranked tables empty.
+  A present but unreadable or invalid index still errors (no fallback).
 - Overview MD/CSV downloads are served from the in-memory aggregate.
 - Honesty banner required; no expand / run / promote controls; only
   Studies-scoped session keys are written (`studies_viewer_study_dir` plus

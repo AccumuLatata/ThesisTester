@@ -24,6 +24,7 @@ from thesistester.study.report import (
     RESULTS_INDEX,
     StudyReportError,
     StudyReportResult,
+    _load_report_config,
     report_study,
 )
 
@@ -258,7 +259,31 @@ class StudyViewerModel:
     overview_csv_text: str
 
 
-def _placeholder_report(*, study_name: str) -> StudyReportResult:
+def _report_settings_from_spec(study_dir: Path) -> tuple[str, int, str]:
+    """Best-effort ``study.report`` fields for a ledger-only Inspect view."""
+    try:
+        cfg = _load_report_config(study_dir)
+    except StudyReportError:
+        return "expectancy_r", 30, "warn"
+    report = cfg.get("report") if isinstance(cfg, Mapping) else None
+    if not isinstance(report, Mapping):
+        return "expectancy_r", 30, "warn"
+    primary = str(report.get("primary_metric") or "expectancy_r")
+    try:
+        min_trades = int(report.get("min_trades", 30))
+    except (TypeError, ValueError):
+        min_trades = 30
+    multiple = str(report.get("multiple_testing") or "warn")
+    return primary, min_trades, multiple
+
+
+def _placeholder_report(
+    *,
+    study_name: str,
+    primary_metric: str = "expectancy_r",
+    min_trades: int = 30,
+    multiple_testing: str = "warn",
+) -> StudyReportResult:
     """Empty report when ``results_index.csv`` is not written yet (in-flight)."""
     empty = pd.DataFrame()
     return StudyReportResult(
@@ -275,10 +300,10 @@ def _placeholder_report(*, study_name: str) -> StudyReportResult:
             "Refresh after the index appears.\n"
         ),
         paths={},
-        primary_metric="expectancy_r",
-        min_trades=30,
-        multiple_testing="warn",
-        best_cell_suppressed=False,
+        primary_metric=primary_metric,
+        min_trades=min_trades,
+        multiple_testing=multiple_testing,
+        best_cell_suppressed=multiple_testing == "error",
         study_name=study_name,
     )
 
@@ -304,9 +329,11 @@ def load_study_view(
 ) -> StudyViewerModel:
     """Load ledger + report for a study directory (no writes/backtests).
 
-    A readable ledger plus missing ``results_index.csv`` (first cell still
-    running) yields a ledger-only model: progress is shown, ranked tables
-    stay empty. Other report failures still raise ``StudyViewerError``.
+    A readable ledger plus a missing ``results_index.csv`` file (first cell
+    still running) yields a ledger-only model: progress is shown, ranked
+    tables stay empty. A present but unreadable or invalid index still
+    raises ``StudyViewerError`` — do not treat every index-related report
+    error as in-flight.
     """
     root = resolve_study_dir(study_dir, roots=roots)
 
@@ -321,15 +348,22 @@ def load_study_view(
         running_ids = ()
 
     identity_hash, run_count, spec_name = _read_identity(root)
-    report_present = True
-    try:
-        # Viewer must not rewrite overview artifacts on a completed study dir.
-        report = report_study(root, write_artifacts=False)
-    except StudyReportError as exc:
-        if RESULTS_INDEX in str(exc) and ledger is not None:
-            report_present = False
-            report = _placeholder_report(study_name=spec_name or root.name)
-        else:
+    index_path = root / RESULTS_INDEX
+    if ledger is not None and not index_path.is_file():
+        report_present = False
+        primary, min_trades, multiple = _report_settings_from_spec(root)
+        report = _placeholder_report(
+            study_name=spec_name or root.name,
+            primary_metric=primary,
+            min_trades=min_trades,
+            multiple_testing=multiple,
+        )
+    else:
+        try:
+            # Viewer must not rewrite overview artifacts on a completed study dir.
+            report = report_study(root, write_artifacts=False)
+            report_present = True
+        except StudyReportError as exc:
             raise StudyViewerError(str(exc)) from exc
 
     if not ledger_summary:

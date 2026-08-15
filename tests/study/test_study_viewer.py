@@ -177,6 +177,61 @@ def test_load_study_view_missing_index_without_ledger_still_errors(tmp_path: Pat
         load_study_view(study_dir, roots=(tmp_path.resolve(),))
 
 
+def test_load_study_view_invalid_index_with_ledger_still_errors(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "running"
+    save_ledger(study_dir, ledger)
+    (study_dir / RESULTS_INDEX).write_text("status,trade_count\nok,10\n", encoding="utf-8")
+    with pytest.raises(StudyViewerError, match="run_name"):
+        load_study_view(study_dir, roots=(tmp_path.resolve(),))
+
+
+def test_load_study_view_unreadable_index_with_ledger_still_errors(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    save_ledger(study_dir, ledger)
+    (study_dir / RESULTS_INDEX).write_text("not a csv\x00\x00", encoding="utf-8")
+    with pytest.raises(StudyViewerError, match=RESULTS_INDEX):
+        load_study_view(study_dir, roots=(tmp_path.resolve(),))
+
+
+def test_load_study_view_ledger_only_uses_spec_report_settings(tmp_path: Path):
+    import yaml
+
+    study_dir = _write_report_fixture(tmp_path, min_trades=5, multiple_testing="error")
+    spec_path = study_dir / "study.spec.yaml"
+    payload = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    payload["study"]["report"]["primary_metric"] = "profit_factor"
+    spec_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "running"
+    save_ledger(study_dir, ledger)
+    (study_dir / RESULTS_INDEX).unlink()
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert model.report_present is False
+    assert model.report.primary_metric == "profit_factor"
+    assert model.report.min_trades == 5
+    assert model.report.multiple_testing == "error"
+    assert model.report.best_cell_suppressed is True
+
+
 def test_load_study_view_tolerates_corrupt_ledger(tmp_path: Path):
     study_dir = _write_report_fixture(tmp_path, min_trades=30)
     (study_dir / "study.ledger.json").write_text("{not-json", encoding="utf-8")
