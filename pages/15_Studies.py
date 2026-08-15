@@ -120,7 +120,6 @@ from thesistester.study.builder import (
     preferred_group_by,
     stage_mode_from_label,
 )
-from thesistester.study import builder as _study_builder
 from thesistester.study.launch import (
     LAUNCH_LOG_NAME,
     STUDIES_LAUNCH_APPROVAL_KEY,
@@ -158,10 +157,13 @@ from thesistester.study.viewer import (
     resolve_study_dir,
 )
 
-# Do not import FORMAT_PROFILE_LABELS from builder. A stale builder.py (or a
-# builder that failed while re-exporting loader) raises ImportError and bricks
-# the Studies page. Prefer the live loader catalog; fall back if that name is
-# absent so Data/Build labels stay aligned when both files are current.
+# Do not import FORMAT_PROFILE_LABELS or normalize_builder_format_profile from
+# builder. A stale builder.py raises ImportError and bricks the Studies page.
+# Prefer the live loader catalog (same object as Data). Fall back only when
+# that name is missing or not a non-empty dict. Page-local normalize matches
+# current builder semantics (blank → canonical; do not rewrite unknown tokens).
+# Do not getattr-normalize from builder: an older builder still clamps unknown
+# tokens to canonical.
 _FORMAT_PROFILE_LABELS_FALLBACK = {
     "canonical": "Canonical / Quantower OHLCV",
     "quantower_history_exporter": "Quantower History Exporter (semicolon)",
@@ -171,12 +173,19 @@ _FORMAT_PROFILE_LABELS_FALLBACK = {
     "tick_capture": "Generic tick capture CSV",
     "second_capture": "Generic second capture CSV",
 }
-FORMAT_PROFILE_LABELS = getattr(
-    _data_loader, "FORMAT_PROFILE_LABELS", _FORMAT_PROFILE_LABELS_FALLBACK
-)
 
 
-def _normalize_format_profile_fallback(value: Any) -> str:
+def _bind_format_profile_labels(loader_module: Any) -> dict[str, str]:
+    labels = getattr(loader_module, "FORMAT_PROFILE_LABELS", None)
+    if isinstance(labels, dict) and labels:
+        return labels
+    return dict(_FORMAT_PROFILE_LABELS_FALLBACK)
+
+
+FORMAT_PROFILE_LABELS = _bind_format_profile_labels(_data_loader)
+
+
+def normalize_builder_format_profile(value: Any) -> str:
     if value is None:
         return "canonical"
     if isinstance(value, str):
@@ -184,12 +193,6 @@ def _normalize_format_profile_fallback(value: Any) -> str:
         return token or "canonical"
     return "canonical"
 
-
-normalize_builder_format_profile = getattr(
-    _study_builder,
-    "normalize_builder_format_profile",
-    _normalize_format_profile_fallback,
-)
 
 st.title("Studies")
 st.caption(

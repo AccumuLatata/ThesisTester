@@ -510,9 +510,11 @@ def test_pages_studies_build_tab_source_contract():
     builder_import = page.split("from thesistester.study.builder import (")[1].split(")")[0]
     assert "FORMAT_PROFILE_LABELS" not in builder_import
     assert "normalize_builder_format_profile" not in builder_import
+    assert "from thesistester.study import builder" not in page
     assert "from thesistester.data import loader as _data_loader" in page
-    assert 'getattr(' in page and '_data_loader, "FORMAT_PROFILE_LABELS"' in page
-    assert '"normalize_builder_format_profile"' in page
+    assert "def _bind_format_profile_labels" in page
+    assert "isinstance(labels, dict) and labels" in page
+    assert "def normalize_builder_format_profile" in page
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
     assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]
