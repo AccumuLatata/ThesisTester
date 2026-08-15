@@ -14,7 +14,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from thesistester.data.loader import FORMAT_PROFILE_LABELS, FORMAT_PROFILES
+from thesistester.data.loader import FORMAT_PROFILES
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.schema import (
     STUDY_SCHEMA_VERSION,
@@ -37,6 +37,18 @@ WIDGET_KEY_INSTRUMENT = "_study_builder_instrument"
 WIDGET_KEY_SOURCE_TIMEZONE = "_study_builder_source_timezone"
 WIDGET_KEY_FORMAT_PROFILE = "_study_builder_format_profile"
 DEFAULT_FORMAT_PROFILE = "canonical"
+# Bound on this module (not a loader re-export). A stale loader.py without
+# FORMAT_PROFILE_LABELS must not prevent `from builder import FORMAT_PROFILE_LABELS`.
+# Keep keys/labels equal to thesistester.data.loader.FORMAT_PROFILE_LABELS.
+FORMAT_PROFILE_LABELS: dict[str, str] = {
+    "canonical": "Canonical / Quantower OHLCV",
+    "quantower_history_exporter": "Quantower History Exporter (semicolon)",
+    "ninjatrader": "NinjaTrader export",
+    "sierra_intraday": "Sierra Intraday CSV",
+    "databento_trades": "Databento trades CSV",
+    "tick_capture": "Generic tick capture CSV",
+    "second_capture": "Generic second capture CSV",
+}
 WIDGET_KEY_CORE_LEVEL = "_study_builder_core_level"
 WIDGET_KEY_CONFLUENCE_MODE = "_study_builder_confluence_mode"
 WIDGET_KEY_TRIGGER = "_study_builder_trigger"
