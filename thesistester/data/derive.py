@@ -25,7 +25,7 @@ from typing import Any
 import pandas as pd
 
 from thesistester.config import REQUIRED_COLUMNS
-from thesistester.data.loader import format_interval
+from thesistester.data.loader import format_interval, infer_base_interval
 
 # Historical policy: required exactly four aligned sub-bars and dropped sparse
 # minutes. Retained as a constant so old provenance/bindings remain readable.
@@ -60,6 +60,28 @@ class DerivedParentResult:
     dropped_buckets: pd.DataFrame
     sparse_buckets: pd.DataFrame
     derivation_policy: str
+
+
+def is_15s_history_exporter_source(timestamps: pd.Series) -> bool:
+    """True when History Exporter Time-left stamps are a 15-second source.
+
+    Native one-minute HE files open only on ``:00``. A 15-second export uses
+    on-grid ``:00/:15/:30/:45`` opens (sparse trade-only files may omit slots).
+    Any ``:15/:30/:45`` open, or a modal gap of exactly 15 seconds, selects the
+    Data-page derive-1m path. All-``:00`` sparse 15s (one print per minute)
+    is indistinguishable from vendor 1m and stays on the primary path; those
+    parent bars already match observed-aligned derivation.
+    """
+    ts = pd.to_datetime(timestamps, errors="coerce").dropna()
+    if ts.empty:
+        return False
+    seconds = ts.dt.second
+    microseconds = ts.dt.microsecond
+    nanoseconds = ts.dt.nanosecond if hasattr(ts.dt, "nanosecond") else 0
+    fine_grid = seconds.isin({15, 30, 45}) & (microseconds == 0) & (nanoseconds == 0)
+    if bool(fine_grid.any()):
+        return True
+    return infer_base_interval(ts) == _SOURCE_INTERVAL
 
 
 def hash_source_frame(source: pd.DataFrame) -> str:

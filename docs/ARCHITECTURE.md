@@ -1055,7 +1055,11 @@ drops an active 15s-primary session even when `compute_dataset_id` is
 unchanged, so the UI cannot stay latched in 15s-primary while the
 selector shows primary. Legacy one-minute primary + dual-upload remains
 available as an advanced path; Sample data stays on the one-minute fixture.
-API/CLI runs that omit `ingestion_mode` remain primary.
+API/CLI/study runs use that same derive-1m contract for every Quantower
+History Exporter **15-second** `dataset.path` (omitted/`primary`/
+`15s_primary_derive_1m`). Native HE 1m files that omit `ingestion_mode`
+remain primary. Peek the source interval before publishing a primary data
+artifact so a 15s HE file cannot be cached as decision bars.
 Local persistence stores the derived one-minute frame as
 `canonical.parquet` and the retained 15-second source as
 `subtimeframe.parquet` under dataset schema v2, with
@@ -1063,10 +1067,11 @@ Local persistence stores the derived one-minute frame as
 sidecar is missing or unreadable; saves refuse derive-mode provenance
 without a subtimeframe sidecar; restore never latches
 `ingestion_provenance` without usable `subtimeframe_data`. Bootstrap
-restores both sidecars before dependent pages render. Headless API/CLI RunSpecs accept
-`dataset.ingestion_mode: 15s_primary_derive_1m` (Quantower History Exporter
-only); that mode derives the parent, supplies `subtimeframe_data`
-internally, and rejects pairing with `dataset.subtimeframe_path`.
+  restores both sidecars before dependent pages render. Headless API/CLI/study
+RunSpecs use that same derive path for every Quantower History Exporter
+15-second file (`dataset.ingestion_mode: 15s_primary_derive_1m` is optional);
+the loader derives the parent, supplies `subtimeframe_data` internally, and
+rejects pairing with `dataset.subtimeframe_path`.
 Execution-artifact source bindings include `ingestion_mode` and
 `derivation_policy` so primary vs derived contracts cannot warm-cross.
 R12 resolvers and engine defaults are unchanged. See

@@ -73,9 +73,12 @@ This engine is for **research screening**, not proof of a durable edge.
   must not reopen the dual-upload path). Switching away from the mode keeps
   the derived one-minute `data` but clears provenance/subtimeframe artifacts
   and drops the in-widget CSV so the legacy primary path cannot re-parse the
-  15-second export as raw bars. Legacy one-minute primary + optional
-  dual-upload remains available as an advanced path; omitting
-  `dataset.ingestion_mode` in API/CLI keeps the primary contract.
+  15-second export as raw bars. Legacy one-minute vendor primary + optional
+  dual-upload remains available as an advanced path for **native 1m** files.
+  Quantower History Exporter **15-second** files use this same derive-1m
+  contract in API/CLI/study whether `dataset.ingestion_mode` is omitted,
+  `"primary"`, or `15s_primary_derive_1m`. Native HE 1m files stay primary.
+  A 15s HE `dataset.path` cannot be combined with `dataset.subtimeframe_path`.
 - Derived one-minute volume is the sum of retained 15-second volumes. That
   volume, and therefore VWAP/profile levels computed from it, can differ from
   a separately exported vendor one-minute file even when timestamps overlap.
@@ -88,9 +91,9 @@ This engine is for **research screening**, not proof of a durable edge.
   `ingestion_provenance` in `meta.json`. Declared sidecars that are missing
   or corrupt fail closed on load; derive-mode provenance cannot be saved or
   session-restored without a usable lower frame. Research bundles restore the same
-  members. Headless runs accept
-  `dataset.ingestion_mode: 15s_primary_derive_1m` on a single Quantower 15s
-  CSV and must not also set `dataset.subtimeframe_path`. Manual dual-upload
+  members. Headless runs treat a single Quantower 15s CSV as this derive-1m
+  path (explicit `dataset.ingestion_mode: 15s_primary_derive_1m` is optional)
+  and must not also set `dataset.subtimeframe_path`. Manual dual-upload
   lower files that are never saved remain session-scoped unless exported in a
   research bundle.
 - Lower-upload duplicate timestamps remain fail-closed. The Data page can

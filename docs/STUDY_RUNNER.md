@@ -11,6 +11,9 @@ Build always writes `dataset.format_profile` from the R17 allow-list
 (same labels as Data). Omitted / blank → `canonical` (runner default).
 Unknown non-blank tokens fail emit — they are not rewritten to `canonical`.
 History Exporter CSVs need **Quantower History Exporter (semicolon)**.
+A 15-second History Exporter `dataset.path` always uses the Data-page
+derive-1m path (`observed_aligned_15s_to_1m_v2`); native 1m HE files stay
+primary. Do not set `subtimeframe_path` on a 15s HE primary.
 Execute is still CLI (`study run` / Preview **Run via CLI**). Inspect may
 show an additive ledger progress strip (Refresh still explicit). Does not
 change preview / CLI-spawn / execute semantics.

@@ -127,9 +127,14 @@ yet.
 
 Local save/restore persists the attached 15-second source and
 `ingestion_provenance` (dataset schema v2). Headless YAML may use either
-legacy dual-file `dataset.subtimeframe_path` or one-file
-`dataset.ingestion_mode: 15s_primary_derive_1m` (not both). Omitting
-`ingestion_mode` keeps the API/CLI primary contract unchanged.
+legacy dual-file `dataset.subtimeframe_path` on a **native 1m** primary or
+one-file 15s History Exporter derive-1m (not both). A Quantower History
+Exporter 15-second `dataset.path` always uses the Data-page derive-1m
+contract (`observed_aligned_15s_to_1m_v2`); omitting `ingestion_mode` or
+setting `primary` does not treat those bars as the backtest clock.
+Native HE 1m files stay primary. Explicit
+`dataset.ingestion_mode: 15s_primary_derive_1m` remains valid and is
+optional on 15s HE files.
 
 Minimal complete shape:
 
@@ -586,10 +591,10 @@ When OTF is enabled in walk-forward:
   type-checked `getattr` plus local fallback; keep page-local normalize
   (blank → `canonical`; do not rewrite unknown tokens).
 - `dataset.subtimeframe_path` is always canonical OHLCV for R12 replay; it
-  never inherits the primary dataset's vendor `format_profile`. Prefer
-  `dataset.ingestion_mode: 15s_primary_derive_1m` when the primary file is
-  itself the 15-second Quantower export; do not combine that mode with
-  `subtimeframe_path`.
+  never inherits the primary dataset's vendor `format_profile`. A Quantower
+  History Exporter 15-second primary file always uses the Data-page
+  `15s_primary_derive_1m` path (API/CLI/study); do not combine it with
+  `subtimeframe_path`. Native HE 1m primaries stay on the primary contract.
 - Preserve captured raw rows only as provenance; use canonical one-minute bars
   for current engine work and do not treat raw ticks as R12 subtimeframe data.
 - Confirm the canonical sample CSV remains byte-identical after loader edits.

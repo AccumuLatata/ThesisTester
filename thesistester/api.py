@@ -37,6 +37,7 @@ from thesistester.data.derive import (
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
     build_derivation_provenance,
     derive_complete_parent_ohlcv,
+    is_15s_history_exporter_source,
 )
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.resample import resample_ohlcv
@@ -949,14 +950,19 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     requested_intrabar_models = {backtest.get("intrabar_model", "sl_first")}
     if isinstance(grid, Mapping) and grid.get("enabled", True):
         requested_intrabar_models.add(grid.get("intrabar_model", "sl_first"))
-    if "subtimeframe" in requested_intrabar_models:
+        if "subtimeframe" in requested_intrabar_models:
+        format_profile = str(dataset.get("format_profile", "canonical"))
         has_lower_source = (
-            "subtimeframe_path" in dataset or ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+            "subtimeframe_path" in dataset
+            or ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+            or format_profile in _DERIVE_15S_SUPPORTED_PROFILES
         )
         if not has_lower_source:
             raise ValueError(
                 "dataset.subtimeframe_path is required when an enabled run section "
-                "uses intrabar_model='subtimeframe', unless dataset.ingestion_mode="
+                "uses intrabar_model='subtimeframe', unless the primary file is a "
+                "Quantower History Exporter 15-second source (same derive-1m path "
+                "as the Data page) or dataset.ingestion_mode="
                 f"{INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
             )
     walk_forward = run.get("walk_forward")
@@ -2277,6 +2283,44 @@ def run_otf_validation(
     )
 
 
+def _peek_experiment_source_ohlcv(
+    *,
+    dataset_path: Path,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    format_profile: str,
+) -> pd.DataFrame:
+    """Load untagged vendor OHLCV for interval routing (no artifact publish)."""
+    inst = _instrument(instrument)
+    return load_ohlcv(
+        Path(dataset_path),
+        source_tz=source_timezone,
+        target_tz=exchange_timezone or inst.exchange_tz,
+        format_profile=format_profile,
+    )
+
+
+def _canonical_session_frame(
+    source_ohlcv: pd.DataFrame,
+    *,
+    instrument: str,
+) -> pd.DataFrame:
+    """Validate and session-tag a preloaded OHLCV frame (load_dataset contract)."""
+    report = validate_ohlcv(source_ohlcv)
+    fatal_codes = {
+        "duplicate_timestamps",
+        "missing_values",
+        "high_below_low",
+        "open_close_outside_range",
+        "negative_volume",
+    }
+    fatal_messages = [issue.message for issue in report.issues if issue.code in fatal_codes]
+    if fatal_messages:
+        raise ValueError("Dataset validation failed: " + "; ".join(fatal_messages))
+    return tag_session(source_ohlcv, instrument)
+
+
 def _load_experiment_data(
     *,
     dataset_path: Path,
@@ -2289,6 +2333,7 @@ def _load_experiment_data(
     store_root: str | Path | None,
     ingestion_mode: str = "primary",
     derivation_policy: str | None = None,
+    source_ohlcv: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, DataIdentity, dict[str, Any]]:
     """Load canonical data with optional verified artifact reuse."""
     policy = normalize_cache_policy(cache_policy)
@@ -2342,13 +2387,25 @@ def _load_experiment_data(
                 "detail": binding.detail,
             }
 
-    data = load_dataset(
-        dataset_path,
-        instrument=instrument,
-        source_timezone=source_timezone,
-        exchange_timezone=exchange_timezone,
-        format_profile=format_profile,
-    )
+    if source_ohlcv is None:
+        data = load_dataset(
+            dataset_path,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+            format_profile=format_profile,
+        )
+    else:
+        data = _canonical_session_frame(source_ohlcv, instrument=instrument)
+    if (
+        format_profile in _DERIVE_15S_SUPPORTED_PROFILES
+        and is_15s_history_exporter_source(data["timestamp"])
+    ):
+        raise ValueError(
+            "Quantower History Exporter 15-second files must use the Data-page "
+            f"{INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r} derive-1m path; they "
+            "cannot be published as primary decision bars"
+        )
     validation_report = validate_ohlcv(data)
     base_interval = format_interval(validation_report.inferred_interval)
     data_identity = DataIdentity.from_run_spec(
@@ -2402,14 +2459,16 @@ def _load_15s_primary_experiment_data(
     dataset_config: Mapping[str, Any],
     cache_policy: str,
     store_root: str | Path | None,
+    source_ohlcv: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, DataIdentity, dict[str, Any], dict[str, Any]]:
     """Load a 15s source, derive observed 1m parents, and retain R12 source bars.
 
-    Always re-derives from the source file so provenance stays source-truthful.
+    Always re-derives from the source frame so provenance stays source-truthful.
     Sparse on-grid minutes are retained; only misaligned minutes are dropped.
     Source-index bindings include ``ingestion_mode`` / ``derivation_policy`` so
     a legacy primary binding for the same bytes cannot warm-cross into this
-    path (or the reverse).
+    path (or the reverse). This is the same contract as the Data-page
+    ``15s_primary_derive_1m`` path.
     """
     policy = normalize_cache_policy(cache_policy)
     ingestion_mode = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
@@ -2417,11 +2476,16 @@ def _load_15s_primary_experiment_data(
     data_stage: dict[str, Any] = {"status": "bypassed", "policy": policy}
     inst = _instrument(instrument)
 
-    source_raw = load_ohlcv(
-        Path(dataset_path),
-        source_tz=source_timezone,
-        target_tz=exchange_timezone or inst.exchange_tz,
-        format_profile=format_profile,
+    source_raw = (
+        source_ohlcv
+        if source_ohlcv is not None
+        else _peek_experiment_source_ohlcv(
+            dataset_path=dataset_path,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+            format_profile=format_profile,
+        )
     )
     source_report = validate_ohlcv(source_raw)
     fatal_codes = {
@@ -2560,6 +2624,10 @@ def run_experiment(
     ``cache_policy`` defaults to ``off`` (legacy cold path). Pass ``read_write``
     to reuse/publish verified data and levels artifacts. Cache provenance is
     attached to the returned state but must not affect canonical bundle hashes.
+
+    Quantower History Exporter 15-second files always use the Data-page
+    ``15s_primary_derive_1m`` contract (derived 1m parents + retained 15s
+    source). Native HE 1m files stay on the primary path.
     """
     validate_run_spec(spec)
     run = dict(spec)
@@ -2576,8 +2644,30 @@ def run_experiment(
     format_profile = str(dataset_config.get("format_profile", "canonical"))
     origin = normalize_execution_origin(execution_origin)
     policy = normalize_cache_policy(cache_policy)
-    ingestion_mode = str(dataset_config.get("ingestion_mode") or "primary")
+    declared_ingestion_mode = str(dataset_config.get("ingestion_mode") or "primary")
+    ingestion_mode = declared_ingestion_mode
     ingestion_provenance: dict[str, Any] | None = None
+    peeked_source: pd.DataFrame | None = None
+    if (
+        format_profile in _DERIVE_15S_SUPPORTED_PROFILES
+        and declared_ingestion_mode != INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    ):
+        # Peek before any primary artifact publish so a 15s HE file cannot be
+        # cached as decision bars. Same derive contract as the Data page.
+        peeked_source = _peek_experiment_source_ohlcv(
+            dataset_path=dataset_path,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+            format_profile=format_profile,
+        )
+        if is_15s_history_exporter_source(peeked_source["timestamp"]):
+            if dataset_config.get("subtimeframe_path") is not None:
+                raise ValueError(
+                    "dataset.subtimeframe_path cannot be combined with "
+                    f"ingestion_mode={INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
+                )
+            ingestion_mode = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 
     subtimeframe_data: pd.DataFrame | None = None
     if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
@@ -2591,6 +2681,7 @@ def run_experiment(
                 dataset_config=dataset_config,
                 cache_policy=policy,
                 store_root=store_root,
+                source_ohlcv=peeked_source,
             )
         )
     else:
@@ -2605,6 +2696,7 @@ def run_experiment(
             store_root=store_root,
             ingestion_mode="primary",
             derivation_policy=None,
+            source_ohlcv=peeked_source,
         )
         subtimeframe_path_value = dataset_config.get("subtimeframe_path")
         if subtimeframe_path_value is not None:

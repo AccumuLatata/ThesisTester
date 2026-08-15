@@ -727,12 +727,13 @@ def test_sync_upload_ingestion_mode_selector_skips_redundant_widget_write(monkey
 
 
 def test_upload_csv_default_ingestion_mode_is_15s_primary_not_api_default():
-    """Streamlit Upload-CSV recommends 15s-primary; API absent mode stays primary."""
+    """Streamlit Upload-CSV recommends 15s-primary; non-HE omitted mode stays primary."""
     data_page = _import_data_page_module({})
     from thesistester.api import validate_run_spec
 
     assert data_page.DEFAULT_UPLOAD_INGESTION_MODE == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
-    # Headless RunSpec without ingestion_mode remains the legacy primary contract.
+    # Canonical / non-HE RunSpecs without ingestion_mode stay primary.
+    # History Exporter 15s files use the same derive-1m path as this radio.
     validate_run_spec(
         {
             "name": "legacy_default",

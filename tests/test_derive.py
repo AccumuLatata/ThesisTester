@@ -13,6 +13,7 @@ from thesistester.data.derive import (
     build_derivation_provenance,
     derive_complete_parent_ohlcv,
     hash_source_frame,
+    is_15s_history_exporter_source,
 )
 from thesistester.data.loader import load_ohlcv
 from thesistester.data.resample import resample_ohlcv
@@ -326,6 +327,28 @@ def test_exchange_local_bucketing_across_dst_fall_back():
         "2026-11-01T01:59:00-04:00",
         "2026-11-01T01:00:00-05:00",
     ]
+
+
+def test_is_15s_history_exporter_source_separates_15s_from_native_1m():
+    fifteen = load_ohlcv(
+        VENDOR_FIXTURES / "quantower_history_exporter_15s.csv",
+        format_profile="quantower_history_exporter",
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+    one_minute = load_ohlcv(
+        VENDOR_FIXTURES / "quantower_history_exporter_1m.csv",
+        format_profile="quantower_history_exporter",
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+    assert is_15s_history_exporter_source(fifteen["timestamp"]) is True
+    assert is_15s_history_exporter_source(one_minute["timestamp"]) is False
+
+    sparse_only_open = _complete_minute("2026-06-02 09:30:00").iloc[[0]].reset_index(drop=True)
+    next_open = _complete_minute("2026-06-02 09:31:00").iloc[[0]].reset_index(drop=True)
+    all_opens = pd.concat([sparse_only_open, next_open], ignore_index=True)
+    assert is_15s_history_exporter_source(all_opens["timestamp"]) is False
 
 
 def test_quantower_vendor_15s_derives_and_reconciles_with_r12():

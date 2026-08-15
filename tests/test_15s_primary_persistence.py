@@ -72,8 +72,21 @@ def _minimal_derive_spec(dataset_path: str, *, intrabar_model: str = "subtimefra
     }
 
 
+def _he_spec(dataset_path: str, **dataset_overrides: object) -> dict:
+    spec = _minimal_derive_spec(dataset_path)
+    spec["dataset"].update(dataset_overrides)
+    return spec
+
+
 def test_validate_run_spec_accepts_one_file_15s_primary_for_r12():
     spec = _minimal_derive_spec("nq_15s.csv")
+    validate_run_spec(spec)
+
+
+def test_validate_run_spec_accepts_he_15s_subtimeframe_without_explicit_mode():
+    spec = _he_spec("nq_15s.csv")
+    del spec["dataset"]["ingestion_mode"]
+    spec["backtest"]["intrabar_model"] = "subtimeframe"
     validate_run_spec(spec)
 
 
@@ -231,3 +244,62 @@ def test_research_bundle_roundtrip_preserves_derived_provenance(tmp_path: Path):
         restored["subtimeframe_data"], state["subtimeframe_data"], check_dtype=False
     )
     pd.testing.assert_frame_equal(restored["data"], state["data"], check_dtype=False)
+
+
+VENDOR_1M = Path(__file__).parent / "fixtures" / "vendor" / "quantower_history_exporter_1m.csv"
+
+
+def test_api_he_15s_omitted_mode_matches_explicit_derive(tmp_path: Path):
+    csv_path = tmp_path / "es_15s.csv"
+    shutil.copy(VENDOR_15S, csv_path)
+    explicit = run_experiment(
+        _minimal_derive_spec("es_15s.csv"),
+        base_directory=tmp_path,
+        cache_policy="off",
+    )
+    omitted = run_experiment(
+        _he_spec("es_15s.csv", ingestion_mode=None),
+        base_directory=tmp_path,
+        cache_policy="off",
+    )
+    declared_primary = run_experiment(
+        _he_spec("es_15s.csv", ingestion_mode="primary"),
+        base_directory=tmp_path,
+        cache_policy="off",
+    )
+
+    for state in (omitted, declared_primary):
+        assert state["base_interval"] == "1min"
+        assert state["subtimeframe_interval"] == "15s"
+        assert state["ingestion_provenance"]["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+        assert state["ingestion_provenance"]["derivation_policy"] == DERIVATION_POLICY_DEFAULT
+        assert len(state["data"]) == 2
+        assert len(state["subtimeframe_data"]) == 8
+        pd.testing.assert_frame_equal(state["data"], explicit["data"], check_dtype=False)
+        pd.testing.assert_frame_equal(
+            state["subtimeframe_data"], explicit["subtimeframe_data"], check_dtype=False
+        )
+        assert state["ingestion_provenance"] == explicit["ingestion_provenance"]
+
+
+def test_api_he_1m_omitted_mode_stays_primary(tmp_path: Path):
+    csv_path = tmp_path / "es_1m.csv"
+    shutil.copy(VENDOR_1M, csv_path)
+    state = run_experiment(
+        _he_spec("es_1m.csv", ingestion_mode=None),
+        base_directory=tmp_path,
+        cache_policy="off",
+    )
+
+    assert state["base_interval"] == "1min"
+    assert "subtimeframe_data" not in state
+    assert "ingestion_provenance" not in state
+    assert len(state["data"]) == 2
+
+
+def test_api_he_15s_rejects_subtimeframe_path_when_auto_derived(tmp_path: Path):
+    shutil.copy(VENDOR_15S, tmp_path / "es_15s.csv")
+    shutil.copy(VENDOR_15S, tmp_path / "other_15s.csv")
+    spec = _he_spec("es_15s.csv", ingestion_mode="primary", subtimeframe_path="other_15s.csv")
+    with pytest.raises(ValueError, match="subtimeframe_path cannot be combined"):
+        run_experiment(spec, base_directory=tmp_path, cache_policy="off")

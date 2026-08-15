@@ -1,6 +1,11 @@
 # 15-Second Primary Data → Derived 1-Minute Canonical Plan
 
-**Status:** Delivered (PRs 1–3); PR4 recommend-only UX/docs complete
+**Status:** Delivered (PRs 1–3); PR4 recommend-only UX/docs complete.
+Living contract: a Quantower History Exporter **15-second** `dataset.path`
+always uses this derive-1m path in Data / API / CLI / study (omitted or
+`primary` `ingestion_mode` included). Native HE 1m stays primary. Historical
+sections below that say “omit mode keeps primary” apply only to non-15s HE
+files.
 **Scope:** Explicit 15-second-primary ingestion for Quantower-style OHLCV exports
 **Decision:** Build 1-minute canonical bars internally from uploaded 15-second
 bars, and retain the uploaded 15-second bars as the only R12 intrabar source.

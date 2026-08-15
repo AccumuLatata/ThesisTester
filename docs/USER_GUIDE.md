@@ -70,7 +70,7 @@ message size, MessageSizeError
 |---|---|---|
 | `Instrument` | Contract metadata (tick size, point value) | Wrong instrument → wrong R and costs |
 | `Source` | `Sample data` or `Upload CSV` | Sample auto-loads only on an empty session; it does not replace imported or already-loaded data when you navigate back |
-| `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; use R12 `subtimeframe_conservative` unless Build empty bars is on |
+| `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Same derive-1m path is used for History Exporter 15s in API/CLI/study (not Data-only). Sparse Quantower/Rithmic minutes are retained; use R12 `subtimeframe_conservative` unless Build empty bars is on |
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
 | Futures roll controls | `Roll method`, contract/adjustment/rule fields | Validate before trusting continuous history |
@@ -942,7 +942,9 @@ overview ranking, OTF delta, Research Study Runner
 **How to use.**
 
 1. Author or copy a StudySpec (see `examples/studies/pdPOC_ma_confluence_battery.yaml`
-   for a stage-first 40-cell path; full 800 is phase-2).
+   for a stage-first 40-cell path; full 800 is phase-2). A History Exporter
+   15-second `dataset.path` uses the same derive-1m path as the Data page;
+   native 1m HE files stay primary.
 2. `python -m thesistester study expand study.yaml --output-dir out/study1`
 3. `python -m thesistester study run study.yaml --output-dir out/study1 --confirm`
 4. `python -m thesistester study report out/study1`
