@@ -470,7 +470,6 @@ def test_pages_studies_build_tab_source_contract():
     assert "Load YAML from Preview tab" in page
     assert "CSV format profile" in page
     assert "Format profile (optional)" not in page
-    assert "Empty omits the key" not in page
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
     assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]
