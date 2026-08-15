@@ -938,11 +938,14 @@ overview ranking, OTF delta, Research Study Runner
 | `report.min_trades` | Ranked overview excludes low-N cells | Meeting N is not statistical significance |
 | `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs; human edit/confirm still required |
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
+| `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
 
 **How to use.**
 
 1. Author or copy a StudySpec (see `examples/studies/pdPOC_ma_confluence_battery.yaml`
-   for a stage-first 40-cell path; full 800 is phase-2).
+   for a stage-first 40-cell **15s-primary** path; full 800 is phase-2). Point
+   `dataset.path` at the same 15s Quantower export used on Data. Omitted mode on
+   that file is a different experiment. `dopen_ma_3c_mnq.yaml` is legacy 1m.
 2. `python -m thesistester study expand study.yaml --output-dir out/study1`
 3. `python -m thesistester study run study.yaml --output-dir out/study1 --confirm`
 4. `python -m thesistester study report out/study1`
@@ -1001,6 +1004,7 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 | Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
 | Build StudySpec | Widgets → `emit_study_yaml` | Not a runner; does not spawn CLI |
+| Ingestion mode | New drafts: 15s-primary + Quantower; omit = `primary` | 15s file without the mode ≠ Data R12. Radio does not rewrite profile/intrabar |
 | Start from example / Load Preview / Copy spec | Hydrate pdPOC, Preview YAML, or Inspect spec | Copy-on-Build hydrates; Preview Copy only fills the textarea |
 | Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ factor widgets; explicit table is delete-only |
 | Apply to Preview | Writes Preview YAML; clears cache + launch approval | Validate / Preview still required |
@@ -1010,9 +1014,11 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 
 1. CLI `study expand` → `study run` → `study report`, or author on Build / preview first.
 2. **Studies** Inspect: paste `output_dir`, Load, Refresh while in flight.
-3. **Build** (optional): example or closed catalog. Stage Filter keeps includes
-   ⊆ current widgets. Explicit cells is delete-only. Live strip is screening,
-   not a validated edge.
+3. **Build** (optional): example or closed catalog. New drafts emit
+   `15s_primary_derive_1m`. Point path at the same 15s Quantower CSV as Data
+   (Studies does not walk the Data page). Stage Filter keeps includes ⊆ current
+   widgets. Explicit cells is delete-only. Live strip is screening, not a
+   validated edge.
 4. **Apply to Preview**, then Preview → **Validate / Preview**.
 5. New CLI output dir (pins `dataset.path` and `dataset.subtimeframe_path`;
    missing CSV is refused). Under threshold: **Run via CLI**. Over: **Bind
@@ -1026,6 +1032,7 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 - Not an in-process runner or job queue (no kill/retry). **Run via CLI** is the
   existing CLI argv. Over-cap previews cannot launch from the page.
 - Does not mutate classic research session state (Studies-scoped keys only).
+  Parity with Data is the emitted RunSpec, not shared `session_state`.
 - Does not deep-link Research Bundles. Ranking / `run_count` are screening, not
   a validated edge.
 

@@ -56,8 +56,11 @@ CLI equivalent: pass `--confirm` when `run_count >= confirm_above_runs`
 ## End-to-end routine (stage-first → survivors → optional diagnostics)
 
 Replace `DATASET` / paths with repo-local files. Prefer the stage-first example
-(`examples/studies/pdPOC_ma_confluence_battery.yaml` → **40** cells). Do not run
-the phase-2 **800**-cell cartesian in CI or as a first pass.
+(`examples/studies/pdPOC_ma_confluence_battery.yaml` → **40** cells). On a 15s
+Quantower file, coworkers must set `dataset.ingestion_mode: 15s_primary_derive_1m`
+(plus Quantower profile and `intrabar_model: subtimeframe_conservative`); omitted
+mode is a different experiment. Do not run the phase-2 **800**-cell cartesian in
+CI or as a first pass.
 
 ### 0) Preconditions
 
