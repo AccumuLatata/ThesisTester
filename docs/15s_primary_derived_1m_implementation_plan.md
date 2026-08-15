@@ -3,7 +3,10 @@
 **Status:** Delivered (PRs 1–3); PR4 recommend-only UX/docs complete
 **Scope:** Explicit 15-second-primary ingestion for Quantower-style OHLCV exports
 **Decision:** Build 1-minute canonical bars internally from uploaded 15-second
-bars, and retain the uploaded 15-second bars as the only R12 intrabar source.
+bars, and retain the uploaded 15-second bars as the only R12 intrabar source.  
+**Related follow-on (do not implement here):** Studies authoring alignment to
+this RunSpec is `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA).
+SIA must not edit this ingest path, `derive.py`, or `api._load_15s_primary_experiment_data`.
 
 ## 1. Problem and decision
 
