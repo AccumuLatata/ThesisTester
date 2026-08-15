@@ -197,7 +197,7 @@ def normalize_builder_format_profile(value: Any) -> str:
     return "canonical"
 
 
-# Page-local ingest labels. Do not import pages.1_Data (classic ingest UI).
+# Page-local ingest labels. Do not import the Data page (classic ingest UI).
 # Toggle must not rewrite format_profile or intrabar_model.
 _INGESTION_MODE_LABELS = {
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M: (

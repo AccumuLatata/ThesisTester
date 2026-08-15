@@ -569,21 +569,26 @@ def test_pages_studies_ingest_radio_source_contract():
     dataset = page.split('st.markdown("### Dataset")')[1].split('st.markdown("### Levels')[0]
     assert "WIDGET_KEY_INGESTION_MODE" in dataset
     assert dataset.index("WIDGET_KEY_INGESTION_MODE") < dataset.index("CSV format profile")
-    assert "Recommended: 15-second primary — derive one-minute canonical" in dataset
-    assert "Legacy: one-minute primary (advanced)" in dataset
+    assert "Recommended: 15-second primary — derive one-minute canonical" in page
+    assert "Legacy: one-minute primary (advanced)" in page
     assert "subtimeframe_path" in dataset
     assert "WIDGET_KEY_SUBTIMEFRAME" not in page
     assert 'key="subtimeframe_path"' not in page
-    assert "from pages.1_Data" not in page
-    assert "import pages.1_Data" not in page
-    assert "from pages import" not in page
+    tree = ast.parse(page)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert not alias.name.startswith("pages")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            assert module != "pages.1_Data"
+            assert not module.startswith("pages.")
     sync_body = page.split("def _sync_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_INGESTION_MODE" in sync_body
     assert "draft.ingestion_mode" in sync_body
     read_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_INGESTION_MODE" in read_body
     assert "draft.ingestion_mode" in read_body
-    tree = ast.parse(page)
     radios = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
