@@ -8,6 +8,7 @@ from typing import Any
 import streamlit as st
 
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.data import loader as _data_loader
 from thesistester.engine.intrabar import VALID_INTRABAR_MODELS
 from thesistester.execution_defaults import EXPOSURE_POLICY_OPTIONS
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
@@ -18,7 +19,6 @@ from thesistester.study.builder import (
     DIRECTION_MODE_FACTOR,
     DIRECTION_MODE_OPTIONS,
     MULTIPLE_TESTING_OPTIONS,
-    FORMAT_PROFILE_LABELS,
     OTF_PRESET_LABELS,
     OTF_PRESET_ORDER,
     PRIMARY_METRIC_OPTIONS,
@@ -114,13 +114,13 @@ from thesistester.study.builder import (
     infer_tf_mode,
     levels_advanced_enabled,
     ma_length_options,
-    normalize_builder_format_profile,
     otf_for_selected_presets,
     otf_preset_ids,
     parse_csv_tokens,
     preferred_group_by,
     stage_mode_from_label,
 )
+from thesistester.study import builder as _study_builder
 from thesistester.study.launch import (
     LAUNCH_LOG_NAME,
     STUDIES_LAUNCH_APPROVAL_KEY,
@@ -156,6 +156,39 @@ from thesistester.study.viewer import (
     default_study_viewer_roots,
     load_study_view,
     resolve_study_dir,
+)
+
+# Do not import FORMAT_PROFILE_LABELS from builder. A stale builder.py (or a
+# builder that failed while re-exporting loader) raises ImportError and bricks
+# the Studies page. Prefer the live loader catalog; fall back if that name is
+# absent so Data/Build labels stay aligned when both files are current.
+_FORMAT_PROFILE_LABELS_FALLBACK = {
+    "canonical": "Canonical / Quantower OHLCV",
+    "quantower_history_exporter": "Quantower History Exporter (semicolon)",
+    "ninjatrader": "NinjaTrader export",
+    "sierra_intraday": "Sierra Intraday CSV",
+    "databento_trades": "Databento trades CSV",
+    "tick_capture": "Generic tick capture CSV",
+    "second_capture": "Generic second capture CSV",
+}
+FORMAT_PROFILE_LABELS = getattr(
+    _data_loader, "FORMAT_PROFILE_LABELS", _FORMAT_PROFILE_LABELS_FALLBACK
+)
+
+
+def _normalize_format_profile_fallback(value: Any) -> str:
+    if value is None:
+        return "canonical"
+    if isinstance(value, str):
+        token = value.strip()
+        return token or "canonical"
+    return "canonical"
+
+
+normalize_builder_format_profile = getattr(
+    _study_builder,
+    "normalize_builder_format_profile",
+    _normalize_format_profile_fallback,
 )
 
 st.title("Studies")
