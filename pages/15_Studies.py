@@ -1225,9 +1225,7 @@ def _render_build() -> None:
         timezone_options = [base.source_timezone, *timezone_options]
     st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
     ingest_options = list(_INGESTION_MODE_OPTIONS)
-    raw_ingest = (
-        base.ingestion_mode.strip() if isinstance(base.ingestion_mode, str) else ""
-    )
+    raw_ingest = base.ingestion_mode.strip() if isinstance(base.ingestion_mode, str) else ""
     if raw_ingest and raw_ingest not in ingest_options:
         ingest_options = [raw_ingest, *ingest_options]
     if st.session_state.get(WIDGET_KEY_INGESTION_MODE) not in ingest_options:
