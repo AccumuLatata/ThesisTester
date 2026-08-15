@@ -13,6 +13,7 @@ from thesistester.data.loader import FORMAT_PROFILES
 from thesistester.study.builder import (
     DEFAULT_FORMAT_PROFILE,
     FORMAT_PROFILE_LABELS,
+    bind_format_profile_labels,
     OTF_PRESETS,
     STUDIES_BUILDER_DRAFT_KEY,
     STUDIES_BUILDER_PENDING_SYNC_KEY,
@@ -80,12 +81,24 @@ def test_default_draft_emits_canonical_format_profile():
     assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
 
 
-def test_builder_exports_format_profile_labels_without_loader_reexport():
+def test_builder_format_profile_labels_follow_loader_when_present():
     """pages/15_Studies.py imports FORMAT_PROFILE_LABELS from builder."""
     from thesistester.study import builder as builder_mod
 
-    assert builder_mod.FORMAT_PROFILE_LABELS == LOADER_FORMAT_PROFILE_LABELS
+    assert builder_mod.FORMAT_PROFILE_LABELS is LOADER_FORMAT_PROFILE_LABELS
+    assert list(builder_mod.FORMAT_PROFILE_LABELS) == list(LOADER_FORMAT_PROFILE_LABELS)
     assert "quantower_history_exporter" in builder_mod.FORMAT_PROFILE_LABELS
+
+
+def test_bind_format_profile_labels_falls_back_when_loader_catalog_missing():
+    class _StaleLoader:
+        pass
+
+    labels = bind_format_profile_labels(_StaleLoader())
+    assert labels == bind_format_profile_labels(object())
+    assert set(labels) == set(FORMAT_PROFILES)
+    assert labels["quantower_history_exporter"] == "Quantower History Exporter (semicolon)"
+    assert labels is not LOADER_FORMAT_PROFILE_LABELS
 
 
 def test_normalize_builder_format_profile_allow_list():

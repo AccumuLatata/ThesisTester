@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 import yaml
 
+from thesistester.data import loader as _data_loader
 from thesistester.data.loader import FORMAT_PROFILES
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.schema import (
@@ -37,10 +38,9 @@ WIDGET_KEY_INSTRUMENT = "_study_builder_instrument"
 WIDGET_KEY_SOURCE_TIMEZONE = "_study_builder_source_timezone"
 WIDGET_KEY_FORMAT_PROFILE = "_study_builder_format_profile"
 DEFAULT_FORMAT_PROFILE = "canonical"
-# Bound on this module (not a loader re-export). A stale loader.py without
-# FORMAT_PROFILE_LABELS must not prevent `from builder import FORMAT_PROFILE_LABELS`.
-# Keep keys/labels equal to thesistester.data.loader.FORMAT_PROFILE_LABELS.
-FORMAT_PROFILE_LABELS: dict[str, str] = {
+# Used only when loader.py is stale and lacks FORMAT_PROFILE_LABELS.
+# Prefer the live loader catalog so Studies and Data cannot drift at runtime.
+_FORMAT_PROFILE_LABELS_FALLBACK: dict[str, str] = {
     "canonical": "Canonical / Quantower OHLCV",
     "quantower_history_exporter": "Quantower History Exporter (semicolon)",
     "ninjatrader": "NinjaTrader export",
@@ -49,6 +49,23 @@ FORMAT_PROFILE_LABELS: dict[str, str] = {
     "tick_capture": "Generic tick capture CSV",
     "second_capture": "Generic second capture CSV",
 }
+
+
+def bind_format_profile_labels(loader_module: Any) -> dict[str, str]:
+    """Prefer ``loader.FORMAT_PROFILE_LABELS``; fall back if that name is absent.
+
+    A bare ``from loader import FORMAT_PROFILE_LABELS`` fails the whole builder
+    import when loader.py is stale. ``getattr`` keeps
+    ``from builder import FORMAT_PROFILE_LABELS`` working. When the loader
+    catalog exists, return that object so Studies matches the Data page.
+    """
+    labels = getattr(loader_module, "FORMAT_PROFILE_LABELS", None)
+    if isinstance(labels, dict) and labels:
+        return labels
+    return dict(_FORMAT_PROFILE_LABELS_FALLBACK)
+
+
+FORMAT_PROFILE_LABELS: dict[str, str] = bind_format_profile_labels(_data_loader)
 WIDGET_KEY_CORE_LEVEL = "_study_builder_core_level"
 WIDGET_KEY_CONFLUENCE_MODE = "_study_builder_confluence_mode"
 WIDGET_KEY_TRIGGER = "_study_builder_trigger"
@@ -1124,6 +1141,7 @@ __all__ = [
     "_stage_include_widget_key",
     "apply_grid_tick_widgets",
     "apply_levels_tf_mode",
+    "bind_format_profile_labels",
     "builder_token_catalog",
     "clamp_widget_selection",
     "coerce_partner_levels",
