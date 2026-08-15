@@ -972,20 +972,17 @@ robustness (honest next steps after screening).
 
 ## Studies viewer (read-only)
 
-**What it is.** Streamlit **Studies** page (`pages/15_Studies.py`): **Inspect**
-loads a study `output_dir` (ledger, ranked / low-N / unresolved, OTF Δ, overview
-via `report_study(..., write_artifacts=False)`). **Preview** pastes canonical
+**What it is.** Streamlit **Studies** (`pages/15_Studies.py`): **Inspect** loads
+`output_dir` (ledger, ranked / low-N / unresolved, OTF Δ, overview via
+`report_study(..., write_artifacts=False)`). **Preview** validates
 `schema_version: 1` YAML and expands in memory (cell count / `--confirm` gate).
-After a successful preview, **Run via CLI** spawns the same headless
-`python -m thesistester study run` process (detached). **Build StudySpec**
-authors the same YAML via widgets (`StudyDraft` → `emit_study_yaml`);
+**Run via CLI** spawns detached `python -m thesistester study run`. **Build
+StudySpec** authors YAML via widgets (`StudyDraft` → `emit_study_yaml`);
 **Apply to Preview** writes the Preview textarea and clears preview cache /
-launch approval — Validate / Preview is still required; Build does not spawn
-the CLI.
+launch approval. Validate / Preview is still required; Build does not spawn CLI.
 
-**When to use it.** Inspect artifacts after a CLI run; author a StudySpec on
-**Build** without typing YAML; preview YAML then start that CLI. Promote stays
-CLI-only.
+**When to use it.** Inspect after a CLI run; author on **Build**; preview YAML
+then start that CLI. Promote stays CLI-only.
 
 **Related terms.** Studies viewer, study output directory, study ledger,
 ranked cells, low-N, OTF delta, bundle_path, StudySpec preview, run_count,
@@ -995,47 +992,42 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
 
 | Control | Meaning | Common pitfall |
 |---|---|---|
-| Study output directory | Completed study dir under cwd or local store | Extra-root paths are refused |
-| Load / Refresh | In-memory overview; Refresh watches a CLI run | Refresh uses the current path field (not only the last Load). Does not rewrite overview files or run cells |
-| Canonical YAML / Preview | `schema_version: 1` validate + expand (cap 2_000) | Shorthand keys fail closed; does not write `experiment.yaml`. Re-previewing a **changed** YAML reseeds CLI output dir |
-| Load example / Copy spec | Example YAML, or `study.spec.yaml` from Inspect | Copy needs a loaded Inspect dir |
-| CLI output directory | Spawn target for `study run` | Not the Inspect dir; stay under cwd/store; do not reuse another study’s dir after switching YAML |
-| Run via CLI | Spawn without `--confirm` when under threshold | Not in-process execute; watch Inspect → Refresh |
-| Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash. One click cannot bind and spawn |
+| Study output directory | Study dir under cwd or local store | Extra-root paths refused |
+| Load / Refresh | In-memory overview; Refresh watches a CLI run | Uses the current path field; does not rewrite overview or run cells |
+| Canonical YAML / Preview | `schema_version: 1` validate + expand (cap 2_000) | Shorthand fails closed; changed YAML reseeds CLI output dir |
+| Load example / Copy spec | Example YAML or Inspect `study.spec.yaml` | Copy needs a loaded Inspect dir |
+| CLI output directory | Spawn target for `study run` | Not the Inspect dir; do not reuse another study’s dir |
+| Run via CLI | Spawn without `--confirm` under threshold | Not in-process; watch Inspect → Refresh |
+| Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
-| Build StudySpec | Widgets → `emit_study_yaml` (closed tokens, stage, report) | Not a runner; does not spawn CLI |
-| Start from example / Load Preview / Copy spec | Hydrate pdPOC example, Preview YAML, or Inspect `study.spec.yaml` | Copy-on-Build hydrates the draft; Preview Copy still only fills the textarea |
-| Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ current factor widgets; explicit table is delete-only |
-| Apply to Preview | Writes Preview YAML; clears preview cache + launch approval | Validate / Preview still required |
-| Download StudySpec YAML | Browser download of emitted YAML | Not a store write; not the Inspect dir’s `study.spec.yaml` |
+| Build StudySpec | Widgets → `emit_study_yaml` | Not a runner; does not spawn CLI |
+| Start from example / Load Preview / Copy spec | Hydrate pdPOC, Preview YAML, or Inspect spec | Copy-on-Build hydrates; Preview Copy only fills the textarea |
+| Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ factor widgets; explicit table is delete-only |
+| Apply to Preview | Writes Preview YAML; clears cache + launch approval | Validate / Preview still required |
+| Download StudySpec YAML | Browser download of emitted YAML | Not a store write |
 
 **How to use.**
 
-1. CLI `study expand` → `study run` → `study report`, or author on Build / preview YAML first.
-2. Open **Studies**. Inspect: paste `output_dir`, Load, Refresh while in flight.
-3. **Build StudySpec** (optional): Start from example (pdPOC stage-first, 40 vs 800)
-   or pick core / partners / modes / triggers / OTF from the closed catalog.
-   Stage Filter keeps include values ⊆ current factor widgets. Explicit cells
-   is delete-only (hydrate a promote draft or Preview YAML to add rows).
-   Live strip is combinatorial screening, not a validated edge.
-4. **Apply to Preview**. Switch to Preview → **Validate / Preview** (still required).
-5. Run: set a **new** CLI output dir (UI launches pin `dataset.path` and
-   `dataset.subtimeframe_path` absolute — launch refuses a missing CSV).
-   Under threshold: **Run via CLI**. Over: **Bind confirm** then
-   **Confirm and run**. Child log: `study.launch.log`. Streamlit
-   `Ignoring changed path` under `results/` is the watcher, not that log —
-   use Inspect **Refresh** / the ledger for cell progress.
-6. Promote drafts: paste or Copy spec into Preview, **Load YAML from Preview**
-   on Build, delete loser rows, Apply, then Validate / Preview → Run via CLI.
+1. CLI `study expand` → `study run` → `study report`, or author on Build / preview first.
+2. **Studies** Inspect: paste `output_dir`, Load, Refresh while in flight.
+3. **Build** (optional): example or closed catalog. Stage Filter keeps includes
+   ⊆ current widgets. Explicit cells is delete-only. Live strip is screening,
+   not a validated edge.
+4. **Apply to Preview**, then Preview → **Validate / Preview**.
+5. New CLI output dir (pins `dataset.path` and `dataset.subtimeframe_path`;
+   missing CSV is refused). Under threshold: **Run via CLI**. Over: **Bind
+   confirm** then **Confirm and run**. Child log: `study.launch.log`. Use
+   Inspect **Refresh** / the ledger for cell progress.
+6. Promote drafts: Copy spec into Preview, **Load YAML from Preview** on Build,
+   delete loser rows, Apply, then Validate / Preview → Run via CLI.
 
 **What it is not.**
 
-- Not an in-process runner or NL compiler. **Run via CLI** is the existing CLI
-  argv, not a second execute loop. Not a job queue (no kill/retry). Over-cap
-  previews cannot launch from the page.
-- Does not mutate classic research session state; only Studies-scoped keys.
+- Not an in-process runner or job queue (no kill/retry). **Run via CLI** is the
+  existing CLI argv. Over-cap previews cannot launch from the page.
+- Does not mutate classic research session state (Studies-scoped keys only).
 - Does not deep-link Research Bundles. Ranking / `run_count` are screening, not
-  independent tests or a validated edge.
+  a validated edge.
 
 **Related pages.** Research Study Runner (headless); Research Bundles; Validation
 and robustness.

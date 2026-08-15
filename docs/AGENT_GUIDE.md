@@ -580,7 +580,9 @@ When OTF is enabled in walk-forward:
 - Keep `dataset.format_profile` explicit in API/CLI specifications; canonical
   remains the default and no format auto-detection is permitted. Study builder
   emit always writes the key from the R17 allow-list (omitted / blank →
-  `canonical`; unknown non-blank tokens fail emit).
+  `canonical`; unknown non-blank tokens fail emit). Studies binds
+  `FORMAT_PROFILE_LABELS` via loader `getattr` plus a local fallback so a
+  stale `loader.py` cannot fail `from builder import FORMAT_PROFILE_LABELS`.
 - `dataset.subtimeframe_path` is always canonical OHLCV for R12 replay; it
   never inherits the primary dataset's vendor `format_profile`. Prefer
   `dataset.ingestion_mode: 15s_primary_derive_1m` when the primary file is
