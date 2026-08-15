@@ -292,6 +292,8 @@ def test_pages_studies_is_read_only_source():
     assert "load_study_view" in source
     assert "st.progress" in source
     assert "Ranked tables stay empty until Refresh after" in source
+    assert "results_index.csv` is absent" in source
+    assert "not written yet (first cell still running)" not in source
     assert "run_every" not in source
     assert "st.fragment" not in source
     assert "run_study" not in source

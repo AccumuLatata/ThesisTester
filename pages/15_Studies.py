@@ -282,9 +282,8 @@ def _render_inspect() -> None:
         st.caption(" · ".join(parts) + ". Cell-status counts, not a quality metric.")
     if not model.report_present:
         st.caption(
-            "Ledger-only view: `results_index.csv` not written yet "
-            "(first cell still running). Ranked tables stay empty until Refresh "
-            "after the index appears."
+            "Ledger-only view: `results_index.csv` is absent. "
+            "Ranked tables stay empty until Refresh after the index appears."
         )
     if model.ledger_summary:
         source = "ledger" if model.ledger_present else "results_index status"
