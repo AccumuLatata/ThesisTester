@@ -178,7 +178,13 @@ Constant: use `thesistester.data.derive.INGESTION_MODE_15S_PRIMARY_DERIVE_1M` (`
 
 `normalize_builder_format_profile(None/blank) → canonical` is **unchanged**. That is the runner default for omitted profile on **hydrate of old YAML**, not the new-draft default.
 
-`_default_backtest()` may change its `intrabar_model` default. Hydrate copies `constants.backtest` as-is; YAML that omits `intrabar_model` must **not** gain `subtimeframe_conservative` on hydrate→emit (expand/API still default omitted model to `sl_first`). Implementation: hydrate must not merge `_default_backtest()` into a present backtest mapping.
+**Factory vs field defaults (locked — do not invert):**
+
+- `StudyDraft` dataclass field defaults stay **legacy-safe**: `dataset_path=data/es_1m.csv`, `format_profile=canonical`, new `ingestion_mode="primary"`, `_default_backtest()["intrabar_model"]="sl_first"`.
+- `default_study_draft()` is the **only** place that applies the new 15s-primary contract (path / Quantower / `15s_primary_derive_1m` / `subtimeframe_conservative`).
+- Do **not** change `StudyDraft.ingestion_mode` or `_default_backtest()` to the new-draft values. `hydrate_study_draft` constructs `StudyDraft(...)` with explicit kwargs; a forgotten kwarg would then silently rewrite every legacy YAML. `draft_from_mapping` starts from `asdict(default_study_draft())` and overlays known keys — a new field missing from pre-SIA session mappings would inherit the factory if the field default were 15s-primary.
+
+`hydrate_study_draft` already copies `constants.backtest` as-is (`dict(constants.get("backtest") or {})`). YAML that omits `intrabar_model` must **not** gain `subtimeframe_conservative` on hydrate→emit (expand/API still default omitted model to `sl_first`). Do not merge `_default_backtest()` into a present backtest mapping.
 
 ### 5.3 Emit rules (SIA1)
 
@@ -200,8 +206,11 @@ path, instrument, source_timezone, format_profile, subtimeframe_path, ingestion_
 ### 5.4 Hydrate rules (SIA1)
 
 - Present `dataset.ingestion_mode` → that token (invalid token fails at `validate_study_spec` if the caller validates; hydrate itself is not a second validator, but emit after hydrate will fail).
-- Absent key → draft field `primary` (so the widget can show Legacy). Re-emit omits the key (§5.3.3). Identity hash of current golden/example YAML that omit the key must stay stable across hydrate→emit **except** where SB already writes `format_profile: canonical`.
-- If a pre-SIA session mapping stored the mode only in `dataset_extra["ingestion_mode"]`, `draft_from_mapping` promotes it to the first-class field and drops it from extra (no double emit).
+- Absent YAML key → draft field `primary` (so the widget can show Legacy). Re-emit omits the key (§5.3.3). Identity hash of current golden/example YAML that omit the key must stay stable across hydrate→emit **except** where SB already writes `format_profile: canonical`.
+- `hydrate_study_draft` **must pass** `ingestion_mode` explicitly. Relying on the dataclass default is only safe because that default is locked to `primary` (§5.2).
+- `draft_from_mapping`: if the session payload **omits** `ingestion_mode`, set `primary` after overlay (do not keep `asdict(default_study_draft())`'s new-draft value). `draft_from_mapping(None)` still returns `default_study_draft()` (new draft).
+- If a pre-SIA session mapping stored the mode only in `dataset_extra["ingestion_mode"]`, `draft_from_mapping` / `hydrate_study_draft` promote it to the first-class field and drop it from extra (no double emit).
+- Until SIA2, `_draft_from_builder_widgets` copies `base` and does not invent ingest fields. Apply therefore preserves whatever hydrate / `default_study_draft()` set. Do not add a hidden rewrite in SIA1.
 
 ### 5.5 Schema (SIA1, narrow)
 
@@ -324,7 +333,9 @@ PR body of every SIA PR must include a short **Regression safety** paragraph nam
 | **Acceptance checklist** | |
 | | ☑ `default_study_draft()` emit includes `ingestion_mode: 15s_primary_derive_1m`, `format_profile: quantower_history_exporter`, `intrabar_model: subtimeframe_conservative`, `path: data/es_15s.csv` |
 | | ☑ Default emit still expands to **2** cells; `validate_run_spec` accepts the emitted runs (file need not exist at emit/expand) |
+| | ☑ `StudyDraft()` / `_default_backtest()` stay legacy-safe (`primary`, `sl_first`, `es_1m.csv`, `canonical`); only `default_study_draft()` applies the new contract |
 | | ☑ Hydrate YAML that omits `ingestion_mode` → draft `primary` → re-emit **omits** the key |
+| | ☑ `draft_from_mapping` of a pre-SIA session dict (no `ingestion_mode` key) → `primary`, not 15s-primary |
 | | ☑ Hydrate YAML with `15s_primary_derive_1m` + Quantower → first-class field; extra does not duplicate it |
 | | ☑ Emit 15s-primary + `subtimeframe_path` raises `StudySpecError` |
 | | ☑ Emit 15s-primary + `canonical` profile raises `StudySpecError` |
@@ -340,11 +351,12 @@ PR body of every SIA PR must include a short **Regression safety** paragraph nam
 Implement SIA1 only from docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md
 §5.2–5.6 and §7 SIA1. Studies authoring only.
 
-In thesistester/study/builder.py: first-class StudyDraft.ingestion_mode;
-change default_study_draft path/profile/mode/intrabar per §5.2; emit/hydrate
-rules per §5.3–5.4; draft_warnings per §5.6. Import
-INGESTION_MODE_15S_PRIMARY_DERIVE_1M from thesistester.data.derive.
-Do not import pages.
+In thesistester/study/builder.py: first-class StudyDraft.ingestion_mode
+with field default "primary"; change default_study_draft() only (not
+StudyDraft field defaults / _default_backtest) per §5.2; emit/hydrate
+rules per §5.3–5.4 including draft_from_mapping absent-key → primary;
+draft_warnings per §5.6. Import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+from thesistester.data.derive. Do not import pages.
 
 In thesistester/study/schema.py: if dataset.ingestion_mode is present it
 must be primary or 15s_primary_derive_1m. Omitted stays legal. No dataset
@@ -404,7 +416,7 @@ only. No new USER_GUIDE H2. ENGINEERING_PROPOSAL.md §4.2.
 | | ☑ pdPOC example emits/expands with 15s-primary + conservative; staged count still 40 |
 | | ☑ dopen example still 8 cells; banner documents legacy 1m |
 | | ☑ Parity test §8 green |
-| | ☑ USER_GUIDE Studies H2 + Research Study Runner how-to mention the 15s contract; **no new H2** |
+| | ☑ USER_GUIDE Studies H2 + Research Study Runner how-to mention the 15s contract; **no new H2**; each H2 body stays ≤ ~4500 chars (`test_user_guide_h2_bodies_respect_soft_chunk_budget`). Condense first if needed. Studies viewer is already ~3885 |
 | | ☑ `STUDY_RUNNER.md`, `ARCHITECTURE.md`, `AGENT_GUIDE.md`, `ASSUMPTIONS_AND_LIMITATIONS.md`, roadmap SIA1–SIA3 ✅ |
 | | ☑ Optional one-liner in Grok pack: coworkers must set `ingestion_mode` on 15s files. Do not rewrite the pack |
 | | ☑ Full `pytest -q tests/study/` green; no golden regen |
@@ -416,12 +428,13 @@ Implement SIA3 only from docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md
 §5.8, §8, §9, and §7 SIA3. Update pdPOC example to the 15s-primary teaching
 contract; leave dopen as legacy 1m with a banner. Add
 tests/study/test_study_sia_parity.py on
-tests/fixtures/vendor/quantower_history_exporter_15s.csv as specified.
+tests/fixtures/vendor/quantower_history_exporter_15s.csv as specified
+(§8: ExpansionResult.experiment["runs"][0], not .runs).
 Do not edit engine, api loaders, derive, Data page, expand, execute, or
 tests/fixtures/study/golden. Extend USER_GUIDE existing Studies / Study
-Runner H2s only (no new H2, no HC allowlist). Close out STUDY_RUNNER.md,
-ARCHITECTURE, AGENT_GUIDE, ASSUMPTIONS, ENGINEERING_ROADMAP SIA ✅.
-ENGINEERING_PROPOSAL.md §4.2.
+Runner H2s only (no new H2, no HC allowlist, each H2 ≤ ~4500 chars).
+Close out STUDY_RUNNER.md, ARCHITECTURE, AGENT_GUIDE, ASSUMPTIONS,
+ENGINEERING_ROADMAP SIA ✅. ENGINEERING_PROPOSAL.md §4.2.
 ```
 
 ---
@@ -441,23 +454,24 @@ The fixture is a few 15s bars. Trades may be empty. That is acceptable. The test
    - `format_profile=quantower_history_exporter`
    - `intrabar_model=subtimeframe_conservative`
    - `instrument` consistent with the fixture’s use in existing derive tests (follow `tests/test_derive.py` / vendor loader tests)
-2. `emit_study_spec` → `expand_study`.
-3. `run_experiment(expanded.runs[0], base_directory=..., execution_origin="study", cache_policy="off")`.
+2. `emit_study_spec` → `expand_study` (returns `ExpansionResult`: `experiment`, `factor_map`, `run_count`, `study_identity_hash` — **no** `.runs` attribute).
+3. `run_experiment(expansion.experiment["runs"][0], base_directory=..., execution_origin="study", cache_policy="off")`.
+   `run_experiment` takes a **single run mapping** (the expand cell), not the experiment wrapper. `execution_origin="study"` is already in `EXECUTION_ORIGINS`.
 4. Assert:
    - `state["ingestion_provenance"]["ingestion_mode"] == "15s_primary_derive_1m"`
    - `state["ingestion_provenance"]["derivation_policy"] == "observed_aligned_15s_to_1m_v2"`
    - `state["base_interval"] == "1min"`
-   - `state["subtimeframe_data"]` is a DataFrame with more rows than `state["data"]` (or equal only if the fixture is one complete minute — then assert row counts match derive: 4 source → 1 parent)
+   - `state["subtimeframe_data"]` is a DataFrame with more rows than `state["data"]`. The vendor fixture is **8** 15s bars / **2** complete minutes (8 source → 2 parent). Equal-count is only if a later fixture is one complete minute (4 → 1).
    - `state["backtest_intrabar_policy"]["intrabar_model"] == "subtimeframe_conservative"`
    - `state["backtest_intrabar_policy"]["subtimeframe_data_supplied"] is True`
 
-5. Build the **same** run dict by hand (copy `expanded.runs[0]`) and `run_experiment` again. Assert `dataset_id` equal and `ingestion_provenance` equal. This locks “study expand does not rewrite ingest keys.”
+5. Build the **same** run dict by hand (copy `expansion.experiment["runs"][0]`) and `run_experiment` again. Assert `dataset_id` equal and `ingestion_provenance` equal. This locks “study expand does not rewrite ingest keys.”
 
 ### 8.2 Negative: same bytes, omitted mode, is a different experiment
 
 1. Same fixture path, `format_profile=quantower_history_exporter`, **no** `ingestion_mode`, `intrabar_model=sl_first`.
 2. `run_experiment` (via a one-cell expand or a direct RunSpec — direct is fine; do not invent a second loader).
-3. Assert `ingestion_provenance` is absent or not 15s-primary; `base_interval` is **not** `"1min"` (inferred 15s).
+3. Assert `ingestion_provenance` is absent or not 15s-primary; `base_interval` is **not** `"1min"`. On this fixture `format_interval` of the inferred gap is `"15s"`.
 4. Assert `dataset_id` ≠ the §8.1 `dataset_id`.
 
 Do not “fix” this inequality by auto-detecting 15s in `primary` mode.
@@ -482,7 +496,7 @@ If a later series wants classic-session vs study-cell trade hashes, that is a ne
 | `docs/ENGINEERING_ROADMAP.md` | SIA0 stub; SIA3 ✅ | Status table + SIA section |
 | `docs/STUDY_RUNNER.md` | SIA0 one-liner; SIA3 operator paragraph | New studies should emit 15s-primary; omitted mode remains primary; execute still CLI/`run_experiment` |
 | `docs/AGENT_GUIDE.md` | SIA0 pointer; SIA3 shipped | Do not point 15s files at studies without `ingestion_mode` |
-| `docs/USER_GUIDE.md` H2 `Research Study Runner` + H2 `Studies viewer (read-only)` | SIA3 | Dataset/intrabar rows. **No new H2** (HC allowlist untouched) |
+| `docs/USER_GUIDE.md` H2 `Research Study Runner` + H2 `Studies viewer (read-only)` | SIA3 | Dataset/intrabar rows. **No new H2** (HC allowlist untouched). Soft chunk budget: each H2 body ≤ ~4500 chars (`tests/test_assistant_help_coverage.py`). Runner ~3482 / Studies viewer ~3885 today — condense, do not add a third H2 |
 | `docs/ARCHITECTURE.md` | SIA2 key; SIA3 boundary sentence | Builder emits `ingestion_mode`; execute unchanged |
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | SIA3 | Studies default/example alignment; omitted mode on a 15s file is a different dataset; vendor 1m ≠ derived 1m still holds |
 | `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` | SIA0 one-line related-series | Do not reopen SB1–SB3 scope |
@@ -512,9 +526,10 @@ No Streamlit AppTest required.
 
 | Risk | Mitigation |
 |---|---|
-| Changing `_default_backtest()` bleeds into hydrate of YAML that omits `intrabar_model` | Hydrate copies present `backtest` mapping as-is; do not merge defaults into it. Test hydrate of `golden_study.yaml` |
-| New-draft default breaks builder tests that assert `canonical` / `es_1m.csv` / `sl_first` | Update those tests in SIA1; they encode the drifted contract |
-| pdPOC identity-hash test fails in SIA3 | Update that one test with the example; do not touch RS2 goldens |
+| Changing `_default_backtest()` or `StudyDraft` field defaults bleeds into hydrate / `draft_from_mapping` | Field defaults stay legacy-safe; only `default_study_draft()` applies the new contract. Hydrate copies present `backtest` as-is. Test hydrate of `golden_study.yaml` and `draft_from_mapping` of a pre-SIA session dict |
+| New-draft default breaks builder tests that assert `canonical` / `es_1m.csv` / `sl_first` | Update tests that call `default_study_draft()` in SIA1; they encode the drifted contract. Do not change tests that hydrate omitted-key YAML |
+| pdPOC identity-hash test fails in SIA3 | Update `test_identity_hash_roundtrip_pdpoc_example_emits_canonical_format_profile` (today asserts omitted profile → emit `canonical`). `test_example_stage_filter_expands_to_40_and_full_800` must stay 40/800. Do not touch RS2 goldens |
+| SIA3 USER_GUIDE H2 exceeds Help soft budget (~4500) | Extend existing H2s only; condense first. `#372` already failed CI at 4780 |
 | Operator toggles to 15s but leaves `canonical` profile | Emit fail-closed; caption; do not auto-rewrite |
 | Operator leaves `sl_first` on 15s-primary | Warning; default only applies to new drafts |
 | Grid enabled with omitted grid model | Warning only; do not invent grid keys (would change expand output) |
