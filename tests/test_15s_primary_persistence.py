@@ -285,8 +285,10 @@ def test_api_he_15s_omitted_mode_matches_explicit_derive(tmp_path: Path):
 def test_api_he_1m_omitted_mode_stays_primary(tmp_path: Path):
     csv_path = tmp_path / "es_1m.csv"
     shutil.copy(VENDOR_1M, csv_path)
+    spec = _he_spec("es_1m.csv", ingestion_mode=None)
+    spec["backtest"]["intrabar_model"] = "sl_first"
     state = run_experiment(
-        _he_spec("es_1m.csv", ingestion_mode=None),
+        spec,
         base_directory=tmp_path,
         cache_policy="off",
     )

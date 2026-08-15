@@ -950,7 +950,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     requested_intrabar_models = {backtest.get("intrabar_model", "sl_first")}
     if isinstance(grid, Mapping) and grid.get("enabled", True):
         requested_intrabar_models.add(grid.get("intrabar_model", "sl_first"))
-        if "subtimeframe" in requested_intrabar_models:
+    if "subtimeframe" in requested_intrabar_models:
         format_profile = str(dataset.get("format_profile", "canonical"))
         has_lower_source = (
             "subtimeframe_path" in dataset
