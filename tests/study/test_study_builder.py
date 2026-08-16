@@ -564,6 +564,10 @@ def test_pages_studies_build_tab_source_contract():
     builder_import = page.split("from thesistester.study.builder import (")[1].split(")")[0]
     assert "FORMAT_PROFILE_LABELS" not in builder_import
     assert "normalize_builder_format_profile" not in builder_import
+    assert "INGESTION_MODE_PRIMARY" not in builder_import
+    assert "WIDGET_KEY_INGESTION_MODE" not in builder_import
+    assert 'INGESTION_MODE_PRIMARY = "primary"' in page
+    assert 'WIDGET_KEY_INGESTION_MODE = "_study_builder_ingestion_mode"' in page
     assert "from thesistester.study import builder" not in page
     assert "from thesistester.data import loader as _data_loader" in page
     assert "def _bind_format_profile_labels" in page
