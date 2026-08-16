@@ -740,6 +740,17 @@ def test_studies_page_does_not_from_import_viewer_names():
     assert imported_viewer_module
     for name in _PAGE_LOCAL_VIEWER_KEYS:
         assert name not in from_names
+    current_src = source[
+        source.index("def study_viewer_model_is_current") : source.index(
+            "# Do not import FORMAT_PROFILE_LABELS"
+        )
+    ]
+    assert "return False" in current_src
+    assert "return True" not in current_src
+    preview_src = source[
+        source.index("def preview_error_text") : source.index("def study_viewer_model_is_current")
+    ]
+    assert 'return raw[: limit - 3] + "..."' in preview_src
 
 
 def test_studies_page_viewer_keys_are_page_local():

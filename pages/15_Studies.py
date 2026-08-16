@@ -164,8 +164,13 @@ STUDIES_VIEWER_CATALOG_SELECT_KEY = "studies_viewer_catalog_select"
 STUDIES_VIEWER_SELECTED_RUN_KEY = "studies_viewer_selected_run"
 CATALOG_DISPLAY_CAP = 50
 
+
+class _MissingViewerError(ValueError):
+    """Fallback when ``StudyViewerError`` is absent on a stale viewer module."""
+
+
 StudyCatalogEntry = getattr(_study_viewer, "StudyCatalogEntry", object)
-StudyViewerError = getattr(_study_viewer, "StudyViewerError", ValueError)
+StudyViewerError = getattr(_study_viewer, "StudyViewerError", _MissingViewerError)
 StudyViewerModel = getattr(_study_viewer, "StudyViewerModel", object)
 catalog_cache_stamp = getattr(_study_viewer, "catalog_cache_stamp", None)
 catalog_load_path = getattr(_study_viewer, "catalog_load_path", None)
@@ -193,13 +198,19 @@ def preview_error_text(text: object) -> str:
     if callable(_preview_error_text):
         return str(_preview_error_text(text))
     raw = str(text)
-    return raw if len(raw) <= 160 else raw[:160]
+    limit = 160
+    if len(raw) <= limit:
+        return raw
+    if limit <= 3:
+        return raw[:limit]
+    return raw[: limit - 3] + "..."
 
 
 def study_viewer_model_is_current(model: object) -> bool:
+    """False when the viewer helper is missing so a stale cache cannot be reused."""
     if callable(_study_viewer_model_is_current):
         return bool(_study_viewer_model_is_current(model))
-    return True
+    return False
 
 
 # Do not import FORMAT_PROFILE_LABELS, normalize_builder_format_profile,
