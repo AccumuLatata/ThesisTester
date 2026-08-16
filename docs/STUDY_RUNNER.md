@@ -628,8 +628,8 @@ stays CLI (`study run` / Preview **Run via CLI**). Promote stays CLI.
 
 | Step | What happens (when shipped) | What does not happen |
 |---|---|---|
-| Catalog (SV1) | One-level scan of `results/studies/` and `out/` under cwd + store; click sets the existing Inspect path and `load_study_view` | Recursive repo walk; `report_study` during discover; cloud sync; new store schema |
-| `study list` (SV1) | Additive CLI over the same discover helper; sandboxed `--root` (study dir / prefix dir / trusted root per plan §4.9) | Any change to `expand\|run\|report\|promote\|rollup` argv; `viewer.py` importing `cli_study` |
+| Catalog (SV1) | One-level scan of `results/studies/` and `out/` under cwd + store; click sets Inspect path keys, drops the cached model, and reuses the existing Load/Refresh path | Recursive repo walk; `report_study` during discover; calling `load_study_view` from the catalog click handler; cloud sync; new store schema |
+| `study list` (SV1) | Additive CLI over the same discover helper; sandboxed `--root` (study dir / prefix dir / trusted root per plan §4.9) | Any change to `expand\|run\|report\|promote\|rollup` argv; `viewer.py` importing `cli_study` / `thesistester.cli` / `execute` |
 | Quality panes (SV2) | Failed-cell `error` table; `report.group_summaries`; read `study.rollup.*` **if present**; tail `study.launch.log` | `rollup_study()` (that helper writes); auto-`study report` write |
 | Overview charts (SV3) | Plotly from already-loaded ranked / group frames | New metrics; unzip-all-cells equity charts |
 | Cell peek (SV4) | Selected `run_name` → index + ledger error + optional `trade_summary.json` | `apply_research_bundle_to_session`; classic session keys; Bundles / Backtest deep-link |

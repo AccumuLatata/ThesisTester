@@ -87,8 +87,9 @@ different experiment). Do not implement further SIA work by importing
 Catalog + quality panes + overview charts + cell peek on existing Studies
 Inspect. Do not implement SV inside an RS/SB/SIA PR. Do not call
 `run_study()`, `report_study` write, or `rollup_study()` from Inspect.
-`viewer.py` must not import `cli_study` / `execute`. Do not hydrate classic
-`st.session_state`. Operator contract: `docs/STUDY_RUNNER.md` §SV.
+`viewer.py` must not import `cli_study` / `thesistester.cli` / `execute`.
+Do not hydrate classic `st.session_state`. Operator contract:
+`docs/STUDY_RUNNER.md` §SV.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:
