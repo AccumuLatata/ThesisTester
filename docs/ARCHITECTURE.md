@@ -110,8 +110,8 @@ rollup-if-present / launch-log panes on this same page. They keep
 `report_study(..., write_artifacts=False)`, must not call `rollup_study()`
 (writes), must not hydrate classic research `st.session_state` keys, and must
 not deep-link Research Bundles. Discover does not call `report_study`.
-`viewer.py` must not import `cli_study`, `thesistester.cli`, or `execute`
-(`cli_study` may import `viewer`). Studies-scoped keys:
+`viewer.py` must not import `cli_study`, `thesistester.cli`, `execute`,
+`rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`). Studies-scoped keys:
 `studies_catalog_entries`, `studies_catalog_roots_key`,
 `studies_viewer_pending_path`, `studies_viewer_catalog_select`.
 `studies_viewer_selected_run` is SV4. Do not implement SV3–SV4 inside an

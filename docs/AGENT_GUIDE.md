@@ -88,7 +88,8 @@ different experiment). Do not implement further SIA work by importing
 / group / rollup-if-present / launch-log tail. Do not implement SV3–SV4
 inside an RS/SB/SIA PR. Discover must not call `report_study`. Do not call
 `run_study()`, `report_study` write, or `rollup_study()` from Inspect.
-`viewer.py` must not import `cli_study` / `thesistester.cli` / `execute`.
+`viewer.py` must not import `cli_study` / `thesistester.cli` / `execute` /
+`rollup` / Plotly / Streamlit.
 Do not hydrate classic `st.session_state`. Operator contract:
 `docs/STUDY_RUNNER.md` §SV.
 
