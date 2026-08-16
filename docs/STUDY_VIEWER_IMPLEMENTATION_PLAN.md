@@ -308,7 +308,7 @@ No new USER_GUIDE H2. Do not reopen RS-D2/D8/D9 behavior text. §4.2.
 | | ☑ Two fixture dirs under `results/studies/` and `out/` are listed; a dir without `study.spec.yaml` is not |
 | | ☑ Extra-root path refused for click-to-load and `study list --root` |
 | | ☑ `--root` that is a study dir lists that dir; `--root` that is `out/` or `results/studies/` lists one-level children; `--root` that is a trusted root uses §4.3 prefixes; missing `--root` path errors |
-| | ☑ Click sets `STUDIES_VIEWER_DIR_KEY` and reuses `load_study_view` (no writes) |
+| | ☑ Click sets `STUDIES_VIEWER_DIR_KEY` / path input, drops the cached model, and the existing Load/Refresh path runs `load_study_view` (no direct call from the catalog handler; no writes) |
 | | ☑ Path paste still loads (catalog empty is not a hard error) |
 | | ☑ Corrupt ledger on one dir does not fail the catalog |
 | | ☑ Discover does not call `report_study` / `run_study` / `rollup_study` |
