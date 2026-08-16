@@ -610,7 +610,7 @@ def test_pages_studies_ingest_radio_source_contract():
             assert not module.startswith("pages.")
     sync_body = page.split("def _sync_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_INGESTION_MODE" in sync_body
-    assert "draft.ingestion_mode" in sync_body
+    assert 'getattr(draft, "ingestion_mode", None)' in sync_body
     read_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_INGESTION_MODE" in read_body
     assert "draft.ingestion_mode" in read_body
