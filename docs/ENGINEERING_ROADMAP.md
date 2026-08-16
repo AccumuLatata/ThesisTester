@@ -1270,7 +1270,7 @@ classic `st.session_state` mutation.
 | Milestone | Intent |
 |---|---|
 | SV0 | Plan lock + docs index 📝 |
-| SV1 | Local catalog (`results/studies/` + `out/`, one level) + click-to-load + `study list` (sandboxed `--root` per plan §4.9; `viewer.py` must not import `cli_study`) |
+| SV1 | Local catalog (`results/studies/` + `out/`, one level) + click-to-load + `study list` (sandboxed `--root` per plan §4.9; `viewer.py` must not import `cli_study` / `thesistester.cli` / `execute`) |
 | SV2 | Failed-cell errors + `group_summaries` + read-only rollup files if present |
 | SV3 | Locked Plotly set from already-loaded ranked / group frames |
 | SV4 | Cell peek (`trade_summary.json` + index + ledger error); no Bundles hydrate |

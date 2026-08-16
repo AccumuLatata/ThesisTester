@@ -257,7 +257,7 @@ python -m thesistester study list [--root PATH] ...
 | Output | Stable text table: `study_name`, `ok/failed/skipped/running/pending`, `run_count`, `path`. No JSON schema in SV1. Same sort as §4.4. **No 50-row cap** (that cap is page-only) |
 | Side effects | None (no ledger write, no report, no lock) |
 | Argv | **Additive** `list` subcommand + dispatch branch only. Do not change `expand\|run\|report\|promote\|rollup` flags. The parent `study` help string may mention `list` |
-| Implementation | CLI must call the same `discover_study_dirs` (or a thin wrapper that applies the `--root` scan rules above). `cli_study.py` may import `viewer.py`. `viewer.py` must not import `cli_study.py` |
+| Implementation | CLI must call the same `discover_study_dirs` (or a thin wrapper that applies the `--root` scan rules above). `cli_study.py` may import `viewer.py`. `viewer.py` must not import `cli_study.py` / `thesistester.cli` / `execute` |
 
 ---
 
