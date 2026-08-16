@@ -978,6 +978,23 @@ other than the last bar in the dataset.
   before expecting dense overfitting columns in the rollup.
 - Rollup markdown is descriptive only: present diagnostics ≠ validated edge.
 
+## Studies Inspect listing and charts (SV — specified)
+
+- A future Study Viewer catalog (`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`)
+  **lists** local study directories. Listing is discovery, not a quality
+  score. Ledger `ok` / `failed` counts remain cell-status, not edge.
+- Overview charts, when shipped, must plot frames already produced by
+  `report_study` (ranked / group summaries). They inherit the RS4 ranking
+  caveats above: descriptive screen, `min_trades` filter, multiple-testing
+  bias. Charts must not invent new inference (no pooled PBO/DSR, no
+  unzip-all-cells equity).
+- Inspect must not rewrite `study.overview.*` or call `study rollup` (that
+  CLI writes files). Showing `study.rollup.csv` only when the file already
+  exists does not create diagnostics.
+- Cell peek of `trade_summary.json` is the same per-cell summary already
+  used for PF/WR fallback — not a validated edge and not a classic-session
+  import.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

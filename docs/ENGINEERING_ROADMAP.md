@@ -20,6 +20,7 @@ Assistant-related contracts:
 | Research Study Runner | `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (RS); operator `docs/STUDY_RUNNER.md`; Grok pack `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` | ✅ **RS1–RS5 MVP + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9**; parked D1/D3/D6 |
 | Study Builder (UX) | `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB) | ✅ **SB1–SB3 complete**. Emits canonical StudySpec YAML onto the existing Studies Preview pane; no in-process execute; no new factor axes |
 | Study Ingest Alignment | `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA) | ✅ **SIA0–SIA3**. Studies authoring/defaults/examples only; execute stays `run_experiment`; no engine/Data edits |
+| Study Viewer (Inspect UX) | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV); operator `docs/STUDY_RUNNER.md` §SV | 📝 **SV0 plan-locked**. SV1–SV4 not started. Catalog + quality + overview charts + cell peek on existing Studies Inspect; no in-process execute; no classic-session hydrate |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1255,6 +1256,31 @@ classic Data/Backtest edits; no expand/execute/launch behavior change; no
 golden regeneration; legacy YAML that omits `ingestion_mode` stays `primary`.
 Parked: copy-from-session; Data/API loader dedup; API omitted-mode default
 change.
+
+## Study Viewer (SV0–SV4) 📝 Plan-locked
+
+Inspect today is path-paste + tables (`report_study(..., write_artifacts=False)`).
+SV deepens that **same** Studies page so operators can list local study dirs,
+see failed-cell errors / group summaries / optional rollup files, chart the
+already-loaded overview, and peek one cell — without a second runner or
+classic `st.session_state` mutation.
+
+**Canonical spec:** `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| SV0 | Plan lock + docs index 📝 |
+| SV1 | Local catalog (`results/studies/` + `out/`, one level) + click-to-load + `study list` |
+| SV2 | Failed-cell errors + `group_summaries` + read-only rollup files if present |
+| SV3 | Locked Plotly set from already-loaded ranked / group frames |
+| SV4 | Cell peek (`trade_summary.json` + index + ledger error); no Bundles hydrate |
+
+**Regression posture:** no `engine/` edits; no golden regeneration; no
+`report_study` write on Inspect; do **not** call `rollup_study()` (it writes);
+no `apply_research_bundle_to_session`; Studies-scoped session keys only;
+USER_GUIDE extends H2 `Studies viewer (read-only)` (no new H2). Parked
+RS-D1 / D3 / D6 stay parked. RS-D2/D8/D9/SB/SIA behavior stays identical
+except additive Inspect panes and additive `study list`.
 
 ## Studies Inspect ledger progress (additive)
 

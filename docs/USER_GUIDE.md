@@ -1035,6 +1035,9 @@ confirm_above_runs, study.launch.yaml, StudyDraft, stage filter, explicit_cells
   Parity with Data is the emitted RunSpec, not shared `session_state`.
 - Does not deep-link Research Bundles. Ranking / `run_count` are screening, not
   a validated edge.
+- Does not yet list past studies, chart overview metrics, or show per-cell zip
+  contents. Inspect is path-paste + tables. Until a Study Viewer (SV) code PR
+  ships those panes, paste `output_dir` or open the CLI artifacts.
 
 **Related pages.** Research Study Runner (headless); Research Bundles; Validation
 and robustness.

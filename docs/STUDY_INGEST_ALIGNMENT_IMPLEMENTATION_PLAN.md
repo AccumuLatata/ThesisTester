@@ -7,7 +7,8 @@
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** Research Study Runner RS1–RS5 + RS-D8 + RS-D9; Study Builder SB1–SB3; 15s-primary ingest (`thesistester/data/derive.py`, `api._load_15s_primary_experiment_data`)  
 **Related living docs:** `docs/STUDY_RUNNER.md`, `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md`, `docs/15s_primary_derived_1m_implementation_plan.md`, `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/AGENT_GUIDE.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`  
-**Does not reopen:** parked RS-D1 / D3 / D6; SB emit/expand/execute semantics; Data-page ingest; `engine/`; golden-master regeneration
+**Does not reopen:** parked RS-D1 / D3 / D6; SB emit/expand/execute semantics; Data-page ingest; `engine/`; golden-master regeneration  
+**Related follow-on (do not implement here):** Study Viewer — `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV). Inspect UX only; does not reopen SIA ingest/emit/example contracts.
 
 **Completeness posture:** After SIA3, a **new** StudySpec authored from Build (or from the updated stage-first example) selects the same headless ingest+R12 contract the Data page already installs: Quantower 15s CSV → derive 1m → attach 15s as R12 source → `intrabar_model=subtimeframe_conservative`. Execution stays `expand` → `run_experiment`. Existing StudySpecs that omit `ingestion_mode` remain `primary` + whatever `intrabar_model` they already declare.
 

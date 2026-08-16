@@ -103,6 +103,13 @@ POSIX `fcntl.flock` or Windows `msvcrt.locking`
 `run` / `run_batch` all-or-nothing write semantics stay identical. Engine and
 classic research pages remain undisturbed. Operator contract:
 `docs/STUDY_RUNNER.md`; plan: `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`.
+**SV** (Study Viewer, `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`, SV0
+plan-locked) may add Inspect catalog / quality / charts / cell-peek on this
+same page. It must keep `report_study(..., write_artifacts=False)`, must not
+call `rollup_study()` (writes), must not hydrate classic research
+`st.session_state` keys, and must not deep-link Research Bundles. New keys
+stay Studies-scoped (`studies_catalog_*`, `studies_viewer_selected_run` when
+those PRs land). Do not implement SV inside an RS/SB/SIA edit.
 
 ## Classic/Assistant research identity boundary (CAI-1)
 
@@ -1181,7 +1188,10 @@ Path citations only (no line numbers). Line anchors drift across page renumbers 
 
 Studies Build (SB2–SB3) adds `studies_builder_draft` and `studies_builder_pending_sync`
 on `pages/15_Studies.py` only. Those keys are not classic research state and
-must not be read from Data / Levels / Setup Builder.
+must not be read from Data / Levels / Setup Builder. Study Viewer (SV1/SV4,
+when shipped) may add `studies_catalog_entries`, `studies_catalog_roots_key`,
+and `studies_viewer_selected_run` on that same page only — still not classic
+research state.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when
