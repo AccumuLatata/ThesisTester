@@ -978,11 +978,12 @@ other than the last bar in the dataset.
   before expecting dense overfitting columns in the rollup.
 - Rollup markdown is descriptive only: present diagnostics ≠ validated edge.
 
-## Studies Inspect listing and charts (SV — specified)
+## Studies Inspect listing and charts (SV1 shipped; SV2–SV4 specified)
 
-- A future Study Viewer catalog (`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`)
-  **lists** local study directories. Listing is discovery, not a quality
-  score. Ledger `ok` / `failed` counts remain cell-status, not edge.
+- The Study Viewer catalog (`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`, SV1)
+  **lists** local study directories under `results/studies/` and `out/`.
+  Listing is discovery, not a quality score. Ledger `ok` / `failed` counts
+  remain cell-status, not edge.
 - Overview charts, when shipped, must plot frames already produced by
   `report_study` (ranked / group summaries). They inherit the RS4 ranking
   caveats above: descriptive screen, `min_trades` filter, multiple-testing

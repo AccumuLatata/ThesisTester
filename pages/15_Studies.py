@@ -149,11 +149,20 @@ from thesistester.study.preview import (
 )
 from thesistester.study.schema import StudySpecError
 from thesistester.study.viewer import (
+    CATALOG_DISPLAY_CAP,
+    STUDIES_CATALOG_ENTRIES_KEY,
+    STUDIES_CATALOG_ROOTS_KEY,
     STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
     STUDIES_VIEWER_CACHED_MODEL_KEY,
+    STUDIES_VIEWER_CATALOG_SELECT_KEY,
     STUDIES_VIEWER_DIR_KEY,
+    STUDIES_VIEWER_PENDING_PATH_KEY,
+    StudyCatalogEntry,
     StudyViewerError,
+    catalog_cache_stamp,
+    catalog_load_path,
     default_study_viewer_roots,
+    discover_study_dirs,
     load_study_view,
     resolve_study_dir,
 )
@@ -267,12 +276,103 @@ inspect_tab, preview_tab, build_tab = st.tabs(
 )
 
 
+def _catalog_select_label(path: str, entries: tuple[StudyCatalogEntry, ...]) -> str:
+    for entry in entries:
+        if str(entry.study_dir) == path:
+            return f"{entry.study_name} — {entry.study_dir}"
+    return path
+
+
+def _render_inspect_catalog() -> None:
+    st.markdown("### Local studies")
+    st.caption(
+        "One-level scan of `results/studies/` and `out/` under the repo working "
+        "directory and the local ThesisTester store. Listing is discovery, not a "
+        "quality score. Ledger counts are cell-status, not a validated edge."
+    )
+    refresh_catalog = st.button("Refresh catalog")
+    roots = default_study_viewer_roots()
+    extra_raw = st.session_state.get(STUDIES_VIEWER_DIR_KEY)
+    extra_dirs = (extra_raw,) if isinstance(extra_raw, str) and extra_raw.strip() else ()
+    stamp = catalog_cache_stamp(roots, extra_dirs)
+    need_scan = bool(refresh_catalog) or (
+        st.session_state.get(STUDIES_CATALOG_ROOTS_KEY) != stamp
+        or st.session_state.get(STUDIES_CATALOG_ENTRIES_KEY) is None
+    )
+    if need_scan:
+        entries = discover_study_dirs(roots, extra_dirs=extra_dirs)
+        st.session_state[STUDIES_CATALOG_ENTRIES_KEY] = entries
+        st.session_state[STUDIES_CATALOG_ROOTS_KEY] = stamp
+    else:
+        entries = st.session_state[STUDIES_CATALOG_ENTRIES_KEY]
+    if not isinstance(entries, tuple):
+        entries = tuple(entries) if entries else ()
+
+    if not entries:
+        st.caption(
+            "No local studies found under `results/studies/` or `out/`. "
+            "Paste a path below — an empty catalog is not an error."
+        )
+        return
+
+    shown = entries[:CATALOG_DISPLAY_CAP]
+    if len(entries) > CATALOG_DISPLAY_CAP:
+        st.caption(
+            f"Showing {CATALOG_DISPLAY_CAP} of {len(entries)} studies "
+            "(newest first). Refresh catalog after adding dirs."
+        )
+    st.dataframe(
+        {
+            "study_name": [entry.study_name for entry in shown],
+            "ok": [entry.ok for entry in shown],
+            "failed": [entry.failed for entry in shown],
+            "skipped": [entry.skipped for entry in shown],
+            "running": [entry.running for entry in shown],
+            "pending": [entry.pending for entry in shown],
+            "run_count": [
+                entry.run_count if entry.run_count is not None else "—" for entry in shown
+            ],
+            "path": [str(entry.study_dir) for entry in shown],
+        },
+        hide_index=True,
+        width="stretch",
+    )
+    options = [str(entry.study_dir) for entry in shown]
+    current = st.session_state.get(STUDIES_VIEWER_CATALOG_SELECT_KEY)
+    if current not in options:
+        st.session_state[STUDIES_VIEWER_CATALOG_SELECT_KEY] = options[0]
+    st.selectbox(
+        "Catalog study",
+        options=options,
+        format_func=lambda path: _catalog_select_label(path, shown),
+        key=STUDIES_VIEWER_CATALOG_SELECT_KEY,
+        help="Load selected writes the Inspect path and reuses Load study artifacts.",
+    )
+    if st.button("Load selected"):
+        selected = st.session_state.get(STUDIES_VIEWER_CATALOG_SELECT_KEY)
+        try:
+            path = catalog_load_path(str(selected or ""), roots=default_study_viewer_roots())
+        except StudyViewerError as exc:
+            st.error(str(exc))
+            return
+        st.session_state[STUDIES_VIEWER_DIR_KEY] = path
+        st.session_state[STUDIES_VIEWER_PENDING_PATH_KEY] = path
+        st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_KEY, None)
+        st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY, None)
+        st.rerun()
+
+
 def _render_inspect() -> None:
+    pending = st.session_state.pop(STUDIES_VIEWER_PENDING_PATH_KEY, None)
+    if isinstance(pending, str) and pending.strip():
+        st.session_state["studies_viewer_path_input"] = pending
     # Prefill the path widget from the last successfully loaded Studies dir.
-    if "studies_viewer_path_input" not in st.session_state and isinstance(
+    elif "studies_viewer_path_input" not in st.session_state and isinstance(
         st.session_state.get(STUDIES_VIEWER_DIR_KEY), str
     ):
         st.session_state["studies_viewer_path_input"] = st.session_state[STUDIES_VIEWER_DIR_KEY]
+
+    _render_inspect_catalog()
 
     raw_dir = st.text_input(
         "Study output directory",

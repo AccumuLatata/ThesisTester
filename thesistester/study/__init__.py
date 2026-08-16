@@ -60,8 +60,10 @@ from thesistester.study.preview import (
     preview_study_yaml,
 )
 from thesistester.study.viewer import (
+    StudyCatalogEntry,
     StudyViewerError,
     StudyViewerModel,
+    discover_study_dirs,
     load_study_view,
 )
 
@@ -71,6 +73,7 @@ __all__ = [
     "StudyRollupResult",
     "StudyToolsDisabledError",
     "StudyToolsSettings",
+    "StudyCatalogEntry",
     "StudyViewerError",
     "StudyViewerModel",
     "ExpansionResult",
@@ -87,6 +90,7 @@ __all__ = [
     "build_run_name",
     "closed_level_token_set",
     "cost_hint_lines",
+    "discover_study_dirs",
     "ensure_study_tools_enabled",
     "execute_study_cell",
     "expand_study",
