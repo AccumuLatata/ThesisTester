@@ -9,7 +9,7 @@
 **Related living docs:** `docs/STUDY_RUNNER.md`, `docs/USER_GUIDE.md` (H2 `Studies viewer (read-only)`), `docs/ARCHITECTURE.md`, `docs/AGENT_GUIDE.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`  
 **Related but separate:** Setup Builder (`pages/3_Setup_Builder.py`) — one closed setup, not a factorial study. Do not clone that page.  
 **Does not reopen:** parked RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types)  
-**Related follow-on (do not implement here):** Study Ingest Alignment — `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA). Authoring/defaults only; does not reopen SB execute/preview/launch contracts.
+**Related follow-on (do not implement here):** Study Ingest Alignment — `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA). Authoring/defaults only; does not reopen SB execute/preview/launch contracts. Study Viewer — `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV). Inspect catalog/quality/charts/peek only; does not reopen SB emit/Apply/Preview.
 
 **Completeness posture:** SB1–SB3 is one shippable product update: a researcher can assemble a valid `schema_version: 1` StudySpec from closed catalogs, see cell count / confirm, hand the YAML to the **existing** Preview pane, and run via the **existing** CLI spawn. Inspect, Preview, launch, expand, execute, promote, and report stay behavior-identical.
 

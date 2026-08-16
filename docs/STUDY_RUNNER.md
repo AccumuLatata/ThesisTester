@@ -20,6 +20,11 @@ pdPOC teaching example emit `dataset.ingestion_mode: 15s_primary_derive_1m`
 (Quantower 15s path, `intrabar_model: subtimeframe_conservative`). Omitted
 mode remains `primary` (the dopen example is legacy 1m). Execute is still
 CLI / `run_experiment`. Studies does not walk the Data page.
+**SV** (Study Viewer) 📝
+`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0 plan-locked; SV1–SV4 not
+started. Catalog / quality panes / overview charts / cell peek on the
+existing Inspect tab. Does not change preview / CLI-spawn / execute.
+Inspect remains artifacts-only (`report_study(..., write_artifacts=False)`).
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -467,6 +472,9 @@ Streamlit page: **Studies** (`pages/15_Studies.py`).
 - **RS-D8** adds a preview pane on this same page.
 - **RS-D9** may spawn the existing CLI `study run` from Preview;
   Inspect remains artifacts-only; the page must not call `run_study()` in-process.
+- **SV** (separate series; `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`) may add
+  catalog / quality / charts / cell peek on this Inspect pane. It must not
+  reopen the read-only / no-classic-session / no-Bundles-deep-link rules above.
 
 ---
 
@@ -605,3 +613,33 @@ pattern as `launch.py`). **No Streamlit. No execute / launch / preview import.**
 
 Execute remains `python -m thesistester study run`. Apply to Preview writes the
 Preview textarea key before that widget mounts (Build body runs first).
+
+---
+
+## SV — Study Viewer (operator contract)
+
+**Status:** SV0 plan-locked. SV1–SV4 not started. Plan:
+`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`.
+
+Inspect today is path-paste + tables (RS-D2). SV is an additive Inspect UX
+on the **same** Studies page so operators can reopen local studies and read
+errors / quality / overview without opening every artifact by hand. Execute
+stays CLI (`study run` / Preview **Run via CLI**). Promote stays CLI.
+
+| Step | What happens (when shipped) | What does not happen |
+|---|---|---|
+| Catalog (SV1) | One-level scan of `results/studies/` and `out/` under cwd + store; click sets Inspect path keys, drops the cached model, and reuses the existing Load/Refresh path | Recursive repo walk; `report_study` during discover; calling `load_study_view` from the catalog click handler; cloud sync; new store schema |
+| `study list` (SV1) | Additive CLI over the same discover helper; sandboxed `--root` (study dir / prefix dir / trusted root per plan §4.9) | Any change to `expand\|run\|report\|promote\|rollup` argv; `viewer.py` importing `cli_study` / `thesistester.cli` / `execute` |
+| Quality panes (SV2) | Failed-cell `error` table; `report.group_summaries`; read `study.rollup.*` **if present**; tail `study.launch.log` | `rollup_study()` (that helper writes); auto-`study report` write |
+| Overview charts (SV3) | Plotly from already-loaded ranked / group frames | New metrics; unzip-all-cells equity charts |
+| Cell peek (SV4) | Selected `run_name` → index + ledger error + optional `trade_summary.json` | `apply_research_bundle_to_session`; classic session keys; Bundles / Backtest deep-link |
+
+**Honesty.** Catalog listing is discovery, not a quality score. Ledger
+`ok`/`failed` counts and Inspect progress are cell-status, not edge.
+Overview charts inherit RS4 ranking caveats (descriptive screen,
+`min_trades`, multiple-testing). Rollup-if-present is compose-only
+diagnostics. Cell peek is not a validated edge.
+
+**Until SV1 ships:** paste `output_dir` on Inspect (existing RS-D2). CLI
+files remain the academic path (`study report`, `study.ledger.json`,
+optional `study rollup`).
