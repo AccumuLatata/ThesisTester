@@ -310,6 +310,8 @@ def test_pages_studies_is_read_only_source():
     assert "run_study" not in source
     assert "expand_study" not in source
     assert "promote_study" not in source
+    assert "rollup_study" not in source
+    assert "apply_research_bundle_to_session" not in source
     assert "write_artifacts=False" in Path("thesistester/study/viewer.py").read_text(
         encoding="utf-8"
     )
@@ -443,15 +445,22 @@ def _write_catalog_study(
     ledger_ok: int = 0,
     ledger_failed: int = 0,
     corrupt_ledger: bool = False,
+    corrupt_spec: bool = False,
     run_count: int | None = 2,
 ) -> Path:
     parent.mkdir(parents=True, exist_ok=True)
     study_dir = parent / name
     study_dir.mkdir()
-    (study_dir / "study.spec.yaml").write_text(
-        f"schema_version: 1\nstudy:\n  name: {name}\n",
-        encoding="utf-8",
-    )
+    if corrupt_spec:
+        (study_dir / "study.spec.yaml").write_text(
+            "schema_version: 1\nstudy: [\n  name: broken\n",
+            encoding="utf-8",
+        )
+    else:
+        (study_dir / "study.spec.yaml").write_text(
+            f"schema_version: 1\nstudy:\n  name: {name}\n",
+            encoding="utf-8",
+        )
     if run_count is not None:
         (study_dir / "study.expansion.json").write_text(
             json.dumps({"study_identity_hash": f"hash-{name}", "run_count": run_count}),
@@ -517,6 +526,37 @@ def test_discover_study_dirs_tolerates_corrupt_ledger_and_skips_report(tmp_path:
     assert names["extra_loaded"].study_identity_hash == "hash-extra_loaded"
 
 
+def test_discover_study_dirs_tolerates_corrupt_spec_yaml(tmp_path: Path):
+    good = _write_catalog_study(tmp_path / "out", "good_spec", run_count=None)
+    bad = _write_catalog_study(
+        tmp_path / "out",
+        "bad_spec",
+        corrupt_spec=True,
+        run_count=None,
+    )
+    entries = discover_study_dirs((tmp_path.resolve(),))
+    by_dir = {entry.study_dir: entry for entry in entries}
+    assert good.resolve() in by_dir
+    assert bad.resolve() in by_dir
+    assert by_dir[good.resolve()].study_name == "good_spec"
+    assert by_dir[bad.resolve()].study_name == "bad_spec"
+    assert by_dir[bad.resolve()].run_count is None
+    assert by_dir[bad.resolve()].ledger_present is False
+
+
+def test_discover_study_dirs_lists_spec_only_dir(tmp_path: Path):
+    spec_only = _write_catalog_study(tmp_path / "out", "spec_only", run_count=None)
+    assert not (spec_only / "study.ledger.json").exists()
+    assert not (spec_only / "study.expansion.json").exists()
+    assert not (spec_only / "results_index.csv").exists()
+    entries = discover_study_dirs((tmp_path.resolve(),))
+    match = next(entry for entry in entries if entry.study_dir == spec_only.resolve())
+    assert match.study_name == "spec_only"
+    assert match.run_count is None
+    assert match.ledger_present is False
+    assert match.index_present is False
+
+
 def test_discover_and_catalog_load_refuse_extra_root(tmp_path: Path):
     inside = _write_catalog_study(tmp_path / "out", "inside")
     outside = tmp_path.parent / "outside_sv1_catalog"
@@ -579,6 +619,23 @@ def test_cli_study_list_additive_and_refuses_extra_root(tmp_path: Path, monkeypa
     assert cli_main(["study", "list", "--root", str(missing)]) == 2
     assert "does not exist" in capsys.readouterr().err
 
+    not_a_dir = tmp_path / "a_file.txt"
+    not_a_dir.write_text("nope", encoding="utf-8")
+    assert cli_main(["study", "list", "--root", str(not_a_dir)]) == 2
+    assert "not a directory" in capsys.readouterr().err
+
+    _write_catalog_study(tmp_path / "out", "cli_out")
+    assert cli_main(["study", "list", "--root", str(tmp_path / "out")]) == 0
+    out_prefix = capsys.readouterr().out
+    assert "cli_out" in out_prefix
+    assert "cli_alpha" not in out_prefix
+    assert "solo" not in out_prefix
+
+    assert cli_main(["study", "list", "--root", str(tmp_path / "scratch")]) == 0
+    parent_out = capsys.readouterr().out
+    assert "solo" in parent_out
+    assert "cli_alpha" not in parent_out
+
     from thesistester.cli import _parser
 
     parsed = _parser().parse_args(["study", "expand", "spec.yaml", "--output-dir", "out/x"])
@@ -597,6 +654,9 @@ def test_viewer_module_import_allow_list():
             imported.add(node.module)
     assert "thesistester.study.execute" not in imported
     assert "thesistester.study.launch" not in imported
+    assert "thesistester.study.builder" not in imported
+    assert "thesistester.study.promote" not in imported
+    assert "thesistester.study.tools" not in imported
     assert "thesistester.study.cli_study" not in imported
     assert "thesistester.cli" not in imported
     assert "plotly" not in imported
@@ -610,6 +670,10 @@ def test_inspect_catalog_handler_does_not_call_load_study_view():
     catalog_src = source[start:end]
     assert "discover_study_dirs" in catalog_src
     assert "catalog_load_path" in catalog_src
+    assert "STUDIES_VIEWER_DIR_KEY" in catalog_src
+    assert "STUDIES_VIEWER_PENDING_PATH_KEY" in catalog_src
+    assert "STUDIES_VIEWER_CACHED_MODEL_KEY" in catalog_src
+    assert "st.rerun" in catalog_src
     assert "load_study_view" not in catalog_src
     assert "run_study" not in catalog_src
     assert "rollup_study" not in catalog_src

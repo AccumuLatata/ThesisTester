@@ -167,8 +167,10 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         default=None,
         help=(
-            "Trusted root to scan (repeatable). Must stay under cwd or the local "
-            "store. Default: cwd and the ThesisTester store."
+            "Scan path (repeatable): a trusted root (prefix scan of "
+            "results/studies and out), a locked prefix dir, a study dir, or "
+            "another directory under cwd/store (one-level children). Extra-root "
+            "refused. Default: cwd and the ThesisTester store."
         ),
     )
 

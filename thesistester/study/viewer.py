@@ -152,7 +152,9 @@ def split_catalog_scan_paths(
                 f"(cwd and store). Resolved path: {candidate}"
             )
         if not candidate.is_dir():
-            raise StudyViewerError(f"Study directory does not exist: {candidate}")
+            raise StudyViewerError(
+                f"Study path does not exist or is not a directory: {candidate}"
+            )
         if any(candidate == root for root in trusted):
             roots.append(candidate)
         else:
@@ -225,32 +227,53 @@ def _iter_study_children(base: Path) -> tuple[Path, ...]:
     return tuple(hits)
 
 
-def _catalog_entry_from_dir(study_dir: Path) -> StudyCatalogEntry:
-    """Best-effort catalog row. Never calls ``report_study``."""
-    identity_hash, run_count, spec_name = _read_identity(study_dir)
-    ledger_present = False
-    counts: dict[str, int] = {}
-    try:
-        ledger = load_ledger(study_dir)
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, TypeError):
-        ledger = None
-    if ledger is not None:
-        ledger_present = True
-        counts = _ledger_status_counts(ledger)
+def _fallback_catalog_entry(study_dir: Path) -> StudyCatalogEntry:
+    """Name + path only when identity / ledger reads fail."""
     return StudyCatalogEntry(
         study_dir=study_dir,
-        study_name=spec_name or study_dir.name,
-        study_identity_hash=identity_hash,
-        run_count=run_count,
-        ok=int(counts.get("ok") or 0),
-        failed=int(counts.get("failed") or 0),
-        skipped=int(counts.get("skipped") or 0),
-        running=int(counts.get("running") or 0),
-        pending=int(counts.get("pending") or 0),
-        ledger_present=ledger_present,
+        study_name=study_dir.name,
+        study_identity_hash=None,
+        run_count=None,
+        ok=0,
+        failed=0,
+        skipped=0,
+        running=0,
+        pending=0,
+        ledger_present=False,
         index_present=(study_dir / RESULTS_INDEX).is_file(),
         mtime=_catalog_mtime(study_dir),
     )
+
+
+def _catalog_entry_from_dir(study_dir: Path) -> StudyCatalogEntry:
+    """Best-effort catalog row. Never calls ``report_study``. Never raises."""
+    try:
+        identity_hash, run_count, spec_name = _read_identity(study_dir)
+        ledger_present = False
+        counts: dict[str, int] = {}
+        try:
+            ledger = load_ledger(study_dir)
+        except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, TypeError):
+            ledger = None
+        if ledger is not None:
+            ledger_present = True
+            counts = _ledger_status_counts(ledger)
+        return StudyCatalogEntry(
+            study_dir=study_dir,
+            study_name=spec_name or study_dir.name,
+            study_identity_hash=identity_hash,
+            run_count=run_count,
+            ok=int(counts.get("ok") or 0),
+            failed=int(counts.get("failed") or 0),
+            skipped=int(counts.get("skipped") or 0),
+            running=int(counts.get("running") or 0),
+            pending=int(counts.get("pending") or 0),
+            ledger_present=ledger_present,
+            index_present=(study_dir / RESULTS_INDEX).is_file(),
+            mtime=_catalog_mtime(study_dir),
+        )
+    except Exception:  # noqa: BLE001 — one corrupt dir must not fail the catalog
+        return _fallback_catalog_entry(study_dir)
 
 
 def discover_study_dirs(
@@ -261,7 +284,7 @@ def discover_study_dirs(
     """List study dirs one level under ``results/studies/`` and ``out/``.
 
     Does not call ``report_study``, ``run_study``, or ``rollup_study``.
-    Corrupt ledger / expansion on one dir does not fail the catalog.
+    Corrupt ledger / expansion / spec on one dir does not fail the catalog.
     ``roots is None`` uses default trusted roots. An empty ``roots`` tuple
     skips the prefix scan (CLI ``--root`` extras-only).
     """
@@ -455,12 +478,16 @@ def _read_identity(study_dir: Path) -> tuple[str | None, int | None, str | None]
                 run_count = len(factor_map)
     spec_path = study_dir / "study.spec.yaml"
     if spec_path.is_file():
+        spec = None
         try:
             import yaml
-
-            spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError):
+        except ImportError:
             spec = None
+        else:
+            try:
+                spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError):
+                spec = None
         if isinstance(spec, Mapping):
             study = spec.get("study")
             if isinstance(study, Mapping):
