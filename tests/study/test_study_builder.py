@@ -580,7 +580,10 @@ def test_pages_studies_build_tab_source_contract():
     assert "def normalize_builder_format_profile" in page
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
-    assert "spawn_launch" not in page.split("def _render_build")[1].split("with inspect_tab:")[0]
+    assert (
+        "spawn_launch"
+        not in page.split("def _render_build() -> None:")[1].split("with inspect_tab:")[0]
+    )
     assert 'key="_study_builder_copy_spec"' in page
     assert "WIDGET_KEY_INGESTION_MODE" in page
     assert "Recommended: 15-second primary — derive one-minute canonical" in page
@@ -644,7 +647,7 @@ def test_pages_studies_ingest_radio_source_contract():
             radios.append(node)
     assert len(radios) == 1
     assert not any(keyword.arg == "on_change" for keyword in radios[0].keywords)
-    build = page.split("def _render_build")[1].split("with inspect_tab:")[0]
+    build = page.split("def _render_build() -> None:")[1].split("with inspect_tab:")[0]
     assert "run_study" not in build
     assert "spawn_launch" not in build
     assert "_draft_ingestion_mode(base)" in build
