@@ -7,6 +7,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -330,6 +331,9 @@ def test_pages_studies_is_read_only_source():
     assert "### Failed cells" in source
     assert "### Group summaries" in source
     assert "### Rollup" in source
+    assert "### Overview charts" in source
+    assert "import plotly.express" in source
+    assert "st.plotly_chart" in source
     assert "model.report.group_summaries" in source
     assert "study_viewer_model_is_current" in source
     assert "st.code" in source
@@ -703,6 +707,171 @@ def test_inspect_catalog_handler_does_not_call_load_study_view():
     assert "load_study_view" not in catalog_src
     assert "run_study" not in catalog_src
     assert "rollup_study" not in catalog_src
+
+
+def test_inspect_charts_use_ranked_frames_and_honesty():
+    source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    start = source.index("_CHART_HONESTY")
+    end = source.index("def _render_inspect(")
+    chart_src = source[start:end]
+    assert "st.plotly_chart" in chart_src
+    assert "px.histogram" in chart_src
+    assert "px.scatter" in chart_src
+    assert "px.bar" in chart_src
+    assert "No ranked cells to chart" in chart_src
+    assert "No group-summary axes to chart" in chart_src
+    assert "No group-bar series" in chart_src
+    assert "Descriptive screening, not a validated edge" in chart_src
+    assert "_CHART_HONESTY" in chart_src
+    assert "_is_chart_frame" in chart_src
+    assert "ranked_display" in chart_src
+    assert "group_summaries" in chart_src
+    assert "median_" in chart_src
+    assert "mean_" in chart_src
+    assert "low_n_display" not in chart_src
+    assert "unresolved_display" not in chart_src
+    assert "zipfile" not in chart_src
+    assert "ZipFile" not in chart_src
+    assert "fillna(0)" not in chart_src
+    assert "run_study" not in chart_src
+    assert "rollup_study" not in chart_src
+    assert "apply_research_bundle_to_session" not in chart_src
+
+
+class _FakeStreamlit:
+    """Record Inspect chart calls without importing the Studies page module."""
+
+    def __init__(self) -> None:
+        self.captions: list[str] = []
+        self.markdowns: list[str] = []
+        self.charts: list[object] = []
+
+    def caption(self, text: object, **_kwargs: object) -> None:
+        self.captions.append(str(text))
+
+    def markdown(self, text: object, **_kwargs: object) -> None:
+        self.markdowns.append(str(text))
+
+    def plotly_chart(self, fig: object, **_kwargs: object) -> None:
+        self.charts.append(fig)
+
+
+def _load_inspect_chart_helpers(st: object, px: object) -> dict[str, object]:
+    """Exec the page chart helpers. Importing ``pages/15_Studies.py`` runs tabs."""
+    source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    start = source.index("_CHART_HONESTY")
+    end = source.index("def _render_inspect(")
+    namespace: dict[str, object] = {
+        "Any": Any,
+        "StudyViewerModel": object,
+        "px": px,
+        "st": st,
+    }
+    exec("from __future__ import annotations\n" + source[start:end], namespace)
+    return namespace
+
+
+def test_inspect_charts_empty_ranked_does_not_crash(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "running"
+    save_ledger(study_dir, ledger)
+    (study_dir / RESULTS_INDEX).unlink()
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert model.ranked_display.empty
+    assert model.report.group_summaries == {}
+
+    import plotly.express as px
+
+    fake = _FakeStreamlit()
+    helpers = _load_inspect_chart_helpers(fake, px)
+    helpers["_render_inspect_charts"](model)
+    assert fake.charts == []
+    assert "No ranked cells to chart." in fake.captions
+    assert "No group-summary axes to chart." in fake.captions
+    assert any("Descriptive screening" in text for text in fake.captions)
+
+
+def test_inspect_charts_render_locked_set_from_loaded_model(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=sorted(expansion["factor_map"]),
+    )
+    for name in expansion["factor_map"]:
+        ledger["cells"][name]["status"] = "ok"
+        ledger["cells"][name]["bundle_path"] = f"{name}.research.zip"
+    save_ledger(study_dir, ledger)
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+
+    import plotly.express as px
+
+    fake = _FakeStreamlit()
+    helpers = _load_inspect_chart_helpers(fake, px)
+    frame = helpers["_ranked_chart_frame"](model)
+    assert frame is model.ranked_display
+    assert model.report.primary_metric in frame.columns
+    helpers["_render_inspect_charts"](model)
+    assert len(fake.charts) == 2 + len(model.report.group_summaries)
+    assert "No ranked cells to chart." not in fake.captions
+    assert any("Descriptive screening" in text for text in fake.captions)
+
+
+def test_inspect_charts_skip_non_frame_group_summaries():
+    import plotly.express as px
+
+    metric = "expectancy_r"
+    ranked_frame = pd.DataFrame(
+        {
+            "run_name": ["a", "b"],
+            "trade_count": [40, 50],
+            metric: [0.1, 0.2],
+        }
+    )
+
+    class _Report:
+        primary_metric = metric
+        ranked = ranked_frame
+        group_summaries = {"partner_levels": "not-a-frame", "otf": None}
+
+    class _Model:
+        report = _Report()
+        ranked_display = ranked_frame
+
+    fake = _FakeStreamlit()
+    helpers = _load_inspect_chart_helpers(fake, px)
+    helpers["_render_inspect_charts"](_Model())
+    assert len(fake.charts) == 2
+    assert fake.captions.count("No group-bar series for `partner_levels`.") == 1
+    assert fake.captions.count("No group-bar series for `otf`.") == 1
+
+
+def test_ranked_chart_frame_falls_back_when_display_lacks_metric():
+    import plotly.express as px
+
+    metric = "expectancy_r"
+    display = pd.DataFrame({"run_name": ["a"], "trade_count": [40]})
+    ranked_frame = pd.DataFrame({"run_name": ["a"], "trade_count": [40], metric: [0.25]})
+
+    class _Report:
+        primary_metric = metric
+        ranked = ranked_frame
+        group_summaries = {}
+
+    class _Model:
+        report = _Report()
+        ranked_display = display
+
+    helpers = _load_inspect_chart_helpers(_FakeStreamlit(), px)
+    frame = helpers["_ranked_chart_frame"](_Model())
+    assert frame is ranked_frame
+    assert metric in frame.columns
 
 
 def test_failed_cell_error_lines_dedupes_and_caps_from_viewer():

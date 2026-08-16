@@ -82,14 +82,15 @@ different experiment). Do not implement further SIA work by importing
 `pages/1_Data.py`, reading classic `st.session_state`, or editing `engine/`
 / `api.run_experiment` loaders.
 
-**SV (SV1 + SV2 shipped):** Study Viewer Inspect catalog + quality panes —
-`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. `discover_study_dirs` + Inspect
-**Load selected** + additive `python -m thesistester study list` + failed-cell
-/ group / rollup-if-present / launch-log tail. Do not implement SV3–SV4
-inside an RS/SB/SIA PR. Discover must not call `report_study`. Do not call
-`run_study()`, `report_study` write, or `rollup_study()` from Inspect.
-`viewer.py` must not import `cli_study` / `thesistester.cli` / `execute` /
-`rollup` / Plotly / Streamlit.
+**SV (SV1–SV3 shipped):** Study Viewer Inspect catalog + quality panes +
+overview charts — `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`.
+`discover_study_dirs` + Inspect **Load selected** + additive
+`python -m thesistester study list` + failed-cell / group / rollup-if-present
+/ launch-log tail + locked Plotly on already-loaded ranked / group frames
+(page only). Do not implement SV4 inside an RS/SB/SIA PR. Discover must not
+call `report_study`. Do not call `run_study()`, `report_study` write, or
+`rollup_study()` from Inspect. `viewer.py` must not import `cli_study` /
+`thesistester.cli` / `execute` / `rollup` / Plotly / Streamlit.
 Do not hydrate classic `st.session_state`. Operator contract:
 `docs/STUDY_RUNNER.md` §SV.
 

@@ -1,10 +1,11 @@
-"""RS-D2/RS-D8/RS-D9 + SB2/SB3 + SV1/SV2 — Studies inspect, preview, CLI-spawn, Build."""
+"""RS-D2/RS-D8/RS-D9 + SB2/SB3 + SV1–SV3 — Studies inspect, preview, CLI-spawn, Build."""
 
 from __future__ import annotations
 
 import copy
 from typing import Any
 
+import plotly.express as px
 import streamlit as st
 
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
@@ -448,6 +449,107 @@ def _render_inspect_quality(model: StudyViewerModel) -> None:
             st.code(model.launch_log_tail, language="text")
 
 
+_CHART_HONESTY = (
+    "Descriptive screening, not a validated edge. "
+    "Same `min_trades` / multiple-testing caveats as the ranked tables."
+)
+
+
+def _is_chart_frame(obj: object) -> bool:
+    """True when *obj* is a pandas-like frame (has empty / columns / dropna)."""
+    return (
+        obj is not None
+        and hasattr(obj, "empty")
+        and hasattr(obj, "columns")
+        and hasattr(obj, "dropna")
+    )
+
+
+def _ranked_chart_frame(model: StudyViewerModel):
+    """Ranked cells for SV3 charts. Prefer display when the metric column is present."""
+    metric = model.report.primary_metric
+    display = model.ranked_display
+    if _is_chart_frame(display) and not display.empty and metric in display.columns:
+        return display
+    ranked = getattr(model.report, "ranked", None)
+    if _is_chart_frame(ranked) and not ranked.empty and metric in ranked.columns:
+        return ranked
+    if _is_chart_frame(display):
+        return display
+    if _is_chart_frame(ranked):
+        return ranked
+    return None
+
+
+def _render_inspect_charts(model: StudyViewerModel) -> None:
+    """SV3: locked Plotly set from already-loaded ranked / group frames."""
+    st.markdown("### Overview charts")
+    metric = model.report.primary_metric
+    frame = _ranked_chart_frame(model)
+    ranked_empty = not _is_chart_frame(frame) or frame.empty or metric not in frame.columns
+
+    st.markdown("**Ranked primary-metric distribution**")
+    st.caption(_CHART_HONESTY)
+    if ranked_empty:
+        st.caption("No ranked cells to chart.")
+    else:
+        work = frame.dropna(subset=[metric])
+        if work.empty:
+            st.caption("No ranked cells to chart.")
+        else:
+            fig = px.histogram(work, x=metric, title=f"Ranked `{metric}` distribution")
+            fig.update_layout(height=320, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig, width="stretch")
+
+    st.markdown("**Sample size vs metric**")
+    st.caption(_CHART_HONESTY)
+    if ranked_empty or "trade_count" not in frame.columns:
+        st.caption("No ranked cells to chart.")
+    else:
+        work = frame.dropna(subset=["trade_count", metric])
+        if work.empty:
+            st.caption("No ranked cells to chart.")
+        else:
+            scatter_kw: dict[str, Any] = {}
+            if "run_name" in work.columns:
+                scatter_kw["hover_name"] = "run_name"
+            fig = px.scatter(
+                work,
+                x="trade_count",
+                y=metric,
+                title=f"Ranked trade_count × `{metric}`",
+                **scatter_kw,
+            )
+            fig.update_layout(height=320, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig, width="stretch")
+
+    st.markdown("**Group bars**")
+    groups = getattr(model.report, "group_summaries", None)
+    if not isinstance(groups, dict) or not groups:
+        st.caption(_CHART_HONESTY)
+        st.caption("No group-summary axes to chart.")
+        return
+    for axis, raw in groups.items():
+        st.caption(_CHART_HONESTY)
+        if not _is_chart_frame(raw):
+            st.caption(f"No group-bar series for `{axis}`.")
+            continue
+        ycol = f"median_{metric}"
+        if ycol not in raw.columns:
+            ycol = f"mean_{metric}"
+        if raw.empty or ycol not in raw.columns:
+            st.caption(f"No group-bar series for `{axis}`.")
+            continue
+        work = raw.dropna(subset=[ycol])
+        if work.empty:
+            st.caption(f"No group-bar series for `{axis}`.")
+            continue
+        xcol = axis if axis in work.columns else str(work.columns[0])
+        fig = px.bar(work, x=xcol, y=ycol, title=f"{axis}: `{ycol}`")
+        fig.update_layout(height=320, margin=dict(l=10, r=10, t=40, b=10))
+        st.plotly_chart(fig, width="stretch")
+
+
 def _render_inspect() -> None:
     pending = st.session_state.pop(STUDIES_VIEWER_PENDING_PATH_KEY, None)
     if isinstance(pending, str) and pending.strip():
@@ -586,6 +688,8 @@ def _render_inspect() -> None:
             st.info("No ranked cells (check min_trades / ok status / primary metric).")
     else:
         st.dataframe(model.ranked_display, hide_index=True, width="stretch")
+
+    _render_inspect_charts(model)
 
     st.markdown("### Low-N cells")
     if model.low_n_display.empty:

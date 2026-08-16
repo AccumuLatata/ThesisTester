@@ -14,6 +14,9 @@ under trusted roots. It does not call ``report_study``.
 SV2 projects failed-cell errors, ``report.group_summaries``, optional
 ``study.rollup.*`` files, and a ``study.launch.log`` tail. It does not call
 ``rollup_study`` or rewrite overview / rollup artifacts.
+
+SV3 Plotly charts stay on ``pages/15_Studies.py``. This module must not import
+Plotly or Streamlit.
 """
 
 from __future__ import annotations
