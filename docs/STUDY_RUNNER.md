@@ -14,11 +14,12 @@ History Exporter CSVs need **Quantower History Exporter (semicolon)**.
 Execute is still CLI (`study run` / Preview **Run via CLI**). Inspect may
 show an additive ledger progress strip (Refresh still explicit). Does not
 change preview / CLI-spawn / execute semantics.
-**SIA** (Study Ingest Alignment) is plan-locked:
-`docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. **SIA1** landed
-(new drafts emit 15s-primary). **SIA2** adds the Build ingest radio
-(no profile/intrabar rewrite). SIA3 not started. Omitted mode remains
-`primary`. Does not change execute/engine/Data.
+**SIA** (Study Ingest Alignment) ✅
+`docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. New studies and the
+pdPOC teaching example emit `dataset.ingestion_mode: 15s_primary_derive_1m`
+(Quantower 15s path, `intrabar_model: subtimeframe_conservative`). Omitted
+mode remains `primary` (the dopen example is legacy 1m). Execute is still
+CLI / `run_experiment`. Studies does not walk the Data page.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.

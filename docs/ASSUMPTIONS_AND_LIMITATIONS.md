@@ -90,7 +90,12 @@ This engine is for **research screening**, not proof of a durable edge.
   session-restored without a usable lower frame. Research bundles restore the same
   members. Headless runs accept
   `dataset.ingestion_mode: 15s_primary_derive_1m` on a single Quantower 15s
-  CSV and must not also set `dataset.subtimeframe_path`. Manual dual-upload
+  CSV and must not also set `dataset.subtimeframe_path`. New Study Builder
+  drafts and the pdPOC teaching example emit that contract; omitted mode on
+  a 15s file is a different dataset (15s decision-TF, no derived 1m / R12
+  attach). The dopen example remains legacy 1m primary. Studies does not
+  walk the Data page — parity is the RunSpec, not shared `session_state`.
+  Vendor-native 1m and derived 1m remain non-interchangeable. Manual dual-upload
   lower files that are never saved remain session-scoped unless exported in a
   research bundle.
 - Lower-upload duplicate timestamps remain fail-closed. The Data page can

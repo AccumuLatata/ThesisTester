@@ -28,7 +28,7 @@ For closed multi-factor confluence studies, use the additive Study Runner (see
 executes cells via a **study-owned** `run_experiment` loop (ledger + soft resume),
 aggregates an honest overview, and can draft survivor StudySpecs. It does **not**
 change `run_batch` abort semantics. Stage-first example:
-`examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells; full 800 is phase-2).
+`examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
 ```bash
 python -m thesistester study expand study.yaml --output-dir out/study1
@@ -74,12 +74,13 @@ StudySpec**; Apply to Preview then existing Validate / Preview → Run via CLI.
 Do not call `run_study()` from the Build tab. Parked RS-D1 / D3 / D6 stay parked.
 Operator contract: `docs/STUDY_RUNNER.md` §SB.
 
-**SIA (SIA1 landed; SIA2 this PR; SIA3 not started):** Studies authoring alignment
-to the Data-page 15s-primary RunSpec —
-`docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. Do not implement SIA
-by importing `pages/1_Data.py`, reading classic `st.session_state`, or
-editing `engine/` / `api.run_experiment` loaders. Omitted
-`dataset.ingestion_mode` must keep meaning `primary`.
+**SIA (shipped):** Studies authoring alignment to the Data-page 15s-primary
+RunSpec — `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. New drafts
+and the pdPOC example emit `15s_primary_derive_1m`. Do not point a 15s
+Quantower file at a study without that mode (omitted = `primary` = a
+different experiment). Do not implement further SIA work by importing
+`pages/1_Data.py`, reading classic `st.session_state`, or editing `engine/`
+/ `api.run_experiment` loaders.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:

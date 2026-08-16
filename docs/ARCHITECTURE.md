@@ -88,6 +88,10 @@ The Build tab body executes before Preview
 so Apply can write `studies_preview_yaml` (and reseed the launch output-dir
 widget) before those widgets instantiate. Build does not write classic
 research `st.session_state` keys and does not spawn CLI.
+SIA: new drafts and the pdPOC teaching example emit
+`dataset.ingestion_mode: 15s_primary_derive_1m`. Execute is unchanged
+(`expand` → `run_experiment`). Omitted mode remains `primary`. Studies does
+not walk the Data page; parity is the RunSpec contract.
 `thesistester.study.execute` imports on Windows: exclusive `.study.lock` uses
 POSIX `fcntl.flock` or Windows `msvcrt.locking`
 (fail-closed; released on process exit). Study execution sets

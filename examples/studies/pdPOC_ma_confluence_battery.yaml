@@ -18,7 +18,10 @@
 #   python -m thesistester study promote out/pdPOC_stage40 \
 #     --output drafts/pdPOC_survivors_draft.yaml --top-n 10
 #
-# Replace dataset.path with your bars CSV before study run.
+# Replace dataset.path with the same 15-second Quantower History Exporter
+# CSV used on Data. A vendor-native 1m file is a different dataset.
+# Omitting ingestion_mode on a 15s file is not this path (that loads 15s
+# bars as the decision timeframe).
 # Promote absolutizes relative dataset.path when possible (drafts/ is safe).
 # Prefer non-zero commission_per_side / slippage_ticks before trusting ranks.
 # Descriptive ranking ≠ validated edge (see docs/ASSUMPTIONS_AND_LIMITATIONS.md).
@@ -34,9 +37,11 @@ study:
   confirm_above_runs: 200
 
   dataset:
-    path: data/es_1m.csv
+    path: data/es_15s.csv
     instrument: ES
     source_timezone: America/New_York
+    format_profile: quantower_history_exporter
+    ingestion_mode: 15s_primary_derive_1m
 
   levels:
     sma_lengths: [50, 200]
@@ -61,7 +66,7 @@ study:
       commission_per_side: 0.0
       slippage_ticks: 0.0
       flat_by_session_close: false
-      intrabar_model: sl_first
+      intrabar_model: subtimeframe_conservative
     grid: {enabled: false}
     validation: {enabled: false}
     walk_forward: {enabled: false}
