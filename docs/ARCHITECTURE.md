@@ -114,7 +114,10 @@ ranked / group frames, and one-cell index / ledger-error / optional
 not deep-link Research Bundles. Discover does not call `report_study`.
 `viewer.py` must not import `cli_study`, `thesistester.cli`, `execute`,
 `rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`; Plotly stays
-on `pages/15_Studies.py`). Studies-scoped keys:
+on `pages/15_Studies.py`). `launch.py` must not import `viewer` (trusted roots
+are inlined; the Studies page imports launch before viewer). Catalog table
+cap (`CATALOG_DISPLAY_CAP = 50`) is page-local — do not import it from
+`viewer`. Studies-scoped keys:
 `studies_catalog_entries`, `studies_catalog_roots_key`,
 `studies_viewer_pending_path`, `studies_viewer_catalog_select`,
 `studies_viewer_selected_run`.

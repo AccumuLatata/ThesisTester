@@ -150,7 +150,6 @@ from thesistester.study.preview import (
 )
 from thesistester.study.schema import StudySpecError
 from thesistester.study.viewer import (
-    CATALOG_DISPLAY_CAP,
     STUDIES_CATALOG_ENTRIES_KEY,
     STUDIES_CATALOG_ROOTS_KEY,
     STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
@@ -173,6 +172,11 @@ from thesistester.study.viewer import (
     resolve_study_dir,
     study_viewer_model_is_current,
 )
+
+# SV1 catalog table cap is page-display only (discover / `study list` stay
+# uncapped). Do not import CATALOG_DISPLAY_CAP from viewer — a stale or
+# mid-init viewer.py raises ImportError and bricks Studies.
+CATALOG_DISPLAY_CAP = 50
 
 # Do not import FORMAT_PROFILE_LABELS, normalize_builder_format_profile,
 # INGESTION_MODE_PRIMARY, or WIDGET_KEY_INGESTION_MODE from builder. A stale

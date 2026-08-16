@@ -319,6 +319,7 @@ def test_launch_module_import_allow_list():
         "thesistester.cli",
         "thesistester.study.promote",
         "thesistester.study.tools",
+        "thesistester.study.viewer",
         "thesistester.assistant",
     }
     for node in ast.walk(tree):
