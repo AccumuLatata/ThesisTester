@@ -1,8 +1,8 @@
 """RS-D9 Studies CLI-launch helper (argv + detached ``study run`` spawn).
 
 Builds the same argv a human would type and starts it with ``subprocess.Popen``.
-Does **not** import ``thesistester.study.execute``, call the in-process runner,
-or acquire ``.study.lock`` (the child CLI owns the lock).
+Does **not** import ``thesistester.study.execute`` or ``thesistester.study.viewer``,
+call the in-process runner, or acquire ``.study.lock`` (the child CLI owns the lock).
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ from typing import Any
 
 import yaml
 
+from thesistester.persistence.local_store import get_store_root
 from thesistester.study.expand import study_identity_hash
 from thesistester.study.schema import StudySpecError, normalize_study_spec, validate_study_spec
-from thesistester.study.viewer import default_study_viewer_roots
 
 LAUNCH_YAML_NAME = "study.launch.yaml"
 LAUNCH_LOG_NAME = "study.launch.log"
@@ -439,9 +439,20 @@ def spawn_launch(
     )
 
 
+def _default_trusted_roots() -> tuple[Path, ...]:
+    """Trusted local roots: repo cwd + ThesisTester store (viewer parity).
+
+    Inlined so this module does not import ``thesistester.study.viewer``.
+    The Studies page imports launch before viewer; a launch→viewer import
+    can leave viewer mid-init and raise ``ImportError`` on page-only names
+    such as ``CATALOG_DISPLAY_CAP``.
+    """
+    return (Path.cwd().resolve(), get_store_root().resolve())
+
+
 def _roots_or_default(roots: Sequence[Path] | None) -> tuple[Path, ...]:
     if roots is None:
-        return tuple(Path(root).resolve() for root in default_study_viewer_roots())
+        return tuple(Path(root).resolve() for root in _default_trusted_roots())
     return tuple(Path(root).resolve() for root in roots)
 
 

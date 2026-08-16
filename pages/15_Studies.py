@@ -150,7 +150,6 @@ from thesistester.study.preview import (
 )
 from thesistester.study.schema import StudySpecError
 from thesistester.study.viewer import (
-    CATALOG_DISPLAY_CAP,
     STUDIES_CATALOG_ENTRIES_KEY,
     STUDIES_CATALOG_ROOTS_KEY,
     STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
@@ -173,6 +172,11 @@ from thesistester.study.viewer import (
     resolve_study_dir,
     study_viewer_model_is_current,
 )
+
+# SV1 catalog table cap is page-display only (discover / `study list` stay
+# uncapped). Do not import CATALOG_DISPLAY_CAP from viewer — a stale or
+# mid-init viewer.py raises ImportError and bricks Studies.
+CATALOG_DISPLAY_CAP = 50
 
 # Do not import FORMAT_PROFILE_LABELS, normalize_builder_format_profile,
 # INGESTION_MODE_PRIMARY, or WIDGET_KEY_INGESTION_MODE from builder. A stale
@@ -619,10 +623,11 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
         if st.checkbox(
             f"Prepare download of {peek.zip_name}",
             value=False,
-            key="studies_viewer_peek_zip_prepare",
+            key=f"studies_viewer_peek_zip_prepare:{peek.run_name}",
             help=(
                 "Loads zip bytes into the browser download control. "
-                "Leave unchecked so Inspect reruns do not embed the archive."
+                "Leave unchecked so Inspect reruns do not embed the archive. "
+                "Prepare is per cell — switching run_name does not keep the zip loaded."
             ),
         ):
             zip_bytes = peek_zip_bytes(peek, study_dir=model.study_dir)
@@ -634,7 +639,7 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
                     data=zip_bytes,
                     file_name=peek.zip_name,
                     mime="application/zip",
-                    key="studies_viewer_peek_zip_download",
+                    key=f"studies_viewer_peek_zip_download:{peek.run_name}",
                 )
 
 

@@ -706,6 +706,44 @@ def test_viewer_module_import_allow_list():
     assert "rollup_study(" not in source
 
 
+def test_studies_page_viewer_imports_resolve():
+    """Every ``from thesistester.study.viewer import …`` name on the page exists."""
+    source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "thesistester.study.viewer":
+            names.extend(alias.name for alias in node.names)
+    assert names, "Studies page must import viewer helpers"
+    assert "CATALOG_DISPLAY_CAP" not in names
+    import thesistester.study.viewer as viewer_mod
+
+    missing = [name for name in names if not hasattr(viewer_mod, name)]
+    assert missing == []
+
+
+def test_catalog_display_cap_is_page_local():
+    source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    assigned: int | None = None
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            if "CATALOG_DISPLAY_CAP" in targets and isinstance(node.value, ast.Constant):
+                assigned = int(node.value.value)
+    assert assigned == 50
+    from thesistester.study.viewer import CATALOG_DISPLAY_CAP as viewer_cap
+
+    assert viewer_cap == assigned
+
+
+def test_launch_trusted_roots_match_viewer():
+    from thesistester.study.launch import _default_trusted_roots
+    from thesistester.study.viewer import default_study_viewer_roots
+
+    assert _default_trusted_roots() == default_study_viewer_roots()
+
+
 def test_inspect_catalog_handler_does_not_call_load_study_view():
     source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
     start = source.index("def _render_inspect_catalog")
@@ -1224,6 +1262,8 @@ def test_inspect_peek_does_not_hydrate_or_switch_page():
     assert "STUDIES_VIEWER_SELECTED_RUN_KEY" in peek_src
     assert "Prepare download" in peek_src
     assert "st.checkbox" in peek_src
+    assert "studies_viewer_peek_zip_prepare:" in peek_src
+    assert 'key="studies_viewer_peek_zip_prepare"' not in peek_src
     assert "apply_research_bundle_to_session" not in peek_src
     assert "st.switch_page" not in peek_src
     assert "trades.parquet" not in peek_src

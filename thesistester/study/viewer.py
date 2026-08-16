@@ -79,6 +79,8 @@ STUDIES_VIEWER_CATALOG_SELECT_KEY = "studies_viewer_catalog_select"
 STUDIES_VIEWER_SELECTED_RUN_KEY = "studies_viewer_selected_run"
 
 CATALOG_SCAN_PREFIXES: tuple[str, ...] = ("results/studies", "out")
+# Shared contract value. Studies page binds its own copy so a stale or
+# mid-init viewer cannot ImportError the page. Discover / CLI stay uncapped.
 CATALOG_DISPLAY_CAP = 50
 STUDY_SPEC_FILENAME = "study.spec.yaml"
 FAILED_ERROR_PRINT_CAP = 5
