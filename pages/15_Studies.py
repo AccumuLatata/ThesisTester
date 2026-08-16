@@ -167,6 +167,7 @@ from thesistester.study.viewer import (
     load_study_view,
     preview_error_text,
     resolve_study_dir,
+    study_viewer_model_is_current,
 )
 
 # Do not import FORMAT_PROFILE_LABELS, normalize_builder_format_profile,
@@ -372,7 +373,7 @@ def _render_inspect_quality(model: StudyViewerModel) -> None:
         "Shared ingest faults are shown, not hidden."
     )
     if model.unique_error_lines:
-        st.caption("\n\n".join(model.unique_error_lines))
+        st.code("\n".join(model.unique_error_lines), language="text")
     if model.failed_cells_display.empty:
         st.caption("No failed cells.")
     else:
@@ -416,7 +417,13 @@ def _render_inspect_quality(model: StudyViewerModel) -> None:
         "diagnostics, not a validated edge. Inspect does not run `study rollup`."
     )
     if not model.report_present:
-        st.caption("Ledger-only view: rollup stays empty until the index appears.")
+        if model.rollup_present:
+            st.caption(
+                "`study.rollup.csv` is present; the rollup table stays empty "
+                "until `results_index.csv` appears."
+            )
+        else:
+            st.caption("Ledger-only view: rollup stays empty until the index appears.")
     elif not model.rollup_present:
         st.caption(
             "No `study.rollup.csv` in this directory. Run CLI "
@@ -498,9 +505,11 @@ def _render_inspect() -> None:
     # model so Preview-tab Validate/Preview (and download/expander clicks) do
     # not re-aggregate a large study_dir. Reload only on Load / Refresh, or
     # when the cached path no longer matches the selected directory.
+    cached_model = st.session_state.get(STUDIES_VIEWER_CACHED_MODEL_KEY)
     need_reload = bool(load or refresh) or (
         st.session_state.get(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY) != active_dir
-        or st.session_state.get(STUDIES_VIEWER_CACHED_MODEL_KEY) is None
+        or cached_model is None
+        or not study_viewer_model_is_current(cached_model)
     )
     if need_reload:
         try:

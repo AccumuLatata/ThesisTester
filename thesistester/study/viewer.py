@@ -361,7 +361,9 @@ def failed_cell_error_lines(
     unique: list[tuple[str, str]] = []
     seen: set[str] = set()
     for name in run_names:
-        cell = cells.get(name) or {}
+        cell = cells.get(name)
+        if not isinstance(cell, Mapping):
+            continue
         if cell.get("status") != "failed":
             continue
         error = str(cell.get("error") or "unknown error")
@@ -665,6 +667,22 @@ class StudyViewerModel:
     launch_log_tail: str
 
 
+def study_viewer_model_is_current(model: object) -> bool:
+    """True when a cached Inspect model has the SV2 quality fields."""
+    return all(
+        hasattr(model, name)
+        for name in (
+            "failed_cells_display",
+            "unique_error_lines",
+            "rollup_present",
+            "rollup_display",
+            "rollup_md",
+            "launch_log_present",
+            "launch_log_tail",
+        )
+    )
+
+
 def _report_settings_from_spec(study_dir: Path) -> tuple[str, int, str]:
     """Best-effort ``study.report`` fields for a ledger-only Inspect view."""
     try:
@@ -800,10 +818,7 @@ def load_study_view(
     overview_csv_text = report.overview.to_csv(index=False) if not report.overview.empty else ""
     failed_display = failed_cells_frame(ledger)
     unique_lines = unique_failed_error_lines(ledger)
-    if report_present:
-        rollup = read_rollup_files(root)
-    else:
-        rollup = StudyRollupView(present=False, frame=pd.DataFrame(), markdown="")
+    rollup = read_rollup_files(root)
     log_tail = tail_launch_log(root)
     return StudyViewerModel(
         study_dir=root,

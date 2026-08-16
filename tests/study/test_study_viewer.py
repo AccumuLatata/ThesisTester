@@ -20,6 +20,7 @@ from thesistester.study.builder import (
 from thesistester.study.report import RESULTS_INDEX
 from thesistester.study.viewer import (
     CLASSIC_RESEARCH_SESSION_KEYS,
+    FAILED_ERROR_PRINT_CAP,
     LAUNCH_LOG_NAME,
     LAUNCH_LOG_TAIL_BYTES,
     ROLLUP_CSV_NAME,
@@ -42,6 +43,7 @@ from thesistester.study.viewer import (
     read_rollup_files,
     resolve_catalog_roots,
     resolve_study_dir,
+    study_viewer_model_is_current,
     summarize_ledger_progress,
     tail_launch_log,
 )
@@ -324,10 +326,14 @@ def test_pages_studies_is_read_only_source():
     assert "rollup_study" not in source
     assert "build_group_summaries" not in source
     assert "apply_research_bundle_to_session" not in source
+    assert "report_study(" not in source
     assert "### Failed cells" in source
     assert "### Group summaries" in source
     assert "### Rollup" in source
     assert "model.report.group_summaries" in source
+    assert "study_viewer_model_is_current" in source
+    assert "st.code" in source
+    assert 'st.caption("\\n\\n".join(model.unique_error_lines))' not in source
     assert "Full failed-cell error text" in source
     assert "Show study.launch.log (tail)" in source
     assert "write_artifacts=False" in Path("thesistester/study/viewer.py").read_text(
@@ -715,6 +721,30 @@ def test_failed_cell_error_lines_dedupes_and_caps_from_viewer():
     assert failed_cell_error_lines(cells, ["b"]) == []
 
 
+def test_failed_cell_error_lines_default_cap_is_five():
+    cells = {f"c{index}": {"status": "failed", "error": f"err-{index}"} for index in range(6)}
+    names = [f"c{index}" for index in range(6)]
+    lines = failed_cell_error_lines(cells, names)
+    assert FAILED_ERROR_PRINT_CAP == 5
+    examples = [
+        line for line in lines if line.startswith("  ") and not line.startswith("  …")
+    ]
+    assert len(examples) == 5
+    assert lines[-1] == "  … +1 more unique error(s) in study.ledger.json"
+
+
+def test_failed_cell_error_lines_skips_non_mapping_cells():
+    cells = {
+        "a": {"status": "failed", "error": "ValueError: boom"},
+        "b": "not-a-mapping",
+        "c": ["failed"],
+    }
+    lines = failed_cell_error_lines(cells, ["a", "b", "c"])
+    assert lines[1] == "  a: ValueError: boom"
+    frame = failed_cells_frame({"cells": cells})
+    assert list(frame["run_name"]) == ["a"]
+
+
 def test_quality_panes_from_loaded_model(tmp_path: Path):
     study_dir = _write_report_fixture(tmp_path, min_trades=30)
     expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
@@ -764,7 +794,7 @@ def test_quality_panes_from_loaded_model(tmp_path: Path):
     assert model.launch_log_present is True
     assert model.launch_log_tail.endswith("TAILMARK\n")
     assert "HEAD\n" not in model.launch_log_tail
-    assert len(model.launch_log_tail.encode("utf-8")) <= LAUNCH_LOG_TAIL_BYTES + 8
+    assert len(model.launch_log_tail.encode("utf-8")) <= LAUNCH_LOG_TAIL_BYTES
 
     assert (study_dir / ROLLUP_CSV_NAME).read_text(encoding="utf-8") == rollup_csv
     assert (study_dir / ROLLUP_MD_NAME).read_text(encoding="utf-8") == rollup_md
@@ -805,8 +835,8 @@ def test_quality_panes_absent_rollup_and_ledger_only(tmp_path: Path):
     assert list(ledger_only.failed_cells_display["run_name"]) == [names[0]]
     assert ledger_only.failed_cells_display.iloc[0]["error"] == "ValueError: boom"
     assert ledger_only.report.group_summaries == {}
-    assert ledger_only.rollup_present is False
-    assert ledger_only.rollup_display.empty
+    assert ledger_only.rollup_present is True
+    assert list(ledger_only.rollup_display["run_name"]) == ["orphan"]
     assert (study_dir / ROLLUP_CSV_NAME).is_file()
     assert (study_dir / OVERVIEW_CSV).exists() is overview_csv_existed
     assert (study_dir / OVERVIEW_MD).exists() is overview_md_existed
@@ -849,3 +879,56 @@ def test_load_study_view_does_not_call_rollup_study(tmp_path: Path, monkeypatch)
     model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
     assert model.rollup_present is False
     assert not (study_dir / ROLLUP_CSV_NAME).exists()
+
+
+def test_load_study_view_tolerates_non_mapping_ledger_cell(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]] = "not-a-mapping"
+    ledger["cells"][names[1]]["status"] = "failed"
+    ledger["cells"][names[1]]["error"] = "ValueError: boom"
+    save_ledger(study_dir, ledger)
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert list(model.failed_cells_display["run_name"]) == [names[1]]
+    assert model.unique_error_lines[1] == f"  {names[1]}: ValueError: boom"
+
+
+def test_load_study_view_failed_table_lists_every_cell_caption_caps_unique(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    shared = "DataValidationError: missing columns"
+    for name in names[:3]:
+        ledger["cells"][name]["status"] = "failed"
+        ledger["cells"][name]["error"] = shared
+    extras = [f"unique-{index}" for index in range(5)]
+    extra_names = [f"extra_{index}" for index in range(5)]
+    for extra_name, error in zip(extra_names, extras, strict=True):
+        ledger["cells"][extra_name] = {"status": "failed", "error": error}
+    save_ledger(study_dir, ledger)
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert len(model.failed_cells_display) == 8
+    assert (model.failed_cells_display["error"] == shared).sum() == 3
+    examples = [
+        line
+        for line in model.unique_error_lines
+        if line.startswith("  ") and not line.startswith("  …")
+    ]
+    assert len(examples) == FAILED_ERROR_PRINT_CAP
+    assert model.unique_error_lines[-1] == "  … +1 more unique error(s) in study.ledger.json"
+
+
+def test_study_viewer_model_is_current_requires_sv2_fields():
+    class _Legacy:
+        ranked_display = None
+
+    assert study_viewer_model_is_current(_Legacy()) is False
