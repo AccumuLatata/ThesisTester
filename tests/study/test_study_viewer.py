@@ -726,9 +726,7 @@ def test_failed_cell_error_lines_default_cap_is_five():
     names = [f"c{index}" for index in range(6)]
     lines = failed_cell_error_lines(cells, names)
     assert FAILED_ERROR_PRINT_CAP == 5
-    examples = [
-        line for line in lines if line.startswith("  ") and not line.startswith("  …")
-    ]
+    examples = [line for line in lines if line.startswith("  ") and not line.startswith("  …")]
     assert len(examples) == 5
     assert lines[-1] == "  … +1 more unique error(s) in study.ledger.json"
 
