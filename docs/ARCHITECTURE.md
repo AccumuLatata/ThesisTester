@@ -80,7 +80,10 @@ so `study.launch.log` inherits stdout; no in-process `run_study`).
 calls `preview_study_spec`; Apply / hydrate / download stay Studies-scoped).
 Build always writes `dataset.format_profile` from the R17 allow-list
 (`FORMAT_PROFILE_LABELS`; omitted / blank → `canonical`; unknown
-non-blank tokens fail emit).
+non-blank tokens fail emit). Ingest tokens are page-local
+(`INGESTION_MODE_PRIMARY`, `_study_builder_ingestion_mode`) so a stale
+builder cannot ImportError the page. Seed/Apply use getattr/hasattr and
+`dataset_extra` when `StudyDraft.ingestion_mode` is missing.
 Studies-scoped keys only:
 `studies_builder_draft` and `studies_builder_pending_sync` (plus
 `_study_builder_*` widget keys, including `_study_builder_ingestion_mode`).

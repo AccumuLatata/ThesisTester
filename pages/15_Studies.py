@@ -19,7 +19,6 @@ from thesistester.study.builder import (
     DIRECTION_MODE_CONSTANT,
     DIRECTION_MODE_FACTOR,
     DIRECTION_MODE_OPTIONS,
-    INGESTION_MODE_PRIMARY,
     MULTIPLE_TESTING_OPTIONS,
     OTF_PRESET_LABELS,
     OTF_PRESET_ORDER,
@@ -57,7 +56,6 @@ from thesistester.study.builder import (
     WIDGET_KEY_GRID_SL_VALUES,
     WIDGET_KEY_GRID_TP_VALUES,
     WIDGET_KEY_GROUP_BY,
-    WIDGET_KEY_INGESTION_MODE,
     WIDGET_KEY_INSTRUMENT,
     WIDGET_KEY_INTRABAR_MODEL,
     WIDGET_KEY_LEVELS_ADVANCED,
@@ -160,8 +158,9 @@ from thesistester.study.viewer import (
     resolve_study_dir,
 )
 
-# Do not import FORMAT_PROFILE_LABELS or normalize_builder_format_profile from
-# builder. A stale builder.py raises ImportError and bricks the Studies page.
+# Do not import FORMAT_PROFILE_LABELS, normalize_builder_format_profile,
+# INGESTION_MODE_PRIMARY, or WIDGET_KEY_INGESTION_MODE from builder. A stale
+# builder.py raises ImportError and bricks the Studies page.
 # Prefer the live loader catalog (same object as Data). Fall back only when
 # that name is missing or not a non-empty dict. Page-local normalize matches
 # current builder semantics (blank → canonical; do not rewrite unknown tokens).
@@ -197,8 +196,10 @@ def normalize_builder_format_profile(value: Any) -> str:
     return "canonical"
 
 
-# Page-local ingest labels. Do not import the Data page (classic ingest UI).
+# Page-local ingest tokens/labels. Do not import the Data page (classic ingest UI).
 # Toggle must not rewrite format_profile or intrabar_model.
+INGESTION_MODE_PRIMARY = "primary"
+WIDGET_KEY_INGESTION_MODE = "_study_builder_ingestion_mode"
 _INGESTION_MODE_LABELS = {
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M: (
         "Recommended: 15-second primary — derive one-minute canonical"
@@ -215,6 +216,33 @@ def _resolved_builder_ingestion_mode(value: Any) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return INGESTION_MODE_PRIMARY
+
+
+def _draft_ingestion_mode(draft: Any) -> Any:
+    """Read ingest token without requiring SIA1 ``StudyDraft.ingestion_mode``.
+
+    Pre-SIA1 drafts store a hand-authored mode only in ``dataset_extra``.
+    """
+    mode = getattr(draft, "ingestion_mode", None)
+    if isinstance(mode, str) and mode.strip():
+        return mode
+    extra = getattr(draft, "dataset_extra", None)
+    if isinstance(extra, dict):
+        extra_mode = extra.get("ingestion_mode")
+        if extra_mode is not None:
+            return extra_mode
+    return mode
+
+
+def _apply_builder_ingestion_mode(draft: Any, value: Any) -> None:
+    """Write the radio onto the first-class field, else ``dataset_extra``."""
+    resolved = _resolved_builder_ingestion_mode(value)
+    if hasattr(draft, "ingestion_mode"):
+        draft.ingestion_mode = resolved
+        return
+    extra = getattr(draft, "dataset_extra", None)
+    if isinstance(extra, dict):
+        extra["ingestion_mode"] = resolved
 
 
 st.title("Studies")
@@ -713,7 +741,7 @@ def _sync_builder_widgets(draft: StudyDraft) -> None:
         draft.format_profile
     )
     st.session_state[WIDGET_KEY_INGESTION_MODE] = _resolved_builder_ingestion_mode(
-        draft.ingestion_mode
+        _draft_ingestion_mode(draft)
     )
     sma_lengths = [int(item) for item in (draft.levels.get("sma_lengths") or [])]
     ema_lengths = [int(item) for item in (draft.levels.get("ema_lengths") or [])]
@@ -875,9 +903,7 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.format_profile = normalize_builder_format_profile(
         st.session_state.get(WIDGET_KEY_FORMAT_PROFILE)
     )
-    draft.ingestion_mode = _resolved_builder_ingestion_mode(
-        st.session_state.get(WIDGET_KEY_INGESTION_MODE)
-    )
+    _apply_builder_ingestion_mode(draft, st.session_state.get(WIDGET_KEY_INGESTION_MODE))
 
     levels = copy.deepcopy(dict(draft.levels))
     # Persist [] when the operator clears lengths. Omitting the key lets
@@ -1225,11 +1251,12 @@ def _render_build() -> None:
         timezone_options = [base.source_timezone, *timezone_options]
     st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
     ingest_options = list(_INGESTION_MODE_OPTIONS)
-    raw_ingest = base.ingestion_mode.strip() if isinstance(base.ingestion_mode, str) else ""
+    base_ingest = _draft_ingestion_mode(base)
+    raw_ingest = base_ingest.strip() if isinstance(base_ingest, str) else ""
     if raw_ingest and raw_ingest not in ingest_options:
         ingest_options = [raw_ingest, *ingest_options]
     if st.session_state.get(WIDGET_KEY_INGESTION_MODE) not in ingest_options:
-        seeded = _resolved_builder_ingestion_mode(base.ingestion_mode)
+        seeded = _resolved_builder_ingestion_mode(base_ingest)
         st.session_state[WIDGET_KEY_INGESTION_MODE] = seeded
         if seeded not in ingest_options:
             ingest_options = [seeded, *ingest_options]
