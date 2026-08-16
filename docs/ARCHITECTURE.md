@@ -103,11 +103,12 @@ POSIX `fcntl.flock` or Windows `msvcrt.locking`
 `run` / `run_batch` all-or-nothing write semantics stay identical. Engine and
 classic research pages remain undisturbed. Operator contract:
 `docs/STUDY_RUNNER.md`; plan: `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`.
-**SV1–SV3** (Study Viewer catalog + quality panes + overview charts,
+**SV1–SV4** (Study Viewer catalog + quality panes + overview charts + cell peek,
 `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`) add Inspect local-study listing +
 click-to-load, additive CLI `study list`, read-only failed-cell / group /
-rollup-if-present / launch-log panes, and locked Plotly from already-loaded
-ranked / group frames on this same page. They keep
+rollup-if-present / launch-log panes, locked Plotly from already-loaded
+ranked / group frames, and one-cell index / ledger-error / optional
+`trade_summary.json` peek on this same page. They keep
 `report_study(..., write_artifacts=False)`, must not call `rollup_study()`
 (writes), must not hydrate classic research `st.session_state` keys, and must
 not deep-link Research Bundles. Discover does not call `report_study`.
@@ -115,9 +116,8 @@ not deep-link Research Bundles. Discover does not call `report_study`.
 `rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`; Plotly stays
 on `pages/15_Studies.py`). Studies-scoped keys:
 `studies_catalog_entries`, `studies_catalog_roots_key`,
-`studies_viewer_pending_path`, `studies_viewer_catalog_select`.
-`studies_viewer_selected_run` is SV4. Do not implement SV4 inside an
-RS/SB/SIA edit.
+`studies_viewer_pending_path`, `studies_viewer_catalog_select`,
+`studies_viewer_selected_run`.
 
 ## Classic/Assistant research identity boundary (CAI-1)
 
@@ -1196,10 +1196,11 @@ Path citations only (no line numbers). Line anchors drift across page renumbers 
 
 Studies Build (SB2–SB3) adds `studies_builder_draft` and `studies_builder_pending_sync`
 on `pages/15_Studies.py` only. Those keys are not classic research state and
-must not be read from Data / Levels / Setup Builder. Study Viewer SV1 adds
+must not be read from Data / Levels / Setup Builder. Study Viewer SV1–SV4 add
 `studies_catalog_entries`, `studies_catalog_roots_key`,
-`studies_viewer_pending_path`, and `studies_viewer_catalog_select` on that
-same page only — still not classic research state.
+`studies_viewer_pending_path`, `studies_viewer_catalog_select`, and
+`studies_viewer_selected_run` on that same page only — still not classic
+research state.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when

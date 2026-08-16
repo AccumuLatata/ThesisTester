@@ -36,6 +36,7 @@ from thesistester.study.viewer import (
     STUDIES_VIEWER_CATALOG_SELECT_KEY,
     STUDIES_VIEWER_DIR_KEY,
     STUDIES_VIEWER_PENDING_PATH_KEY,
+    STUDIES_VIEWER_SELECTED_RUN_KEY,
 )
 
 
@@ -218,6 +219,11 @@ def test_pages_studies_preview_has_no_execute_controls():
                 and slice_node.id == "STUDIES_VIEWER_CATALOG_SELECT_KEY"
             ):
                 written_keys.add(STUDIES_VIEWER_CATALOG_SELECT_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_SELECTED_RUN_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_SELECTED_RUN_KEY)
             elif isinstance(slice_node, ast.Name) and slice_node.id.startswith("WIDGET_KEY_"):
                 continue
             elif (
@@ -259,6 +265,7 @@ def test_pages_studies_preview_has_no_execute_controls():
         STUDIES_CATALOG_ROOTS_KEY,
         STUDIES_VIEWER_PENDING_PATH_KEY,
         STUDIES_VIEWER_CATALOG_SELECT_KEY,
+        STUDIES_VIEWER_SELECTED_RUN_KEY,
     }
     assert STUDIES_BUILDER_DRAFT_KEY in written_keys
     assert STUDIES_BUILDER_PENDING_SYNC_KEY in written_keys

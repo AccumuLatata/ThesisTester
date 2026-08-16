@@ -1,4 +1,4 @@
-"""RS-D2/RS-D8/RS-D9 + SB2/SB3 + SV1–SV3 — Studies inspect, preview, CLI-spawn, Build."""
+"""RS-D2/RS-D8/RS-D9 + SB2/SB3 + SV1–SV4 — Studies inspect, preview, CLI-spawn, Build."""
 
 from __future__ import annotations
 
@@ -158,6 +158,7 @@ from thesistester.study.viewer import (
     STUDIES_VIEWER_CATALOG_SELECT_KEY,
     STUDIES_VIEWER_DIR_KEY,
     STUDIES_VIEWER_PENDING_PATH_KEY,
+    STUDIES_VIEWER_SELECTED_RUN_KEY,
     StudyCatalogEntry,
     StudyViewerError,
     StudyViewerModel,
@@ -166,6 +167,8 @@ from thesistester.study.viewer import (
     default_study_viewer_roots,
     discover_study_dirs,
     load_study_view,
+    peek_study_cell,
+    peek_zip_bytes,
     preview_error_text,
     resolve_study_dir,
     study_viewer_model_is_current,
@@ -550,6 +553,97 @@ def _render_inspect_charts(model: StudyViewerModel) -> None:
         st.plotly_chart(fig, width="stretch")
 
 
+def _render_inspect_peek(model: StudyViewerModel) -> None:
+    """SV4: one-cell index + ledger error + optional trade_summary.json."""
+    st.markdown("### Cell peek")
+    st.caption(
+        "Index KPIs, factor tags, and ledger error for one `run_name`. "
+        "Optional `trade_summary.json` from an in-dir zip. Not a validated edge. "
+        "Full trade/equity charts stay Research Bundles upload/import — "
+        "this page does not deep-link or hydrate classic session keys."
+    )
+    names = list(model.peek_run_names)
+    if not names:
+        st.caption("No cells to peek (empty ledger and overview).")
+        return
+    current = st.session_state.get(STUDIES_VIEWER_SELECTED_RUN_KEY)
+    if current not in names:
+        st.session_state[STUDIES_VIEWER_SELECTED_RUN_KEY] = names[0]
+    st.selectbox(
+        "Cell run_name",
+        options=names,
+        key=STUDIES_VIEWER_SELECTED_RUN_KEY,
+        help="Peek one cell already on the overview or ledger. Does not import a bundle.",
+    )
+    peek = peek_study_cell(model, str(st.session_state.get(STUDIES_VIEWER_SELECTED_RUN_KEY) or ""))
+    if not peek.present:
+        st.caption("Selected run_name is not on the overview or ledger.")
+        return
+    if peek.kpis:
+        st.dataframe(
+            {"field": list(peek.kpis.keys()), "value": list(peek.kpis.values())},
+            hide_index=True,
+            width="stretch",
+        )
+    elif not model.report_present:
+        st.caption("Ledger-only view: index KPIs stay empty until the overview appears.")
+    if peek.factors:
+        st.caption("Factor tags")
+        st.dataframe(
+            {"factor": list(peek.factors.keys()), "value": list(peek.factors.values())},
+            hide_index=True,
+            width="stretch",
+        )
+    if peek.ledger_error:
+        st.caption(f"Ledger status: `{peek.ledger_status}`")
+        st.code(peek.ledger_error, language="text")
+    elif peek.ledger_status:
+        st.caption(f"Ledger status: `{peek.ledger_status}`")
+    if peek.trade_summary:
+        st.caption("trade_summary.json (zip member)")
+        st.dataframe(
+            {
+                "field": [str(key) for key in peek.trade_summary],
+                "value": [_peek_summary_value(value) for value in peek.trade_summary.values()],
+            },
+            hide_index=True,
+            width="stretch",
+        )
+    if peek.trade_summary_caption:
+        st.caption(peek.trade_summary_caption)
+    if peek.zip_path is not None and peek.zip_name:
+        st.caption(
+            "Zip download reads bytes from disk only after Prepare. "
+            "It does not write the study dir or hydrate classic keys."
+        )
+        if st.checkbox(
+            f"Prepare download of {peek.zip_name}",
+            value=False,
+            key="studies_viewer_peek_zip_prepare",
+            help=(
+                "Loads zip bytes into the browser download control. "
+                "Leave unchecked so Inspect reruns do not embed the archive."
+            ),
+        ):
+            zip_bytes = peek_zip_bytes(peek, study_dir=model.study_dir)
+            if zip_bytes is None:
+                st.caption("Zip is no longer a file inside the study directory.")
+            else:
+                st.download_button(
+                    f"Download {peek.zip_name}",
+                    data=zip_bytes,
+                    file_name=peek.zip_name,
+                    mime="application/zip",
+                    key="studies_viewer_peek_zip_download",
+                )
+
+
+def _peek_summary_value(value: object) -> str:
+    if value is None:
+        return "—"
+    return str(value)
+
+
 def _render_inspect() -> None:
     pending = st.session_state.pop(STUDIES_VIEWER_PENDING_PATH_KEY, None)
     if isinstance(pending, str) and pending.strip():
@@ -708,6 +802,8 @@ def _render_inspect() -> None:
         st.caption("No OTF Δ rows (baseline disabled or no matching pairs).")
     else:
         st.dataframe(model.otf_delta_display, hide_index=True, width="stretch")
+
+    _render_inspect_peek(model)
 
     st.markdown("### Overview markdown")
     st.download_button(

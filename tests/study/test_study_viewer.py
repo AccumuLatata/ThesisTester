@@ -33,6 +33,7 @@ from thesistester.study.viewer import (
     STUDIES_VIEWER_CATALOG_SELECT_KEY,
     STUDIES_VIEWER_DIR_KEY,
     STUDIES_VIEWER_PENDING_PATH_KEY,
+    STUDIES_VIEWER_SELECTED_RUN_KEY,
     StudyViewerError,
     catalog_load_path,
     discover_study_dirs,
@@ -40,6 +41,9 @@ from thesistester.study.viewer import (
     failed_cells_frame,
     format_study_catalog_table,
     load_study_view,
+    peek_run_names,
+    peek_study_cell,
+    peek_zip_bytes,
     preview_error_text,
     read_rollup_files,
     resolve_catalog_roots,
@@ -332,8 +336,11 @@ def test_pages_studies_is_read_only_source():
     assert "### Group summaries" in source
     assert "### Rollup" in source
     assert "### Overview charts" in source
+    assert "### Cell peek" in source
     assert "import plotly.express" in source
     assert "st.plotly_chart" in source
+    assert "st.switch_page" not in source
+    assert "peek_study_cell" in source
     assert "model.report.group_summaries" in source
     assert "study_viewer_model_is_current" in source
     assert "st.code" in source
@@ -415,6 +422,11 @@ def test_pages_studies_is_read_only_source():
                 and slice_node.id == "STUDIES_VIEWER_CATALOG_SELECT_KEY"
             ):
                 written_keys.add(STUDIES_VIEWER_CATALOG_SELECT_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_SELECTED_RUN_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_SELECTED_RUN_KEY)
             elif isinstance(slice_node, ast.Name) and slice_node.id.startswith("WIDGET_KEY_"):
                 continue
             elif (
@@ -451,6 +463,7 @@ def test_pages_studies_is_read_only_source():
         STUDIES_CATALOG_ROOTS_KEY,
         STUDIES_VIEWER_PENDING_PATH_KEY,
         STUDIES_VIEWER_CATALOG_SELECT_KEY,
+        STUDIES_VIEWER_SELECTED_RUN_KEY,
     }
     assert STUDIES_BUILDER_DRAFT_KEY in written_keys
     assert STUDIES_BUILDER_PENDING_SYNC_KEY in written_keys
@@ -1099,3 +1112,152 @@ def test_study_viewer_model_is_current_requires_sv2_fields():
         ranked_display = None
 
     assert study_viewer_model_is_current(_Legacy()) is False
+
+    class _Sv2:
+        failed_cells_display = None
+        unique_error_lines = None
+        rollup_present = None
+        rollup_display = None
+        rollup_md = None
+        launch_log_present = None
+        launch_log_tail = None
+        peek_run_names = ()
+
+    assert study_viewer_model_is_current(_Sv2()) is False
+
+
+def test_peek_index_error_without_zip_and_in_dir_summary(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=1)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "failed"
+    ledger["cells"][names[0]]["error"] = "ValueError: boom"
+    for name in names[1:]:
+        ledger["cells"][name]["status"] = "ok"
+        ledger["cells"][name]["bundle_path"] = f"{name}.research.zip"
+    save_ledger(study_dir, ledger)
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert names[0] in model.peek_run_names
+    peek = peek_study_cell(model, names[0])
+    assert peek.present is True
+    assert peek.ledger_error == "ValueError: boom"
+    assert peek.kpis  # overview row still present on the completed fixture
+    # Fixture index still has bundle_path; strip it to prove no-zip peek.
+    index_path = study_dir / RESULTS_INDEX
+    frame = pd.read_csv(index_path)
+    frame.loc[frame["run_name"] == names[0], "bundle_path"] = ""
+    frame.to_csv(index_path, index=False)
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    bare = peek_study_cell(model, names[0])
+    assert bare.ledger_error == "ValueError: boom"
+    assert bare.trade_summary is None
+    assert bare.zip_path is None
+    assert "No bundle_path" in (bare.trade_summary_caption or "")
+
+    zipped = peek_study_cell(model, names[1])
+    assert zipped.trade_summary is not None
+    assert "profit_factor" in zipped.trade_summary
+    assert zipped.zip_path is not None
+    assert zipped.zip_path.is_file()
+    assert zipped.zip_path.is_relative_to(study_dir.resolve())
+    before = sorted(path.name for path in study_dir.iterdir())
+    payload = peek_zip_bytes(zipped, study_dir=study_dir)
+    assert payload == zipped.zip_path.read_bytes()
+    assert sorted(path.name for path in study_dir.iterdir()) == before
+
+    (study_dir / RESULTS_INDEX).unlink()
+    ledger_only = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    only = peek_study_cell(ledger_only, names[0])
+    assert only.kpis == {}
+    assert only.factors == {}
+    assert only.ledger_error == "ValueError: boom"
+    assert only.trade_summary is None
+    assert only.zip_path is None
+
+
+def test_peek_refuses_escape_and_missing_member(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=1)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    secret = tmp_path / "secret.research.zip"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "trade_summary.json",
+            json.dumps({"trade_summary": {"profit_factor": 99.0, "win_rate": 0.99}}),
+        )
+    secret.write_bytes(buffer.getvalue())
+    index_path = study_dir / RESULTS_INDEX
+    frame = pd.read_csv(index_path)
+    frame.loc[frame["run_name"] == names[0], "bundle_path"] = str(secret.resolve())
+    empty_zip = study_dir / "empty.research.zip"
+    with zipfile.ZipFile(empty_zip, "w") as archive:
+        archive.writestr("manifest.json", "{}")
+    frame.loc[frame["run_name"] == names[1], "bundle_path"] = "empty.research.zip"
+    frame.to_csv(index_path, index=False)
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    escaped = peek_study_cell(model, names[0])
+    assert escaped.trade_summary is None
+    assert escaped.zip_path is None
+    assert "outside" in (escaped.trade_summary_caption or "").lower()
+    assert peek_zip_bytes(escaped, study_dir=study_dir) is None
+
+    missing = peek_study_cell(model, names[1])
+    assert missing.trade_summary is None
+    assert missing.zip_path is not None
+    assert "missing" in (missing.trade_summary_caption or "")
+
+
+def test_inspect_peek_does_not_hydrate_or_switch_page():
+    source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    start = source.index("def _render_inspect_peek")
+    end = source.index("def _peek_summary_value")
+    peek_src = source[start:end]
+    assert "peek_study_cell" in peek_src
+    assert "peek_zip_bytes" in peek_src
+    assert "STUDIES_VIEWER_SELECTED_RUN_KEY" in peek_src
+    assert "Prepare download" in peek_src
+    assert "st.checkbox" in peek_src
+    assert "apply_research_bundle_to_session" not in peek_src
+    assert "st.switch_page" not in peek_src
+    assert "trades.parquet" not in peek_src
+    assert "equity_curve" not in peek_src
+    assert "run_study" not in peek_src
+    assert "rollup_study" not in peek_src
+
+
+def test_peek_run_names_skips_non_mapping_cells_and_uses_cached_ledger(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=1)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "failed"
+    ledger["cells"][names[0]]["error"] = "ValueError: cached"
+    ledger["cells"]["corrupt"] = "not-a-mapping"
+    save_ledger(study_dir, ledger)
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert "corrupt" not in model.peek_run_names
+    assert names[0] in model.peek_run_names
+    assert names[0] in model.ledger_cells
+    peek = peek_study_cell(model, names[0])
+    assert peek.ledger_error == "ValueError: cached"
+
+    ledger["cells"][names[0]]["error"] = "ValueError: disk-changed"
+    save_ledger(study_dir, ledger)
+    stale = peek_study_cell(model, names[0])
+    assert stale.ledger_error == "ValueError: cached"
+
+
+def test_peek_run_names_skips_null_overview_values():
+    overview = pd.DataFrame({"run_name": ["alpha", float("nan"), None, ""]})
+    assert peek_run_names(overview, None) == ("alpha",)

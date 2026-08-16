@@ -2,7 +2,7 @@
 
 Operator contract: [`docs/STUDY_RUNNER.md`](../../docs/STUDY_RUNNER.md)  
 Plan: [`docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md)  
-Study Viewer (catalog + `study list` + quality panes + overview charts shipped as SV1–SV3; cell peek is SV4): [`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md)  
+Study Viewer (SV1–SV4 shipped: catalog + `study list` + quality panes + overview charts + cell peek): [`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md)  
 External Grok routine pack (RS-D5): [`docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md`](../../docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md) · [`agents/`](agents/)
 
 | File | Cells | Notes |

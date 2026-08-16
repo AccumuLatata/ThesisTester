@@ -977,7 +977,7 @@ robustness (honest next steps after screening).
 
 **What it is.** Streamlit **Studies** (`pages/15_Studies.py`): **Inspect** lists
 local dirs under `results/studies/` and `out/` (one level) and loads `output_dir`
-(ledger, failed cells / groups / optional rollup, ranked / low-N / charts, OTF Δ,
+(ledger, failed cells / groups / optional rollup, ranked / low-N / charts / peek, OTF Δ,
 overview via `report_study(..., write_artifacts=False)`). Path paste still
 works. **Preview** validates `schema_version: 1` YAML (cell count /
 `--confirm`). **Run via CLI** spawns `python -m thesistester study run`.
@@ -998,7 +998,7 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 |---|---|---|
 | Study output directory | Study dir under cwd or local store | Extra-root paths refused |
 | Refresh catalog / Load selected | One-level `results/studies/` + `out/` list | Listing ≠ quality; empty catalog is OK |
-| Load / Refresh | In-memory overview, panes, charts | Path field; no overview/rollup write |
+| Load / Refresh | In-memory overview, panes, charts, peek | Path field; no overview/rollup write |
 | Canonical YAML / Preview | `schema_version: 1` validate + expand (cap 2_000) | Shorthand fails closed; changed YAML reseeds CLI output dir |
 | Load example / Copy spec | Example YAML or Inspect `study.spec.yaml` | Copy needs a loaded Inspect dir |
 | CLI output directory | Spawn target for `study run` | Not the Inspect dir; do not reuse another study’s dir |
@@ -1016,7 +1016,7 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 
 1. CLI `study expand` → `study run` → `study report`, or author on Build / preview first.
 2. **Studies** Inspect: **Load selected** or paste `output_dir` then Load.
-   After Load: failed-cell errors, groups, optional rollup / launch-log, charts.
+   After Load: quality panes, charts, cell peek (optional zip download).
    Refresh while in flight. `study list` is the CLI twin.
 3. **Build** (optional): example or closed catalog. New drafts emit
    `15s_primary_derive_1m`. Path is the same 15s Quantower CSV as Data
@@ -1038,7 +1038,7 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
   Parity with Data is the emitted RunSpec, not shared `session_state`.
 - Does not deep-link Research Bundles. Ranking / `run_count` are screening, not
   a validated edge.
-- Failed-cell errors / rollup / charts ≠ quality. Zip peek (SV4) is not shipped.
+- Failed-cell errors / rollup / charts / peek ≠ quality. Full charts stay Bundles import.
 
 **Related pages.** Research Study Runner (headless); Research Bundles; Validation
 and robustness.

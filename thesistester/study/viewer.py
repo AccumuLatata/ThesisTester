@@ -17,6 +17,11 @@ SV2 projects failed-cell errors, ``report.group_summaries``, optional
 
 SV3 Plotly charts stay on ``pages/15_Studies.py``. This module must not import
 Plotly or Streamlit.
+
+SV4 cell peek reads index + ledger error and optional ``trade_summary.json``
+behind the existing bundle-path sandbox. Ledger status comes from the cached
+``ledger_cells`` snapshot (same Load/Refresh as the failed-cell table). It
+does not hydrate classic session keys or unzip trades/equity.
 """
 
 from __future__ import annotations
@@ -33,6 +38,8 @@ from thesistester.study.ledger import load_ledger
 from thesistester.study.report import (
     RESULTS_INDEX,
     StudyReportError,
+    _bundle_path_within_study,
+    _read_bundle_trade_summary,
     StudyReportResult,
     _load_report_config,
     report_study,
@@ -69,6 +76,7 @@ STUDIES_CATALOG_ENTRIES_KEY = "studies_catalog_entries"
 STUDIES_CATALOG_ROOTS_KEY = "studies_catalog_roots_key"
 STUDIES_VIEWER_PENDING_PATH_KEY = "studies_viewer_pending_path"
 STUDIES_VIEWER_CATALOG_SELECT_KEY = "studies_viewer_catalog_select"
+STUDIES_VIEWER_SELECTED_RUN_KEY = "studies_viewer_selected_run"
 
 CATALOG_SCAN_PREFIXES: tuple[str, ...] = ("results/studies", "out")
 CATALOG_DISPLAY_CAP = 50
@@ -79,6 +87,15 @@ LAUNCH_LOG_TAIL_BYTES = 8192
 ROLLUP_CSV_NAME = "study.rollup.csv"
 ROLLUP_MD_NAME = "study.rollup.md"
 LAUNCH_LOG_NAME = "study.launch.log"
+PEEK_KPI_COLUMNS: tuple[str, ...] = (
+    "status",
+    "trade_count",
+    "profit_factor",
+    "win_rate",
+    "max_drawdown_r",
+    "bundle_path",
+    "profit_factor_source",
+)
 
 
 class StudyViewerError(ValueError):
@@ -642,6 +659,177 @@ def _read_identity(study_dir: Path) -> tuple[str | None, int | None, str | None]
     return identity_hash, run_count, study_name
 
 
+def _display_scalar(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        if value is pd.NA or pd.isna(value):
+            return "—"
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    return text if text else "—"
+
+
+def _run_name_text(value: Any) -> str:
+    """Stable non-empty run_name, or empty string for null / NaN cells."""
+    if value is None:
+        return ""
+    try:
+        if value is pd.NA or pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    return text
+
+
+def _overview_row(overview: pd.DataFrame, run_name: str) -> dict[str, Any] | None:
+    if overview is None or overview.empty or "run_name" not in overview.columns:
+        return None
+    match = overview.loc[overview["run_name"].map(_run_name_text) == run_name]
+    if match.empty:
+        return None
+    return {str(col): match.iloc[0][col] for col in match.columns}
+
+
+def _mapping_ledger_cells(ledger: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Shallow copy of mapping ledger cells. Skips corrupt non-mapping values."""
+    if not isinstance(ledger, Mapping):
+        return {}
+    cells = ledger.get("cells")
+    if not isinstance(cells, Mapping):
+        return {}
+    mapped: dict[str, Any] = {}
+    for name, cell in cells.items():
+        if not isinstance(cell, Mapping):
+            continue
+        key = _run_name_text(name)
+        if key:
+            mapped[key] = dict(cell)
+    return mapped
+
+
+def _ledger_cell(cells: Mapping[str, Any] | None, run_name: str) -> Mapping[str, Any] | None:
+    if not isinstance(cells, Mapping):
+        return None
+    cell = cells.get(run_name)
+    return cell if isinstance(cell, Mapping) else None
+
+
+def peek_run_names(overview: pd.DataFrame, ledger: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """Union of overview ``run_name`` values and mapping ledger cell keys."""
+    names: set[str] = set()
+    if overview is not None and not overview.empty and "run_name" in overview.columns:
+        names.update(
+            text
+            for text in (_run_name_text(name) for name in overview["run_name"].tolist())
+            if text
+        )
+    names.update(_mapping_ledger_cells(ledger))
+    return tuple(sorted(names))
+
+
+@dataclass(frozen=True)
+class StudyCellPeek:
+    """Read-only one-cell Inspect projection. Not a classic-session import."""
+
+    run_name: str
+    present: bool
+    factors: dict[str, str]
+    kpis: dict[str, str]
+    ledger_status: str | None
+    ledger_error: str | None
+    trade_summary: dict[str, Any] | None
+    trade_summary_caption: str | None
+    zip_path: Path | None
+    zip_name: str | None
+
+
+def peek_study_cell(model: StudyViewerModel, run_name: str) -> StudyCellPeek:
+    """Index + ledger error + optional ``trade_summary.json`` (sandboxed).
+
+    Does not unzip ``trades.parquet`` / equity / signals. Escaping
+    ``bundle_path`` is refused. Missing zip member is a caption.
+    """
+    name = str(run_name or "").strip()
+    row = _overview_row(model.report.overview, name)
+    cell = _ledger_cell(getattr(model, "ledger_cells", None), name)
+    present = row is not None or cell is not None
+    factors: dict[str, str] = {}
+    kpis: dict[str, str] = {}
+    if row is not None:
+        for col, value in row.items():
+            if str(col).startswith("factor_"):
+                factors[str(col)] = _display_scalar(value)
+        metric = model.report.primary_metric
+        for col in (metric, *PEEK_KPI_COLUMNS):
+            if col in row:
+                kpis[col] = _display_scalar(row[col])
+    ledger_status = None
+    ledger_error = None
+    if cell is not None:
+        ledger_status = str(cell.get("status") or "") or None
+        if ledger_status == "failed":
+            error = cell.get("error")
+            ledger_error = "unknown error" if error is None or str(error) == "" else str(error)
+
+    bundle_rel = ""
+    if row is not None:
+        bundle_rel = _display_scalar(row.get("bundle_path"))
+        if bundle_rel == "—":
+            bundle_rel = ""
+    if not bundle_rel and cell is not None:
+        raw_bundle = cell.get("bundle_path")
+        if raw_bundle is not None and str(raw_bundle).strip():
+            bundle_rel = str(raw_bundle).strip()
+
+    trade_summary = None
+    caption = None
+    zip_path = None
+    zip_name = None
+    if not bundle_rel:
+        if present:
+            caption = "No bundle_path on this cell — peek does not open a zip."
+    else:
+        resolved = _bundle_path_within_study(model.study_dir, bundle_rel)
+        if resolved is None:
+            caption = "bundle_path is outside the study directory and was refused."
+        elif not resolved.is_file():
+            caption = "bundle_path is not a file inside the study directory."
+        else:
+            zip_path = resolved
+            zip_name = resolved.name
+            trade_summary = _read_bundle_trade_summary(resolved)
+            if trade_summary is None:
+                caption = "trade_summary.json is missing from the zip (or unreadable)."
+    return StudyCellPeek(
+        run_name=name,
+        present=present,
+        factors=factors,
+        kpis=kpis,
+        ledger_status=ledger_status,
+        ledger_error=ledger_error,
+        trade_summary=trade_summary,
+        trade_summary_caption=caption,
+        zip_path=zip_path,
+        zip_name=zip_name,
+    )
+
+
+def peek_zip_bytes(peek: StudyCellPeek, *, study_dir: Path) -> bytes | None:
+    """Read sandboxed zip bytes for download. Does not write the study dir."""
+    if peek.zip_path is None:
+        return None
+    root = Path(study_dir).resolve()
+    resolved = peek.zip_path.resolve()
+    if not resolved.is_file() or not resolved.is_relative_to(root):
+        return None
+    return resolved.read_bytes()
+
+
 @dataclass(frozen=True)
 class StudyViewerModel:
     """Read-only snapshot for the Streamlit Studies page."""
@@ -668,10 +856,12 @@ class StudyViewerModel:
     rollup_md: str
     launch_log_present: bool
     launch_log_tail: str
+    peek_run_names: tuple[str, ...]
+    ledger_cells: dict[str, Any]
 
 
 def study_viewer_model_is_current(model: object) -> bool:
-    """True when a cached Inspect model has the SV2 quality fields."""
+    """True when a cached Inspect model has the SV2 quality + SV4 peek fields."""
     return all(
         hasattr(model, name)
         for name in (
@@ -682,6 +872,8 @@ def study_viewer_model_is_current(model: object) -> bool:
             "rollup_md",
             "launch_log_present",
             "launch_log_tail",
+            "peek_run_names",
+            "ledger_cells",
         )
     )
 
@@ -858,4 +1050,6 @@ def load_study_view(
         rollup_md=rollup.markdown,
         launch_log_present=log_tail is not None,
         launch_log_tail=log_tail or "",
+        peek_run_names=peek_run_names(report.overview, ledger),
+        ledger_cells=_mapping_ledger_cells(ledger),
     )
