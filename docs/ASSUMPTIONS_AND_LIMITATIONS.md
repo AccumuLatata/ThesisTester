@@ -978,7 +978,7 @@ other than the last bar in the dataset.
   before expecting dense overfitting columns in the rollup.
 - Rollup markdown is descriptive only: present diagnostics ≠ validated edge.
 
-## Studies Inspect listing, quality panes, and charts (SV1–SV3 shipped; SV4 specified)
+## Studies Inspect listing, quality panes, charts, and cell peek (SV1–SV4 shipped)
 
 - The Study Viewer catalog (`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`, SV1)
   **lists** local study directories under `results/studies/` and `out/`.
@@ -998,7 +998,7 @@ other than the last bar in the dataset.
   exists does not create diagnostics.
 - Cell peek of `trade_summary.json` is the same per-cell summary already
   used for PF/WR fallback — not a validated edge and not a classic-session
-  import.
+  import. Full trade/equity charts stay Research Bundles upload/import.
 
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.

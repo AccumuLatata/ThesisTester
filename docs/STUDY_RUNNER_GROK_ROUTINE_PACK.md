@@ -36,7 +36,7 @@ server for this surface.
 |---|---|---|
 | CLI `python -m thesistester study …` | **Always preferred** | Works with `assistant.study_tools.enabled=false` |
 | RS6 `STUDY.expand\|run\|report\|promote` | Opt-in only | Same APIs; handlers refuse when flag off |
-| Studies viewer (RS-D2 / RS-D8) | Human inspect + preview | Artifacts-only inspect; YAML preview; no in-process execute |
+| Studies viewer (RS-D2 / RS-D8 / SV) | Human inspect + preview | Artifacts-only inspect; catalog / charts / cell peek; YAML preview; no in-process execute. Coworkers still CLI |
 | Studies CLI-launch (RS-D9) | Human convenience | Spawns the same `study run` argv; not a second runner; two-step confirm on the **pinned** hash |
 | Studies Build (SB1–SB3) | Humans may author YAML via **Build StudySpec** | Coworkers still CLI; Apply to Preview then existing Validate / Preview → Run via CLI |
 | `study rollup` (RS-D4) | After survivor batteries | Compose-only; `not_run` when batteries off |
