@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-16  
-**Status:** **SV0 plan-locked.** SV1–SV4 not started.  
+**Status:** **SV0 + SV1 shipped.** SV2–SV4 not started.  
 **Series code:** **SV** (Study Viewer)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** Research Study Runner RS1–RS5 + RS-D7 + RS-D2 + RS-D4 + RS-D8 + RS-D9; Study Builder SB1–SB3; Study Ingest Alignment SIA0–SIA3  

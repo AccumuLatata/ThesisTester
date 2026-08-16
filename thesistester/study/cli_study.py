@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5, RS-D4)."""
+"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5, RS-D4, SV1)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,12 @@ from thesistester.study.promote import StudyPromoteError, promote_study
 from thesistester.study.report import StudyReportError, report_study
 from thesistester.study.rollup import StudyRollupError, rollup_study
 from thesistester.study.schema import StudySpecError
+from thesistester.study.viewer import (
+    StudyViewerError,
+    discover_study_dirs,
+    format_study_catalog_table,
+    split_catalog_scan_paths,
+)
 
 _FAILED_ERROR_PRINT_CAP = 5
 
@@ -53,7 +59,7 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``study`` command group on the root CLI parser."""
     study_parser = subparsers.add_parser(
         "study",
-        help="Research Study Runner (expand / run / report / promote / rollup)",
+        help="Research Study Runner (expand / run / report / promote / rollup / list)",
     )
     study_sub = study_parser.add_subparsers(dest="study_command", required=True)
 
@@ -150,9 +156,25 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         help="Completed study output directory (results_index + optional cell bundles)",
     )
 
+    list_parser = study_sub.add_parser(
+        "list",
+        help="List local study directories under results/studies/ and out/ (no writes)",
+    )
+    list_parser.add_argument(
+        "--root",
+        action="append",
+        dest="roots",
+        type=Path,
+        default=None,
+        help=(
+            "Trusted root to scan (repeatable). Must stay under cwd or the local "
+            "store. Default: cwd and the ThesisTester store."
+        ),
+    )
+
 
 def dispatch_study(args: argparse.Namespace) -> int:
-    """Dispatch ``study expand|run|report|promote|rollup``; return process exit code."""
+    """Dispatch ``study expand|run|report|promote|rollup|list``; return process exit code."""
     try:
         if args.study_command == "expand":
             return _cmd_expand(args)
@@ -164,6 +186,8 @@ def dispatch_study(args: argparse.Namespace) -> int:
             return _cmd_promote(args)
         if args.study_command == "rollup":
             return _cmd_rollup(args)
+        if args.study_command == "list":
+            return _cmd_list(args)
     except StudySpecError as exc:
         print(f"StudySpec error: {exc}", file=sys.stderr)
         return 2
@@ -175,6 +199,9 @@ def dispatch_study(args: argparse.Namespace) -> int:
         return 2
     except StudyRollupError as exc:
         print(f"Study rollup error: {exc}", file=sys.stderr)
+        return 2
+    except StudyViewerError as exc:
+        print(f"Study list error: {exc}", file=sys.stderr)
         return 2
     except ValueError as exc:
         print(f"Study error: {exc}", file=sys.stderr)
@@ -271,4 +298,11 @@ def _cmd_rollup(args: argparse.Namespace) -> int:
     print("Compose-only: no cross-cell PBO/DSR; missing batteries → not_run.")
     print(f"Artifacts: {result.paths['study.rollup.csv']}")
     print(f"           {result.paths['study.rollup.md']}")
+    return os.EX_OK
+
+
+def _cmd_list(args: argparse.Namespace) -> int:
+    roots, extras = split_catalog_scan_paths(args.roots)
+    entries = discover_study_dirs(roots, extra_dirs=extras)
+    print(format_study_catalog_table(entries))
     return os.EX_OK

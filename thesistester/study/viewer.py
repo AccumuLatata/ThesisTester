@@ -1,4 +1,4 @@
-"""RS-D2 read-only Studies viewer helpers.
+"""RS-D2 / SV1 read-only Studies viewer helpers.
 
 Loads completed study artifacts via ``report_study`` / ``load_ledger``. Does not
 execute cells, promote drafts, rewrite overview artifacts, or mutate classic
@@ -7,6 +7,9 @@ research session state.
 Inspect progress is derived from the already-loaded ledger / overview counts
 (``ok`` + ``failed`` + ``skipped`` over ``run_count``). It is not a quality
 metric, ETA, or job queue.
+
+SV1 catalog discovery scans one level of ``results/studies/`` and ``out/``
+under trusted roots. It does not call ``report_study``.
 """
 
 from __future__ import annotations
@@ -54,6 +57,15 @@ STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
 # Cached StudyViewerModel so Streamlit tab/widget reruns do not re-aggregate.
 STUDIES_VIEWER_CACHED_MODEL_KEY = "studies_viewer_cached_model"
 STUDIES_VIEWER_CACHED_MODEL_DIR_KEY = "studies_viewer_cached_model_dir"
+# SV1 catalog cache + pending path-widget sync (Build pending-sync pattern).
+STUDIES_CATALOG_ENTRIES_KEY = "studies_catalog_entries"
+STUDIES_CATALOG_ROOTS_KEY = "studies_catalog_roots_key"
+STUDIES_VIEWER_PENDING_PATH_KEY = "studies_viewer_pending_path"
+STUDIES_VIEWER_CATALOG_SELECT_KEY = "studies_viewer_catalog_select"
+
+CATALOG_SCAN_PREFIXES: tuple[str, ...] = ("results/studies", "out")
+CATALOG_DISPLAY_CAP = 50
+STUDY_SPEC_FILENAME = "study.spec.yaml"
 
 
 class StudyViewerError(ValueError):
@@ -83,6 +95,226 @@ def resolve_study_dir(
     if not candidate.is_dir():
         raise StudyViewerError(f"Study directory does not exist: {candidate}")
     return candidate
+
+
+@dataclass(frozen=True)
+class StudyCatalogEntry:
+    """One local study dir discovered under trusted scan prefixes."""
+
+    study_dir: Path
+    study_name: str
+    study_identity_hash: str | None
+    run_count: int | None
+    ok: int
+    failed: int
+    skipped: int
+    running: int
+    pending: int
+    ledger_present: bool
+    index_present: bool
+    mtime: float
+
+
+def is_study_dir(path: Path) -> bool:
+    """Recognition rule: directory containing ``study.spec.yaml``."""
+    return path.is_dir() and (path / STUDY_SPEC_FILENAME).is_file()
+
+
+def _under_trusted(path: Path, trusted: Sequence[Path]) -> bool:
+    return any(path == root or path.is_relative_to(root) for root in trusted)
+
+
+def resolve_catalog_roots(raw_roots: Sequence[Path | str] | None = None) -> tuple[Path, ...]:
+    """Resolve ``--root`` values; refuse paths outside default trusted roots."""
+    roots, extras = split_catalog_scan_paths(raw_roots)
+    return roots + extras
+
+
+def split_catalog_scan_paths(
+    raw_roots: Sequence[Path | str] | None = None,
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Map CLI ``--root`` PATHs into prefix-scan roots vs extra dirs (§4.9).
+
+    ``--root`` replaces the default roots (no implicit cwd+store union).
+    Trusted-root PATHs go to ``roots`` (prefix scan). Prefix dirs, study
+    dirs, and other in-root dirs go to ``extra_dirs``.
+    """
+    trusted = default_study_viewer_roots()
+    if not raw_roots:
+        return trusted, ()
+    roots: list[Path] = []
+    extras: list[Path] = []
+    for raw in raw_roots:
+        candidate = Path(raw).expanduser().resolve()
+        if not _under_trusted(candidate, trusted):
+            raise StudyViewerError(
+                "Study path is outside the trusted local roots "
+                f"(cwd and store). Resolved path: {candidate}"
+            )
+        if not candidate.is_dir():
+            raise StudyViewerError(f"Study directory does not exist: {candidate}")
+        if any(candidate == root for root in trusted):
+            roots.append(candidate)
+        else:
+            extras.append(candidate)
+    return tuple(roots), tuple(extras)
+
+
+def catalog_load_path(raw: str | Path, *, roots: Sequence[Path] | None = None) -> str:
+    """Resolve a catalog pick to the Inspect path string.
+
+    Prefer a cwd-relative path when the study sits under the process cwd;
+    otherwise return the resolved absolute path.
+    """
+    resolved = resolve_study_dir(raw, roots=roots)
+    cwd = Path.cwd().resolve()
+    try:
+        return str(resolved.relative_to(cwd))
+    except ValueError:
+        return str(resolved)
+
+
+def catalog_cache_stamp(
+    roots: Sequence[Path],
+    extra_dirs: Sequence[str | Path] = (),
+) -> str:
+    """Identity for the Inspect catalog cache (Refresh catalog rescans)."""
+    root_part = "|".join(str(Path(root).resolve()) for root in roots)
+    extra_part = "|".join(str(item).strip() for item in extra_dirs if str(item).strip())
+    return f"{root_part}::{extra_part}"
+
+
+def _safe_mtime(path: Path) -> float | None:
+    try:
+        return float(path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _catalog_mtime(study_dir: Path) -> float:
+    times: list[float] = []
+    for path in (
+        study_dir,
+        study_dir / "study.ledger.json",
+        study_dir / RESULTS_INDEX,
+        study_dir / "study.expansion.json",
+        study_dir / STUDY_SPEC_FILENAME,
+    ):
+        if path != study_dir and not path.is_file():
+            continue
+        stamp = _safe_mtime(path)
+        if stamp is not None:
+            times.append(stamp)
+    return max(times) if times else 0.0
+
+
+def _iter_study_children(base: Path) -> tuple[Path, ...]:
+    try:
+        if not base.is_dir():
+            return ()
+        children = list(base.iterdir())
+    except OSError:
+        return ()
+    hits: list[Path] = []
+    for child in children:
+        try:
+            if is_study_dir(child):
+                hits.append(child.resolve())
+        except OSError:
+            continue
+    return tuple(hits)
+
+
+def _catalog_entry_from_dir(study_dir: Path) -> StudyCatalogEntry:
+    """Best-effort catalog row. Never calls ``report_study``."""
+    identity_hash, run_count, spec_name = _read_identity(study_dir)
+    ledger_present = False
+    counts: dict[str, int] = {}
+    try:
+        ledger = load_ledger(study_dir)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, TypeError):
+        ledger = None
+    if ledger is not None:
+        ledger_present = True
+        counts = _ledger_status_counts(ledger)
+    return StudyCatalogEntry(
+        study_dir=study_dir,
+        study_name=spec_name or study_dir.name,
+        study_identity_hash=identity_hash,
+        run_count=run_count,
+        ok=int(counts.get("ok") or 0),
+        failed=int(counts.get("failed") or 0),
+        skipped=int(counts.get("skipped") or 0),
+        running=int(counts.get("running") or 0),
+        pending=int(counts.get("pending") or 0),
+        ledger_present=ledger_present,
+        index_present=(study_dir / RESULTS_INDEX).is_file(),
+        mtime=_catalog_mtime(study_dir),
+    )
+
+
+def discover_study_dirs(
+    roots: Sequence[Path] | None = None,
+    *,
+    extra_dirs: Sequence[str | Path] = (),
+) -> tuple[StudyCatalogEntry, ...]:
+    """List study dirs one level under ``results/studies/`` and ``out/``.
+
+    Does not call ``report_study``, ``run_study``, or ``rollup_study``.
+    Corrupt ledger / expansion on one dir does not fail the catalog.
+    ``roots is None`` uses default trusted roots. An empty ``roots`` tuple
+    skips the prefix scan (CLI ``--root`` extras-only).
+    """
+    if roots is None:
+        allowed = default_study_viewer_roots()
+    else:
+        allowed = tuple(Path(root).resolve() for root in roots)
+    sandbox = allowed if allowed else default_study_viewer_roots()
+    found: dict[Path, StudyCatalogEntry] = {}
+    for root in allowed:
+        for prefix in CATALOG_SCAN_PREFIXES:
+            for resolved in _iter_study_children(root / prefix):
+                if not any(resolved.is_relative_to(item) for item in sandbox):
+                    continue
+                found[resolved] = _catalog_entry_from_dir(resolved)
+    for raw in extra_dirs:
+        if raw is None or not str(raw).strip():
+            continue
+        try:
+            extra = Path(raw).expanduser().resolve()
+        except OSError:
+            continue
+        if not extra.is_dir() or not _under_trusted(extra, sandbox):
+            continue
+        if is_study_dir(extra):
+            found[extra] = _catalog_entry_from_dir(extra)
+            continue
+        for resolved in _iter_study_children(extra):
+            if _under_trusted(resolved, sandbox):
+                found[resolved] = _catalog_entry_from_dir(resolved)
+    entries = list(found.values())
+    entries.sort(key=lambda item: (-item.mtime, item.study_name.lower(), str(item.study_dir)))
+    return tuple(entries)
+
+
+def format_study_catalog_table(entries: Sequence[StudyCatalogEntry]) -> str:
+    """Stable text table for ``study list`` (no JSON schema)."""
+    if not entries:
+        return "No study directories found under results/studies/ or out/."
+    headers = ("study_name", "ok/failed/skipped/running/pending", "run_count", "path")
+    rows: list[tuple[str, str, str, str]] = []
+    for entry in entries:
+        counts = f"{entry.ok}/{entry.failed}/{entry.skipped}/{entry.running}/{entry.pending}"
+        run_count = "—" if entry.run_count is None else str(entry.run_count)
+        rows.append((entry.study_name, counts, run_count, str(entry.study_dir)))
+    widths = [len(header) for header in headers]
+    for row in rows:
+        for index, cell in enumerate(row):
+            widths[index] = max(widths[index], len(cell))
+    lines = ["  ".join(header.ljust(widths[index]) for index, header in enumerate(headers))]
+    for row in rows:
+        lines.append("  ".join(cell.ljust(widths[index]) for index, cell in enumerate(row)))
+    return "\n".join(lines)
 
 
 def _ledger_status_counts(ledger: Mapping[str, Any] | None) -> dict[str, int]:

@@ -20,11 +20,19 @@ from thesistester.study.builder import (
 from thesistester.study.report import RESULTS_INDEX
 from thesistester.study.viewer import (
     CLASSIC_RESEARCH_SESSION_KEYS,
+    STUDIES_CATALOG_ENTRIES_KEY,
+    STUDIES_CATALOG_ROOTS_KEY,
     STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
     STUDIES_VIEWER_CACHED_MODEL_KEY,
+    STUDIES_VIEWER_CATALOG_SELECT_KEY,
     STUDIES_VIEWER_DIR_KEY,
+    STUDIES_VIEWER_PENDING_PATH_KEY,
     StudyViewerError,
+    catalog_load_path,
+    discover_study_dirs,
+    format_study_catalog_table,
     load_study_view,
+    resolve_catalog_roots,
     resolve_study_dir,
     summarize_ledger_progress,
 )
@@ -290,6 +298,9 @@ def test_pages_studies_is_read_only_source():
     assert page.is_file()
     source = page.read_text(encoding="utf-8")
     assert "load_study_view" in source
+    assert "discover_study_dirs" in source
+    assert "Refresh catalog" in source
+    assert "Load selected" in source
     assert "st.progress" in source
     assert "Ranked tables stay empty until Refresh after" in source
     assert "results_index.csv` is absent" in source
@@ -358,6 +369,22 @@ def test_pages_studies_is_read_only_source():
                 and slice_node.id == "STUDIES_BUILDER_PENDING_SYNC_KEY"
             ):
                 written_keys.add(STUDIES_BUILDER_PENDING_SYNC_KEY)
+            elif (
+                isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_CATALOG_ENTRIES_KEY"
+            ):
+                written_keys.add(STUDIES_CATALOG_ENTRIES_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_CATALOG_ROOTS_KEY":
+                written_keys.add(STUDIES_CATALOG_ROOTS_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_PENDING_PATH_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_PENDING_PATH_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_CATALOG_SELECT_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_CATALOG_SELECT_KEY)
             elif isinstance(slice_node, ast.Name) and slice_node.id.startswith("WIDGET_KEY_"):
                 continue
             elif (
@@ -390,9 +417,15 @@ def test_pages_studies_is_read_only_source():
         "studies_launch_approval",
         STUDIES_BUILDER_DRAFT_KEY,
         STUDIES_BUILDER_PENDING_SYNC_KEY,
+        STUDIES_CATALOG_ENTRIES_KEY,
+        STUDIES_CATALOG_ROOTS_KEY,
+        STUDIES_VIEWER_PENDING_PATH_KEY,
+        STUDIES_VIEWER_CATALOG_SELECT_KEY,
     }
     assert STUDIES_BUILDER_DRAFT_KEY in written_keys
     assert STUDIES_BUILDER_PENDING_SYNC_KEY in written_keys
+    assert STUDIES_CATALOG_ENTRIES_KEY in written_keys
+    assert STUDIES_VIEWER_PENDING_PATH_KEY in written_keys
     assert not (written_keys & CLASSIC_RESEARCH_SESSION_KEYS)
 
 
@@ -401,3 +434,182 @@ def test_viewer_module_does_not_touch_classic_keys():
     for key in CLASSIC_RESEARCH_SESSION_KEYS:
         # Keys appear only in the deny-list constant definition.
         assert source.count(f'"{key}"') == 1
+
+
+def _write_catalog_study(
+    parent: Path,
+    name: str,
+    *,
+    ledger_ok: int = 0,
+    ledger_failed: int = 0,
+    corrupt_ledger: bool = False,
+    run_count: int | None = 2,
+) -> Path:
+    parent.mkdir(parents=True, exist_ok=True)
+    study_dir = parent / name
+    study_dir.mkdir()
+    (study_dir / "study.spec.yaml").write_text(
+        f"schema_version: 1\nstudy:\n  name: {name}\n",
+        encoding="utf-8",
+    )
+    if run_count is not None:
+        (study_dir / "study.expansion.json").write_text(
+            json.dumps({"study_identity_hash": f"hash-{name}", "run_count": run_count}),
+            encoding="utf-8",
+        )
+    if corrupt_ledger:
+        (study_dir / "study.ledger.json").write_text("{not-json", encoding="utf-8")
+        return study_dir
+    if ledger_ok or ledger_failed:
+        cells = {}
+        for index in range(ledger_ok):
+            cells[f"ok_{index}"] = {"status": "ok"}
+        for index in range(ledger_failed):
+            cells[f"failed_{index}"] = {"status": "failed", "error": "boom"}
+        (study_dir / "study.ledger.json").write_text(
+            json.dumps({"cells": cells}),
+            encoding="utf-8",
+        )
+    return study_dir
+
+
+def test_discover_study_dirs_scans_prefixes_only(tmp_path: Path):
+    listed_a = _write_catalog_study(tmp_path / "results" / "studies", "alpha", ledger_ok=2)
+    listed_b = _write_catalog_study(tmp_path / "out", "beta", ledger_ok=1, ledger_failed=1)
+    skipped = tmp_path / "results" / "studies" / "not_a_study"
+    skipped.mkdir(parents=True)
+    (skipped / "readme.txt").write_text("no spec", encoding="utf-8")
+    nested = tmp_path / "results" / "studies" / "alpha" / "nested"
+    _write_catalog_study(nested, "too_deep")
+    fixtures = tmp_path / "tests" / "fixtures" / "study"
+    _write_catalog_study(fixtures, "golden_hit")
+
+    entries = discover_study_dirs((tmp_path.resolve(),))
+    names = {entry.study_name for entry in entries}
+    assert names == {"alpha", "beta"}
+    by_name = {entry.study_name: entry for entry in entries}
+    assert by_name["alpha"].study_dir == listed_a.resolve()
+    assert by_name["alpha"].ok == 2
+    assert by_name["alpha"].run_count == 2
+    assert by_name["beta"].study_dir == listed_b.resolve()
+    assert by_name["beta"].failed == 1
+    assert all(entry.study_name != "too_deep" for entry in entries)
+    assert all(entry.study_name != "golden_hit" for entry in entries)
+
+
+def test_discover_study_dirs_tolerates_corrupt_ledger_and_skips_report(tmp_path: Path, monkeypatch):
+    _write_catalog_study(tmp_path / "out", "gamma", corrupt_ledger=True)
+    extra = _write_catalog_study(tmp_path / "scratch", "extra_loaded", run_count=3)
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("discover must not call report_study")
+
+    monkeypatch.setattr("thesistester.study.viewer.report_study", _boom)
+    entries = discover_study_dirs(
+        (tmp_path.resolve(),),
+        extra_dirs=(str(extra),),
+    )
+    names = {entry.study_name: entry for entry in entries}
+    assert "gamma" in names
+    assert names["gamma"].ledger_present is False
+    assert names["gamma"].ok == 0
+    assert names["extra_loaded"].run_count == 3
+    assert names["extra_loaded"].study_identity_hash == "hash-extra_loaded"
+
+
+def test_discover_and_catalog_load_refuse_extra_root(tmp_path: Path):
+    inside = _write_catalog_study(tmp_path / "out", "inside")
+    outside = tmp_path.parent / "outside_sv1_catalog"
+    outside.mkdir(exist_ok=True)
+    (outside / "study.spec.yaml").write_text("schema_version: 1\nstudy:\n  name: leak\n")
+    with pytest.raises(StudyViewerError, match="trusted local roots"):
+        resolve_catalog_roots((outside,))
+    with pytest.raises(StudyViewerError, match="trusted local roots"):
+        catalog_load_path(outside, roots=(tmp_path.resolve(),))
+    path = catalog_load_path(inside, roots=(tmp_path.resolve(),))
+    assert Path(path).name == "inside"
+
+
+def test_format_study_catalog_table_stable_headers(tmp_path: Path):
+    _write_catalog_study(tmp_path / "out", "delta", ledger_ok=1)
+    entries = discover_study_dirs((tmp_path.resolve(),))
+    table = format_study_catalog_table(entries)
+    assert table.startswith("study_name")
+    assert "ok/failed/skipped/running/pending" in table.splitlines()[0]
+    assert "delta" in table
+    assert format_study_catalog_table(()) == (
+        "No study directories found under results/studies/ or out/."
+    )
+
+
+def test_cli_study_list_additive_and_refuses_extra_root(tmp_path: Path, monkeypatch, capsys):
+    from thesistester.cli import main as cli_main
+
+    _write_catalog_study(tmp_path / "results" / "studies", "cli_alpha")
+    monkeypatch.setattr(
+        "thesistester.study.viewer.default_study_viewer_roots",
+        lambda: (tmp_path.resolve(),),
+    )
+    assert cli_main(["study", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "cli_alpha" in out
+    assert "study_name" in out
+
+    outside = tmp_path.parent / "outside_sv1_cli"
+    outside.mkdir(exist_ok=True)
+    assert cli_main(["study", "list", "--root", str(outside)]) == 2
+    err = capsys.readouterr().err
+    assert "trusted local roots" in err
+
+    study_only = _write_catalog_study(tmp_path / "scratch", "solo")
+    assert cli_main(["study", "list", "--root", str(study_only)]) == 0
+    solo_out = capsys.readouterr().out
+    assert "solo" in solo_out
+    assert "cli_alpha" not in solo_out
+
+    assert cli_main(["study", "list", "--root", str(tmp_path / "results" / "studies")]) == 0
+    prefix_out = capsys.readouterr().out
+    assert "cli_alpha" in prefix_out
+
+    assert cli_main(["study", "list", "--root", str(tmp_path)]) == 0
+    root_out = capsys.readouterr().out
+    assert "cli_alpha" in root_out
+
+    missing = tmp_path / "does_not_exist"
+    assert cli_main(["study", "list", "--root", str(missing)]) == 2
+    assert "does not exist" in capsys.readouterr().err
+
+    from thesistester.cli import _parser
+
+    parsed = _parser().parse_args(["study", "expand", "spec.yaml", "--output-dir", "out/x"])
+    assert parsed.study_command == "expand"
+    assert parsed.output_dir == Path("out/x")
+
+
+def test_viewer_module_import_allow_list():
+    source = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    assert "thesistester.study.execute" not in imported
+    assert "thesistester.study.launch" not in imported
+    assert "thesistester.study.cli_study" not in imported
+    assert "thesistester.cli" not in imported
+    assert "plotly" not in imported
+    assert "streamlit" not in imported
+
+
+def test_inspect_catalog_handler_does_not_call_load_study_view():
+    source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    start = source.index("def _render_inspect_catalog")
+    end = source.index("def _render_inspect(")
+    catalog_src = source[start:end]
+    assert "discover_study_dirs" in catalog_src
+    assert "catalog_load_path" in catalog_src
+    assert "load_study_view" not in catalog_src
+    assert "run_study" not in catalog_src
+    assert "rollup_study" not in catalog_src

@@ -82,14 +82,14 @@ different experiment). Do not implement further SIA work by importing
 `pages/1_Data.py`, reading classic `st.session_state`, or editing `engine/`
 / `api.run_experiment` loaders.
 
-**SV (plan-locked):** Study Viewer Inspect UX —
-`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV0; SV1–SV4 not started).
-Catalog + quality panes + overview charts + cell peek on existing Studies
-Inspect. Do not implement SV inside an RS/SB/SIA PR. Do not call
-`run_study()`, `report_study` write, or `rollup_study()` from Inspect.
-`viewer.py` must not import `cli_study` / `thesistester.cli` / `execute`.
-Do not hydrate classic `st.session_state`. Operator contract:
-`docs/STUDY_RUNNER.md` §SV.
+**SV (SV1 shipped):** Study Viewer Inspect catalog —
+`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. `discover_study_dirs` + Inspect
+**Load selected** + additive `python -m thesistester study list`. Do not
+implement SV2–SV4 inside an RS/SB/SIA PR. Discover must not call
+`report_study`. Do not call `run_study()`, `report_study` write, or
+`rollup_study()` from Inspect. `viewer.py` must not import `cli_study` /
+`thesistester.cli` / `execute`. Do not hydrate classic `st.session_state`.
+Operator contract: `docs/STUDY_RUNNER.md` §SV.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:

@@ -29,9 +29,13 @@ from thesistester.study.preview import (
 from thesistester.study.schema import StudySpecError
 from thesistester.study.viewer import (
     CLASSIC_RESEARCH_SESSION_KEYS,
+    STUDIES_CATALOG_ENTRIES_KEY,
+    STUDIES_CATALOG_ROOTS_KEY,
     STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
     STUDIES_VIEWER_CACHED_MODEL_KEY,
+    STUDIES_VIEWER_CATALOG_SELECT_KEY,
     STUDIES_VIEWER_DIR_KEY,
+    STUDIES_VIEWER_PENDING_PATH_KEY,
 )
 
 
@@ -198,6 +202,22 @@ def test_pages_studies_preview_has_no_execute_controls():
                 and slice_node.id == "STUDIES_BUILDER_PENDING_SYNC_KEY"
             ):
                 written_keys.add(STUDIES_BUILDER_PENDING_SYNC_KEY)
+            elif (
+                isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_CATALOG_ENTRIES_KEY"
+            ):
+                written_keys.add(STUDIES_CATALOG_ENTRIES_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_CATALOG_ROOTS_KEY":
+                written_keys.add(STUDIES_CATALOG_ROOTS_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_PENDING_PATH_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_PENDING_PATH_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_CATALOG_SELECT_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_CATALOG_SELECT_KEY)
             elif isinstance(slice_node, ast.Name) and slice_node.id.startswith("WIDGET_KEY_"):
                 continue
             elif (
@@ -235,6 +255,10 @@ def test_pages_studies_preview_has_no_execute_controls():
         STUDIES_LAUNCH_APPROVAL_KEY,
         STUDIES_BUILDER_DRAFT_KEY,
         STUDIES_BUILDER_PENDING_SYNC_KEY,
+        STUDIES_CATALOG_ENTRIES_KEY,
+        STUDIES_CATALOG_ROOTS_KEY,
+        STUDIES_VIEWER_PENDING_PATH_KEY,
+        STUDIES_VIEWER_CATALOG_SELECT_KEY,
     }
     assert STUDIES_BUILDER_DRAFT_KEY in written_keys
     assert STUDIES_BUILDER_PENDING_SYNC_KEY in written_keys
