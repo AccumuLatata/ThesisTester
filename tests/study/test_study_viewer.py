@@ -827,7 +827,7 @@ def test_inspect_charts_skip_non_frame_group_summaries():
     import plotly.express as px
 
     metric = "expectancy_r"
-    ranked = pd.DataFrame(
+    ranked_frame = pd.DataFrame(
         {
             "run_name": ["a", "b"],
             "trade_count": [40, 50],
@@ -837,12 +837,12 @@ def test_inspect_charts_skip_non_frame_group_summaries():
 
     class _Report:
         primary_metric = metric
-        ranked = ranked
+        ranked = ranked_frame
         group_summaries = {"partner_levels": "not-a-frame", "otf": None}
 
     class _Model:
         report = _Report()
-        ranked_display = ranked
+        ranked_display = ranked_frame
 
     fake = _FakeStreamlit()
     helpers = _load_inspect_chart_helpers(fake, px)
@@ -857,11 +857,11 @@ def test_ranked_chart_frame_falls_back_when_display_lacks_metric():
 
     metric = "expectancy_r"
     display = pd.DataFrame({"run_name": ["a"], "trade_count": [40]})
-    ranked = pd.DataFrame({"run_name": ["a"], "trade_count": [40], metric: [0.25]})
+    ranked_frame = pd.DataFrame({"run_name": ["a"], "trade_count": [40], metric: [0.25]})
 
     class _Report:
         primary_metric = metric
-        ranked = ranked
+        ranked = ranked_frame
         group_summaries = {}
 
     class _Model:
@@ -870,7 +870,7 @@ def test_ranked_chart_frame_falls_back_when_display_lacks_metric():
 
     helpers = _load_inspect_chart_helpers(_FakeStreamlit(), px)
     frame = helpers["_ranked_chart_frame"](_Model())
-    assert frame is ranked
+    assert frame is ranked_frame
     assert metric in frame.columns
 
 
