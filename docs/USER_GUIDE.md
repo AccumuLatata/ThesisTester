@@ -1037,8 +1037,7 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
   Parity with Data is the emitted RunSpec, not shared `session_state`.
 - Does not deep-link Research Bundles. Ranking / `run_count` are screening, not
   a validated edge.
-- Does not yet show failed-cell / group / rollup panes (SV2), overview charts
-  (SV3), or per-cell zip peek (SV4). Listing ≠ quality.
+- Does not yet add quality panes (SV2), overview charts (SV3), or zip peek (SV4).
 
 **Related pages.** Research Study Runner (headless); Research Bundles; Validation
 and robustness.
