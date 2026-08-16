@@ -330,6 +330,9 @@ def test_pages_studies_is_read_only_source():
     assert "### Failed cells" in source
     assert "### Group summaries" in source
     assert "### Rollup" in source
+    assert "### Overview charts" in source
+    assert "import plotly.express" in source
+    assert "st.plotly_chart" in source
     assert "model.report.group_summaries" in source
     assert "study_viewer_model_is_current" in source
     assert "st.code" in source
@@ -703,6 +706,32 @@ def test_inspect_catalog_handler_does_not_call_load_study_view():
     assert "load_study_view" not in catalog_src
     assert "run_study" not in catalog_src
     assert "rollup_study" not in catalog_src
+
+
+def test_inspect_charts_use_ranked_frames_and_honesty():
+    source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    start = source.index("_CHART_HONESTY")
+    end = source.index("def _render_inspect(")
+    chart_src = source[start:end]
+    assert "st.plotly_chart" in chart_src
+    assert "px.histogram" in chart_src
+    assert "px.scatter" in chart_src
+    assert "px.bar" in chart_src
+    assert "No ranked cells to chart" in chart_src
+    assert "Descriptive screening, not a validated edge" in chart_src
+    assert "_CHART_HONESTY" in chart_src
+    assert "ranked_display" in chart_src
+    assert "group_summaries" in chart_src
+    assert "median_" in chart_src
+    assert "mean_" in chart_src
+    assert "low_n_display" not in chart_src
+    assert "unresolved_display" not in chart_src
+    assert "zipfile" not in chart_src
+    assert "ZipFile" not in chart_src
+    assert "fillna(0)" not in chart_src
+    assert "run_study" not in chart_src
+    assert "rollup_study" not in chart_src
+    assert "apply_research_bundle_to_session" not in chart_src
 
 
 def test_failed_cell_error_lines_dedupes_and_caps_from_viewer():
