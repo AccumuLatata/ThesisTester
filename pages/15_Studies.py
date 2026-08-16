@@ -623,10 +623,11 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
         if st.checkbox(
             f"Prepare download of {peek.zip_name}",
             value=False,
-            key="studies_viewer_peek_zip_prepare",
+            key=f"studies_viewer_peek_zip_prepare:{peek.run_name}",
             help=(
                 "Loads zip bytes into the browser download control. "
-                "Leave unchecked so Inspect reruns do not embed the archive."
+                "Leave unchecked so Inspect reruns do not embed the archive. "
+                "Prepare is per cell — switching run_name does not keep the zip loaded."
             ),
         ):
             zip_bytes = peek_zip_bytes(peek, study_dir=model.study_dir)
@@ -638,7 +639,7 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
                     data=zip_bytes,
                     file_name=peek.zip_name,
                     mime="application/zip",
-                    key="studies_viewer_peek_zip_download",
+                    key=f"studies_viewer_peek_zip_download:{peek.run_name}",
                 )
 
 

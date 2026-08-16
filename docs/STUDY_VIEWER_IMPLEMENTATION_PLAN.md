@@ -100,7 +100,8 @@ output_dir --load_study_view--> StudyViewerModel          (existing; write_artif
 | `thesistester/study/viewer.py` | Catalog discover, failed-cell table, group-summary display frames, optional rollup-file read, cell-peek helper | Import `execute`, `launch`, `builder`, `promote`, `tools`, `cli_study`, `thesistester.cli`, `run_batch`, Streamlit, Plotly; call `rollup_study`; write overview/rollup |
 | `pages/15_Studies.py` | Inspect panes/widgets; Plotly charts (SV3) | Call `run_study`, `rollup_study`, `report_study(..., write_artifacts=True)`, `apply_research_bundle_to_session`, `st.switch_page`; write classic keys |
 | `thesistester/study/cli_study.py` | Additive `list` subcommand only (SV1). **May** import `viewer.py` (discover / optional unique-error helper) | Change expand/run/report/promote/rollup flags or execute loop; import Plotly or pages |
-| `thesistester/study/report.py` / `ledger.py` / `rollup.py` / `execute.py` / `launch.py` | Unchanged | Any SV edit |
+| `thesistester/study/report.py` / `ledger.py` / `rollup.py` / `execute.py` | Unchanged | Any SV edit |
+| `thesistester/study/launch.py` | Trusted roots inlined (`_default_trusted_roots`) | Import `viewer` (page import-order cycle / `ImportError`) |
 | `thesistester/study/__init__.py` | Optional export of `discover_study_dirs` / catalog types (SV1) | Import Plotly or pages |
 
 `cli_study.py` already imports `execute` / `run_study` / `rollup_study`. If `viewer.py` imported `cli_study`, Inspect would load the execute path and `discover_study_dirs` would cycle. **Allowed direction:** `cli_study` → `viewer`. **Forbidden:** `viewer` → `cli_study` or `thesistester.cli`.

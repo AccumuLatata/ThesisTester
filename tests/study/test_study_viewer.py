@@ -712,10 +712,7 @@ def test_studies_page_viewer_imports_resolve():
     tree = ast.parse(source)
     names: list[str] = []
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.ImportFrom)
-            and node.module == "thesistester.study.viewer"
-        ):
+        if isinstance(node, ast.ImportFrom) and node.module == "thesistester.study.viewer":
             names.extend(alias.name for alias in node.names)
     assert names, "Studies page must import viewer helpers"
     assert "CATALOG_DISPLAY_CAP" not in names
@@ -1265,6 +1262,8 @@ def test_inspect_peek_does_not_hydrate_or_switch_page():
     assert "STUDIES_VIEWER_SELECTED_RUN_KEY" in peek_src
     assert "Prepare download" in peek_src
     assert "st.checkbox" in peek_src
+    assert "studies_viewer_peek_zip_prepare:" in peek_src
+    assert 'key="studies_viewer_peek_zip_prepare"' not in peek_src
     assert "apply_research_bundle_to_session" not in peek_src
     assert "st.switch_page" not in peek_src
     assert "trades.parquet" not in peek_src
