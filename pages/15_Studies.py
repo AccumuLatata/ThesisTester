@@ -1,4 +1,4 @@
-"""RS-D2/RS-D8/RS-D9 + SB2/SB3 — Studies inspect, preview, CLI-spawn, and Build tab."""
+"""RS-D2/RS-D8/RS-D9 + SB2/SB3 + SV1/SV2 — Studies inspect, preview, CLI-spawn, Build."""
 
 from __future__ import annotations
 
@@ -159,12 +159,15 @@ from thesistester.study.viewer import (
     STUDIES_VIEWER_PENDING_PATH_KEY,
     StudyCatalogEntry,
     StudyViewerError,
+    StudyViewerModel,
     catalog_cache_stamp,
     catalog_load_path,
     default_study_viewer_roots,
     discover_study_dirs,
     load_study_view,
+    preview_error_text,
     resolve_study_dir,
+    study_viewer_model_is_current,
 )
 
 # Do not import FORMAT_PROFILE_LABELS, normalize_builder_format_profile,
@@ -362,6 +365,89 @@ def _render_inspect_catalog() -> None:
         st.rerun()
 
 
+def _render_inspect_quality(model: StudyViewerModel) -> None:
+    """SV2 panes: failed cells, group summaries, optional rollup, launch-log tail."""
+    st.markdown("### Failed cells")
+    st.caption(
+        "Ledger `error` text is cell-status, not a quality score. "
+        "Shared ingest faults are shown, not hidden."
+    )
+    if model.unique_error_lines:
+        st.code("\n".join(model.unique_error_lines), language="text")
+    if model.failed_cells_display.empty:
+        st.caption("No failed cells.")
+    else:
+        table = model.failed_cells_display.copy()
+        table["error"] = [preview_error_text(text) for text in table["error"].astype(str)]
+        st.dataframe(table, hide_index=True, width="stretch")
+        long_rows = [
+            (str(row["run_name"]), str(row["error"]))
+            for row in model.failed_cells_display.to_dict("records")
+            if len(str(row["error"])) > len(preview_error_text(str(row["error"])))
+        ]
+        if long_rows:
+            with st.expander("Full failed-cell error text", expanded=False):
+                for run_name, error in long_rows:
+                    st.markdown(f"`{run_name}`")
+                    st.code(error, language="text")
+
+    st.markdown("### Group summaries")
+    st.caption(
+        "Same `report.group_summaries` frames as `report_study` — descriptive "
+        "screening, not a validated edge. Same `min_trades` / multiple-testing "
+        "caveats as the ranked tables."
+    )
+    groups = model.report.group_summaries
+    if not groups:
+        if not model.report_present:
+            st.info("Ranked tables stay empty until Refresh after `results_index.csv` appears.")
+        else:
+            st.caption("No group-summary axes (empty ranked set or no `group_by` columns).")
+    else:
+        for axis, frame in groups.items():
+            st.markdown(f"**{axis}**")
+            if frame is None or frame.empty:
+                st.caption("None.")
+            else:
+                st.dataframe(frame, hide_index=True, width="stretch")
+
+    st.markdown("### Rollup")
+    st.caption(
+        "Read-only `study.rollup.csv` / `.md` if already on disk. Compose-only "
+        "diagnostics, not a validated edge. Inspect does not run `study rollup`."
+    )
+    if not model.report_present:
+        if model.rollup_present:
+            st.caption(
+                "`study.rollup.csv` is present; the rollup table stays empty "
+                "until `results_index.csv` appears."
+            )
+        else:
+            st.caption("Ledger-only view: rollup stays empty until the index appears.")
+    elif not model.rollup_present:
+        st.caption(
+            "No `study.rollup.csv` in this directory. Run CLI "
+            "`python -m thesistester study rollup <output_dir>` to write it."
+        )
+    else:
+        if model.rollup_display.empty:
+            st.caption("`study.rollup.csv` is present but has no rows (or could not be parsed).")
+        else:
+            st.dataframe(model.rollup_display, hide_index=True, width="stretch")
+        if model.rollup_md:
+            with st.expander("Show study.rollup.md", expanded=False):
+                st.markdown(model.rollup_md)
+
+    if model.launch_log_present:
+        st.markdown("### Launch log")
+        st.caption(
+            "Last 8 KiB of `study.launch.log`. Streamlit `Ignoring changed path` "
+            "watcher lines are not this log."
+        )
+        with st.expander("Show study.launch.log (tail)", expanded=False):
+            st.code(model.launch_log_tail, language="text")
+
+
 def _render_inspect() -> None:
     pending = st.session_state.pop(STUDIES_VIEWER_PENDING_PATH_KEY, None)
     if isinstance(pending, str) and pending.strip():
@@ -419,9 +505,11 @@ def _render_inspect() -> None:
     # model so Preview-tab Validate/Preview (and download/expander clicks) do
     # not re-aggregate a large study_dir. Reload only on Load / Refresh, or
     # when the cached path no longer matches the selected directory.
+    cached_model = st.session_state.get(STUDIES_VIEWER_CACHED_MODEL_KEY)
     need_reload = bool(load or refresh) or (
         st.session_state.get(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY) != active_dir
-        or st.session_state.get(STUDIES_VIEWER_CACHED_MODEL_KEY) is None
+        or cached_model is None
+        or not study_viewer_model_is_current(cached_model)
     )
     if need_reload:
         try:
@@ -487,6 +575,8 @@ def _render_inspect() -> None:
         )
     else:
         st.info("No ledger or status column available.")
+
+    _render_inspect_quality(model)
 
     st.markdown("### Ranked cells")
     if model.ranked_display.empty:

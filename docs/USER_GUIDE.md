@@ -977,12 +977,13 @@ robustness (honest next steps after screening).
 
 **What it is.** Streamlit **Studies** (`pages/15_Studies.py`): **Inspect** lists
 local dirs under `results/studies/` and `out/` (one level) and loads `output_dir`
-(ledger, ranked / low-N / unresolved, OTF Δ, overview via
-`report_study(..., write_artifacts=False)`). Path paste still works. **Preview**
-validates `schema_version: 1` YAML (cell count / `--confirm`). **Run via CLI**
-spawns `python -m thesistester study run`. **Build StudySpec** emits YAML via
-widgets; **Apply to Preview** writes the Preview textarea. Validate / Preview
-is still required; Build does not spawn CLI.
+(ledger, failed cells / groups / optional rollup, ranked / low-N, OTF Δ,
+overview via `report_study(..., write_artifacts=False)`). Path paste still
+works. **Preview** validates `schema_version: 1` YAML (cell count /
+`--confirm`). **Run via CLI** spawns `python -m thesistester study run`.
+**Build StudySpec** emits YAML via widgets; **Apply to Preview** writes the
+Preview textarea. Validate / Preview is still required; Build does not spawn
+CLI.
 
 **When to use it.** Inspect after a CLI run; author on **Build**; preview YAML
 then start that CLI. Promote stays CLI-only.
@@ -997,7 +998,7 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 |---|---|---|
 | Study output directory | Study dir under cwd or local store | Extra-root paths refused |
 | Refresh catalog / Load selected | One-level `results/studies/` + `out/` list | Listing ≠ quality; empty catalog is OK |
-| Load / Refresh | In-memory overview; Refresh watches a CLI run | Uses the current path field; does not rewrite overview or run cells |
+| Load / Refresh | In-memory overview + quality panes | Path field; no overview/rollup write |
 | Canonical YAML / Preview | `schema_version: 1` validate + expand (cap 2_000) | Shorthand fails closed; changed YAML reseeds CLI output dir |
 | Load example / Copy spec | Example YAML or Inspect `study.spec.yaml` | Copy needs a loaded Inspect dir |
 | CLI output directory | Spawn target for `study run` | Not the Inspect dir; do not reuse another study’s dir |
@@ -1015,12 +1016,13 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 
 1. CLI `study expand` → `study run` → `study report`, or author on Build / preview first.
 2. **Studies** Inspect: **Load selected** or paste `output_dir` then Load.
-   Refresh while in flight. `study list` is the CLI twin.
+   After Load: failed-cell errors, group summaries, optional `study.rollup.*`
+   / `study.launch.log` tail. Refresh while in flight. `study list` is the
+   CLI twin.
 3. **Build** (optional): example or closed catalog. New drafts emit
-   `15s_primary_derive_1m`. Point path at the same 15s Quantower CSV as Data
-   (Studies does not walk the Data page). Stage Filter keeps includes ⊆ current
-   widgets. Explicit cells is delete-only. Live strip is screening, not a
-   validated edge.
+   `15s_primary_derive_1m`. Path is the same 15s Quantower CSV as Data
+   (Studies does not walk Data). Filter includes ⊆ widgets; explicit is
+   delete-only.
 4. **Apply to Preview**, then Preview → **Validate / Preview**.
 5. New CLI output dir (pins `dataset.path` and `dataset.subtimeframe_path`;
    missing CSV is refused). Under threshold: **Run via CLI**. Over: **Bind
@@ -1037,7 +1039,8 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
   Parity with Data is the emitted RunSpec, not shared `session_state`.
 - Does not deep-link Research Bundles. Ranking / `run_count` are screening, not
   a validated edge.
-- Does not yet add quality panes (SV2), overview charts (SV3), or zip peek (SV4).
+- Failed-cell errors / rollup-if-present ≠ quality. Charts (SV3) and zip peek
+  (SV4) are not shipped.
 
 **Related pages.** Research Study Runner (headless); Research Bundles; Validation
 and robustness.

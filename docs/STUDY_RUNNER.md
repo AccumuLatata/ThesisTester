@@ -20,11 +20,11 @@ pdPOC teaching example emit `dataset.ingestion_mode: 15s_primary_derive_1m`
 (Quantower 15s path, `intrabar_model: subtimeframe_conservative`). Omitted
 mode remains `primary` (the dopen example is legacy 1m). Execute is still
 CLI / `run_experiment`. Studies does not walk the Data page.
-**SV** (Study Viewer) SV1 ✅
-`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0 + **SV1** shipped (catalog +
-`study list` + click-to-load). SV2–SV4 not started. Does not change preview /
-CLI-spawn / execute. Inspect remains artifacts-only
-(`report_study(..., write_artifacts=False)`).
+**SV** (Study Viewer) SV1 + SV2 ✅
+`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0 + **SV1** + **SV2** shipped
+(catalog + `study list` + click-to-load + quality panes). SV3–SV4 not started.
+Does not change preview / CLI-spawn / execute. Inspect remains artifacts-only
+(`report_study(..., write_artifacts=False)`; no `rollup_study()`).
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -618,7 +618,7 @@ Preview textarea key before that widget mounts (Build body runs first).
 
 ## SV — Study Viewer (operator contract)
 
-**Status:** SV0 + **SV1** shipped. SV2–SV4 not started. Plan:
+**Status:** SV0 + **SV1** + **SV2** shipped. SV3–SV4 not started. Plan:
 `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`.
 
 Inspect lists local study dirs (one-level `results/studies/` + `out/`) and
@@ -629,7 +629,7 @@ still accepts a pasted path. Execute stays CLI (`study run` / Preview
 |---|---|---|
 | Catalog (SV1) ✅ | One-level scan of `results/studies/` and `out/` under cwd + store; **Load selected** sets Inspect path keys, drops the cached model, and reuses the existing Load/Refresh path | Recursive repo walk; `report_study` during discover; calling `load_study_view` from the catalog click handler; cloud sync; new store schema |
 | `study list` (SV1) ✅ | Additive CLI over the same discover helper; sandboxed `--root` (study dir / prefix dir / trusted root per plan §4.9) | Any change to `expand\|run\|report\|promote\|rollup` argv; `viewer.py` importing `cli_study` / `thesistester.cli` / `execute` |
-| Quality panes (SV2) | Failed-cell `error` table; `report.group_summaries`; read `study.rollup.*` **if present**; tail `study.launch.log` | `rollup_study()` (that helper writes); auto-`study report` write |
+| Quality panes (SV2) ✅ | Failed-cell `error` table; `report.group_summaries`; read `study.rollup.*` **if present**; tail `study.launch.log` | `rollup_study()` (that helper writes); auto-`study report` write |
 | Overview charts (SV3) | Plotly from already-loaded ranked / group frames | New metrics; unzip-all-cells equity charts |
 | Cell peek (SV4) | Selected `run_name` → index + ledger error + optional `trade_summary.json` | `apply_research_bundle_to_session`; classic session keys; Bundles / Backtest deep-link |
 
@@ -639,5 +639,5 @@ Overview charts inherit RS4 ranking caveats (descriptive screen,
 `min_trades`, multiple-testing). Rollup-if-present is compose-only
 diagnostics. Cell peek is not a validated edge.
 
-**Until SV2–SV4 ship:** quality panes, overview charts, and cell peek stay
-CLI files / ranked tables. Paste `output_dir` remains valid.
+**Until SV3–SV4 ship:** overview charts and cell peek stay ranked tables /
+CLI files. Paste `output_dir` remains valid.

@@ -978,12 +978,16 @@ other than the last bar in the dataset.
   before expecting dense overfitting columns in the rollup.
 - Rollup markdown is descriptive only: present diagnostics ≠ validated edge.
 
-## Studies Inspect listing and charts (SV1 shipped; SV2–SV4 specified)
+## Studies Inspect listing and quality panes (SV1 + SV2 shipped; SV3–SV4 specified)
 
 - The Study Viewer catalog (`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`, SV1)
   **lists** local study directories under `results/studies/` and `out/`.
   Listing is discovery, not a quality score. Ledger `ok` / `failed` counts
   remain cell-status, not edge.
+- Failed-cell `error` text, `report.group_summaries`, and a present
+  `study.rollup.csv` are projections of artifacts the runner already wrote.
+  They are not a quality score or a validated edge. Missing rollup is a
+  caption pointing at CLI `study rollup`, not an Inspect error.
 - Overview charts, when shipped, must plot frames already produced by
   `report_study` (ranked / group summaries). They inherit the RS4 ranking
   caveats above: descriptive screen, `min_trades` filter, multiple-testing

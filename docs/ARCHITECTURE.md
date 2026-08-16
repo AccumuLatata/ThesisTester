@@ -103,16 +103,18 @@ POSIX `fcntl.flock` or Windows `msvcrt.locking`
 `run` / `run_batch` all-or-nothing write semantics stay identical. Engine and
 classic research pages remain undisturbed. Operator contract:
 `docs/STUDY_RUNNER.md`; plan: `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`.
-**SV1** (Study Viewer catalog, `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`)
-adds Inspect local-study listing + click-to-load and additive CLI
-`study list` on this same page. It keeps `report_study(..., write_artifacts=False)`,
-must not call `rollup_study()` (writes), must not hydrate classic research
-`st.session_state` keys, and must not deep-link Research Bundles. Discover
-does not call `report_study`. `viewer.py` must not import `cli_study`,
-`thesistester.cli`, or `execute` (`cli_study` may import `viewer`).
-Studies-scoped keys: `studies_catalog_entries`, `studies_catalog_roots_key`,
+**SV1 + SV2** (Study Viewer catalog + quality panes,
+`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`) add Inspect local-study listing +
+click-to-load, additive CLI `study list`, and read-only failed-cell / group /
+rollup-if-present / launch-log panes on this same page. They keep
+`report_study(..., write_artifacts=False)`, must not call `rollup_study()`
+(writes), must not hydrate classic research `st.session_state` keys, and must
+not deep-link Research Bundles. Discover does not call `report_study`.
+`viewer.py` must not import `cli_study`, `thesistester.cli`, `execute`,
+`rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`). Studies-scoped keys:
+`studies_catalog_entries`, `studies_catalog_roots_key`,
 `studies_viewer_pending_path`, `studies_viewer_catalog_select`.
-`studies_viewer_selected_run` is SV4. Do not implement SV2–SV4 inside an
+`studies_viewer_selected_run` is SV4. Do not implement SV3–SV4 inside an
 RS/SB/SIA edit.
 
 ## Classic/Assistant research identity boundary (CAI-1)

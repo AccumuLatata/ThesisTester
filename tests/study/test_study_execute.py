@@ -813,3 +813,11 @@ def test_failed_cell_error_lines_dedupes_and_caps():
     assert lines[2].startswith("  d: FileNotFoundError: bars.csv")
     assert lines[3] == "  … +1 more unique error(s) in study.ledger.json"
     assert failed_cell_error_lines(cells, ["b"]) == []
+
+    six = {name: {"status": "failed", "error": f"err-{name}"} for name in "abcdef"}
+    default_lines = failed_cell_error_lines(six, list("abcdef"))
+    examples = [
+        line for line in default_lines if line.startswith("  ") and not line.startswith("  …")
+    ]
+    assert len(examples) == 5
+    assert default_lines[-1] == "  … +1 more unique error(s) in study.ledger.json"
