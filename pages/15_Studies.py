@@ -611,14 +611,31 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
         )
     if peek.trade_summary_caption:
         st.caption(peek.trade_summary_caption)
-    zip_bytes = peek_zip_bytes(peek, study_dir=model.study_dir)
-    if zip_bytes is not None and peek.zip_name:
-        st.download_button(
-            f"Download {peek.zip_name}",
-            data=zip_bytes,
-            file_name=peek.zip_name,
-            mime="application/zip",
+    if peek.zip_path is not None and peek.zip_name:
+        st.caption(
+            "Zip download reads bytes from disk only after Prepare. "
+            "It does not write the study dir or hydrate classic keys."
         )
+        if st.checkbox(
+            f"Prepare download of {peek.zip_name}",
+            value=False,
+            key="studies_viewer_peek_zip_prepare",
+            help=(
+                "Loads zip bytes into the browser download control. "
+                "Leave unchecked so Inspect reruns do not embed the archive."
+            ),
+        ):
+            zip_bytes = peek_zip_bytes(peek, study_dir=model.study_dir)
+            if zip_bytes is None:
+                st.caption("Zip is no longer a file inside the study directory.")
+            else:
+                st.download_button(
+                    f"Download {peek.zip_name}",
+                    data=zip_bytes,
+                    file_name=peek.zip_name,
+                    mime="application/zip",
+                    key="studies_viewer_peek_zip_download",
+                )
 
 
 def _peek_summary_value(value: object) -> str:

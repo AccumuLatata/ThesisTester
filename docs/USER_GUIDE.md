@@ -977,7 +977,7 @@ robustness (honest next steps after screening).
 
 **What it is.** Streamlit **Studies** (`pages/15_Studies.py`): **Inspect** lists
 local dirs under `results/studies/` and `out/` (one level) and loads `output_dir`
-(ledger, failed cells / groups / optional rollup, ranked charts, cell peek, OTF Δ,
+(ledger, failed cells / groups / optional rollup, ranked / low-N / charts / peek, OTF Δ,
 overview via `report_study(..., write_artifacts=False)`). Path paste still
 works. **Preview** validates `schema_version: 1` YAML (cell count /
 `--confirm`). **Run via CLI** spawns `python -m thesistester study run`.

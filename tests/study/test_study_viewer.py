@@ -41,6 +41,7 @@ from thesistester.study.viewer import (
     failed_cells_frame,
     format_study_catalog_table,
     load_study_view,
+    peek_run_names,
     peek_study_cell,
     peek_zip_bytes,
     preview_error_text,
@@ -1112,6 +1113,18 @@ def test_study_viewer_model_is_current_requires_sv2_fields():
 
     assert study_viewer_model_is_current(_Legacy()) is False
 
+    class _Sv2:
+        failed_cells_display = None
+        unique_error_lines = None
+        rollup_present = None
+        rollup_display = None
+        rollup_md = None
+        launch_log_present = None
+        launch_log_tail = None
+        peek_run_names = ()
+
+    assert study_viewer_model_is_current(_Sv2()) is False
+
 
 def test_peek_index_error_without_zip_and_in_dir_summary(tmp_path: Path):
     study_dir = _write_report_fixture(tmp_path, min_trades=1)
@@ -1209,9 +1222,42 @@ def test_inspect_peek_does_not_hydrate_or_switch_page():
     assert "peek_study_cell" in peek_src
     assert "peek_zip_bytes" in peek_src
     assert "STUDIES_VIEWER_SELECTED_RUN_KEY" in peek_src
+    assert "Prepare download" in peek_src
+    assert "st.checkbox" in peek_src
     assert "apply_research_bundle_to_session" not in peek_src
     assert "st.switch_page" not in peek_src
     assert "trades.parquet" not in peek_src
     assert "equity_curve" not in peek_src
     assert "run_study" not in peek_src
     assert "rollup_study" not in peek_src
+
+
+def test_peek_run_names_skips_non_mapping_cells_and_uses_cached_ledger(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=1)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "failed"
+    ledger["cells"][names[0]]["error"] = "ValueError: cached"
+    ledger["cells"]["corrupt"] = "not-a-mapping"
+    save_ledger(study_dir, ledger)
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert "corrupt" not in model.peek_run_names
+    assert names[0] in model.peek_run_names
+    assert names[0] in model.ledger_cells
+    peek = peek_study_cell(model, names[0])
+    assert peek.ledger_error == "ValueError: cached"
+
+    ledger["cells"][names[0]]["error"] = "ValueError: disk-changed"
+    save_ledger(study_dir, ledger)
+    stale = peek_study_cell(model, names[0])
+    assert stale.ledger_error == "ValueError: cached"
+
+
+def test_peek_run_names_skips_null_overview_values():
+    overview = pd.DataFrame({"run_name": ["alpha", float("nan"), None, ""]})
+    assert peek_run_names(overview, None) == ("alpha",)

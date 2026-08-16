@@ -19,8 +19,9 @@ SV3 Plotly charts stay on ``pages/15_Studies.py``. This module must not import
 Plotly or Streamlit.
 
 SV4 cell peek reads index + ledger error and optional ``trade_summary.json``
-behind the existing bundle-path sandbox. It does not hydrate classic session
-keys or unzip trades/equity.
+behind the existing bundle-path sandbox. Ledger status comes from the cached
+``ledger_cells`` snapshot (same Load/Refresh as the failed-cell table). It
+does not hydrate classic session keys or unzip trades/equity.
 """
 
 from __future__ import annotations
@@ -670,23 +671,48 @@ def _display_scalar(value: Any) -> str:
     return text if text else "—"
 
 
+def _run_name_text(value: Any) -> str:
+    """Stable non-empty run_name, or empty string for null / NaN cells."""
+    if value is None:
+        return ""
+    try:
+        if value is pd.NA or pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    return text
+
+
 def _overview_row(overview: pd.DataFrame, run_name: str) -> dict[str, Any] | None:
     if overview is None or overview.empty or "run_name" not in overview.columns:
         return None
-    match = overview.loc[overview["run_name"].astype(str) == run_name]
+    match = overview.loc[overview["run_name"].map(_run_name_text) == run_name]
     if match.empty:
         return None
     return {str(col): match.iloc[0][col] for col in match.columns}
 
 
-def _ledger_cell(study_dir: Path, run_name: str) -> Mapping[str, Any] | None:
-    try:
-        ledger = load_ledger(study_dir)
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, TypeError):
-        return None
+def _mapping_ledger_cells(ledger: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Shallow copy of mapping ledger cells. Skips corrupt non-mapping values."""
     if not isinstance(ledger, Mapping):
-        return None
+        return {}
     cells = ledger.get("cells")
+    if not isinstance(cells, Mapping):
+        return {}
+    mapped: dict[str, Any] = {}
+    for name, cell in cells.items():
+        if not isinstance(cell, Mapping):
+            continue
+        key = _run_name_text(name)
+        if key:
+            mapped[key] = dict(cell)
+    return mapped
+
+
+def _ledger_cell(cells: Mapping[str, Any] | None, run_name: str) -> Mapping[str, Any] | None:
     if not isinstance(cells, Mapping):
         return None
     cell = cells.get(run_name)
@@ -694,16 +720,15 @@ def _ledger_cell(study_dir: Path, run_name: str) -> Mapping[str, Any] | None:
 
 
 def peek_run_names(overview: pd.DataFrame, ledger: Mapping[str, Any] | None) -> tuple[str, ...]:
-    """Union of overview ``run_name`` values and ledger cell keys."""
+    """Union of overview ``run_name`` values and mapping ledger cell keys."""
     names: set[str] = set()
     if overview is not None and not overview.empty and "run_name" in overview.columns:
         names.update(
-            str(name).strip() for name in overview["run_name"].tolist() if str(name).strip()
+            text
+            for text in (_run_name_text(name) for name in overview["run_name"].tolist())
+            if text
         )
-    if isinstance(ledger, Mapping):
-        cells = ledger.get("cells")
-        if isinstance(cells, Mapping):
-            names.update(str(name).strip() for name in cells if str(name).strip())
+    names.update(_mapping_ledger_cells(ledger))
     return tuple(sorted(names))
 
 
@@ -731,7 +756,7 @@ def peek_study_cell(model: StudyViewerModel, run_name: str) -> StudyCellPeek:
     """
     name = str(run_name or "").strip()
     row = _overview_row(model.report.overview, name)
-    cell = _ledger_cell(model.study_dir, name)
+    cell = _ledger_cell(getattr(model, "ledger_cells", None), name)
     present = row is not None or cell is not None
     factors: dict[str, str] = {}
     kpis: dict[str, str] = {}
@@ -832,6 +857,7 @@ class StudyViewerModel:
     launch_log_present: bool
     launch_log_tail: str
     peek_run_names: tuple[str, ...]
+    ledger_cells: dict[str, Any]
 
 
 def study_viewer_model_is_current(model: object) -> bool:
@@ -847,6 +873,7 @@ def study_viewer_model_is_current(model: object) -> bool:
             "launch_log_present",
             "launch_log_tail",
             "peek_run_names",
+            "ledger_cells",
         )
     )
 
@@ -1024,4 +1051,5 @@ def load_study_view(
         launch_log_present=log_tail is not None,
         launch_log_tail=log_tail or "",
         peek_run_names=peek_run_names(report.overview, ledger),
+        ledger_cells=_mapping_ledger_cells(ledger),
     )
