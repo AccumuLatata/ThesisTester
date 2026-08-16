@@ -97,11 +97,13 @@ output_dir --load_study_view--> StudyViewerModel          (existing; write_artif
 
 | Module | Role | Must not |
 |---|---|---|
-| `thesistester/study/viewer.py` | Catalog discover, failed-cell table, group-summary display frames, optional rollup-file read, cell-peek helper | Import `execute`, `launch`, `builder`, `promote`, `tools`, `cli`, `run_batch`, Streamlit, Plotly; call `rollup_study`; write overview/rollup |
+| `thesistester/study/viewer.py` | Catalog discover, failed-cell table, group-summary display frames, optional rollup-file read, cell-peek helper | Import `execute`, `launch`, `builder`, `promote`, `tools`, `cli_study`, `thesistester.cli`, `run_batch`, Streamlit, Plotly; call `rollup_study`; write overview/rollup |
 | `pages/15_Studies.py` | Inspect panes/widgets; Plotly charts (SV3) | Call `run_study`, `rollup_study`, `report_study(..., write_artifacts=True)`, `apply_research_bundle_to_session`, `st.switch_page`; write classic keys |
-| `thesistester/study/cli_study.py` | Additive `list` subcommand only (SV1) | Change expand/run/report/promote/rollup flags or execute loop |
+| `thesistester/study/cli_study.py` | Additive `list` subcommand only (SV1). **May** import `viewer.py` (discover / optional unique-error helper) | Change expand/run/report/promote/rollup flags or execute loop; import Plotly or pages |
 | `thesistester/study/report.py` / `ledger.py` / `rollup.py` / `execute.py` / `launch.py` | Unchanged | Any SV edit |
 | `thesistester/study/__init__.py` | Optional export of `discover_study_dirs` / catalog types (SV1) | Import Plotly or pages |
+
+`cli_study.py` already imports `execute` / `run_study` / `rollup_study`. If `viewer.py` imported `cli_study`, Inspect would load the execute path and `discover_study_dirs` would cycle. **Allowed direction:** `cli_study` → `viewer`. **Forbidden:** `viewer` → `cli_study` or `thesistester.cli`.
 
 Pages keep importing `thesistester.study.viewer` directly (existing pattern). Package init may export catalog helpers; it must not start importing Plotly.
 
@@ -135,8 +137,15 @@ Rules:
 3. Deduplicate by resolved path (cwd and store may alias).
 4. Do **not** scan `tests/`, `.git/`, `.thesistester_store/datasets|levels|signals|setups`, or arbitrary depth.
 5. Do **not** add a new store schema (`studies/` under the store) in this series.
-6. Last successfully loaded `STUDIES_VIEWER_DIR_KEY` may be **unioned** into the catalog when it still resolves under trusted roots, even if it sits outside the two prefixes (operator-chosen path).
+6. Last successfully loaded `STUDIES_VIEWER_DIR_KEY` may be **unioned** into the catalog when it still resolves under trusted roots, even if it sits outside the two prefixes (operator-chosen path). **Page-only** — `study list` has no session key.
 7. Manual path paste remains. Catalog is a convenience, not the only load path.
+
+`discover_study_dirs(*, roots=None, extra_dirs=())` (names may vary; contract is normative):
+
+- `roots` default `default_study_viewer_roots()`; prefix-scan each per this section.
+- `extra_dirs`: each existing directory is included if it is a study dir, else scanned one child level for `study.spec.yaml`.
+- Return catalog entries; do not call `report_study`.
+- CLI `--root` maps each PATH into `roots` (trusted root) or `extra_dirs` (prefix dir / study dir / other in-root dir) per §4.9. Do not reimplement a second scanner.
 
 ### 4.4 `StudyCatalogEntry` (locked fields)
 
@@ -150,8 +159,8 @@ Frozen dataclass (names may vary; fields are normative):
 | `run_count` | `int \| None` | Expansion `run_count` when readable |
 | `ok` / `failed` / `skipped` / `running` / `pending` | `int` | Ledger status counts when `study.ledger.json` is readable; else `0` |
 | `ledger_present` | `bool` | Readable ledger |
-| `index_present` | `bool` | `results_index.csv` **file** exists (same “present path” rule as Inspect) |
-| `mtime` | `float` | Directory mtime (for sort) |
+| `index_present` | `bool` | `results_index.csv` is a **file** (`Path.is_file()`). Catalog flag only. Inspect load keeps the existing present-path rule (`Path.exists()`): a present non-file path still errors rather than becoming ledger-only |
+| `mtime` | `float` | `max` of directory mtime and, when they are files, `study.ledger.json` / `results_index.csv` / `study.expansion.json` / `study.spec.yaml` mtimes (in-flight ledger writes must sort above stale dirs). If a `stat` fails, omit that path and keep the rest |
 
 Corrupt ledger / expansion JSON: skip those fields (name + path still listed). Do **not** fail the whole catalog. Do **not** call `report_study` during discover (that would re-aggregate every study on every rerun).
 
@@ -188,11 +197,11 @@ From the **already-loaded** `StudyViewerModel` / ledger / on-disk files:
 | Failed cells | Ledger `cells` with `status=failed` → `run_name`, `error` (full text in expander if long) | Invent errors; hide shared ingest faults |
 | Group summaries | `model.report.group_summaries` (already computed by `report_study`) | Reimplement `build_group_summaries` |
 | Rollup | If `study.rollup.csv` is a file, read it (and show `.md` in an expander). If absent, caption: run CLI `study rollup` | Call `rollup_study()` |
-| Launch log | If `study.launch.log` is a file, show the **last 8 KiB** in a collapsed expander | Treat Streamlit `Ignoring changed path` watcher lines as this log |
+| Launch log | If `study.launch.log` is a file, show the **last 8 KiB** (or the whole file if smaller) in a collapsed expander. Decode UTF-8 with replacement | Treat Streamlit `Ignoring changed path` watcher lines as this log |
 
 Ledger-only views (no index): failed-cell table still renders from the ledger; group summaries / rollup stay empty with the existing “ranked tables empty” honesty.
 
-Reuse CLI uniqueness idea (`failed_cell_error_lines` in `cli_study.py`) for a **summary caption** (unique errors, cap 5). The table still lists **every** failed cell. Do not move that helper in a way that changes CLI print text. Prefer a viewer-local table builder; optional import of the CLI helper for the caption is allowed if tests prove the CLI lines stay identical.
+Reuse the CLI uniqueness idea (unique errors, cap 5) for a **summary caption**. The table still lists **every** failed cell. Implement a **viewer-local** helper, or move `failed_cell_error_lines` into `viewer.py` and have `cli_study` import it. Do not change CLI print text. **Forbidden:** `viewer.py` importing `cli_study.py` / `thesistester.cli` — `cli_study` eagerly imports `execute` / `run_study` / `rollup_study`.
 
 ### 4.7 Overview charts (SV3, locked)
 
@@ -242,11 +251,13 @@ python -m thesistester study list [--root PATH] ...
 
 | Rule | Behavior |
 |---|---|
-| Default roots | `default_study_viewer_roots()` when `--root` omitted |
-| `--root` | Repeatable; each path must resolve under the default trusted roots **or** be one of those roots. Extra-root refused (same honesty as Inspect) |
-| Output | Stable text table: `study_name`, `ok/failed/running/pending`, `run_count`, `path`. No JSON schema in SV1 |
+| Default (`--root` omitted) | `discover_study_dirs` with `default_study_viewer_roots()` and the §4.3 prefix scan |
+| `--root` | Repeatable. **Replaces** the default roots (does not union with cwd+store). Each PATH is resolved and must be one of the default trusted roots **or** a path under them. Extra-root refused (same honesty as Inspect). A user-specified PATH that does not exist or is not a directory is an **error** (unlike a missing default prefix, which is skipped) |
+| Scan per `--root` PATH | After extra-root validation, include hits as follows (dedupe by resolved path, same §4.4 fields/sort): **(1)** PATH is a default trusted root → §4.3 prefix scan under that root. **(2)** PATH is itself a locked prefix directory (`…/results/studies` or `…/out` under a trusted root) → one level of children that contain `study.spec.yaml`. **(3)** PATH is a study dir (`study.spec.yaml` present) → include PATH itself. **(4)** otherwise (some other existing directory under a trusted root) → one level of children that contain `study.spec.yaml`. Do **not** append `results/studies/` + `out/` under a non-root PATH (that would miss `out/pdPOC_stage40` and empty-scan `out/`) |
+| Output | Stable text table: `study_name`, `ok/failed/skipped/running/pending`, `run_count`, `path`. No JSON schema in SV1. Same sort as §4.4. **No 50-row cap** (that cap is page-only) |
 | Side effects | None (no ledger write, no report, no lock) |
-| Argv | **Additive** subcommand only. Do not change `expand\|run\|report\|promote\|rollup` |
+| Argv | **Additive** `list` subcommand + dispatch branch only. Do not change `expand\|run\|report\|promote\|rollup` flags. The parent `study` help string may mention `list` |
+| Implementation | CLI must call the same `discover_study_dirs` (or a thin wrapper that applies the `--root` scan rules above). `cli_study.py` may import `viewer.py`. `viewer.py` must not import `cli_study.py` |
 
 ---
 
@@ -296,10 +307,12 @@ No new USER_GUIDE H2. Do not reopen RS-D2/D8/D9 behavior text. §4.2.
 | **Acceptance checklist** | |
 | | ☑ Two fixture dirs under `results/studies/` and `out/` are listed; a dir without `study.spec.yaml` is not |
 | | ☑ Extra-root path refused for click-to-load and `study list --root` |
+| | ☑ `--root` that is a study dir lists that dir; `--root` that is `out/` or `results/studies/` lists one-level children; `--root` that is a trusted root uses §4.3 prefixes; missing `--root` path errors |
 | | ☑ Click sets `STUDIES_VIEWER_DIR_KEY` and reuses `load_study_view` (no writes) |
 | | ☑ Path paste still loads (catalog empty is not a hard error) |
 | | ☑ Corrupt ledger on one dir does not fail the catalog |
 | | ☑ Discover does not call `report_study` / `run_study` / `rollup_study` |
+| | ☑ `viewer.py` does not import `cli_study` / `thesistester.cli` / `execute` / Plotly / Streamlit |
 | | ☑ Page AST: no `run_study(`; no classic key writes; new keys allow-listed |
 | | ☑ `expand\|run\|report\|promote\|rollup` argv tests still pass |
 | | ☑ USER_GUIDE how-to updated (no new H2); honesty: listing ≠ quality |
@@ -311,7 +324,9 @@ No new USER_GUIDE H2. Do not reopen RS-D2/D8/D9 behavior text. §4.2.
 Implement SV1 only from docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md §6.2 and §4.1–4.5 / §4.9.
 Add discover_study_dirs (one-level results/studies + out under trusted roots) and
 Inspect catalog + click-to-load into existing STUDIES_VIEWER_DIR_KEY / load_study_view.
-Add additive CLI `study list`. Do not call report_study during discover. Do not
+Add additive CLI `study list` with the locked --root scan (study dir / prefix dir /
+trusted root). cli_study may import viewer; viewer must not import cli_study,
+thesistester.cli, or execute. Do not call report_study during discover. Do not
 change expand/run/report/promote/rollup argv. No charts, errors pane, or cell peek.
 No classic session keys. No engine/golden edits. Extend USER_GUIDE H2 only. §4.2.
 ```
@@ -340,8 +355,10 @@ No classic session keys. No engine/golden edits. Extend USER_GUIDE H2 only. §4.
 ```text
 Implement SV2 only from docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md §6.3 and §4.6.
 Project failed-cell errors, report.group_summaries, and optional study.rollup.*
-files on Studies Inspect. Do not call rollup_study() or report_study write.
-Do not add Plotly or cell zip peek. No engine/golden edits. Extend USER_GUIDE H2. §4.2.
+files on Studies Inspect. Unique-error caption is viewer-local (or move the
+helper into viewer.py for cli_study to import). Do not import cli_study from
+viewer.py. Do not call rollup_study() or report_study write. Do not add Plotly
+or cell zip peek. No engine/golden edits. Extend USER_GUIDE H2. §4.2.
 ```
 
 ### 6.4 SV3 — Overview charts
@@ -438,7 +455,8 @@ Help corpus: extending the existing Studies H2 does **not** require an HC allowl
 | Layer | Tests | PR |
 |---|---|---|
 | Discover | `tests/study/test_study_viewer.py` — prefixes, recognition, extra-root, corrupt ledger, no `report_study` call | SV1 |
-| CLI list | Focused argv/output test; existing study CLI tests still collect `expand\|run\|…` | SV1 |
+| Viewer import-guard | AST: `viewer.py` must not import `cli_study`, `thesistester.cli`, `execute`, Plotly, Streamlit | SV1 (keep through SV4) |
+| CLI list | Focused argv/output test including `--root` study-dir / prefix-dir / trusted-root / extra-root / missing-path; existing study CLI tests still collect `expand\|run\|…` | SV1 |
 | Quality panes | Failed-cell table; group_summaries identity; rollup file present/absent; no writes | SV2 |
 | Charts | AST: page may import plotly; `viewer.py` must not; empty ranked → no crash | SV3 |
 | Peek | Sandbox refuse; missing member; no classic keys | SV4 |
@@ -462,6 +480,8 @@ No Streamlit AppTest required if AST + pure helpers cover the contract (same pos
 | Classic session contamination | Frozen `CLASSIC_RESEARCH_SESSION_KEYS`; no bundle apply |
 | Help claims unshipped UI | SV0 USER_GUIDE stays path-paste honest; how-to lands with each code PR |
 | `study list` forks discover | CLI calls the same `discover_study_dirs` |
+| `viewer.py` imports `cli_study` | Forbidden. `cli_study` eagerly imports execute/rollup. CLI may import viewer |
+| `--root` study dir lists nothing | Locked scan: study dir → itself; prefix dir → children; trusted root → prefixes |
 | Zip peek becomes a second Bundles page | `trade_summary.json` only; download + manual import for the rest |
 | Reopening RS-D2 | SV is a new series; RS §12.4 text stays historical |
 

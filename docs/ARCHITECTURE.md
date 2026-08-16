@@ -107,9 +107,11 @@ classic research pages remain undisturbed. Operator contract:
 plan-locked) may add Inspect catalog / quality / charts / cell-peek on this
 same page. It must keep `report_study(..., write_artifacts=False)`, must not
 call `rollup_study()` (writes), must not hydrate classic research
-`st.session_state` keys, and must not deep-link Research Bundles. New keys
-stay Studies-scoped (`studies_catalog_*`, `studies_viewer_selected_run` when
-those PRs land). Do not implement SV inside an RS/SB/SIA edit.
+`st.session_state` keys, and must not deep-link Research Bundles. `viewer.py`
+must not import `cli_study`, `thesistester.cli`, or `execute` (`cli_study` may
+import `viewer`). New keys stay Studies-scoped (`studies_catalog_*`,
+`studies_viewer_selected_run` when those PRs land). Do not implement SV inside
+an RS/SB/SIA edit.
 
 ## Classic/Assistant research identity boundary (CAI-1)
 
