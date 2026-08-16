@@ -20,6 +20,10 @@ from thesistester.study.builder import (
 from thesistester.study.report import RESULTS_INDEX
 from thesistester.study.viewer import (
     CLASSIC_RESEARCH_SESSION_KEYS,
+    LAUNCH_LOG_NAME,
+    LAUNCH_LOG_TAIL_BYTES,
+    ROLLUP_CSV_NAME,
+    ROLLUP_MD_NAME,
     STUDIES_CATALOG_ENTRIES_KEY,
     STUDIES_CATALOG_ROOTS_KEY,
     STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
@@ -30,11 +34,16 @@ from thesistester.study.viewer import (
     StudyViewerError,
     catalog_load_path,
     discover_study_dirs,
+    failed_cell_error_lines,
+    failed_cells_frame,
     format_study_catalog_table,
     load_study_view,
+    preview_error_text,
+    read_rollup_files,
     resolve_catalog_roots,
     resolve_study_dir,
     summarize_ledger_progress,
+    tail_launch_log,
 )
 from tests.study.test_study_report import _write_report_fixture
 
@@ -98,6 +107,8 @@ def test_load_study_view_does_not_write_or_clobber_overview(tmp_path: Path):
     assert (study_dir / OVERVIEW_MD).read_text(encoding="utf-8") == sentinel
     assert not (study_dir / OVERVIEW_CSV).exists()
     assert not (study_dir / OTF_DELTA_CSV).exists()
+    assert not (study_dir / ROLLUP_CSV_NAME).exists()
+    assert not (study_dir / ROLLUP_MD_NAME).exists()
 
 
 def test_resolve_study_dir_refuses_outside_roots(tmp_path: Path):
@@ -311,7 +322,14 @@ def test_pages_studies_is_read_only_source():
     assert "expand_study" not in source
     assert "promote_study" not in source
     assert "rollup_study" not in source
+    assert "build_group_summaries" not in source
     assert "apply_research_bundle_to_session" not in source
+    assert "### Failed cells" in source
+    assert "### Group summaries" in source
+    assert "### Rollup" in source
+    assert "model.report.group_summaries" in source
+    assert "Full failed-cell error text" in source
+    assert "Show study.launch.log (tail)" in source
     assert "write_artifacts=False" in Path("thesistester/study/viewer.py").read_text(
         encoding="utf-8"
     )
@@ -661,12 +679,14 @@ def test_viewer_module_import_allow_list():
     assert "thesistester.cli" not in imported
     assert "plotly" not in imported
     assert "streamlit" not in imported
+    assert "thesistester.study.rollup" not in imported
+    assert "rollup_study(" not in source
 
 
 def test_inspect_catalog_handler_does_not_call_load_study_view():
     source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
     start = source.index("def _render_inspect_catalog")
-    end = source.index("def _render_inspect(")
+    end = source.index("def _render_inspect_quality(")
     catalog_src = source[start:end]
     assert "discover_study_dirs" in catalog_src
     assert "catalog_load_path" in catalog_src
@@ -677,3 +697,155 @@ def test_inspect_catalog_handler_does_not_call_load_study_view():
     assert "load_study_view" not in catalog_src
     assert "run_study" not in catalog_src
     assert "rollup_study" not in catalog_src
+
+
+def test_failed_cell_error_lines_dedupes_and_caps_from_viewer():
+    cells = {
+        "a": {"status": "failed", "error": "DataValidationError: missing columns"},
+        "b": {"status": "ok", "error": None},
+        "c": {"status": "failed", "error": "DataValidationError: missing columns"},
+        "d": {"status": "failed", "error": "FileNotFoundError: bars.csv"},
+        "e": {"status": "failed", "error": "ValueError: boom"},
+    }
+    lines = failed_cell_error_lines(cells, ["a", "b", "c", "d", "e"], max_unique=2)
+    assert lines[0] == "Failed cell errors (unique):"
+    assert lines[1].startswith("  a: DataValidationError: missing columns")
+    assert lines[2].startswith("  d: FileNotFoundError: bars.csv")
+    assert lines[3] == "  … +1 more unique error(s) in study.ledger.json"
+    assert failed_cell_error_lines(cells, ["b"]) == []
+
+
+def test_quality_panes_from_loaded_model(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    long_error = "DataValidationError: " + ("missing column " * 20)
+    ledger["cells"][names[0]]["status"] = "failed"
+    ledger["cells"][names[0]]["error"] = long_error
+    ledger["cells"][names[1]]["status"] = "failed"
+    ledger["cells"][names[1]]["error"] = "FileNotFoundError: bars.csv"
+    ledger["cells"][names[2]]["status"] = "ok"
+    ledger["cells"][names[3]]["status"] = "ok"
+    save_ledger(study_dir, ledger)
+
+    rollup_csv = "run_name,status\ncell_a,ok\n"
+    rollup_md = "# Rollup\ncompose-only\n"
+    (study_dir / ROLLUP_CSV_NAME).write_text(rollup_csv, encoding="utf-8")
+    (study_dir / ROLLUP_MD_NAME).write_text(rollup_md, encoding="utf-8")
+    prefix = "HEAD\n" + ("x" * (LAUNCH_LOG_TAIL_BYTES + 200))
+    (study_dir / LAUNCH_LOG_NAME).write_text(prefix + "TAILMARK\n", encoding="utf-8")
+    overview_before = (
+        (study_dir / OVERVIEW_MD).read_text(encoding="utf-8")
+        if (study_dir / OVERVIEW_MD).exists()
+        else None
+    )
+    rollup_mtime = (study_dir / ROLLUP_CSV_NAME).stat().st_mtime
+
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert list(model.failed_cells_display.columns) == ["run_name", "error"]
+    assert set(model.failed_cells_display["run_name"]) == {names[0], names[1]}
+    assert long_error in set(model.failed_cells_display["error"])
+    assert model.unique_error_lines[0] == "Failed cell errors (unique):"
+    assert any("FileNotFoundError: bars.csv" in line for line in model.unique_error_lines)
+    assert preview_error_text(long_error) != long_error
+
+    report = report_study(study_dir, write_artifacts=False)
+    assert set(model.report.group_summaries) == set(report.group_summaries)
+    for axis, frame in model.report.group_summaries.items():
+        pd.testing.assert_frame_equal(frame, report.group_summaries[axis])
+
+    assert model.rollup_present is True
+    assert list(model.rollup_display["run_name"]) == ["cell_a"]
+    assert model.rollup_md == rollup_md
+    assert model.launch_log_present is True
+    assert model.launch_log_tail.endswith("TAILMARK\n")
+    assert "HEAD\n" not in model.launch_log_tail
+    assert len(model.launch_log_tail.encode("utf-8")) <= LAUNCH_LOG_TAIL_BYTES + 8
+
+    assert (study_dir / ROLLUP_CSV_NAME).read_text(encoding="utf-8") == rollup_csv
+    assert (study_dir / ROLLUP_MD_NAME).read_text(encoding="utf-8") == rollup_md
+    assert (study_dir / ROLLUP_CSV_NAME).stat().st_mtime == rollup_mtime
+    if overview_before is None:
+        assert not (study_dir / OVERVIEW_MD).exists()
+        assert not (study_dir / OVERVIEW_CSV).exists()
+    else:
+        assert (study_dir / OVERVIEW_MD).read_text(encoding="utf-8") == overview_before
+
+
+def test_quality_panes_absent_rollup_and_ledger_only(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    names = sorted(expansion["factor_map"])
+    ledger = empty_ledger(
+        study_identity_hash=str(expansion["study_identity_hash"]),
+        run_names=names,
+    )
+    ledger["cells"][names[0]]["status"] = "failed"
+    ledger["cells"][names[0]]["error"] = "ValueError: boom"
+    save_ledger(study_dir, ledger)
+
+    complete = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert complete.rollup_present is False
+    assert complete.rollup_display.empty
+    assert complete.rollup_md == ""
+    assert complete.launch_log_present is False
+    assert list(complete.failed_cells_display["run_name"]) == [names[0]]
+    assert isinstance(complete.report.group_summaries, dict)
+
+    (study_dir / ROLLUP_CSV_NAME).write_text("run_name,status\norphan,ok\n", encoding="utf-8")
+    (study_dir / RESULTS_INDEX).unlink()
+    overview_csv_existed = (study_dir / OVERVIEW_CSV).exists()
+    overview_md_existed = (study_dir / OVERVIEW_MD).exists()
+    ledger_only = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert ledger_only.report_present is False
+    assert list(ledger_only.failed_cells_display["run_name"]) == [names[0]]
+    assert ledger_only.failed_cells_display.iloc[0]["error"] == "ValueError: boom"
+    assert ledger_only.report.group_summaries == {}
+    assert ledger_only.rollup_present is False
+    assert ledger_only.rollup_display.empty
+    assert (study_dir / ROLLUP_CSV_NAME).is_file()
+    assert (study_dir / OVERVIEW_CSV).exists() is overview_csv_existed
+    assert (study_dir / OVERVIEW_MD).exists() is overview_md_existed
+
+
+def test_read_rollup_and_launch_log_helpers(tmp_path: Path):
+    study_dir = tmp_path / "solo"
+    study_dir.mkdir()
+    absent = read_rollup_files(study_dir)
+    assert absent.present is False
+    assert tail_launch_log(study_dir) is None
+
+    (study_dir / ROLLUP_CSV_NAME).write_text("run_name\nalpha\n", encoding="utf-8")
+    (study_dir / ROLLUP_MD_NAME).write_text("# md\n", encoding="utf-8")
+    present = read_rollup_files(study_dir)
+    assert present.present is True
+    assert list(present.frame["run_name"]) == ["alpha"]
+    assert present.markdown == "# md\n"
+
+    (study_dir / LAUNCH_LOG_NAME).write_bytes(b"ok \xff tail")
+    text = tail_launch_log(study_dir)
+    assert text is not None
+    assert "ok" in text
+    assert "tail" in text
+
+    frame = failed_cells_frame(
+        {"cells": {"z": {"status": "failed"}, "a": {"status": "failed", "error": "e"}}}
+    )
+    assert list(frame["run_name"]) == ["a", "z"]
+    assert list(frame["error"]) == ["e", "unknown error"]
+
+
+def test_load_study_view_does_not_call_rollup_study(tmp_path: Path, monkeypatch):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("load_study_view must not call rollup_study")
+
+    monkeypatch.setattr("thesistester.study.rollup.rollup_study", _boom)
+    model = load_study_view(study_dir, roots=(tmp_path.resolve(),))
+    assert model.rollup_present is False
+    assert not (study_dir / ROLLUP_CSV_NAME).exists()

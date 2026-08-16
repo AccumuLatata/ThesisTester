@@ -1,4 +1,4 @@
-"""RS-D2 / SV1 read-only Studies viewer helpers.
+"""RS-D2 / SV1 / SV2 read-only Studies viewer helpers.
 
 Loads completed study artifacts via ``report_study`` / ``load_ledger``. Does not
 execute cells, promote drafts, rewrite overview artifacts, or mutate classic
@@ -10,6 +10,10 @@ metric, ETA, or job queue.
 
 SV1 catalog discovery scans one level of ``results/studies/`` and ``out/``
 under trusted roots. It does not call ``report_study``.
+
+SV2 projects failed-cell errors, ``report.group_summaries``, optional
+``study.rollup.*`` files, and a ``study.launch.log`` tail. It does not call
+``rollup_study`` or rewrite overview / rollup artifacts.
 """
 
 from __future__ import annotations
@@ -66,6 +70,12 @@ STUDIES_VIEWER_CATALOG_SELECT_KEY = "studies_viewer_catalog_select"
 CATALOG_SCAN_PREFIXES: tuple[str, ...] = ("results/studies", "out")
 CATALOG_DISPLAY_CAP = 50
 STUDY_SPEC_FILENAME = "study.spec.yaml"
+FAILED_ERROR_PRINT_CAP = 5
+FAILED_ERROR_PREVIEW_CHARS = 160
+LAUNCH_LOG_TAIL_BYTES = 8192
+ROLLUP_CSV_NAME = "study.rollup.csv"
+ROLLUP_MD_NAME = "study.rollup.md"
+LAUNCH_LOG_NAME = "study.launch.log"
 
 
 class StudyViewerError(ValueError):
@@ -152,9 +162,7 @@ def split_catalog_scan_paths(
                 f"(cwd and store). Resolved path: {candidate}"
             )
         if not candidate.is_dir():
-            raise StudyViewerError(
-                f"Study path does not exist or is not a directory: {candidate}"
-            )
+            raise StudyViewerError(f"Study path does not exist or is not a directory: {candidate}")
         if any(candidate == root for root in trusted):
             roots.append(candidate)
         else:
@@ -340,6 +348,138 @@ def format_study_catalog_table(entries: Sequence[StudyCatalogEntry]) -> str:
     return "\n".join(lines)
 
 
+def failed_cell_error_lines(
+    cells: dict,
+    run_names: list[str],
+    *,
+    max_unique: int = FAILED_ERROR_PRINT_CAP,
+) -> list[str]:
+    """Return summary lines for unique failed-cell errors (first example each).
+
+    CLI print text is frozen — ``cli_study`` imports this helper.
+    """
+    unique: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for name in run_names:
+        cell = cells.get(name) or {}
+        if cell.get("status") != "failed":
+            continue
+        error = str(cell.get("error") or "unknown error")
+        if error in seen:
+            continue
+        seen.add(error)
+        unique.append((name, error))
+    if not unique:
+        return []
+    shown = unique[: max(0, int(max_unique))]
+    lines = ["Failed cell errors (unique):"]
+    lines.extend(f"  {name}: {error}" for name, error in shown)
+    extra = len(unique) - len(shown)
+    if extra > 0:
+        lines.append(f"  … +{extra} more unique error(s) in study.ledger.json")
+    return lines
+
+
+def failed_cells_frame(ledger: Mapping[str, Any] | None) -> pd.DataFrame:
+    """Every ledger cell with ``status=failed`` (``run_name``, ``error``)."""
+    columns = ["run_name", "error"]
+    if ledger is None:
+        return pd.DataFrame(columns=columns)
+    cells = ledger.get("cells")
+    if not isinstance(cells, Mapping):
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, str]] = []
+    for name, cell in cells.items():
+        if not isinstance(cell, Mapping):
+            continue
+        if str(cell.get("status") or "") != "failed":
+            continue
+        error = cell.get("error")
+        text = "unknown error" if error is None or str(error) == "" else str(error)
+        rows.append({"run_name": str(name), "error": text})
+    rows.sort(key=lambda item: item["run_name"])
+    return pd.DataFrame(rows, columns=columns)
+
+
+def unique_failed_error_lines(
+    ledger: Mapping[str, Any] | None,
+    *,
+    max_unique: int = FAILED_ERROR_PRINT_CAP,
+) -> tuple[str, ...]:
+    """Caption lines: unique failed-cell errors, capped (same text as CLI)."""
+    if ledger is None:
+        return ()
+    cells = ledger.get("cells")
+    if not isinstance(cells, Mapping):
+        return ()
+    mapping = dict(cells) if not isinstance(cells, dict) else cells
+    names = [str(name) for name in mapping]
+    return tuple(failed_cell_error_lines(mapping, names, max_unique=max_unique))
+
+
+def preview_error_text(text: str, *, max_chars: int = FAILED_ERROR_PREVIEW_CHARS) -> str:
+    """Truncate a long error for the Inspect table; expander keeps full text."""
+    raw = str(text)
+    limit = max(0, int(max_chars))
+    if len(raw) <= limit:
+        return raw
+    if limit <= 3:
+        return raw[:limit]
+    return raw[: limit - 3] + "..."
+
+
+@dataclass(frozen=True)
+class StudyRollupView:
+    """Read-only ``study.rollup.*`` projection. Never written by the viewer."""
+
+    present: bool
+    frame: pd.DataFrame
+    markdown: str
+
+
+def read_rollup_files(study_dir: Path) -> StudyRollupView:
+    """Read existing rollup files. Does not call ``rollup_study``."""
+    csv_path = Path(study_dir) / ROLLUP_CSV_NAME
+    md_path = Path(study_dir) / ROLLUP_MD_NAME
+    if not csv_path.is_file():
+        return StudyRollupView(present=False, frame=pd.DataFrame(), markdown="")
+    try:
+        frame = pd.read_csv(csv_path)
+    except (OSError, UnicodeDecodeError, ValueError, pd.errors.ParserError):
+        frame = pd.DataFrame()
+    markdown = ""
+    if md_path.is_file():
+        try:
+            markdown = md_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            markdown = ""
+    return StudyRollupView(present=True, frame=frame, markdown=markdown)
+
+
+def tail_launch_log(
+    study_dir: Path,
+    *,
+    max_bytes: int = LAUNCH_LOG_TAIL_BYTES,
+) -> str | None:
+    """Last ``max_bytes`` of ``study.launch.log``, or ``None`` if absent.
+
+    Decodes UTF-8 with replacement. Streamlit watcher lines are not this file.
+    """
+    path = Path(study_dir) / LAUNCH_LOG_NAME
+    if not path.is_file():
+        return None
+    limit = max(0, int(max_bytes))
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            if size > limit:
+                handle.seek(-limit, 2)
+            data = handle.read(limit)
+    except OSError:
+        return None
+    return data.decode("utf-8", errors="replace")
+
+
 def _ledger_status_counts(ledger: Mapping[str, Any] | None) -> dict[str, int]:
     if ledger is None:
         return {}
@@ -516,6 +656,13 @@ class StudyViewerModel:
     otf_delta_display: pd.DataFrame
     overview_md: str
     overview_csv_text: str
+    failed_cells_display: pd.DataFrame
+    unique_error_lines: tuple[str, ...]
+    rollup_present: bool
+    rollup_display: pd.DataFrame
+    rollup_md: str
+    launch_log_present: bool
+    launch_log_tail: str
 
 
 def _report_settings_from_spec(study_dir: Path) -> tuple[str, int, str]:
@@ -651,6 +798,13 @@ def load_study_view(
         "profit_factor_source",
     ]
     overview_csv_text = report.overview.to_csv(index=False) if not report.overview.empty else ""
+    failed_display = failed_cells_frame(ledger)
+    unique_lines = unique_failed_error_lines(ledger)
+    if report_present:
+        rollup = read_rollup_files(root)
+    else:
+        rollup = StudyRollupView(present=False, frame=pd.DataFrame(), markdown="")
+    log_tail = tail_launch_log(root)
     return StudyViewerModel(
         study_dir=root,
         study_name=study_name,
@@ -679,4 +833,11 @@ def load_study_view(
         otf_delta_display=report.otf_delta.copy() if not report.otf_delta.empty else pd.DataFrame(),
         overview_md=report.markdown,
         overview_csv_text=overview_csv_text,
+        failed_cells_display=failed_display,
+        unique_error_lines=unique_lines,
+        rollup_present=rollup.present,
+        rollup_display=rollup.frame,
+        rollup_md=rollup.markdown,
+        launch_log_present=log_tail is not None,
+        launch_log_tail=log_tail or "",
     )

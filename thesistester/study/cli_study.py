@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5, RS-D4, SV1)."""
+"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5, RS-D4, SV1–SV2)."""
 
 from __future__ import annotations
 
@@ -19,40 +19,10 @@ from thesistester.study.schema import StudySpecError
 from thesistester.study.viewer import (
     StudyViewerError,
     discover_study_dirs,
+    failed_cell_error_lines,
     format_study_catalog_table,
     split_catalog_scan_paths,
 )
-
-_FAILED_ERROR_PRINT_CAP = 5
-
-
-def failed_cell_error_lines(
-    cells: dict,
-    run_names: list[str],
-    *,
-    max_unique: int = _FAILED_ERROR_PRINT_CAP,
-) -> list[str]:
-    """Return summary lines for unique failed-cell errors (first example each)."""
-    unique: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for name in run_names:
-        cell = cells.get(name) or {}
-        if cell.get("status") != "failed":
-            continue
-        error = str(cell.get("error") or "unknown error")
-        if error in seen:
-            continue
-        seen.add(error)
-        unique.append((name, error))
-    if not unique:
-        return []
-    shown = unique[: max(0, int(max_unique))]
-    lines = ["Failed cell errors (unique):"]
-    lines.extend(f"  {name}: {error}" for name, error in shown)
-    extra = len(unique) - len(shown)
-    if extra > 0:
-        lines.append(f"  … +{extra} more unique error(s) in study.ledger.json")
-    return lines
 
 
 def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
