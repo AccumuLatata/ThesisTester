@@ -218,6 +218,33 @@ def _resolved_builder_ingestion_mode(value: Any) -> str:
     return INGESTION_MODE_PRIMARY
 
 
+def _draft_ingestion_mode(draft: Any) -> Any:
+    """Read ingest token without requiring SIA1 ``StudyDraft.ingestion_mode``.
+
+    Pre-SIA1 drafts store a hand-authored mode only in ``dataset_extra``.
+    """
+    mode = getattr(draft, "ingestion_mode", None)
+    if isinstance(mode, str) and mode.strip():
+        return mode
+    extra = getattr(draft, "dataset_extra", None)
+    if isinstance(extra, dict):
+        extra_mode = extra.get("ingestion_mode")
+        if extra_mode is not None:
+            return extra_mode
+    return mode
+
+
+def _apply_builder_ingestion_mode(draft: Any, value: Any) -> None:
+    """Write the radio onto the first-class field, else ``dataset_extra``."""
+    resolved = _resolved_builder_ingestion_mode(value)
+    if hasattr(draft, "ingestion_mode"):
+        draft.ingestion_mode = resolved
+        return
+    extra = getattr(draft, "dataset_extra", None)
+    if isinstance(extra, dict):
+        extra["ingestion_mode"] = resolved
+
+
 st.title("Studies")
 st.caption(
     "Inspect a completed study output directory, preview a canonical StudySpec "
@@ -714,7 +741,7 @@ def _sync_builder_widgets(draft: StudyDraft) -> None:
         draft.format_profile
     )
     st.session_state[WIDGET_KEY_INGESTION_MODE] = _resolved_builder_ingestion_mode(
-        getattr(draft, "ingestion_mode", None)
+        _draft_ingestion_mode(draft)
     )
     sma_lengths = [int(item) for item in (draft.levels.get("sma_lengths") or [])]
     ema_lengths = [int(item) for item in (draft.levels.get("ema_lengths") or [])]
@@ -876,10 +903,7 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.format_profile = normalize_builder_format_profile(
         st.session_state.get(WIDGET_KEY_FORMAT_PROFILE)
     )
-    if hasattr(draft, "ingestion_mode"):
-        draft.ingestion_mode = _resolved_builder_ingestion_mode(
-            st.session_state.get(WIDGET_KEY_INGESTION_MODE)
-        )
+    _apply_builder_ingestion_mode(draft, st.session_state.get(WIDGET_KEY_INGESTION_MODE))
 
     levels = copy.deepcopy(dict(draft.levels))
     # Persist [] when the operator clears lengths. Omitting the key lets
@@ -1227,7 +1251,7 @@ def _render_build() -> None:
         timezone_options = [base.source_timezone, *timezone_options]
     st.selectbox("Source timezone", options=timezone_options, key=WIDGET_KEY_SOURCE_TIMEZONE)
     ingest_options = list(_INGESTION_MODE_OPTIONS)
-    base_ingest = getattr(base, "ingestion_mode", None)
+    base_ingest = _draft_ingestion_mode(base)
     raw_ingest = base_ingest.strip() if isinstance(base_ingest, str) else ""
     if raw_ingest and raw_ingest not in ingest_options:
         ingest_options = [raw_ingest, *ingest_options]

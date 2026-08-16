@@ -568,6 +568,11 @@ def test_pages_studies_build_tab_source_contract():
     assert "WIDGET_KEY_INGESTION_MODE" not in builder_import
     assert 'INGESTION_MODE_PRIMARY = "primary"' in page
     assert 'WIDGET_KEY_INGESTION_MODE = "_study_builder_ingestion_mode"' in page
+    assert "def _draft_ingestion_mode" in page
+    assert "def _apply_builder_ingestion_mode" in page
+    assert 'getattr(draft, "ingestion_mode", None)' in page
+    assert 'hasattr(draft, "ingestion_mode")' in page
+    assert 'extra.get("ingestion_mode")' in page
     assert "from thesistester.study import builder" not in page
     assert "from thesistester.data import loader as _data_loader" in page
     assert "def _bind_format_profile_labels" in page
@@ -610,16 +615,16 @@ def test_pages_studies_ingest_radio_source_contract():
             assert not module.startswith("pages.")
     sync_body = page.split("def _sync_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_INGESTION_MODE" in sync_body
-    assert 'getattr(draft, "ingestion_mode", None)' in sync_body
+    assert "_draft_ingestion_mode(draft)" in sync_body
     read_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_INGESTION_MODE" in read_body
-    assert "draft.ingestion_mode" in read_body
+    assert "_apply_builder_ingestion_mode(" in read_body
     assert "WIDGET_KEY_FORMAT_PROFILE" in read_body
     assert "WIDGET_KEY_INTRABAR_MODEL" in read_body
     ingest_assign = [
         line
         for line in read_body.splitlines()
-        if "draft.ingestion_mode" in line or "WIDGET_KEY_INGESTION_MODE" in line
+        if "_apply_builder_ingestion_mode" in line or "WIDGET_KEY_INGESTION_MODE" in line
     ]
     assert ingest_assign
     assert all("WIDGET_KEY_FORMAT_PROFILE" not in line for line in ingest_assign)
@@ -642,6 +647,49 @@ def test_pages_studies_ingest_radio_source_contract():
     build = page.split("def _render_build")[1].split("with inspect_tab:")[0]
     assert "run_study" not in build
     assert "spawn_launch" not in build
+    assert "_draft_ingestion_mode(base)" in build
+
+
+def test_page_ingest_helpers_survive_pre_sia1_draft():
+    """Page helpers must not AttributeError when StudyDraft lacks ingestion_mode."""
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    start = page.index("def _resolved_builder_ingestion_mode")
+    end = page.index("\nst.title(")
+    namespace = {
+        "Any": object,
+        "INGESTION_MODE_PRIMARY": INGESTION_MODE_PRIMARY,
+    }
+    exec(page[start:end], namespace)  # noqa: S102 — slice is the page-local helpers
+    read = namespace["_draft_ingestion_mode"]
+    apply = namespace["_apply_builder_ingestion_mode"]
+    resolve = namespace["_resolved_builder_ingestion_mode"]
+
+    class _StaleDraft:
+        def __init__(self) -> None:
+            self.dataset_extra = {"ingestion_mode": INGESTION_MODE_15S_PRIMARY_DERIVE_1M}
+
+    stale = _StaleDraft()
+    assert read(stale) == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    apply(stale, INGESTION_MODE_PRIMARY)
+    assert stale.dataset_extra["ingestion_mode"] == INGESTION_MODE_PRIMARY
+    assert not hasattr(stale, "ingestion_mode")
+
+    class _EmptyStale:
+        def __init__(self) -> None:
+            self.dataset_extra = {}
+
+    empty = _EmptyStale()
+    assert resolve(read(empty)) == INGESTION_MODE_PRIMARY
+
+    current = StudyDraft()
+    current.ingestion_mode = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert read(current) == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    current.ingestion_mode = "  "
+    current.dataset_extra = {"ingestion_mode": INGESTION_MODE_15S_PRIMARY_DERIVE_1M}
+    assert read(current) == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    apply(current, INGESTION_MODE_PRIMARY)
+    assert current.ingestion_mode == INGESTION_MODE_PRIMARY
+    assert current.dataset_extra["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 
 
 def test_pages_studies_unkeyed_buttons_have_unique_labels():

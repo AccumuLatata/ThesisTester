@@ -589,10 +589,13 @@ When OTF is enabled in walk-forward:
   remains the default and no format auto-detection is permitted. Study builder
   emit always writes the key from the R17 allow-list (omitted / blank →
   `canonical`; unknown non-blank tokens fail emit). The Studies page must not
-  import `FORMAT_PROFILE_LABELS` or `normalize_builder_format_profile` from
-  builder (stale `builder.py` bricks the tab). Bind labels from loader via a
-  type-checked `getattr` plus local fallback; keep page-local normalize
-  (blank → `canonical`; do not rewrite unknown tokens).
+  import `FORMAT_PROFILE_LABELS`, `normalize_builder_format_profile`,
+  `INGESTION_MODE_PRIMARY`, or `WIDGET_KEY_INGESTION_MODE` from builder
+  (stale `builder.py` bricks the page, including Inspect/Preview). Bind
+  labels from loader via a type-checked `getattr` plus local fallback; keep
+  page-local normalize (blank → `canonical`; do not rewrite unknown tokens).
+  Page-local ingest tokens; seed/Apply via getattr/hasattr (and
+  `dataset_extra` when the first-class field is missing).
 - `dataset.subtimeframe_path` is always canonical OHLCV for R12 replay; it
   never inherits the primary dataset's vendor `format_profile`. Prefer
   `dataset.ingestion_mode: 15s_primary_derive_1m` when the primary file is
