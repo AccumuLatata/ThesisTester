@@ -455,16 +455,30 @@ _CHART_HONESTY = (
 )
 
 
+def _is_chart_frame(obj: object) -> bool:
+    """True when *obj* is a pandas-like frame (has empty / columns / dropna)."""
+    return (
+        obj is not None
+        and hasattr(obj, "empty")
+        and hasattr(obj, "columns")
+        and hasattr(obj, "dropna")
+    )
+
+
 def _ranked_chart_frame(model: StudyViewerModel):
     """Ranked cells for SV3 charts. Prefer display when the metric column is present."""
     metric = model.report.primary_metric
     display = model.ranked_display
-    if display is not None and not display.empty and metric in display.columns:
+    if _is_chart_frame(display) and not display.empty and metric in display.columns:
         return display
-    ranked = model.report.ranked
-    if ranked is not None and not ranked.empty and metric in ranked.columns:
+    ranked = getattr(model.report, "ranked", None)
+    if _is_chart_frame(ranked) and not ranked.empty and metric in ranked.columns:
         return ranked
-    return display if display is not None else ranked
+    if _is_chart_frame(display):
+        return display
+    if _is_chart_frame(ranked):
+        return ranked
+    return None
 
 
 def _render_inspect_charts(model: StudyViewerModel) -> None:
@@ -472,7 +486,7 @@ def _render_inspect_charts(model: StudyViewerModel) -> None:
     st.markdown("### Overview charts")
     metric = model.report.primary_metric
     frame = _ranked_chart_frame(model)
-    ranked_empty = frame is None or frame.empty or metric not in getattr(frame, "columns", ())
+    ranked_empty = not _is_chart_frame(frame) or frame.empty or metric not in frame.columns
 
     st.markdown("**Ranked primary-metric distribution**")
     st.caption(_CHART_HONESTY)
@@ -510,17 +524,20 @@ def _render_inspect_charts(model: StudyViewerModel) -> None:
             st.plotly_chart(fig, width="stretch")
 
     st.markdown("**Group bars**")
-    groups = model.report.group_summaries
-    if not groups:
+    groups = getattr(model.report, "group_summaries", None)
+    if not isinstance(groups, dict) or not groups:
         st.caption(_CHART_HONESTY)
         st.caption("No group-summary axes to chart.")
         return
     for axis, raw in groups.items():
         st.caption(_CHART_HONESTY)
+        if not _is_chart_frame(raw):
+            st.caption(f"No group-bar series for `{axis}`.")
+            continue
         ycol = f"median_{metric}"
-        if raw is None or ycol not in raw.columns:
+        if ycol not in raw.columns:
             ycol = f"mean_{metric}"
-        if raw is None or raw.empty or ycol not in raw.columns:
+        if raw.empty or ycol not in raw.columns:
             st.caption(f"No group-bar series for `{axis}`.")
             continue
         work = raw.dropna(subset=[ycol])

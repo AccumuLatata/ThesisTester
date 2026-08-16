@@ -977,7 +977,7 @@ robustness (honest next steps after screening).
 
 **What it is.** Streamlit **Studies** (`pages/15_Studies.py`): **Inspect** lists
 local dirs under `results/studies/` and `out/` (one level) and loads `output_dir`
-(ledger, failed cells / groups / optional rollup, ranked charts, OTF Δ,
+(ledger, failed cells / groups / optional rollup, ranked / low-N / charts, OTF Δ,
 overview via `report_study(..., write_artifacts=False)`). Path paste still
 works. **Preview** validates `schema_version: 1` YAML (cell count /
 `--confirm`). **Run via CLI** spawns `python -m thesistester study run`.
@@ -1016,7 +1016,7 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 
 1. CLI `study expand` → `study run` → `study report`, or author on Build / preview first.
 2. **Studies** Inspect: **Load selected** or paste `output_dir` then Load.
-   After Load: failed-cell errors, groups, optional rollup, overview charts.
+   After Load: failed-cell errors, groups, optional rollup / launch-log, charts.
    Refresh while in flight. `study list` is the CLI twin.
 3. **Build** (optional): example or closed catalog. New drafts emit
    `15s_primary_derive_1m`. Path is the same 15s Quantower CSV as Data
