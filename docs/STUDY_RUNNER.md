@@ -19,7 +19,9 @@ change preview / CLI-spawn / execute semantics.
 pdPOC teaching example emit `dataset.ingestion_mode: 15s_primary_derive_1m`
 (Quantower 15s path, `intrabar_model: subtimeframe_conservative`). Omitted
 mode remains `primary` (the dopen example is legacy 1m). Execute is still
-CLI / `run_experiment`. Studies does not walk the Data page.
+CLI / `run_experiment`. Studies does not walk the Data page. The 15s-primary
+derive loader resolves OHLC-identical source duplicate opens (lowest volume)
+before 1m derivation; OHLC conflicts fail the cell.
 **SV** (Study Viewer) SV1–SV4 ✅
 `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0–**SV4** shipped (catalog +
 `study list` + click-to-load + quality panes + overview charts + cell peek).

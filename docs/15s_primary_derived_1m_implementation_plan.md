@@ -1,6 +1,11 @@
 # 15-Second Primary Data → Derived 1-Minute Canonical Plan
 
-**Status:** Delivered (PRs 1–3); PR4 recommend-only UX/docs complete
+**Status:** Delivered (PRs 1–3); PR4 recommend-only UX/docs complete.
+Living addendum: 15s-primary derive (Data + API/study) resolves
+OHLC-identical source duplicate opens with
+`prepare_15s_source_for_derivation` before `derive_complete_parent_ohlcv`
+(lowest volume kept; audit in `ingestion_provenance`). OHLC conflicts and
+native 1m primary duplicates stay fail-closed / diagnostic-only.
 **Scope:** Explicit 15-second-primary ingestion for Quantower-style OHLCV exports
 **Decision:** Build 1-minute canonical bars internally from uploaded 15-second
 bars, and retain the uploaded 15-second bars as the only R12 intrabar source.  

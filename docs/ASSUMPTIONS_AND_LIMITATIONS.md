@@ -98,16 +98,22 @@ This engine is for **research screening**, not proof of a durable edge.
   Vendor-native 1m and derived 1m remain non-interchangeable. Manual dual-upload
   lower files that are never saved remain session-scoped unless exported in a
   research bundle.
-- Lower-upload duplicate timestamps remain fail-closed. The Data page can
-  export a read-only duplicate report that distinguishes exact duplicate rows
-  from conflicting same-timestamp bars; it never deduplicates automatically.
-- For R12 lower data only, users may explicitly resolve duplicate groups with
-  identical OHLC but conflicting volume by retaining the lowest-volume row.
-  R12 does not use lower-bar volume for event ordering; every discarded volume
-  is retained in research-bundle provenance. Any OHLC conflict still rejects.
-- Primary-data duplicate reports are diagnostic only. Primary bars are never
-  deduplicated automatically because their volume affects VWAP and profile
-  calculations.
+- On the 15s-primary derive path (Data page, API, CLI, study), a handful of
+  vendor-repeated 15-second opens are resolved **before** 1m derivation when
+  every duplicate group shares OHLC (exact copies included). Policy
+  `ohlc_identical_keep_lowest_volume` — the same rule as the legacy lower-TF
+  button. Audit is recorded in `ingestion_provenance`
+  (`source_duplicate_resolution`, group/row counts, per-group discarded
+  volumes). OHLC conflicts stay fail-closed. `derive_complete_parent_ohlcv`
+  still rejects a duplicate-bearing frame; resolution is a pre-derive step
+  shared by Data and `run_experiment`.
+- Legacy dual-upload lower-TF duplicates remain fail-closed until the
+  operator clicks **Use OHLC-identical duplicates for lower-timeframe replay
+  only**. The Data page can export a read-only duplicate report that
+  distinguishes exact duplicate rows from conflicting same-timestamp bars.
+- Primary-data (native 1m) duplicate reports are diagnostic only. Native
+  one-minute primary bars are never auto-deduplicated because their volume
+  affects VWAP and profile calculations.
 - When cleaned lower R12 data is available, the primary duplicate diagnostic
   can compare each candidate primary volume with the complete lower-bar volume
   sum. A match is evidence for investigation, not an automatic primary-volume

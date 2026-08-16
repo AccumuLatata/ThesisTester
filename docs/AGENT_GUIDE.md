@@ -613,6 +613,12 @@ When OTF is enabled in walk-forward:
   `dataset.ingestion_mode: 15s_primary_derive_1m` when the primary file is
   itself the 15-second Quantower export; do not combine that mode with
   `subtimeframe_path`.
+- 15s-primary derive (Data + `run_experiment`) resolves OHLC-identical
+  source duplicate opens with `prepare_15s_source_for_derivation` before
+  `derive_complete_parent_ohlcv` (lowest volume kept; audit in
+  `ingestion_provenance`). OHLC conflicts stay fail-closed. Do not
+  auto-dedup native one-minute primary bars. Do not put a second policy in
+  the Data page.
 - Preserve captured raw rows only as provenance; use canonical one-minute bars
   for current engine work and do not treat raw ticks as R12 subtimeframe data.
 - Confirm the canonical sample CSV remains byte-identical after loader edits.

@@ -26,6 +26,7 @@ from thesistester.data.loader import (
     format_interval,
     infer_base_interval,
     load_ohlcv,
+    prepare_15s_source_for_derivation,
     primary_duplicate_volume_comparison,
     resolve_ohlc_identical_duplicates,
     validate_ohlcv,
@@ -370,10 +371,8 @@ def _prepare_15s_primary_dataset(
         target_tz=exchange_timezone,
         format_profile=format_profile,
     )
+    raw_df, source_duplicate_audit = prepare_15s_source_for_derivation(raw_df)
     source_report = validate_ohlcv(raw_df)
-    fatal_messages = _fatal_validation_messages(source_report)
-    if fatal_messages:
-        raise ValueError("15-second source validation failed: " + "; ".join(fatal_messages))
 
     derived = derive_complete_parent_ohlcv(raw_df)
     parent_report = validate_ohlcv(derived.parent_data)
@@ -399,7 +398,11 @@ def _prepare_15s_primary_dataset(
             f"Derived one-minute bars failed the R12 reconciliation postcondition: {exc}"
         ) from exc
 
-    provenance = build_derivation_provenance(derived, format_profile=format_profile)
+    provenance = build_derivation_provenance(
+        derived,
+        format_profile=format_profile,
+        source_duplicate_audit=source_duplicate_audit,
+    )
     upload_signature = (
         f"{INGESTION_MODE_15S_PRIMARY_DERIVE_1M}:{format_profile}:"
         f"{hash_source_frame(derived.source_data)}"
@@ -503,6 +506,21 @@ def _render_derived_parent_diagnostics(
             mime="text/csv",
             key="download_dropped_minute_diagnostics",
         )
+
+
+def _render_15s_source_duplicate_caption(provenance) -> None:
+    """Show resolved 15s source-duplicate audit when provenance recorded one."""
+    if not isinstance(provenance, dict):
+        return
+    groups = provenance.get("source_duplicate_groups_resolved")
+    if not groups:
+        return
+    discarded = int(provenance.get("source_duplicate_rows_discarded") or 0)
+    st.caption(
+        f"Resolved {int(groups):,} OHLC-identical 15-second duplicate group(s) "
+        f"({discarded:,} extra row(s) dropped; lowest volume kept). "
+        "Native one-minute primary bars are never auto-deduplicated."
+    )
 
 
 @st.cache_data(show_spinner=False)
@@ -1460,6 +1478,7 @@ if use_source_dataset:
                 "Canonical research data is the derived one-minute frame. "
                 "The original 15-second bars are attached for R12 replay."
             )
+            _render_15s_source_duplicate_caption(prepared.provenance)
             _render_derived_parent_diagnostics(
                 prepared.dropped_buckets,
                 prepared.sparse_buckets,
@@ -1546,6 +1565,7 @@ elif _session_has_primary_data():
         saved_dataset_loaded=ACTIVE_SAVED_DATASET_KEY in st.session_state,
     )
     if _is_15s_primary_session():
+        _render_15s_source_duplicate_caption(st.session_state.get("ingestion_provenance"))
         diagnostics = st.session_state.get(DERIVED_PARENT_DIAGNOSTICS_KEY)
         if isinstance(diagnostics, dict):
             dropped = diagnostics.get("dropped_buckets")

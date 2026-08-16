@@ -70,7 +70,7 @@ message size, MessageSizeError
 |---|---|---|
 | `Instrument` | Contract metadata (tick size, point value) | Wrong instrument → wrong R and costs |
 | `Source` | `Sample data` or `Upload CSV` | Sample auto-loads only on an empty session; it does not replace imported or already-loaded data when you navigate back |
-| `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; use R12 `subtimeframe_conservative` unless Build empty bars is on |
+| `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; a few OHLC-identical 15s duplicate opens are resolved (lowest volume) before derive. Use R12 `subtimeframe_conservative` unless Build empty bars is on |
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
 | Futures roll controls | `Roll method`, contract/adjustment/rule fields | Validate before trusting continuous history |
@@ -96,7 +96,7 @@ levels and downstream results when the dataset identity changes.
 **What it is not.**
 
 - Not a live data feed or broker connection.
-- Primary duplicates are never silently auto-deduped (volume/VWAP honesty).
+- Native one-minute primary duplicates are never silently auto-deduped (volume/VWAP honesty). On 15s-primary derive, OHLC-identical 15s source duplicates are resolved before 1m derivation (lowest volume kept; audit in provenance). OHLC conflicts still fail.
 - Lower-timeframe dual-upload is optional/legacy and for replay diagnostics.
 - Format profiles are explicit; wrong profile → bad bars, not a soft warning-only
   success.
