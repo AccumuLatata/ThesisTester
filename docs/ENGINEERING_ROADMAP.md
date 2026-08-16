@@ -1259,11 +1259,11 @@ change.
 
 ## Study Viewer (SV0–SV4) ✅ SV1 shipped
 
-Inspect today is path-paste + tables (`report_study(..., write_artifacts=False)`).
-SV deepens that **same** Studies page so operators can list local study dirs,
-see failed-cell errors / group summaries / optional rollup files, chart the
-already-loaded overview, and peek one cell — without a second runner or
-classic `st.session_state` mutation.
+Inspect today is catalog + path-paste + tables
+(`report_study(..., write_artifacts=False)`). SV1 lists local study dirs and
+reuses the existing Load path. SV2–SV4 add failed-cell / group / rollup panes,
+overview charts, and cell peek on that **same** Studies page — without a
+second runner or classic `st.session_state` mutation.
 
 **Canonical spec:** `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`
 
