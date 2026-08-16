@@ -706,35 +706,68 @@ def test_viewer_module_import_allow_list():
     assert "rollup_study(" not in source
 
 
-def test_studies_page_viewer_imports_resolve():
-    """Every ``from thesistester.study.viewer import …`` name on the page exists."""
+_PAGE_LOCAL_VIEWER_KEYS = {
+    "STUDIES_VIEWER_DIR_KEY": "studies_viewer_study_dir",
+    "STUDIES_VIEWER_CACHED_MODEL_KEY": "studies_viewer_cached_model",
+    "STUDIES_VIEWER_CACHED_MODEL_DIR_KEY": "studies_viewer_cached_model_dir",
+    "STUDIES_CATALOG_ENTRIES_KEY": "studies_catalog_entries",
+    "STUDIES_CATALOG_ROOTS_KEY": "studies_catalog_roots_key",
+    "STUDIES_VIEWER_PENDING_PATH_KEY": "studies_viewer_pending_path",
+    "STUDIES_VIEWER_CATALOG_SELECT_KEY": "studies_viewer_catalog_select",
+    "STUDIES_VIEWER_SELECTED_RUN_KEY": "studies_viewer_selected_run",
+    "CATALOG_DISPLAY_CAP": 50,
+}
+
+
+def test_studies_page_does_not_from_import_viewer_names():
+    """A stale/mid-init viewer bricks Studies if the page from-imports names."""
     source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    names: list[str] = []
+    from_names: list[str] = []
+    imported_viewer_module = False
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "thesistester.study.viewer":
-            names.extend(alias.name for alias in node.names)
-    assert names, "Studies page must import viewer helpers"
-    assert "CATALOG_DISPLAY_CAP" not in names
-    import thesistester.study.viewer as viewer_mod
+            from_names.extend(alias.name for alias in node.names)
+        if isinstance(node, ast.ImportFrom) and node.module == "thesistester.study":
+            imported_viewer_module = imported_viewer_module or any(
+                alias.name == "viewer" for alias in node.names
+            )
+        if isinstance(node, ast.Import):
+            imported_viewer_module = imported_viewer_module or any(
+                alias.name == "thesistester.study.viewer" for alias in node.names
+            )
+    assert from_names == []
+    assert imported_viewer_module
+    for name in _PAGE_LOCAL_VIEWER_KEYS:
+        assert name not in from_names
+    current_src = source[
+        source.index("def study_viewer_model_is_current") : source.index(
+            "# Do not import FORMAT_PROFILE_LABELS"
+        )
+    ]
+    assert "return False" in current_src
+    assert "return True" not in current_src
+    preview_src = source[
+        source.index("def preview_error_text") : source.index("def study_viewer_model_is_current")
+    ]
+    assert 'return raw[: limit - 3] + "..."' in preview_src
 
-    missing = [name for name in names if not hasattr(viewer_mod, name)]
-    assert missing == []
 
-
-def test_catalog_display_cap_is_page_local():
+def test_studies_page_viewer_keys_are_page_local():
     source = Path("pages/15_Studies.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    assigned: int | None = None
+    assigned: dict[str, object] = {}
     for node in tree.body:
-        if isinstance(node, ast.Assign):
-            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
-            if "CATALOG_DISPLAY_CAP" in targets and isinstance(node.value, ast.Constant):
-                assigned = int(node.value.value)
-    assert assigned == 50
-    from thesistester.study.viewer import CATALOG_DISPLAY_CAP as viewer_cap
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id in _PAGE_LOCAL_VIEWER_KEYS:
+                assigned[target.id] = node.value.value
+    assert assigned == _PAGE_LOCAL_VIEWER_KEYS
+    import thesistester.study.viewer as viewer_mod
 
-    assert viewer_cap == assigned
+    for name, value in _PAGE_LOCAL_VIEWER_KEYS.items():
+        assert getattr(viewer_mod, name) == value
 
 
 def test_launch_trusted_roots_match_viewer():

@@ -67,6 +67,8 @@ CLASSIC_RESEARCH_SESSION_KEYS = frozenset(
 )
 
 # Studies page may persist only these keys (not classic research keys).
+# The Studies page binds its own copies — do not from-import these names
+# there (stale / mid-init viewer raises ImportError and bricks the page).
 STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
 # Cached StudyViewerModel so Streamlit tab/widget reruns do not re-aggregate.
 STUDIES_VIEWER_CACHED_MODEL_KEY = "studies_viewer_cached_model"

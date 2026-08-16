@@ -149,34 +149,69 @@ from thesistester.study.preview import (
     preview_study_yaml,
 )
 from thesistester.study.schema import StudySpecError
-from thesistester.study.viewer import (
-    STUDIES_CATALOG_ENTRIES_KEY,
-    STUDIES_CATALOG_ROOTS_KEY,
-    STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
-    STUDIES_VIEWER_CACHED_MODEL_KEY,
-    STUDIES_VIEWER_CATALOG_SELECT_KEY,
-    STUDIES_VIEWER_DIR_KEY,
-    STUDIES_VIEWER_PENDING_PATH_KEY,
-    STUDIES_VIEWER_SELECTED_RUN_KEY,
-    StudyCatalogEntry,
-    StudyViewerError,
-    StudyViewerModel,
-    catalog_cache_stamp,
-    catalog_load_path,
-    default_study_viewer_roots,
-    discover_study_dirs,
-    load_study_view,
-    peek_study_cell,
-    peek_zip_bytes,
-    preview_error_text,
-    resolve_study_dir,
-    study_viewer_model_is_current,
-)
+from thesistester.study import viewer as _study_viewer
 
-# SV1 catalog table cap is page-display only (discover / `study list` stay
-# uncapped). Do not import CATALOG_DISPLAY_CAP from viewer — a stale or
-# mid-init viewer.py raises ImportError and bricks Studies.
+# Page-local Studies session keys + catalog cap. Do not from-import these
+# from viewer — a stale or mid-init viewer.py raises ImportError and bricks
+# Studies. String values must stay identical to thesistester.study.viewer.
+STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
+STUDIES_VIEWER_CACHED_MODEL_KEY = "studies_viewer_cached_model"
+STUDIES_VIEWER_CACHED_MODEL_DIR_KEY = "studies_viewer_cached_model_dir"
+STUDIES_CATALOG_ENTRIES_KEY = "studies_catalog_entries"
+STUDIES_CATALOG_ROOTS_KEY = "studies_catalog_roots_key"
+STUDIES_VIEWER_PENDING_PATH_KEY = "studies_viewer_pending_path"
+STUDIES_VIEWER_CATALOG_SELECT_KEY = "studies_viewer_catalog_select"
+STUDIES_VIEWER_SELECTED_RUN_KEY = "studies_viewer_selected_run"
 CATALOG_DISPLAY_CAP = 50
+
+
+class _MissingViewerError(ValueError):
+    """Fallback when ``StudyViewerError`` is absent on a stale viewer module."""
+
+
+StudyCatalogEntry = getattr(_study_viewer, "StudyCatalogEntry", object)
+StudyViewerError = getattr(_study_viewer, "StudyViewerError", _MissingViewerError)
+StudyViewerModel = getattr(_study_viewer, "StudyViewerModel", object)
+catalog_cache_stamp = getattr(_study_viewer, "catalog_cache_stamp", None)
+catalog_load_path = getattr(_study_viewer, "catalog_load_path", None)
+discover_study_dirs = getattr(_study_viewer, "discover_study_dirs", None)
+load_study_view = getattr(_study_viewer, "load_study_view", None)
+peek_study_cell = getattr(_study_viewer, "peek_study_cell", None)
+peek_zip_bytes = getattr(_study_viewer, "peek_zip_bytes", None)
+resolve_study_dir = getattr(_study_viewer, "resolve_study_dir", None)
+_preview_error_text = getattr(_study_viewer, "preview_error_text", None)
+_study_viewer_model_is_current = getattr(_study_viewer, "study_viewer_model_is_current", None)
+_default_study_viewer_roots = getattr(_study_viewer, "default_study_viewer_roots", None)
+
+
+def default_study_viewer_roots():
+    if callable(_default_study_viewer_roots):
+        return _default_study_viewer_roots()
+    from pathlib import Path
+
+    from thesistester.persistence.local_store import get_store_root
+
+    return (Path.cwd().resolve(), get_store_root().resolve())
+
+
+def preview_error_text(text: object) -> str:
+    if callable(_preview_error_text):
+        return str(_preview_error_text(text))
+    raw = str(text)
+    limit = 160
+    if len(raw) <= limit:
+        return raw
+    if limit <= 3:
+        return raw[:limit]
+    return raw[: limit - 3] + "..."
+
+
+def study_viewer_model_is_current(model: object) -> bool:
+    """False when the viewer helper is missing so a stale cache cannot be reused."""
+    if callable(_study_viewer_model_is_current):
+        return bool(_study_viewer_model_is_current(model))
+    return False
+
 
 # Do not import FORMAT_PROFILE_LABELS, normalize_builder_format_profile,
 # INGESTION_MODE_PRIMARY, or WIDGET_KEY_INGESTION_MODE from builder. A stale
@@ -301,6 +336,16 @@ def _render_inspect_catalog() -> None:
         "directory and the local ThesisTester store. Listing is discovery, not a "
         "quality score. Ledger counts are cell-status, not a validated edge."
     )
+    catalog_ready = all(
+        callable(fn) for fn in (catalog_cache_stamp, discover_study_dirs, catalog_load_path)
+    )
+    if not catalog_ready:
+        st.caption(
+            "Catalog helpers are missing from `thesistester.study.viewer`. "
+            "Update that file from main and fully restart Streamlit. "
+            "Paste a path below to inspect a study."
+        )
+        return
     refresh_catalog = st.button("Refresh catalog")
     roots = default_study_viewer_roots()
     extra_raw = st.session_state.get(STUDIES_VIEWER_DIR_KEY)
@@ -566,6 +611,12 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
         "Full trade/equity charts stay Research Bundles upload/import — "
         "this page does not deep-link or hydrate classic session keys."
     )
+    if not callable(peek_study_cell):
+        st.caption(
+            "Peek helpers are missing from `thesistester.study.viewer`. "
+            "Update that file from main and fully restart Streamlit."
+        )
+        return
     names = list(model.peek_run_names)
     if not names:
         st.caption("No cells to peek (empty ledger and overview).")
@@ -630,6 +681,9 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
                 "Prepare is per cell — switching run_name does not keep the zip loaded."
             ),
         ):
+            if not callable(peek_zip_bytes):
+                st.caption("Zip download helper is missing from `thesistester.study.viewer`.")
+                return
             zip_bytes = peek_zip_bytes(peek, study_dir=model.study_dir)
             if zip_bytes is None:
                 st.caption("Zip is no longer a file inside the study directory.")
@@ -713,6 +767,12 @@ def _render_inspect() -> None:
         or not study_viewer_model_is_current(cached_model)
     )
     if need_reload:
+        if not callable(load_study_view):
+            st.error(
+                "load_study_view is missing from `thesistester.study.viewer`. "
+                "Update that file from main and fully restart Streamlit."
+            )
+            return
         try:
             model = load_study_view(active_dir, roots=default_study_viewer_roots())
         except StudyViewerError as exc:
@@ -833,6 +893,12 @@ def _read_loaded_study_spec_text() -> str | None:
     active_dir = st.session_state.get(STUDIES_VIEWER_DIR_KEY)
     if not isinstance(active_dir, str) or not active_dir.strip():
         st.error("Load a study output directory on the Inspect tab first.")
+        return None
+    if not callable(resolve_study_dir):
+        st.error(
+            "resolve_study_dir is missing from `thesistester.study.viewer`. "
+            "Update that file from main and fully restart Streamlit."
+        )
         return None
     try:
         root = resolve_study_dir(active_dir, roots=default_study_viewer_roots())
