@@ -236,9 +236,7 @@ def test_research_bundle_roundtrip_preserves_derived_provenance(tmp_path: Path):
 def test_api_15s_primary_resolves_ohlc_identical_source_duplicates(tmp_path: Path):
     rows = VENDOR_15S.read_text(encoding="utf-8").splitlines()
     # Repeat the first 15s open with a higher volume; lowest volume is kept.
-    rows.append(
-        "2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;100;99;100;100;99;0;100;"
-    )
+    rows.append("2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;100;99;100;100;99;0;100;")
     path = tmp_path / "es_15s_dup.csv"
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
@@ -261,9 +259,7 @@ def test_api_15s_primary_resolves_ohlc_identical_source_duplicates(tmp_path: Pat
 
 def test_api_15s_primary_ohlc_conflict_source_duplicates_fail_closed(tmp_path: Path):
     rows = VENDOR_15S.read_text(encoding="utf-8").splitlines()
-    rows.append(
-        "2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;100;99;100.5;100;2;0;100;"
-    )
+    rows.append("2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;100;99;100.5;100;2;0;100;")
     path = tmp_path / "es_15s_conflict.csv"
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 

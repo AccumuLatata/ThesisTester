@@ -1065,7 +1065,7 @@ inference alone is insufficient when empty slots dominate).
 The Data page recommends `15s_primary_derive_1m` for Upload CSV (first-visit
 widget default; labeled/ordered first), currently limited to
 `quantower_history_exporter`. That mode derives the canonical one-minute
-`data` frame, attaches the original 15-second bars as `subtimeframe_data`,
+`data` frame, attaches the retained 15-second bars as `subtimeframe_data`,
 records `ingestion_provenance` / `derived_parent_diagnostics`, and runs
 `prepare_subtimeframe_conservative_context()` as a fail-closed postcondition
 before state commit. Data and `run_experiment` share

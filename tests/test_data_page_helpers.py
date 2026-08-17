@@ -475,9 +475,7 @@ def test_prepare_15s_primary_dataset_resolves_ohlc_identical_source_duplicates(t
     )
     path = tmp_path / "quantower_15s_dup.csv"
     rows = vendor.read_text(encoding="utf-8").splitlines()
-    rows.append(
-        "2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;100;99;100;100;99;0;100;"
-    )
+    rows.append("2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;100;99;100;100;99;0;100;")
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
     prepared = data_page._prepare_15s_primary_dataset(
@@ -493,9 +491,9 @@ def test_prepare_15s_primary_dataset_resolves_ohlc_identical_source_duplicates(t
     assert float(prepared.parent_df["volume"].iloc[0]) == 10.0
     assert prepared.provenance["source_duplicate_groups_resolved"] == 1
     assert prepared.provenance["source_duplicate_rows_discarded"] == 1
-    assert "duplicate_timestamps" not in {
-        issue.code for issue in prepared.source_report.issues
-    }
+    source_codes = {issue.code for issue in prepared.source_report.issues}
+    assert "duplicate_timestamps" not in source_codes
+    assert "non_monotonic_before_sort" in source_codes
 
 
 def test_clear_dataset_dependent_state_clears_15s_primary_keys(monkeypatch):

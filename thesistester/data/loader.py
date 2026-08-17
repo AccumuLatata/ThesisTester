@@ -606,6 +606,9 @@ def resolve_ohlc_identical_duplicates(
         .sort_values("timestamp", kind="mergesort")
         .reset_index(drop=True)
     )
+    # concat/reset drop loader attrs; keep them so post-resolve validate_ohlcv
+    # still reports was_monotonic_before_sort from the original file order.
+    resolved.attrs = dict(df.attrs)
     return resolved, audit
 
 
@@ -656,8 +659,7 @@ def prepare_15s_source_for_derivation(
     leftover = [
         issue.message
         for issue in resolved_report.issues
-        if issue.code in _15S_SOURCE_FATAL_EXCEPT_DUPLICATES
-        or issue.code == "duplicate_timestamps"
+        if issue.code in _15S_SOURCE_FATAL_EXCEPT_DUPLICATES or issue.code == "duplicate_timestamps"
     ]
     if leftover:
         raise ValueError("15-second source validation failed: " + "; ".join(leftover))

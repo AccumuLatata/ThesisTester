@@ -1476,7 +1476,7 @@ if use_source_dataset:
             )
             st.caption(
                 "Canonical research data is the derived one-minute frame. "
-                "The original 15-second bars are attached for R12 replay."
+                "The retained 15-second bars are attached for R12 replay."
             )
             _render_15s_source_duplicate_caption(prepared.provenance)
             _render_derived_parent_diagnostics(

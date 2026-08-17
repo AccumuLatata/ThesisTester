@@ -129,12 +129,40 @@ def test_prepare_15s_source_resolves_ohlc_identical_duplicates_and_keeps_lowest_
     assert provenance["source_duplicate_rows_discarded"] == 1
 
 
-def test_prepare_15s_source_without_duplicates_is_noop():
+def test_resolve_ohlc_identical_duplicates_preserves_loader_attrs():
     frame = pd.DataFrame(
         {
             "timestamp": pd.to_datetime(
-                ["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:15+00:00"]
+                [
+                    "2026-06-02 09:30:00+00:00",
+                    "2026-06-02 09:30:00+00:00",
+                    "2026-06-02 09:30:15+00:00",
+                ]
             ),
+            "open": [100.0, 100.0, 101.0],
+            "high": [101.0, 101.0, 102.0],
+            "low": [99.0, 99.0, 100.0],
+            "close": [100.5, 100.5, 101.5],
+            "volume": [30.0, 10.0, 12.0],
+        }
+    )
+    frame.attrs["was_monotonic_before_sort"] = False
+    frame.attrs["format_profile"] = "quantower_history_exporter"
+
+    resolved, audit = resolve_ohlc_identical_duplicates(frame)
+
+    assert resolved.attrs["was_monotonic_before_sort"] is False
+    assert resolved.attrs["format_profile"] == "quantower_history_exporter"
+    assert len(audit) == 1
+    report = validate_ohlcv(resolved)
+    assert any(issue.code == "non_monotonic_before_sort" for issue in report.issues)
+    assert not any(issue.code == "duplicate_timestamps" for issue in report.issues)
+
+
+def test_prepare_15s_source_without_duplicates_is_noop():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:15+00:00"]),
             "open": [100.0, 101.0],
             "high": [101.0, 102.0],
             "low": [99.0, 100.0],
@@ -151,9 +179,7 @@ def test_prepare_15s_source_without_duplicates_is_noop():
 def test_prepare_15s_source_ohlc_conflict_fails_closed():
     frame = pd.DataFrame(
         {
-            "timestamp": pd.to_datetime(
-                ["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:00+00:00"]
-            ),
+            "timestamp": pd.to_datetime(["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:00+00:00"]),
             "open": [100.0, 100.0],
             "high": [101.0, 103.0],
             "low": [99.0, 99.0],
@@ -168,9 +194,7 @@ def test_prepare_15s_source_ohlc_conflict_fails_closed():
 def test_prepare_15s_source_other_fatals_still_fail_before_resolve():
     frame = pd.DataFrame(
         {
-            "timestamp": pd.to_datetime(
-                ["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:00+00:00"]
-            ),
+            "timestamp": pd.to_datetime(["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:00+00:00"]),
             "open": [100.0, 100.0],
             "high": [101.0, 101.0],
             "low": [99.0, 99.0],
