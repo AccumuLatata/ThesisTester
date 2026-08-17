@@ -597,6 +597,6 @@ AMP/Rithmic History Exporter identity:
 partial pre-SIA session mapping does not inherit MNQ/UTC. `draft_from_mapping(None)`
 still returns `default_study_draft()`.
 
-The 16-cell pRTH × one-MA cartesian lives in
+The 32-cell pRTH × one-MA cartesian lives in
 `examples/studies/pRTH_open_ma.yaml` (Build **Start from example** default).
 It is not the blank-draft cartesian.

@@ -4,7 +4,7 @@
 # One MA per partner row so each average can be ranked (do not put four MAs
 # in a single from_partners: required row).
 #
-# Active cartesian = 16 cells
+# Active cartesian = 32 cells
 #   1 core × 4 partners × 1 mode × 2 triggers × 2 tfs × 2 directions
 # Each cell may also run the SL/TP grid below (per-cell, not a factor axis).
 #

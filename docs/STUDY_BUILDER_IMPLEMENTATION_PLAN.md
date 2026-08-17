@@ -150,7 +150,7 @@ Plain dataclass (or TypedDict + helpers). Source of truth for the Build tab. Not
 Default draft expands to **2** cells (`1×1×2×1×1`). Valid without a dataset CSV on disk.
 `default_study_draft()` (not the `StudyDraft()` field defaults in the table)
 uses MNQ, UTC, `data/mnq_15s.csv`, Quantower HE, `15s_primary_derive_1m`,
-`pRTH_Open`, tolerance 15, SL 40 / TP 80, costs 0.5 / 1.0 tick. The 16-cell
+`pRTH_Open`, tolerance 15, SL 40 / TP 80, costs 0.5 / 1.0 tick. The 32-cell
 operator cartesian is `examples/studies/pRTH_open_ma.yaml`.
 
 ### 4.2 Emit (locked)

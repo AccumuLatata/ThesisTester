@@ -265,7 +265,7 @@ def test_identity_hash_roundtrip_prth_open_ma_example():
         ["EMA_21_5min"],
     ]
     expansion = expand_study(loaded)
-    assert expansion.run_count == 16
+    assert expansion.run_count == 32
     original, roundtrip = _roundtrip_hash(PRTH_OPEN_MA_EXAMPLE)
     assert original == roundtrip
 

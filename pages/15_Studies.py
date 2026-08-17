@@ -1981,7 +1981,7 @@ def _render_build() -> None:
         help=(
             "Start from example hydrates the selected StudySpec. New blank drafts "
             "already use MNQ, UTC, History Exporter, and 15s-primary. The pRTH "
-            "template is the last working MNQ HE study (16 cells, one MA per row)."
+            "template is the last working MNQ HE study (32 cells, one MA per row)."
         ),
     )
     action_cols = st.columns(4)

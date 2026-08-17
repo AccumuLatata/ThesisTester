@@ -1023,7 +1023,7 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 3. **Build** (optional): example or closed catalog. New drafts emit
    `15s_primary_derive_1m` with MNQ / UTC / History Exporter. Path is the
    same 15s Quantower CSV as Data (Studies does not walk Data). **Start from
-   example** defaults to `pRTH_open_ma.yaml` (16 cells, one MA per row);
+   example** defaults to `pRTH_open_ma.yaml` (32 cells, one MA per row);
    pdPOC stays on the template picker. Filter includes ⊆ widgets; explicit is
    delete-only. Keep **Workers** at 1 on Windows.
 4. **Apply to Preview**, then Preview → **Validate / Preview**.

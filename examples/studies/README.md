@@ -7,7 +7,7 @@ External Grok routine pack (RS-D5): [`docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md`](.
 
 | File | Cells | Notes |
 |---|---|---|
-| `pRTH_open_ma.yaml` | **16** | Operator MNQ History Exporter **15s-primary** template (UTC naive stamps, one MA per partner row, touch/3c × 1m/5m × long/short, `workers: 1`). Build **Start from example** default. Replace `dataset.path` with the same 15s Quantower CSV used on Data. |
+| `pRTH_open_ma.yaml` | **32** | Operator MNQ History Exporter **15s-primary** template (UTC naive stamps, one MA per partner row, touch/3c × 1m/5m × long/short, `workers: 1`). Build **Start from example** default. Replace `dataset.path` with the same 15s Quantower CSV used on Data. |
 | `pdPOC_ma_confluence_battery.yaml` | **40** (active `stage.filter`) | Stage-first **15s-primary** teaching example (`ingestion_mode: 15s_primary_derive_1m`, Quantower 15s path, `subtimeframe_conservative`). Full cartesian **800** documented as phase-2 in file comments. |
 | `dopen_ma_3c_mnq.yaml` | **8** | **Legacy 1m primary.** dOpen × EMA21/SMA50 (1m, 5m), 3c on 1m, MNQ. Grid on ($40 / $500 cap, $0.50/side). Will not match Data-page 15s-primary on the same dates. Replace `dataset.path` if the Quantower CSV moves. Time-of-day R is post-run (`run_time_analysis`), not a factor axis. |
 | `agents/` | — | RS-D5 copy-ready prompts for external coworkers (CLI / optional STUDY.*) |
