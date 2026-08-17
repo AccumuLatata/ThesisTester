@@ -1008,7 +1008,7 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 | Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
 | Build StudySpec | Widgets → `emit_study_yaml` | Not a runner; does not spawn CLI |
-| Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary; omit = `primary` | 15s file without the mode ≠ Data R12. Radio does not rewrite profile |
+| Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary; omit = `primary` | 15s file without the mode ≠ Data R12 |
 | Start from example / Load Preview / Copy spec | Hydrate pRTH (default) or pdPOC, Preview YAML, or Inspect spec | Build Copy hydrates; Preview Copy fills textarea |
 | Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ factor widgets; explicit table is delete-only |
 | Apply to Preview | Writes Preview YAML; clears cache + launch approval | Validate / Preview still required |
@@ -1021,10 +1021,9 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
    After Load: quality panes, charts, cell peek (optional zip download).
    Refresh while in flight. `study list` is the CLI twin.
 3. **Build** (optional): closed catalog or example. New drafts emit MNQ /
-   UTC / HE `15s_primary_derive_1m` (same 15s CSV as Data).
-   **Start from example** defaults to `pRTH_open_ma.yaml` (32 cells); pdPOC
-   stays on the picker. Filter ⊆ widgets; explicit delete-only. Workers=1
-   on Windows.
+   UTC / HE `15s_primary_derive_1m` (same 15s CSV as Data). **Start from
+   example** defaults to `pRTH_open_ma.yaml` (32 cells); pdPOC on picker.
+   Filter ⊆ widgets; explicit delete-only. Workers=1 on Windows.
 4. **Apply to Preview**, then Preview → **Validate / Preview**.
 5. New CLI output dir (pins `dataset.path` and `dataset.subtimeframe_path`;
    missing CSV is refused). Under threshold: **Run via CLI**. Over: **Bind
