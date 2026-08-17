@@ -25,6 +25,7 @@ from thesistester.study.preview import (
     example_study_spec_path,
     preview_study_spec,
     preview_study_yaml,
+    prth_open_ma_example_spec_path,
 )
 from thesistester.study.schema import StudySpecError
 from thesistester.study.viewer import (
@@ -45,6 +46,12 @@ def _example_spec() -> dict:
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload
+
+
+def test_prth_open_ma_example_spec_path_resolves():
+    path = prth_open_ma_example_spec_path()
+    assert path.is_file()
+    assert path.name == "pRTH_open_ma.yaml"
 
 
 def test_preview_stage_first_example_is_40_vs_800():

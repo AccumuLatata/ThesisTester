@@ -942,10 +942,12 @@ overview ranking, OTF delta, Research Study Runner
 
 **How to use.**
 
-1. Author or copy a StudySpec (see `examples/studies/pdPOC_ma_confluence_battery.yaml`
-   for a stage-first 40-cell **15s-primary** path; full 800 is phase-2). Point
-   `dataset.path` at the same 15s Quantower export used on Data. Omitted mode on
-   that file is a different experiment. `dopen_ma_3c_mnq.yaml` is legacy 1m.
+1. Author or copy a StudySpec. New Build drafts and
+   `examples/studies/pRTH_open_ma.yaml` use MNQ + UTC + History Exporter
+   15s-primary (paste the same 15s Quantower CSV used on Data).
+   `pdPOC_ma_confluence_battery.yaml` is the stage-first 40-cell ES teaching
+   path (full 800 is phase-2). Omitted mode on a 15s file is a different
+   experiment. `dopen_ma_3c_mnq.yaml` is legacy 1m.
 2. `python -m thesistester study expand study.yaml --output-dir out/study1`
 3. `python -m thesistester study run study.yaml --output-dir out/study1 --confirm`
 4. `python -m thesistester study report out/study1`
@@ -1006,8 +1008,8 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 | Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
 | Build StudySpec | Widgets → `emit_study_yaml` | Not a runner; does not spawn CLI |
-| Ingestion mode | New drafts: 15s-primary + Quantower; omit = `primary` | 15s file without the mode ≠ Data R12. Radio does not rewrite profile/intrabar |
-| Start from example / Load Preview / Copy spec | Hydrate pdPOC, Preview YAML, or Inspect spec | Copy-on-Build hydrates; Preview Copy only fills the textarea |
+| Ingestion mode | New drafts: MNQ + UTC + 15s-primary + Quantower HE; omit = `primary` | 15s file without the mode ≠ Data R12. Radio does not rewrite profile/intrabar |
+| Start from example / Load Preview / Copy spec | Hydrate pRTH MNQ HE (default) or pdPOC, Preview YAML, or Inspect spec | Copy-on-Build hydrates; Preview Copy only fills the textarea |
 | Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ factor widgets; explicit table is delete-only |
 | Apply to Preview | Writes Preview YAML; clears cache + launch approval | Validate / Preview still required |
 | Download StudySpec YAML | Browser download of emitted YAML | Not a store write |
@@ -1019,9 +1021,11 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
    After Load: quality panes, charts, cell peek (optional zip download).
    Refresh while in flight. `study list` is the CLI twin.
 3. **Build** (optional): example or closed catalog. New drafts emit
-   `15s_primary_derive_1m`. Path is the same 15s Quantower CSV as Data
-   (Studies does not walk Data). Filter includes ⊆ widgets; explicit is
-   delete-only.
+   `15s_primary_derive_1m` with MNQ / UTC / History Exporter. Path is the
+   same 15s Quantower CSV as Data (Studies does not walk Data). **Start from
+   example** defaults to `pRTH_open_ma.yaml` (16 cells, one MA per row);
+   pdPOC stays on the template picker. Filter includes ⊆ widgets; explicit is
+   delete-only. Keep **Workers** at 1 on Windows.
 4. **Apply to Preview**, then Preview → **Validate / Preview**.
 5. New CLI output dir (pins `dataset.path` and `dataset.subtimeframe_path`;
    missing CSV is refused). Under threshold: **Run via CLI**. Over: **Bind

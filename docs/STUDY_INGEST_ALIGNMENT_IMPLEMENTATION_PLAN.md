@@ -572,3 +572,31 @@ CLI `study expand|run|report|promote|rollup` remains the academic path and does 
 | SIA3 | Example + docs + parity test | This PR |
 
 Parked (not in SIA): copy-from-session; Data/API loader dedup; classic Backtest default change; API omitted-mode default change; RS-D1 / D3 / D6.
+
+---
+
+## 14. Post-SIA operator HE defaults (living)
+
+SIA1 locked **factory vs field defaults**. That lock still holds:
+`StudyDraft()` / `_default_backtest()` stay ES / `America/New_York` /
+`data/es_1m.csv` / `canonical` / `primary` / `sl_first`.
+
+After SIA, **new drafts** (`default_study_draft()` only) use the operator
+AMP/Rithmic History Exporter identity:
+
+| Field | SIA1 new-draft | Current new-draft |
+|---|---|---|
+| `dataset_path` | `data/es_15s.csv` | `data/mnq_15s.csv` (placeholder) |
+| `instrument` | `ES` | `MNQ` |
+| `source_timezone` | `America/New_York` | `UTC` |
+| Cartesian | 2 cells | 2 cells (`pRTH_Open` × one SMA × both modes × touch × base) |
+| `workers` | 1 | 1 (do not default 8) |
+
+`draft_from_mapping` of a payload that **omits** `instrument` /
+`source_timezone` / `dataset_path` keeps the legacy field defaults so a
+partial pre-SIA session mapping does not inherit MNQ/UTC. `draft_from_mapping(None)`
+still returns `default_study_draft()`.
+
+The 16-cell pRTH × one-MA cartesian lives in
+`examples/studies/pRTH_open_ma.yaml` (Build **Start from example** default).
+It is not the blank-draft cartesian.

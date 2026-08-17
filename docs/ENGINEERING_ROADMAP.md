@@ -1257,6 +1257,10 @@ golden regeneration; legacy YAML that omits `ingestion_mode` stays `primary`.
 Parked: copy-from-session; Data/API loader dedup; API omitted-mode default
 change.
 
+Post-SIA: `default_study_draft()` ingest identity is MNQ + UTC +
+`data/mnq_15s.csv` (AMP/Rithmic HE). `StudyDraft()` field defaults stay
+legacy-safe. Operator template: `examples/studies/pRTH_open_ma.yaml`.
+
 ## Study Viewer (SV0–SV4) ✅ SV4 shipped
 
 Inspect today is catalog + path-paste + tables + quality panes + overview

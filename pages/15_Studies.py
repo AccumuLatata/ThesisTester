@@ -147,6 +147,7 @@ from thesistester.study.preview import (
     example_study_spec_path,
     preview_study_spec,
     preview_study_yaml,
+    prth_open_ma_example_spec_path,
 )
 from thesistester.study.schema import StudySpecError
 from thesistester.study import viewer as _study_viewer
@@ -1684,7 +1685,8 @@ def _render_build() -> None:
     st.caption(
         "Author a closed StudySpec. Apply to Preview writes YAML onto the Preview tab — "
         "Validate / Preview is still required. This tab does not spawn CLI. "
-        "Launch still refuses a missing dataset CSV; preview does not need the file."
+        "Launch still refuses a missing dataset CSV; preview does not need the file. "
+        "New drafts default to MNQ, UTC, History Exporter, and 15s-primary."
     )
 
     st.markdown("### Identity")
@@ -1700,6 +1702,7 @@ def _render_build() -> None:
         key=WIDGET_KEY_OUTPUT_DIR,
         placeholder="results/studies/<name>",
     )
+    st.caption("Workers stay at 1 on Windows (study lock is POSIX flock).")
 
     st.markdown("### Dataset")
     st.text_input("Dataset path", key=WIDGET_KEY_DATASET_PATH)
@@ -1967,6 +1970,20 @@ def _render_build() -> None:
     preview, emit_error = _render_builder_live_strip(draft)
 
     st.markdown("### Actions")
+    example_labels = (
+        "pRTH Open × one MA (MNQ HE 15s)",
+        "pdPOC MA battery (ES 15s teaching example)",
+    )
+    st.selectbox(
+        "Example template",
+        options=list(example_labels),
+        key="_study_builder_example_template",
+        help=(
+            "Start from example hydrates the selected StudySpec. New blank drafts "
+            "already use MNQ, UTC, History Exporter, and 15s-primary. The pRTH "
+            "template is the last working MNQ HE study (16 cells, one MA per row)."
+        ),
+    )
     action_cols = st.columns(4)
     start_example = action_cols[0].button("Start from example", key="_study_builder_start_example")
     load_preview = action_cols[1].button(
@@ -1981,7 +1998,13 @@ def _render_build() -> None:
     )
     if start_example:
         try:
-            path = example_study_spec_path()
+            label = str(st.session_state.get("_study_builder_example_template") or example_labels[0])
+            resolver = (
+                prth_open_ma_example_spec_path
+                if label == example_labels[0]
+                else example_study_spec_path
+            )
+            path = resolver()
             hydrated = hydrate_study_yaml(path.read_text(encoding="utf-8"))
         except StudySpecError as exc:
             st.error(str(exc))
