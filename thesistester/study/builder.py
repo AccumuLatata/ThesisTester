@@ -45,8 +45,10 @@ WIDGET_KEY_FORMAT_PROFILE = "_study_builder_format_profile"
 WIDGET_KEY_INGESTION_MODE = "_study_builder_ingestion_mode"
 DEFAULT_FORMAT_PROFILE = "canonical"
 INGESTION_MODE_PRIMARY = "primary"
-DEFAULT_NEW_DRAFT_DATASET_PATH = "data/es_15s.csv"
+DEFAULT_NEW_DRAFT_DATASET_PATH = "data/mnq_15s.csv"
 DEFAULT_NEW_DRAFT_FORMAT_PROFILE = "quantower_history_exporter"
+DEFAULT_NEW_DRAFT_INSTRUMENT = "MNQ"
+DEFAULT_NEW_DRAFT_SOURCE_TIMEZONE = "UTC"
 _DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
 _WARNING_15S_SL_FIRST = (
     "15s-primary attaches 15s for R12, but backtest.intrabar_model is sl_first "
@@ -340,14 +342,23 @@ def default_study_draft() -> StudyDraft:
 
     ``StudyDraft()`` / ``_default_backtest()`` stay legacy-safe. Only this
     factory applies path / Quantower / ``15s_primary_derive_1m`` /
-    ``subtimeframe_conservative``.
+    ``subtimeframe_conservative``, plus the operator HE identity (MNQ, UTC)
+    and usual costs. Cartesian stays 2 cells; ``workers`` stays 1.
     """
     backtest = _default_backtest()
     backtest["intrabar_model"] = "subtimeframe_conservative"
+    backtest["stop_loss_ticks"] = 40
+    backtest["take_profit_ticks"] = 80
+    backtest["commission_per_side"] = 0.5
+    backtest["slippage_ticks"] = 1.0
     return StudyDraft(
         dataset_path=DEFAULT_NEW_DRAFT_DATASET_PATH,
+        instrument=DEFAULT_NEW_DRAFT_INSTRUMENT,
+        source_timezone=DEFAULT_NEW_DRAFT_SOURCE_TIMEZONE,
         format_profile=DEFAULT_NEW_DRAFT_FORMAT_PROFILE,
         ingestion_mode=INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        core_level=["pRTH_Open"],
+        tolerance_ticks=15,
         backtest=backtest,
     )
 
@@ -407,7 +418,9 @@ def draft_from_mapping(payload: Mapping[str, Any] | None) -> StudyDraft:
     if not isinstance(payload, Mapping):
         return default_study_draft()
     known = {item.name for item in fields(StudyDraft)}
-    merged = asdict(default_study_draft())
+    # Field defaults, not default_study_draft(): omitted keys must not inherit
+    # MNQ / UTC / HE / pRTH / 15s-primary / operator costs.
+    merged = asdict(StudyDraft())
     for key, value in payload.items():
         if key in known:
             merged[key] = copy.deepcopy(value)
@@ -1169,6 +1182,8 @@ __all__ = [
     "DEFAULT_FORMAT_PROFILE",
     "DEFAULT_NEW_DRAFT_DATASET_PATH",
     "DEFAULT_NEW_DRAFT_FORMAT_PROFILE",
+    "DEFAULT_NEW_DRAFT_INSTRUMENT",
+    "DEFAULT_NEW_DRAFT_SOURCE_TIMEZONE",
     "DIRECTION_MODE_CONSTANT",
     "DIRECTION_MODE_FACTOR",
     "DIRECTION_MODE_OPTIONS",

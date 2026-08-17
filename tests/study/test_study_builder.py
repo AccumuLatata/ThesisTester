@@ -17,6 +17,8 @@ from thesistester.study.builder import (
     DEFAULT_FORMAT_PROFILE,
     DEFAULT_NEW_DRAFT_DATASET_PATH,
     DEFAULT_NEW_DRAFT_FORMAT_PROFILE,
+    DEFAULT_NEW_DRAFT_INSTRUMENT,
+    DEFAULT_NEW_DRAFT_SOURCE_TIMEZONE,
     FORMAT_PROFILE_LABELS,
     INGESTION_MODE_PRIMARY,
     bind_format_profile_labels,
@@ -75,6 +77,7 @@ from thesistester.study.schema import (
 GOLDEN_STUDY = Path("tests/fixtures/study/golden_study.yaml")
 PDPOC_EXAMPLE = Path("examples/studies/pdPOC_ma_confluence_battery.yaml")
 DOPEN_EXAMPLE = Path("examples/studies/dopen_ma_3c_mnq.yaml")
+PRTH_OPEN_MA_EXAMPLE = Path("examples/studies/pRTH_open_ma.yaml")
 
 
 def _roundtrip_hash(path: Path) -> tuple[str, str]:
@@ -87,10 +90,21 @@ def test_default_draft_emits_15s_primary_contract():
     spec = emit_study_spec(default_study_draft())
     dataset = spec["study"]["dataset"]
     assert dataset["path"] == DEFAULT_NEW_DRAFT_DATASET_PATH
+    assert dataset["path"] == "data/mnq_15s.csv"
+    assert dataset["instrument"] == DEFAULT_NEW_DRAFT_INSTRUMENT
+    assert dataset["source_timezone"] == DEFAULT_NEW_DRAFT_SOURCE_TIMEZONE
     assert dataset["format_profile"] == DEFAULT_NEW_DRAFT_FORMAT_PROFILE
     assert dataset["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
     assert "subtimeframe_path" not in dataset
-    assert spec["study"]["constants"]["backtest"]["intrabar_model"] == ("subtimeframe_conservative")
+    backtest = spec["study"]["constants"]["backtest"]
+    assert backtest["intrabar_model"] == "subtimeframe_conservative"
+    assert backtest["stop_loss_ticks"] == 40
+    assert backtest["take_profit_ticks"] == 80
+    assert backtest["commission_per_side"] == 0.5
+    assert backtest["slippage_ticks"] == 1.0
+    assert spec["study"]["constants"]["tolerance_ticks"] == 15
+    assert spec["study"]["factors"]["core_level"] == ["pRTH_Open"]
+    assert spec["study"]["workers"] == 1
     expansion = expand_study(spec)
     assert expansion.run_count == 2
     for run in expansion.experiment["runs"]:
@@ -100,9 +114,15 @@ def test_default_draft_emits_15s_primary_contract():
 def test_study_draft_field_defaults_stay_legacy_safe():
     draft = StudyDraft()
     assert draft.dataset_path == "data/es_1m.csv"
+    assert draft.instrument == "ES"
+    assert draft.source_timezone == "America/New_York"
     assert draft.format_profile == DEFAULT_FORMAT_PROFILE
     assert draft.ingestion_mode == INGESTION_MODE_PRIMARY
+    assert draft.core_level == ["pdPOC"]
+    assert draft.tolerance_ticks == 0
     assert draft.backtest["intrabar_model"] == "sl_first"
+    assert draft.backtest["stop_loss_ticks"] == 8
+    assert draft.backtest["commission_per_side"] == 0.0
     spec = emit_study_spec(draft)
     assert "ingestion_mode" not in spec["study"]["dataset"]
     assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
@@ -225,6 +245,28 @@ def test_identity_hash_roundtrip_pdpoc_example_emits_15s_primary_contract():
 
 def test_identity_hash_roundtrip_dopen_example():
     original, roundtrip = _roundtrip_hash(DOPEN_EXAMPLE)
+    assert original == roundtrip
+
+
+def test_identity_hash_roundtrip_prth_open_ma_example():
+    loaded = load_study_spec(PRTH_OPEN_MA_EXAMPLE)
+    dataset = loaded["study"]["dataset"]
+    assert dataset["path"] == "data/mnq_15s.csv"
+    assert dataset["instrument"] == "MNQ"
+    assert dataset["source_timezone"] == "UTC"
+    assert dataset["format_profile"] == "quantower_history_exporter"
+    assert dataset["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert loaded["study"]["workers"] == 1
+    assert loaded["study"]["factors"]["core_level"] == ["pRTH_Open"]
+    assert loaded["study"]["factors"]["partner_levels"] == [
+        ["SMA_50_1min"],
+        ["SMA_50_5min"],
+        ["EMA_21_1min"],
+        ["EMA_21_5min"],
+    ]
+    expansion = expand_study(loaded)
+    assert expansion.run_count == 32
+    original, roundtrip = _roundtrip_hash(PRTH_OPEN_MA_EXAMPLE)
     assert original == roundtrip
 
 
@@ -546,8 +588,10 @@ def test_pages_studies_build_tab_source_contract():
     assert "Preview StudySpec" in page
     assert "Apply to Preview" in page
     assert "Start from example" in page
+    assert "Example template" in page
     assert "preview_study_spec" in page
     assert "example_study_spec_path" in page
+    assert "prth_open_ma_example_spec_path" in page
     assert "reset_launch_session_for_preview" in page
     assert STUDIES_BUILDER_DRAFT_KEY in page or "STUDIES_BUILDER_DRAFT_KEY" in page
     assert STUDIES_BUILDER_PENDING_SYNC_KEY in page or "STUDIES_BUILDER_PENDING_SYNC_KEY" in page
@@ -928,9 +972,28 @@ def test_draft_from_mapping_pre_sia_session_is_primary():
     restored = draft_from_mapping(payload)
     assert restored.ingestion_mode == INGESTION_MODE_PRIMARY
     assert restored.dataset_path == "data/es_1m.csv"
+    assert restored.instrument == "ES"
+    assert restored.source_timezone == "America/New_York"
     assert restored.format_profile == DEFAULT_FORMAT_PROFILE
     assert restored.backtest["intrabar_model"] == "sl_first"
     assert draft_from_mapping(None).ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    omitted_identity = draft_from_mapping({"format_profile": None})
+    assert omitted_identity.instrument == "ES"
+    assert omitted_identity.source_timezone == "America/New_York"
+    assert omitted_identity.dataset_path == "data/es_1m.csv"
+    assert omitted_identity.format_profile == DEFAULT_FORMAT_PROFILE
+    assert omitted_identity.ingestion_mode == INGESTION_MODE_PRIMARY
+    assert omitted_identity.core_level == ["pdPOC"]
+    assert omitted_identity.tolerance_ticks == 0
+    assert omitted_identity.backtest["intrabar_model"] == "sl_first"
+    assert omitted_identity.backtest["stop_loss_ticks"] == 8
+    assert omitted_identity.backtest["take_profit_ticks"] == 16
+    assert omitted_identity.backtest["commission_per_side"] == 0.0
+    assert omitted_identity.backtest["slippage_ticks"] == 0.0
+    fresh = draft_from_mapping(None)
+    assert fresh.instrument == DEFAULT_NEW_DRAFT_INSTRUMENT
+    assert fresh.source_timezone == DEFAULT_NEW_DRAFT_SOURCE_TIMEZONE
+    assert fresh.dataset_path == DEFAULT_NEW_DRAFT_DATASET_PATH
 
 
 def test_hydrate_and_mapping_promote_ingestion_mode_from_extra():

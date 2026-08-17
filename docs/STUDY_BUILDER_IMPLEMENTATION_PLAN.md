@@ -115,7 +115,7 @@ Plain dataclass (or TypedDict + helpers). Source of truth for the Build tab. Not
 | `subtimeframe_path` | `str \| None` | `None` | Omit when `None` |
 | `dataset_extra` | `dict` | `{}` | Pass-through unknown-to-builder dataset keys present on hydrate (lossless round-trip). Emit copies them after known keys. Must not invent keys |
 | `levels` | `dict` | `{sma_lengths: [50], ema_lengths: [21], sma_timeframes: [1min], ema_timeframes: [1min]}` | Keys ⊆ `DEFAULT_LEVELS_SETTINGS` |
-| `core_level` | `list[str]` | `["pdPOC"]` | Required factor axis |
+| `core_level` | `list[str]` | `["pdPOC"]` | Required factor axis. `default_study_draft()` now uses `pRTH_Open`; this row is the `StudyDraft()` field default |
 | `partner_levels` | `list[list[str]]` | `[["SMA_50_1min"]]` | List of non-empty sets |
 | `confluence_mode` | `list[str]` | `["global_cluster", "anchor_rules"]` | Required cell axis — always emit |
 | `trigger` | `list[str]` | `["touch"]` | Required cell axis — always emit |
@@ -148,6 +148,10 @@ Plain dataclass (or TypedDict + helpers). Source of truth for the Build tab. Not
 | `stage_cells` | `list[dict]` | `[]` | Used when `stage_mode=="explicit_cells"`; each cell has every factor axis |
 
 Default draft expands to **2** cells (`1×1×2×1×1`). Valid without a dataset CSV on disk.
+`default_study_draft()` (not the `StudyDraft()` field defaults in the table)
+uses MNQ, UTC, `data/mnq_15s.csv`, Quantower HE, `15s_primary_derive_1m`,
+`pRTH_Open`, tolerance 15, SL 40 / TP 80, costs 0.5 / 1.0 tick. The 32-cell
+operator cartesian is `examples/studies/pRTH_open_ma.yaml`.
 
 ### 4.2 Emit (locked)
 
@@ -374,7 +378,7 @@ Render from `STUDIES_BUILDER_DRAFT_KEY`. On hydrate, set `STUDIES_BUILDER_PENDIN
 
 **Actions (SB2)**
 
-- **Start from example** — hydrate `examples/studies/pdPOC_ma_confluence_battery.yaml` via existing `example_study_spec_path()` (do not duplicate the path constant; import from `preview.py` in the **page** only)
+- **Start from example** — hydrate the selected template via `preview.py` path helpers in the **page** only (do not duplicate path constants). Default: `prth_open_ma_example_spec_path()` → `examples/studies/pRTH_open_ma.yaml`. pdPOC teaching example stays on the picker via `example_study_spec_path()`
 - **Apply to Preview** — §4.7
 - Emit `StudySpecError` → `st.error`, no Apply
 

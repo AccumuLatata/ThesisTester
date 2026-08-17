@@ -15,13 +15,17 @@ Execute is still CLI (`study run` / Preview **Run via CLI**). Inspect may
 show an additive ledger progress strip (Refresh still explicit). Does not
 change preview / CLI-spawn / execute semantics.
 **SIA** (Study Ingest Alignment) ✅
-`docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. New studies and the
-pdPOC teaching example emit `dataset.ingestion_mode: 15s_primary_derive_1m`
-(Quantower 15s path, `intrabar_model: subtimeframe_conservative`). Omitted
-mode remains `primary` (the dopen example is legacy 1m). Execute is still
-CLI / `run_experiment`. Studies does not walk the Data page. The 15s-primary
-derive loader resolves OHLC-identical source duplicate opens (lowest volume)
-before 1m derivation; OHLC conflicts fail the cell.
+`docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. New studies emit
+`dataset.ingestion_mode: 15s_primary_derive_1m` (Quantower History Exporter
+15s path, `intrabar_model: subtimeframe_conservative`). New Build drafts
+default to **MNQ + `source_timezone: UTC`** (AMP/Rithmic HE naive stamps) and
+`workers: 1`. The pdPOC teaching example stays ES / `America/New_York`.
+`examples/studies/pRTH_open_ma.yaml` is the operator MNQ HE template
+(32 cells, one MA per row). Omitted mode remains `primary` (the dopen
+example is legacy 1m). Execute is still CLI / `run_experiment`. Studies does
+not walk the Data page. The 15s-primary derive loader resolves OHLC-identical
+source duplicate opens (lowest volume) before 1m derivation; OHLC conflicts
+fail the cell.
 **SV** (Study Viewer) SV1–SV4 ✅
 `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0–**SV4** shipped (catalog +
 `study list` + click-to-load + quality panes + overview charts + cell peek).
@@ -582,7 +586,7 @@ or mutate classic research session state.
 
 | Step | What happens | What does not happen |
 |---|---|---|
-| Widgets / Start from example / Load Preview / Copy spec | Hydrate `StudyDraft` (pending-sync widget overwrite) | No NL/shorthand compiler; tokens stay in `closed_level_token_set` |
+| Widgets / Start from example / Load Preview / Copy spec | Hydrate `StudyDraft` (pending-sync widget overwrite). Example template defaults to `pRTH_open_ma.yaml`; pdPOC remains selectable | No NL/shorthand compiler; tokens stay in `closed_level_token_set` |
 | Live strip | Page calls `preview_study_spec(emit_study_spec(draft))` | No cartesian math on the page; over-cap still uses the preview estimate |
 | Apply to Preview | `emit_study_yaml` → `STUDIES_PREVIEW_YAML_KEY`; pop preview cache; `reset_launch_session_for_preview` | No auto-preview; no CLI spawn; no `study.launch.yaml` |
 | Validate / Preview → Run via CLI | Existing RS-D8 / RS-D9 on the Preview tab | Build has no Run / Bind confirm / Promote |
@@ -607,7 +611,7 @@ pattern as `launch.py`). **No Streamlit. No execute / launch / preview import.**
 
 | API | Role |
 |---|---|
-| `default_study_draft` | Valid 2-cell default (1×1×2×1×1) |
+| `default_study_draft` | Valid 2-cell default (1×1×2×1×1). Ingest: MNQ, UTC, `data/mnq_15s.csv`, Quantower HE, `15s_primary_derive_1m`, `subtimeframe_conservative`. Costs 0.5 / 1.0 tick, SL 40 / TP 80, tolerance 15. `workers: 1`. `StudyDraft()` field defaults stay ES / NY / `es_1m.csv` / `canonical` / `primary` / `sl_first` |
 | `emit_study_spec` / `emit_study_yaml` | Canonical YAML; `mode_rules` for listed modes only; batteries always have `enabled` |
 | `hydrate_study_draft` / `hydrate_study_yaml` | Lossless vs `load_study_spec` identity hash on the golden + examples |
 | `builder_token_catalog` | `sorted(closed_level_token_set(levels))` |

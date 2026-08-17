@@ -18,6 +18,7 @@ from thesistester.study.schema import StudySpecError, normalize_study_spec, vali
 
 PREVIEW_EXPAND_CAP = 2_000
 EXAMPLE_STUDY_RELATIVE = Path("examples/studies/pdPOC_ma_confluence_battery.yaml")
+PRTH_OPEN_MA_EXAMPLE_RELATIVE = Path("examples/studies/pRTH_open_ma.yaml")
 STUDIES_PREVIEW_YAML_KEY = "studies_preview_yaml"
 # Cached StudyPreview so results survive Streamlit reruns until YAML changes.
 STUDIES_PREVIEW_CACHED_KEY = "studies_preview_cached"
@@ -45,19 +46,28 @@ class StudyPreview:
     cap_warning: str | None
 
 
-def example_study_spec_path() -> Path:
-    """Resolve the stage-first example from cwd or the repository root."""
+def _bundled_study_spec_path(relative: Path) -> Path:
+    """Resolve a repo example StudySpec from cwd or the repository root."""
     candidates = (
-        Path.cwd() / EXAMPLE_STUDY_RELATIVE,
-        Path(__file__).resolve().parents[2] / EXAMPLE_STUDY_RELATIVE,
+        Path.cwd() / relative,
+        Path(__file__).resolve().parents[2] / relative,
     )
     for path in candidates:
         if path.is_file():
             return path
     raise StudySpecError(
-        f"Example StudySpec not found at {EXAMPLE_STUDY_RELATIVE} "
-        "(looked under cwd and repository root)."
+        f"Example StudySpec not found at {relative} (looked under cwd and repository root)."
     )
+
+
+def example_study_spec_path() -> Path:
+    """Resolve the stage-first pdPOC teaching example."""
+    return _bundled_study_spec_path(EXAMPLE_STUDY_RELATIVE)
+
+
+def prth_open_ma_example_spec_path() -> Path:
+    """Resolve the pRTH Open × one-MA MNQ History Exporter example."""
+    return _bundled_study_spec_path(PRTH_OPEN_MA_EXAMPLE_RELATIVE)
 
 
 def preview_study_yaml(text: str) -> StudyPreview:

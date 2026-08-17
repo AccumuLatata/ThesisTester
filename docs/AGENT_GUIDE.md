@@ -76,11 +76,14 @@ Operator contract: `docs/STUDY_RUNNER.md` §SB.
 
 **SIA (shipped):** Studies authoring alignment to the Data-page 15s-primary
 RunSpec — `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md`. New drafts
-and the pdPOC example emit `15s_primary_derive_1m`. Do not point a 15s
-Quantower file at a study without that mode (omitted = `primary` = a
-different experiment). Do not implement further SIA work by importing
-`pages/1_Data.py`, reading classic `st.session_state`, or editing `engine/`
-/ `api.run_experiment` loaders.
+emit `15s_primary_derive_1m` with MNQ + UTC + History Exporter
+(`default_study_draft()` only; `StudyDraft()` field defaults stay legacy).
+The pdPOC example stays ES / NY. Operator template:
+`examples/studies/pRTH_open_ma.yaml`. Do not point a 15s Quantower file at a
+study without that mode (omitted = `primary` = a different experiment). Do
+not implement further SIA work by importing `pages/1_Data.py`, reading
+classic `st.session_state`, or editing `engine/` / `api.run_experiment`
+loaders.
 
 **SV (SV1–SV4 shipped):** Study Viewer Inspect catalog + quality panes +
 overview charts + cell peek — `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`.

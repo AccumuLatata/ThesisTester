@@ -1,0 +1,105 @@
+# Research Study Runner — pRTH_Open × one MA partner (MNQ History Exporter 15s)
+#
+# Operator default template for Studies → Build → Start from example.
+# One MA per partner row so each average can be ranked (do not put four MAs
+# in a single from_partners: required row).
+#
+# Active cartesian = 32 cells
+#   1 core × 4 partners × 1 mode × 2 triggers × 2 tfs × 2 directions
+# Each cell may also run the SL/TP grid below (per-cell, not a factor axis).
+#
+# Ingest matches Data-page 15s-primary for AMP/Rithmic History Exporter:
+#   format_profile: quantower_history_exporter
+#   source_timezone: UTC          # naive HE stamps; Sunday 22:00 = ETH open
+#   ingestion_mode: 15s_primary_derive_1m
+#   intrabar_model: subtimeframe_conservative
+# Replace dataset.path with the same 15s Quantower CSV used on Data.
+# Do not add subtimeframe_path on this path.
+#
+# workers: 1 is the Windows-safe default (study lock is fcntl-only).
+# Raise workers only on POSIX after a 1-worker smoke run.
+#
+# Usage:
+#   python -m thesistester study expand examples/studies/pRTH_open_ma.yaml \
+#     --output-dir out/pRTH_open_ma
+#   python -m thesistester study run examples/studies/pRTH_open_ma.yaml \
+#     --output-dir out/pRTH_open_ma
+#   python -m thesistester study report out/pRTH_open_ma
+#
+# Ranked overview stays empty until a cell meets report.min_trades (30).
+# trade_count=0 is the thesis/window, not a blank-report bug.
+# Descriptive ranking ≠ validated edge (see docs/ASSUMPTIONS_AND_LIMITATIONS.md).
+
+schema_version: 1
+study:
+  name: pRTHopen_EMAsSMAs
+  description: testing which Average has the best results.
+  workers: 1
+  confirm_above_runs: 200
+  output_dir: results/studies/pRTHopen_EMAsSMAs
+
+  dataset:
+    path: "data/mnq_15s.csv"
+    instrument: MNQ
+    format_profile: quantower_history_exporter
+    source_timezone: UTC
+    ingestion_mode: 15s_primary_derive_1m
+
+  levels:
+    sma_lengths: [50, 200]
+    ema_lengths: [21, 9]
+    sma_timeframes: [1min, 5min, 30min]
+    ema_timeframes: [1min, 5min, 30min]
+
+  constants:
+    tolerance_ticks: 15
+    min_confluences: 1
+    max_confluences: 5
+    min_valid_confluences: 1
+    naked_only: false
+    naked_requirement: any
+    trigger_params: {}
+    backtest:
+      stop_loss_ticks: 40
+      take_profit_ticks: 80
+      exposure_policy: single_position
+      commission_per_side: 0.5
+      slippage_ticks: 1.0
+      flat_by_session_close: false
+      intrabar_model: subtimeframe_conservative
+    grid:
+      enabled: true
+      stop_loss_ticks_values: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+      take_profit_ticks_values: [20, 40, 60, 80, 100, 120, 140, 150, 160, 180, 200]
+    validation:
+      enabled: false
+    walk_forward:
+      enabled: false
+
+  factors:
+    core_level: [pRTH_Open]
+    partner_levels:
+      - [SMA_50_1min]
+      - [SMA_50_5min]
+      - [EMA_21_1min]
+      - [EMA_21_5min]
+    confluence_mode: [anchor_rules]
+    trigger: [touch, 3c]
+    trigger_timeframe: [1min, 5min]
+    direction: [long, short]
+
+  mode_rules:
+    anchor_rules:
+      selected_levels: []
+      anchor_level: ${core_level}
+      confluence_rules:
+        from_partners: required
+
+  report:
+    primary_metric: expectancy_r
+    secondary_metrics: [profit_factor, max_drawdown_r, trade_count, total_r]
+    min_trades: 30
+    otf_baseline:
+      enabled: false
+    multiple_testing: warn
+    group_by: [partner_levels, confluence_mode, trigger, trigger_timeframe, direction]
