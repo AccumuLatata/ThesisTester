@@ -147,9 +147,9 @@ from thesistester.study.preview import (
     example_study_spec_path,
     preview_study_spec,
     preview_study_yaml,
-    prth_open_ma_example_spec_path,
 )
 from thesistester.study.schema import StudySpecError
+from thesistester.study import preview as _study_preview
 from thesistester.study import viewer as _study_viewer
 
 # Page-local Studies session keys + catalog cap. Do not from-import these
@@ -1998,12 +1998,14 @@ def _render_build() -> None:
     )
     if start_example:
         try:
-            label = str(st.session_state.get("_study_builder_example_template") or example_labels[0])
-            resolver = (
-                prth_open_ma_example_spec_path
-                if label == example_labels[0]
-                else example_study_spec_path
+            label = str(
+                st.session_state.get("_study_builder_example_template") or example_labels[0]
             )
+            resolver = example_study_spec_path
+            if label == example_labels[0]:
+                helper = getattr(_study_preview, "prth_open_ma_example_spec_path", None)
+                if callable(helper):
+                    resolver = helper
             path = resolver()
             hydrated = hydrate_study_yaml(path.read_text(encoding="utf-8"))
         except StudySpecError as exc:

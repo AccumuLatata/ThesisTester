@@ -592,10 +592,13 @@ AMP/Rithmic History Exporter identity:
 | Cartesian | 2 cells | 2 cells (`pRTH_Open` × one SMA × both modes × touch × base) |
 | `workers` | 1 | 1 (do not default 8) |
 
-`draft_from_mapping` of a payload that **omits** `instrument` /
-`source_timezone` / `dataset_path` keeps the legacy field defaults so a
-partial pre-SIA session mapping does not inherit MNQ/UTC. `draft_from_mapping(None)`
-still returns `default_study_draft()`.
+`draft_from_mapping` seeds from `StudyDraft()` field defaults, then overlays
+present keys. A payload that omits `instrument` / `source_timezone` /
+`dataset_path` / `format_profile` / `core_level` / `tolerance_ticks` /
+`backtest` keeps those field defaults (does not inherit MNQ / UTC / HE /
+pRTH / operator costs). Omitted `ingestion_mode` stays `primary` (or
+`dataset_extra` promote). `draft_from_mapping(None)` still returns
+`default_study_draft()`.
 
 The 32-cell pRTH × one-MA cartesian lives in
 `examples/studies/pRTH_open_ma.yaml` (Build **Start from example** default).

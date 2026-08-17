@@ -418,7 +418,9 @@ def draft_from_mapping(payload: Mapping[str, Any] | None) -> StudyDraft:
     if not isinstance(payload, Mapping):
         return default_study_draft()
     known = {item.name for item in fields(StudyDraft)}
-    merged = asdict(default_study_draft())
+    # Field defaults, not default_study_draft(): omitted keys must not inherit
+    # MNQ / UTC / HE / pRTH / 15s-primary / operator costs.
+    merged = asdict(StudyDraft())
     for key, value in payload.items():
         if key in known:
             merged[key] = copy.deepcopy(value)
@@ -457,14 +459,6 @@ def draft_from_mapping(payload: Mapping[str, Any] | None) -> StudyDraft:
         )
     else:
         merged["ingestion_mode"] = _resolved_ingestion_mode(merged.get("ingestion_mode"))
-    # Omitted ingest-identity keys keep StudyDraft field defaults so a partial
-    # pre-SIA session mapping does not inherit MNQ / UTC / mnq_15s.csv.
-    if "instrument" not in payload:
-        merged["instrument"] = "ES"
-    if "source_timezone" not in payload:
-        merged["source_timezone"] = "America/New_York"
-    if "dataset_path" not in payload:
-        merged["dataset_path"] = "data/es_1m.csv"
     return StudyDraft(**merged)
 
 

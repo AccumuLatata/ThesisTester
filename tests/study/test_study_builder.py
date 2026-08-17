@@ -981,6 +981,15 @@ def test_draft_from_mapping_pre_sia_session_is_primary():
     assert omitted_identity.instrument == "ES"
     assert omitted_identity.source_timezone == "America/New_York"
     assert omitted_identity.dataset_path == "data/es_1m.csv"
+    assert omitted_identity.format_profile == DEFAULT_FORMAT_PROFILE
+    assert omitted_identity.ingestion_mode == INGESTION_MODE_PRIMARY
+    assert omitted_identity.core_level == ["pdPOC"]
+    assert omitted_identity.tolerance_ticks == 0
+    assert omitted_identity.backtest["intrabar_model"] == "sl_first"
+    assert omitted_identity.backtest["stop_loss_ticks"] == 8
+    assert omitted_identity.backtest["take_profit_ticks"] == 16
+    assert omitted_identity.backtest["commission_per_side"] == 0.0
+    assert omitted_identity.backtest["slippage_ticks"] == 0.0
     fresh = draft_from_mapping(None)
     assert fresh.instrument == DEFAULT_NEW_DRAFT_INSTRUMENT
     assert fresh.source_timezone == DEFAULT_NEW_DRAFT_SOURCE_TIMEZONE

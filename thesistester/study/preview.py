@@ -56,8 +56,7 @@ def _bundled_study_spec_path(relative: Path) -> Path:
         if path.is_file():
             return path
     raise StudySpecError(
-        f"Example StudySpec not found at {relative} "
-        "(looked under cwd and repository root)."
+        f"Example StudySpec not found at {relative} (looked under cwd and repository root)."
     )
 
 

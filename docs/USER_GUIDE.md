@@ -1008,8 +1008,8 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 | Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
 | Build StudySpec | Widgets → `emit_study_yaml` | Not a runner; does not spawn CLI |
-| Ingestion mode | New drafts: MNQ + UTC + 15s-primary + Quantower HE; omit = `primary` | 15s file without the mode ≠ Data R12. Radio does not rewrite profile/intrabar |
-| Start from example / Load Preview / Copy spec | Hydrate pRTH MNQ HE (default) or pdPOC, Preview YAML, or Inspect spec | Copy-on-Build hydrates; Preview Copy only fills the textarea |
+| Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary; omit = `primary` | 15s file without the mode ≠ Data R12. Radio does not rewrite profile |
+| Start from example / Load Preview / Copy spec | Hydrate pRTH (default) or pdPOC, Preview YAML, or Inspect spec | Build Copy hydrates; Preview Copy fills textarea |
 | Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ factor widgets; explicit table is delete-only |
 | Apply to Preview | Writes Preview YAML; clears cache + launch approval | Validate / Preview still required |
 | Download StudySpec YAML | Browser download of emitted YAML | Not a store write |
@@ -1020,12 +1020,11 @@ StudySpec preview, run_count, confirm_above_runs, StudyDraft
 2. **Studies** Inspect: **Load selected** or paste `output_dir` then Load.
    After Load: quality panes, charts, cell peek (optional zip download).
    Refresh while in flight. `study list` is the CLI twin.
-3. **Build** (optional): example or closed catalog. New drafts emit
-   `15s_primary_derive_1m` with MNQ / UTC / History Exporter. Path is the
-   same 15s Quantower CSV as Data (Studies does not walk Data). **Start from
-   example** defaults to `pRTH_open_ma.yaml` (32 cells, one MA per row);
-   pdPOC stays on the template picker. Filter includes ⊆ widgets; explicit is
-   delete-only. Keep **Workers** at 1 on Windows.
+3. **Build** (optional): closed catalog or example. New drafts emit MNQ /
+   UTC / HE `15s_primary_derive_1m` (same 15s CSV as Data).
+   **Start from example** defaults to `pRTH_open_ma.yaml` (32 cells); pdPOC
+   stays on the picker. Filter ⊆ widgets; explicit delete-only. Workers=1
+   on Windows.
 4. **Apply to Preview**, then Preview → **Validate / Preview**.
 5. New CLI output dir (pins `dataset.path` and `dataset.subtimeframe_path`;
    missing CSV is refused). Under threshold: **Run via CLI**. Over: **Bind
