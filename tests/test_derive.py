@@ -411,7 +411,31 @@ def test_provenance_counts_sparse_and_dropped_separately():
 
     assert provenance["sparse_parent_bucket_count"] == 1
     assert provenance["dropped_parent_bucket_count"] == 1
+    assert "source_duplicate_resolution" not in provenance
     assert len(result.parent_data) == 2
+
+
+def test_provenance_includes_source_duplicate_audit_when_provided():
+    source = _complete_minute("2026-06-02 09:30:00")
+    result = derive_complete_parent_ohlcv(source)
+    audit = [
+        {
+            "timestamp": "2026-06-02 09:30:00-04:00",
+            "policy": "ohlc_identical_keep_lowest_volume",
+            "duplicate_group_size": 2,
+            "retained_volume": 2.0,
+            "discarded_volumes": [9.0],
+        }
+    ]
+    provenance = build_derivation_provenance(
+        result,
+        format_profile="quantower_history_exporter",
+        source_duplicate_audit=audit,
+    )
+    assert provenance["source_duplicate_resolution"] == "ohlc_identical_keep_lowest_volume"
+    assert provenance["source_duplicate_groups_resolved"] == 1
+    assert provenance["source_duplicate_rows_discarded"] == 1
+    assert provenance["source_duplicate_audit"] == audit
 
 
 def test_timezone_naive_source_fails_closed():

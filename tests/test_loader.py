@@ -12,7 +12,10 @@ from thesistester.data.loader import (
     infer_base_interval,
     load_ohlcv,
     primary_duplicate_volume_comparison,
+    prepare_15s_source_for_derivation,
     resolve_ohlc_identical_duplicates,
+    SOURCE_DUPLICATE_RESOLUTION_OHLC_IDENTICAL,
+    source_duplicate_resolution_provenance,
     validate_ohlcv,
 )
 from thesistester.data.resample import resample_ohlcv
@@ -97,6 +100,110 @@ def test_resolve_ohlc_identical_duplicate_bars_keeps_lowest_volume_with_audit():
             "discarded_volumes": [30.0],
         }
     ]
+
+
+def test_prepare_15s_source_resolves_ohlc_identical_duplicates_and_keeps_lowest_volume():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-06-02 09:30:00+00:00",
+                    "2026-06-02 09:30:00+00:00",
+                    "2026-06-02 09:30:15+00:00",
+                ]
+            ),
+            "open": [100.0, 100.0, 101.0],
+            "high": [101.0, 101.0, 102.0],
+            "low": [99.0, 99.0, 100.0],
+            "close": [100.5, 100.5, 101.5],
+            "volume": [30.0, 10.0, 12.0],
+        }
+    )
+
+    resolved, audit = prepare_15s_source_for_derivation(frame)
+    assert resolved["volume"].tolist() == [10.0, 12.0]
+    assert len(audit) == 1
+    provenance = source_duplicate_resolution_provenance(audit)
+    assert provenance["source_duplicate_resolution"] == SOURCE_DUPLICATE_RESOLUTION_OHLC_IDENTICAL
+    assert provenance["source_duplicate_groups_resolved"] == 1
+    assert provenance["source_duplicate_rows_discarded"] == 1
+
+
+def test_resolve_ohlc_identical_duplicates_preserves_loader_attrs():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-06-02 09:30:00+00:00",
+                    "2026-06-02 09:30:00+00:00",
+                    "2026-06-02 09:30:15+00:00",
+                ]
+            ),
+            "open": [100.0, 100.0, 101.0],
+            "high": [101.0, 101.0, 102.0],
+            "low": [99.0, 99.0, 100.0],
+            "close": [100.5, 100.5, 101.5],
+            "volume": [30.0, 10.0, 12.0],
+        }
+    )
+    frame.attrs["was_monotonic_before_sort"] = False
+    frame.attrs["format_profile"] = "quantower_history_exporter"
+
+    resolved, audit = resolve_ohlc_identical_duplicates(frame)
+
+    assert resolved.attrs["was_monotonic_before_sort"] is False
+    assert resolved.attrs["format_profile"] == "quantower_history_exporter"
+    assert len(audit) == 1
+    report = validate_ohlcv(resolved)
+    assert any(issue.code == "non_monotonic_before_sort" for issue in report.issues)
+    assert not any(issue.code == "duplicate_timestamps" for issue in report.issues)
+
+
+def test_prepare_15s_source_without_duplicates_is_noop():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:15+00:00"]),
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.0],
+            "low": [99.0, 100.0],
+            "close": [100.5, 101.5],
+            "volume": [10.0, 12.0],
+        }
+    )
+    resolved, audit = prepare_15s_source_for_derivation(frame)
+    pd.testing.assert_frame_equal(resolved, frame)
+    assert audit == []
+    assert source_duplicate_resolution_provenance(audit) == {}
+
+
+def test_prepare_15s_source_ohlc_conflict_fails_closed():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:00+00:00"]),
+            "open": [100.0, 100.0],
+            "high": [101.0, 103.0],
+            "low": [99.0, 99.0],
+            "close": [100.5, 101.5],
+            "volume": [10.0, 12.0],
+        }
+    )
+    with pytest.raises(ValueError, match="conflicting OHLC"):
+        prepare_15s_source_for_derivation(frame)
+
+
+def test_prepare_15s_source_other_fatals_still_fail_before_resolve():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-06-02 09:30:00+00:00", "2026-06-02 09:30:00+00:00"]),
+            "open": [100.0, 100.0],
+            "high": [101.0, 101.0],
+            "low": [99.0, 99.0],
+            "close": [100.5, 100.5],
+            "volume": [-1.0, -2.0],
+        }
+    )
+    with pytest.raises(ValueError, match="negative volume"):
+        prepare_15s_source_for_derivation(frame)
 
 
 def test_primary_duplicate_volume_comparison_identifies_unique_lower_volume_match():

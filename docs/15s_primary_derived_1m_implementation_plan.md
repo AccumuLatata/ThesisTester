@@ -1,6 +1,11 @@
 # 15-Second Primary Data → Derived 1-Minute Canonical Plan
 
-**Status:** Delivered (PRs 1–3); PR4 recommend-only UX/docs complete
+**Status:** Delivered (PRs 1–3); PR4 recommend-only UX/docs complete.
+Living addendum: 15s-primary derive (Data + API/study) resolves
+OHLC-identical source duplicate opens with
+`prepare_15s_source_for_derivation` before `derive_complete_parent_ohlcv`
+(lowest volume kept; audit in `ingestion_provenance`). OHLC conflicts and
+native 1m primary duplicates stay fail-closed / diagnostic-only.
 **Scope:** Explicit 15-second-primary ingestion for Quantower-style OHLCV exports
 **Decision:** Build 1-minute canonical bars internally from uploaded 15-second
 bars, and retain the uploaded 15-second bars as the only R12 intrabar source.  
@@ -77,7 +82,7 @@ hold:
 | Explicit mode and profile | User chooses `15s_primary_derive_1m`; no interval or header auto-detection. |
 | Source cadence | On-grid opens among `:00`/`:15`/`:30`/`:45` with consecutive gaps that are exact multiples of 15 seconds (sparse 30s/60s gaps allowed). |
 | Timestamp basis | Timestamps represent bar opens and are exchange-timezone aware after normal loader conversion. |
-| Source validity | Existing fatal OHLCV failures remain fatal: duplicates, missing values, invalid OHLC ranges, and negative volume. |
+| Source validity | Fatal OHLCV remain fatal: missing values, invalid OHLC ranges, negative volume, and **OHLC-conflicting** duplicate timestamps. OHLC-identical duplicate opens (exact copies included) are resolved before derive by `prepare_15s_source_for_derivation` (keep lowest volume; audit in `ingestion_provenance`). Native 1m primary duplicates stay diagnostic-only. |
 | Bucket alignment | A source bar belongs to the exchange-local wall-clock minute containing its open timestamp. Valid expected opens are `:00`, `:15`, `:30`, and `:45`. |
 | Observed coverage (v2) | A derived parent exists when the bucket contains one or more unique on-grid opens. Sparse trade-only minutes are retained; off-grid stamps drop the minute. |
 
@@ -87,7 +92,9 @@ Quantower/Rithmic History Exporter trade-only files (empty 15s slots omitted).
 Current policy `observed_aligned_15s_to_1m_v2` retains sparse on-grid minutes
 and drops only misaligned buckets. Empty bars are still never synthesized.
 
-The helper must reject duplicate source timestamps before grouping. A source
+`derive_complete_parent_ohlcv` still rejects a duplicate-bearing frame.
+OHLC-identical source duplicates are resolved in
+`prepare_15s_source_for_derivation` before that helper runs. A source
 timestamp at an offset such as `:00:05` is not silently floored into a valid
 bucket; that bucket is misaligned and yields no parent.
 

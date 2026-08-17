@@ -606,7 +606,79 @@ def resolve_ohlc_identical_duplicates(
         .sort_values("timestamp", kind="mergesort")
         .reset_index(drop=True)
     )
+    # concat/reset drop loader attrs; keep them so post-resolve validate_ohlcv
+    # still reports was_monotonic_before_sort from the original file order.
+    resolved.attrs = dict(df.attrs)
     return resolved, audit
+
+
+SOURCE_DUPLICATE_RESOLUTION_OHLC_IDENTICAL = "ohlc_identical_keep_lowest_volume"
+_15S_SOURCE_FATAL_EXCEPT_DUPLICATES = frozenset(
+    {
+        "missing_values",
+        "high_below_low",
+        "open_close_outside_range",
+        "negative_volume",
+    }
+)
+
+
+def prepare_15s_source_for_derivation(
+    source: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[dict[str, object]]]:
+    """Validate a 15s source and resolve OHLC-identical duplicate opens.
+
+    Vendor History Exporter files routinely repeat a handful of bar opens.
+    Those groups are resolved with the existing R12 lower policy (keep the
+    lowest-volume row) when every duplicate group shares OHLC. Exact copies
+    are a no-op besides dropping the extra row. OHLC conflicts and other
+    fatal OHLCV issues stay fail-closed. ``derive_complete_parent_ohlcv``
+    remains strict and must receive a duplicate-free frame.
+
+    Native one-minute primary bars are not handled here and are never
+    auto-deduplicated.
+    """
+    report = validate_ohlcv(source)
+    other_fatals = [
+        issue.message
+        for issue in report.issues
+        if issue.code in _15S_SOURCE_FATAL_EXCEPT_DUPLICATES
+    ]
+    if other_fatals:
+        raise ValueError("15-second source validation failed: " + "; ".join(other_fatals))
+    if not any(issue.code == "duplicate_timestamps" for issue in report.issues):
+        return source, []
+    try:
+        resolved, audit = resolve_ohlc_identical_duplicates(source)
+    except DataValidationError as exc:
+        raise ValueError(
+            "15-second source validation failed: duplicate timestamps with "
+            "conflicting OHLC cannot be resolved"
+        ) from exc
+    resolved_report = validate_ohlcv(resolved)
+    leftover = [
+        issue.message
+        for issue in resolved_report.issues
+        if issue.code in _15S_SOURCE_FATAL_EXCEPT_DUPLICATES or issue.code == "duplicate_timestamps"
+    ]
+    if leftover:
+        raise ValueError("15-second source validation failed: " + "; ".join(leftover))
+    return resolved, audit
+
+
+def source_duplicate_resolution_provenance(
+    audit: list[dict[str, object]],
+) -> dict[str, object]:
+    """JSON-safe provenance fields for a 15s source duplicate resolution."""
+    if not audit:
+        return {}
+    discarded = sum(len(item.get("discarded_volumes") or []) for item in audit)
+    return {
+        "source_duplicate_resolution": SOURCE_DUPLICATE_RESOLUTION_OHLC_IDENTICAL,
+        "source_duplicate_groups_resolved": int(len(audit)),
+        "source_duplicate_rows_discarded": int(discarded),
+        "source_duplicate_audit": list(audit),
+    }
 
 
 def primary_duplicate_volume_comparison(

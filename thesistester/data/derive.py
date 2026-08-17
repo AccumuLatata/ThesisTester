@@ -25,7 +25,7 @@ from typing import Any
 import pandas as pd
 
 from thesistester.config import REQUIRED_COLUMNS
-from thesistester.data.loader import format_interval
+from thesistester.data.loader import format_interval, source_duplicate_resolution_provenance
 
 # Historical policy: required exactly four aligned sub-bars and dropped sparse
 # minutes. Retained as a constant so old provenance/bindings remain readable.
@@ -79,9 +79,10 @@ def build_derivation_provenance(
     *,
     format_profile: str,
     source_content_hash: str | None = None,
+    source_duplicate_audit: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build JSON-safe ingestion provenance for a derivation result."""
-    return {
+    payload: dict[str, Any] = {
         "ingestion_mode": INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
         "source_interval": format_interval(result.source_interval),
         "derived_parent_interval": format_interval(result.parent_interval),
@@ -95,6 +96,9 @@ def build_derivation_provenance(
         "dropped_parent_bucket_count": int(len(result.dropped_buckets)),
         "sparse_parent_bucket_count": int(len(result.sparse_buckets)),
     }
+    if source_duplicate_audit:
+        payload.update(source_duplicate_resolution_provenance(source_duplicate_audit))
+    return payload
 
 
 def derive_complete_parent_ohlcv(

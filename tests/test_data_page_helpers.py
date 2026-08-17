@@ -465,6 +465,37 @@ def test_prepare_15s_primary_dataset_retains_sparse_minutes(tmp_path):
         )
 
 
+def test_prepare_15s_primary_dataset_resolves_ohlc_identical_source_duplicates(tmp_path):
+    data_page = _import_data_page_module({})
+    vendor = (
+        pathlib.Path(__file__).resolve().parent
+        / "fixtures"
+        / "vendor"
+        / "quantower_history_exporter_15s.csv"
+    )
+    path = tmp_path / "quantower_15s_dup.csv"
+    rows = vendor.read_text(encoding="utf-8").splitlines()
+    rows.append("2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;100;99;100;100;99;0;100;")
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    prepared = data_page._prepare_15s_primary_dataset(
+        path,
+        instrument="ES",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="quantower_history_exporter",
+    )
+
+    assert len(prepared.source_df) == 8
+    assert len(prepared.parent_df) == 2
+    assert float(prepared.parent_df["volume"].iloc[0]) == 10.0
+    assert prepared.provenance["source_duplicate_groups_resolved"] == 1
+    assert prepared.provenance["source_duplicate_rows_discarded"] == 1
+    source_codes = {issue.code for issue in prepared.source_report.issues}
+    assert "duplicate_timestamps" not in source_codes
+    assert "non_monotonic_before_sort" in source_codes
+
+
 def test_clear_dataset_dependent_state_clears_15s_primary_keys(monkeypatch):
     session_state = {
         "levels": "x",

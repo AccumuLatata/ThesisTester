@@ -1065,10 +1065,13 @@ inference alone is insufficient when empty slots dominate).
 The Data page recommends `15s_primary_derive_1m` for Upload CSV (first-visit
 widget default; labeled/ordered first), currently limited to
 `quantower_history_exporter`. That mode derives the canonical one-minute
-`data` frame, attaches the original 15-second bars as `subtimeframe_data`,
+`data` frame, attaches the retained 15-second bars as `subtimeframe_data`,
 records `ingestion_provenance` / `derived_parent_diagnostics`, and runs
 `prepare_subtimeframe_conservative_context()` as a fail-closed postcondition
-before state commit. The separate lower-timeframe uploader is hidden whenever the
+before state commit. Data and `run_experiment` share
+`prepare_15s_source_for_derivation`: OHLC-identical 15s source duplicate
+opens are resolved (lowest volume kept) before derive; OHLC conflicts fail
+closed. Native 1m primary is never auto-deduplicated. The separate lower-timeframe uploader is hidden whenever the
 ingestion-mode radio selects `15s_primary_derive_1m` (not only after
 `ingestion_provenance` marks an active derived session), so stale
 one-minute `data` cannot resurface the legacy dual-upload path while the
@@ -1223,7 +1226,7 @@ on signature mismatch and clear execution dependents).
 | `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
 | `subtimeframe_interval` | Data page, R18 API/CLI, or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
-| `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count, sparse-minute count) |
+| `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count, sparse-minute count; when 15s source opens were OHLC-identical duplicates, also `source_duplicate_resolution` / group and discarded-row counts / `source_duplicate_audit`) |
 | `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Mapping with `sparse_buckets` (`incomplete_coverage`, retained) and `dropped_buckets` (`timestamp_misalignment`, absent from canonical); never used to patch source or parent bars |
 | `resampled_data` | Data (`pages/1_Data.py`) | Data summary (`pages/1_Data.py`) | `dict[str, pd.DataFrame]` |
 | `instrument` | Data (`pages/1_Data.py`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/2_Levels.py`, `pages/3_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`) | `str` (e.g., `ES`, `NQ`) |

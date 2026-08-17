@@ -38,7 +38,12 @@ from thesistester.data.derive import (
     build_derivation_provenance,
     derive_complete_parent_ohlcv,
 )
-from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
+from thesistester.data.loader import (
+    format_interval,
+    load_ohlcv,
+    prepare_15s_source_for_derivation,
+    validate_ohlcv,
+)
 from thesistester.data.resample import resample_ohlcv
 from thesistester.data.rolls import detect_contract_column, validate_roll_metadata
 from thesistester.data.sessions import tag_session
@@ -2406,7 +2411,9 @@ def _load_15s_primary_experiment_data(
     """Load a 15s source, derive observed 1m parents, and retain R12 source bars.
 
     Always re-derives from the source file so provenance stays source-truthful.
-    Sparse on-grid minutes are retained; only misaligned minutes are dropped.
+    OHLC-identical duplicate 15s opens are resolved (lowest volume kept) before
+    derive; OHLC conflicts stay fail-closed. Sparse on-grid minutes are
+    retained; only misaligned minutes are dropped.
     Source-index bindings include ``ingestion_mode`` / ``derivation_policy`` so
     a legacy primary binding for the same bytes cannot warm-cross into this
     path (or the reverse).
@@ -2423,7 +2430,10 @@ def _load_15s_primary_experiment_data(
         target_tz=exchange_timezone or inst.exchange_tz,
         format_profile=format_profile,
     )
-    source_report = validate_ohlcv(source_raw)
+    source_raw, source_duplicate_audit = prepare_15s_source_for_derivation(source_raw)
+
+    derived = derive_complete_parent_ohlcv(source_raw)
+    parent_report = validate_ohlcv(derived.parent_data)
     fatal_codes = {
         "duplicate_timestamps",
         "missing_values",
@@ -2431,12 +2441,6 @@ def _load_15s_primary_experiment_data(
         "open_close_outside_range",
         "negative_volume",
     }
-    fatal_messages = [issue.message for issue in source_report.issues if issue.code in fatal_codes]
-    if fatal_messages:
-        raise ValueError("15-second source validation failed: " + "; ".join(fatal_messages))
-
-    derived = derive_complete_parent_ohlcv(source_raw)
-    parent_report = validate_ohlcv(derived.parent_data)
     parent_fatal = [issue.message for issue in parent_report.issues if issue.code in fatal_codes]
     if parent_fatal:
         raise ValueError("Derived one-minute validation failed: " + "; ".join(parent_fatal))
@@ -2450,7 +2454,11 @@ def _load_15s_primary_experiment_data(
         parent_interval=derived.parent_interval,
         sub_interval=derived.source_interval,
     )
-    provenance = build_derivation_provenance(derived, format_profile=format_profile)
+    provenance = build_derivation_provenance(
+        derived,
+        format_profile=format_profile,
+        source_duplicate_audit=source_duplicate_audit,
+    )
     base_interval = format_interval(derived.parent_interval)
     data_identity = DataIdentity.from_run_spec(
         parent,
