@@ -415,7 +415,7 @@ Goldens are default `sl_first` and flatten-off. They may or may not include a 3c
 
 - [x] P1 fails on unpatched `main`
 - [x] P2 unchanged
-- [ ] Goldens green **or** PR stopped for isolated regen
+- [x] Goldens green **or** PR stopped for isolated regen
 - [x] No new `intrabar_model` value
 - [x] ASSUMPTIONS matches code
 
