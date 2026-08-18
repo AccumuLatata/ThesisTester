@@ -3,7 +3,12 @@ import pandas as pd
 import pytest
 
 from thesistester.data.sessions import tag_session
-from thesistester.levels import compute_all_levels, compute_indicator_levels, compute_profile_levels
+from thesistester.levels import (
+    PRIOR_PROFILE_LEVEL_NAMES,
+    compute_all_levels,
+    compute_indicator_levels,
+    compute_profile_levels,
+)
 
 
 TZ = "America/New_York"
@@ -270,6 +275,7 @@ def test_prior_day_profile_levels_use_completed_prior_day_only():
     )
     df = pd.concat([day1, day2], ignore_index=True)
     out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    assert set(PRIOR_PROFILE_LEVEL_NAMES) <= set(out.columns)
 
     first_day = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-01").date()]
     second_day = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]

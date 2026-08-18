@@ -23,6 +23,13 @@ from thesistester.assistant.thesis_compiler import (
     normalize_walk_forward_controls,
 )
 from thesistester.config import TIMEZONE_OPTIONS as _CONFIG_TIMEZONE_OPTIONS
+from thesistester.levels.catalog import (
+    APOC_LEVEL_NAMES,
+    PRIOR_PROFILE_LEVEL_NAMES,
+    SESSION_STRUCTURAL_LEVEL_NAMES,
+    SESSION_VWAP_LEVEL_NAMES,
+    SINGLE_PRINT_LEVEL_NAMES,
+)
 from thesistester.levels.prev30m_vwap import prev30m_price_column_names
 from thesistester.setup import SUGGESTED_DEFAULT_LEVELS
 
@@ -137,48 +144,17 @@ WFA_MATRIX_METRICS: tuple[str, ...] = (
     "stitched_oos_total_r",
     "oos_profitable_fold_rate",
 )
+
 # Static session/profile/opt-in level names used when no Levels dataframe is loaded.
+# Order is session-first; compose from catalog.py so the static names cannot
+# drift. LC1 only expands the prior-profile block. LC2 owns pivot spelling.
 SESSION_LEVEL_CATALOG: tuple[str, ...] = (
-    "ONH",
-    "ONL",
-    "pONH",
-    "pONL",
-    "AsiaHigh",
-    "AsiaLow",
-    "LondonHigh",
-    "LondonLow",
-    "OR_High",
-    "OR_Low",
-    "RTH_Open",
-    "pRTH_Open",
-    "pRTH_High",
-    "pRTH_Low",
-    "prevSettlement",
-    "dOpen",
-    "wOpen",
-    "mOpen",
-    "pdOpen",
-    "pwOpen",
-    "pmOpen",
-    "pdHigh",
-    "pdLow",
-    "pwHigh",
-    "pwLow",
-    "pmHigh",
-    "pmLow",
-    "pdEQ",
-    "pwEQ",
-    "pmEQ",
-    "pdPOC",
-    "dVWAP_RTH",
-    "dVWAP",
+    *SESSION_STRUCTURAL_LEVEL_NAMES,
+    *PRIOR_PROFILE_LEVEL_NAMES,
+    *SESSION_VWAP_LEVEL_NAMES,
     "prev30mVWAP",
-    "APOC",
-    "pAPOC",
-    "dSinglePrint_30m_NearestAbove",
-    "dSinglePrint_30m_NearestBelow",
-    "pSinglePrint_30m_NearestAbove",
-    "pSinglePrint_30m_NearestBelow",
+    *APOC_LEVEL_NAMES,
+    *SINGLE_PRINT_LEVEL_NAMES,
     "Pivot_1min_High",
     "Pivot_1min_Low",
     "Pivot_5min_High",

@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import ast
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+from thesistester.levels.apoc import APOC_COLUMNS
+from thesistester.levels.catalog import (
+    APOC_LEVEL_NAMES,
+    PRIOR_PROFILE_LEVEL_NAMES,
+    SESSION_STRUCTURAL_LEVEL_NAMES,
+    STATIC_STUDY_LEVEL_NAMES,
+)
 from thesistester.study.schema import (
     STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
+    STUDY_STATIC_LEVEL_NAMES,
     StudySpecError,
     closed_level_token_set,
     load_study_spec,
@@ -129,6 +139,50 @@ def test_static_catalog_excludes_suggested_rolling_vwap():
     assert "VWAP_rolling_1h" not in tokens
     tokens_with_window = closed_level_token_set({"vwap_windows": ["1h"]})
     assert "VWAP_rolling_1h" in tokens_with_window
+
+
+@pytest.mark.parametrize("core_level", ["pdVAH", "pwPOC", "pmVAL"])
+def test_lc1_prior_profile_twins_are_core_level_tokens(core_level):
+    raw = _minimal_study()
+    raw["study"]["factors"]["core_level"] = [core_level]
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["core_level"] == [core_level]
+
+
+def test_lc1_closed_set_includes_prior_profile_twins_not_gated_or_rolling():
+    tokens = closed_level_token_set(
+        {
+            "vwap_windows": [],
+            "poc_windows": [],
+            "pivots_enabled": False,
+            "prev30m_vwap_enabled": False,
+        }
+    )
+    assert set(PRIOR_PROFILE_LEVEL_NAMES) <= tokens
+    assert not any(name.startswith("VWAP_rolling_") for name in tokens)
+    assert not any(name.startswith("POC_rolling_") for name in tokens)
+    assert not any(name.startswith("Pivot_") for name in tokens)
+    assert "prev30mVWAP" not in tokens
+
+
+def test_lc1_study_static_names_are_catalog_identity():
+    assert STUDY_STATIC_LEVEL_NAMES is STATIC_STUDY_LEVEL_NAMES
+    assert STUDY_STATIC_LEVEL_NAMES == STATIC_STUDY_LEVEL_NAMES
+    assert not any(name.startswith("VWAP_rolling_") for name in STUDY_STATIC_LEVEL_NAMES)
+    assert not any(name.startswith("POC_rolling_") for name in STUDY_STATIC_LEVEL_NAMES)
+
+
+def _session_levels_ordered_from_source() -> list[str]:
+    """Local ``ordered`` list in ``compute_session_levels`` (not a module attr)."""
+    source = Path("thesistester/levels/sessions.py").read_text(encoding="utf-8")
+    match = re.search(r"ordered = \[([^\]]+)\]", source)
+    assert match is not None, "compute_session_levels ordered list not found"
+    return ast.literal_eval("[" + match.group(1) + "]")
+
+
+def test_lc1_session_structural_names_match_compute_session_levels_ordered():
+    assert list(SESSION_STRUCTURAL_LEVEL_NAMES) == _session_levels_ordered_from_source()
+    assert tuple(APOC_LEVEL_NAMES) == APOC_COLUMNS
 
 
 def test_load_study_spec_from_yaml(tmp_path: Path):

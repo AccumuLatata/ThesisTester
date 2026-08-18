@@ -14,12 +14,12 @@ from typing import Any, Mapping
 import yaml
 
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+from thesistester.levels.catalog import STATIC_STUDY_LEVEL_NAMES
 from thesistester.levels.common import normalized_window_label
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
 from thesistester.levels.prev30m_vwap import prev30m_price_column_names
 from thesistester.setup import (
-    SUGGESTED_DEFAULT_LEVELS,
     VALID_CONFLUENCE_MODES,
     VALID_DIRECTIONS,
     VALID_TRIGGER_TIMEFRAMES,
@@ -31,65 +31,10 @@ STUDY_SCHEMA_VERSION = 1
 RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 STUDY_INGESTION_MODES = frozenset({"primary", INGESTION_MODE_15S_PRIMARY_DERIVE_1M})
 
-
-# Static / session / profile names accepted without being implied by ``levels``.
-# Documented in docs/STUDY_RUNNER.md; keep in sync with product catalogs.
-def _static_catalog_names() -> frozenset[str]:
-    """Session/profile names; rolling VWAP/POC come only from levels windows."""
-    names = {
-        *SUGGESTED_DEFAULT_LEVELS,
-        "ONH",
-        "ONL",
-        "pONH",
-        "pONL",
-        "AsiaHigh",
-        "AsiaLow",
-        "LondonHigh",
-        "LondonLow",
-        "OR_High",
-        "OR_Low",
-        "RTH_Open",
-        "pRTH_Open",
-        "pRTH_High",
-        "pRTH_Low",
-        "prevSettlement",
-        "dOpen",
-        "wOpen",
-        "mOpen",
-        "pdOpen",
-        "pwOpen",
-        "pmOpen",
-        "pdHigh",
-        "pdLow",
-        "pwHigh",
-        "pwLow",
-        "pmHigh",
-        "pmLow",
-        "pdEQ",
-        "pwEQ",
-        "pmEQ",
-        "pdPOC",
-        "dVWAP_RTH",
-        "dVWAP",
-        "APOC",
-        "pAPOC",
-        "dSinglePrint_30m_NearestAbove",
-        "dSinglePrint_30m_NearestBelow",
-        "pSinglePrint_30m_NearestAbove",
-        "pSinglePrint_30m_NearestBelow",
-        # prev30mVWAP* and Pivot_* are admitted only when the matching
-        # study.levels enable flags are on (see closed_level_token_set).
-    }
-    # SUGGESTED_DEFAULT_LEVELS may include VWAP_rolling_1h which is not implied
-    # by DEFAULT_LEVELS_SETTINGS windows (30min/4h) — do not admit statically.
-    return frozenset(
-        name
-        for name in names
-        if not str(name).startswith("VWAP_rolling_") and not str(name).startswith("POC_rolling_")
-    )
-
-
-STUDY_STATIC_LEVEL_NAMES: frozenset[str] = _static_catalog_names()
+# Static session/profile names; rolling VWAP/POC are not in
+# STATIC_STUDY_LEVEL_NAMES — they come only from study.levels windows.
+# See thesistester.levels.catalog.
+STUDY_STATIC_LEVEL_NAMES: frozenset[str] = STATIC_STUDY_LEVEL_NAMES
 
 _DEFAULT_REPORT_GROUP_BY = (
     "partner_levels",

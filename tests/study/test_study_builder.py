@@ -430,6 +430,7 @@ def test_builder_token_catalog_is_sorted_and_closed():
     catalog = builder_token_catalog(default_study_draft().levels)
     assert catalog == tuple(sorted(catalog))
     assert "pdPOC" in catalog
+    assert "pdVAH" in catalog
     assert "SMA_50_1min" in catalog
     assert "EMA_21_1min" in catalog
     assert "NOT_A_REAL_LEVEL" not in catalog
