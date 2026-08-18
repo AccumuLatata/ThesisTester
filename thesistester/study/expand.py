@@ -451,9 +451,7 @@ def write_expansion_artifacts(
         study = dict(spec_to_write.get("study") or {})
         raw_dataset = study.get("dataset")
         if isinstance(raw_dataset, dict):
-            study["dataset"] = pin_dataset_paths_against_parent(
-                raw_dataset, spec_parent=parent
-            )
+            study["dataset"] = pin_dataset_paths_against_parent(raw_dataset, spec_parent=parent)
             spec_to_write["study"] = study
 
     spec_path.write_text(_dump_yaml(spec_to_write), encoding="utf-8")

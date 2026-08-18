@@ -112,9 +112,7 @@ def test_ah2_p1_expand_pins_spec_parent_not_cwd(tmp_path: Path, monkeypatch):
     spec_path.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
     monkeypatch.chdir(cwd_home)
 
-    _loaded, expansion, out_dir, base = prepare_study_expansion(
-        spec_path, output_dir=out
-    )
+    _loaded, expansion, out_dir, base = prepare_study_expansion(spec_path, output_dir=out)
     assert base == spec_home.resolve()
     run_dataset = expansion.experiment["runs"][0]["dataset"]
     assert Path(run_dataset["path"]) == spec_csv.resolve()
