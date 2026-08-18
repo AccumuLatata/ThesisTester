@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from thesistester.api import build_setup, generate_signals
-from thesistester.setup import build_setup_config, validate_setup_config
+from thesistester.setup import BASE_COLUMNS, build_setup_config, validate_setup_config
 
 _HIT_M1 = "prev30mVWAP_hit_m1"
 _HIT_ERROR_PREFIX = (
@@ -41,6 +41,20 @@ def _cluster(**overrides) -> dict:
     return config
 
 
+def _anchor(**overrides) -> dict:
+    config = _cluster(
+        selected_levels=[],
+        confluence_mode="anchor_rules",
+        anchor_level="ONH",
+        confluence_rules=[
+            {"level": "ONL", "tolerance_ticks": 4.0, "required": False},
+        ],
+        min_valid_confluences=1,
+    )
+    config.update(overrides)
+    return config
+
+
 def _levels_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -60,9 +74,8 @@ def test_ah6_p1_close_onh_fails_closed():
     config = _cluster(selected_levels=["close", "ONH"])
     errors = validate_setup_config(config)
     assert errors
-    assert any("close" in message for message in errors)
+    assert any("OHLCV/base" in message and "close" in message for message in errors)
     joined = " ".join(errors)
-    assert "close" in joined
     assert "cannot be used for confluence" in joined
 
     with pytest.raises(ValueError, match="close") as built:
@@ -92,3 +105,45 @@ def test_ah6_p3_onh_only_setup_unchanged():
     zones = result["confluence_zones"]
     if not zones.empty and "level_names" in zones.columns:
         assert not any("close" in str(name) for name in zones["level_names"])
+
+
+@pytest.mark.parametrize("column", sorted(BASE_COLUMNS))
+def test_ah6_selected_levels_rejects_every_base_column(column):
+    """Every BASE_COLUMNS token is rejected in selected_levels, not only close."""
+    errors = validate_setup_config(_cluster(selected_levels=[column, "ONH"]))
+    assert any("OHLCV/base" in message and column in message for message in errors)
+
+
+@pytest.mark.parametrize("padded", [" close", "close ", "\tclose"])
+def test_ah6_selected_levels_rejects_padded_close(padded):
+    """AH6: selected_levels tokens strip like anchor/rule checks (no close leak)."""
+    errors = validate_setup_config(_cluster(selected_levels=[padded, "ONH"]))
+    assert any("OHLCV/base" in message and "close" in message for message in errors)
+    with pytest.raises(ValueError, match="close"):
+        build_setup(_cluster(selected_levels=[padded, "ONH"]))
+
+
+def test_ah6_anchor_level_rejects_close():
+    """AH6: anchor_level close is rejected; build_setup fails closed."""
+    config = _anchor(anchor_level="close")
+    errors = validate_setup_config(config)
+    assert any(
+        "OHLCV/base" in message and "close" in message and "Anchor level" in message
+        for message in errors
+    )
+    with pytest.raises(ValueError, match="close"):
+        build_setup(config)
+
+
+def test_ah6_confluence_rule_rejects_close():
+    """AH6: confluence rule level close is rejected; build_setup fails closed."""
+    config = _anchor(
+        confluence_rules=[{"level": "close", "tolerance_ticks": 4.0, "required": False}],
+    )
+    errors = validate_setup_config(config)
+    assert any(
+        "OHLCV/base" in message and "close" in message and "Confluence rule" in message
+        for message in errors
+    )
+    with pytest.raises(ValueError, match="close"):
+        build_setup(config)
