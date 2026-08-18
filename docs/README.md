@@ -51,7 +51,7 @@ Engine / data contracts:
 - [STUDY_BUILDER_IMPLEMENTATION_PLAN.md](STUDY_BUILDER_IMPLEMENTATION_PLAN.md) (SB — Study Builder UX; SB1–SB3 complete; does not change RS execute/preview/launch)
 - [STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md](STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md) (SIA — Studies authoring aligns to 15s-primary `run_experiment`; SIA0–SIA3 ✅; does not change engine/Data/execute)
 - [STUDY_VIEWER_IMPLEMENTATION_PLAN.md](STUDY_VIEWER_IMPLEMENTATION_PLAN.md) (SV — Studies Inspect catalog / quality / charts / cell peek / briefing; SV0–SV5 ✅; does not reopen RS-D2 execute/session boundaries)
-- [AUDIT_HONESTY_IMPLEMENTATION_PLAN.md](AUDIT_HONESTY_IMPLEMENTATION_PLAN.md) (AH — research-honesty remediations from the 2026-08-18 audit merge; AH0 plan lock + AH1 flatten clock; AH2–AH6 specified, not implemented)
+- [AUDIT_HONESTY_IMPLEMENTATION_PLAN.md](AUDIT_HONESTY_IMPLEMENTATION_PLAN.md) (AH — research-honesty remediations from the 2026-08-18 audit merge; AH0–AH2 landed; AH3–AH6 specified, not implemented)
 
 ## Research (demoted snapshots)
 

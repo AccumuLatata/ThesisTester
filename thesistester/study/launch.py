@@ -21,7 +21,7 @@ from typing import Any
 import yaml
 
 from thesistester.persistence.local_store import get_store_root
-from thesistester.study.expand import study_identity_hash
+from thesistester.study.expand import dataset_path_search_roots, study_identity_hash
 from thesistester.study.schema import StudySpecError, normalize_study_spec, validate_study_spec
 
 LAUNCH_YAML_NAME = "study.launch.yaml"
@@ -241,6 +241,7 @@ def build_launch_plan(
     force: bool = False,
     workers: int | None = None,
     roots: Sequence[Path] | None = None,
+    source_spec_parent: str | Path | None = None,
 ) -> LaunchPlan:
     """Validate spawn gates except bound-approval and live-pid.
 
@@ -267,7 +268,11 @@ def build_launch_plan(
         workers = workers_n
 
     allowed_roots = _roots_or_default(roots)
-    pinned = _pinned_normalized_spec(yaml_text, roots=allowed_roots)
+    pinned = _pinned_normalized_spec(
+        yaml_text,
+        roots=allowed_roots,
+        source_spec_parent=source_spec_parent,
+    )
     output_dir = resolve_launch_output_dir(output_dir_raw, roots=allowed_roots)
     # Do not rewrite study.output_dir in the launch YAML — the child uses
     # absolute --output-dir. Rewriting would change the identity hash.
@@ -485,6 +490,7 @@ def _pinned_normalized_spec(
     yaml_text: str,
     *,
     roots: Sequence[Path],
+    source_spec_parent: str | Path | None = None,
 ) -> dict[str, Any]:
     payload = _load_mapping_yaml(yaml_text)
     try:
@@ -492,7 +498,11 @@ def _pinned_normalized_spec(
     except StudySpecError as exc:
         raise StudyLaunchError(str(exc)) from exc
     pinned = copy.deepcopy(normalized)
-    _pin_dataset_paths(pinned, roots=roots)
+    _pin_dataset_paths(
+        pinned,
+        roots=roots,
+        source_spec_parent=source_spec_parent,
+    )
     return pinned
 
 
@@ -568,10 +578,16 @@ def _restore_launch_log(log_path: Path, previous: bytes | None) -> None:
         return
 
 
-def _pin_dataset_paths(spec: dict[str, Any], *, roots: Sequence[Path]) -> None:
-    """Pin relative dataset paths (search-roots-then-cwd); sandbox the result.
+def _pin_dataset_paths(
+    spec: dict[str, Any],
+    *,
+    roots: Sequence[Path],
+    source_spec_parent: str | Path | None = None,
+) -> None:
+    """Pin relative dataset paths (spec parent first, then roots, cwd if absent).
 
-    Mirrors promote's search-roots-then-cwd rule without importing promote.
+    Mirrors promote's search order without importing promote or execute.
+    ``cwd last`` does not demote a trusted root that happens to be cwd.
     """
     study = spec.get("study")
     if not isinstance(study, dict):
@@ -581,6 +597,11 @@ def _pin_dataset_paths(spec: dict[str, Any], *, roots: Sequence[Path]) -> None:
         return
     cwd = Path.cwd().resolve()
     resolved_roots = [Path(root).resolve() for root in roots]
+    search_roots = dataset_path_search_roots(
+        source_spec_parent=source_spec_parent,
+        extra_roots=resolved_roots,
+        cwd=cwd,
+    )
     for key in _DATASET_PATH_KEYS:
         raw = dataset.get(key)
         if raw is None:
@@ -592,9 +613,6 @@ def _pin_dataset_paths(spec: dict[str, Any], *, roots: Sequence[Path]) -> None:
             pinned = path.resolve()
         else:
             found: Path | None = None
-            search_roots = list(resolved_roots)
-            if cwd not in search_roots:
-                search_roots.append(cwd)
             for root in search_roots:
                 candidate = (root / path).resolve()
                 if candidate.is_file():

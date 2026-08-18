@@ -7,6 +7,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from itertools import product
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -26,6 +27,84 @@ from thesistester.study.schema import (
 # Axes that must appear on every expansion cell (factors or explicit_cells).
 # Omitting them previously invented silent defaults (touch / base / global_cluster).
 _REQUIRED_CELL_AXES = ("confluence_mode", "trigger", "trigger_timeframe")
+_DATASET_PATH_KEYS = ("path", "subtimeframe_path")
+
+
+def coerce_source_spec_parent(raw: str | Path | None) -> Path | None:
+    """Return a resolved spec-parent directory, or None when unset/blank.
+
+    Blank strings must not resolve to cwd — that would silently pin the
+    cwd twin (the C2/H2 defect AH2 exists to stop).
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        return Path(text).resolve()
+    return Path(raw).resolve()
+
+
+def pin_dataset_paths_against_parent(
+    dataset: Mapping[str, Any],
+    *,
+    spec_parent: str | Path,
+) -> dict[str, Any]:
+    """Absolutize relative dataset paths that exist under ``spec_parent``.
+
+    Missing files stay relative. Does not search cwd and does not copy CSVs.
+    """
+    out = dict(dataset)
+    parent = coerce_source_spec_parent(spec_parent)
+    if parent is None:
+        return out
+    for key in _DATASET_PATH_KEYS:
+        raw = out.get(key)
+        if raw is None or not isinstance(raw, (str, Path)):
+            continue
+        path = Path(raw)
+        if path.is_absolute():
+            out[key] = str(path.resolve())
+            continue
+        candidate = (parent / path).resolve()
+        if candidate.is_file():
+            out[key] = str(candidate)
+    return out
+
+
+def dataset_path_search_roots(
+    *,
+    source_spec_parent: str | Path | None = None,
+    extra_roots: Sequence[str | Path] = (),
+    cwd: str | Path | None = None,
+) -> list[Path]:
+    """Search order: spec parent → extra_roots (given order) → cwd if absent.
+
+    ``cwd last`` means cwd is not inserted at the front. An extra root that
+    happens to be cwd keeps its extra_roots position so study output stays
+    ahead of draft parent when the operator runs promote from the study dir.
+    Blank ``source_spec_parent`` is ignored (not treated as cwd).
+    """
+    cwd_resolved = Path(cwd).resolve() if cwd is not None else Path.cwd().resolve()
+    ordered: list[Path] = []
+    seen: set[Path] = set()
+
+    def _add(raw: str | Path | None) -> None:
+        if raw is None:
+            return
+        path = Path(raw).resolve()
+        if path in seen:
+            return
+        seen.add(path)
+        ordered.append(path)
+
+    _add(coerce_source_spec_parent(source_spec_parent))
+    for root in extra_roots:
+        _add(root)
+    if cwd_resolved not in seen:
+        _add(cwd_resolved)
+    return ordered
 
 
 @dataclass(frozen=True)
@@ -267,16 +346,27 @@ def _factor_map_entry(cell: Mapping[str, Any]) -> dict[str, Any]:
     return entry
 
 
-def expand_study(spec: Mapping[str, Any]) -> ExpansionResult:
+def expand_study(
+    spec: Mapping[str, Any],
+    *,
+    source_spec_parent: str | Path | None = None,
+) -> ExpansionResult:
     """Expand a StudySpec into an R18 experiment dict + factor map.
 
     Input may be raw or normalized; it is normalized and validated first.
+    When ``source_spec_parent`` is set, relative ``dataset.path`` /
+    ``subtimeframe_path`` that exist under that directory are pinned absolute
+    on each run. Identity hash still uses the unpinned normalized spec.
     """
     normalized = validate_study_spec(normalize_study_spec(spec))
-    return _expand_validated(normalized)
+    return _expand_validated(normalized, source_spec_parent=source_spec_parent)
 
 
-def _expand_validated(normalized: Mapping[str, Any]) -> ExpansionResult:
+def _expand_validated(
+    normalized: Mapping[str, Any],
+    *,
+    source_spec_parent: str | Path | None = None,
+) -> ExpansionResult:
     """Expand an already normalized+validated StudySpec."""
     study = normalized["study"]
     cells = _iter_factor_cells(study)
@@ -285,6 +375,9 @@ def _expand_validated(normalized: Mapping[str, Any]) -> ExpansionResult:
 
     constants = dict(study.get("constants") or {})
     dataset = dict(study["dataset"])
+    parent = coerce_source_spec_parent(source_spec_parent)
+    if parent is not None:
+        dataset = pin_dataset_paths_against_parent(dataset, spec_parent=parent)
     levels = dict(study.get("levels") or {})
     raw_backtest = constants.get("backtest")
     if not isinstance(raw_backtest, Mapping) or not raw_backtest:
@@ -360,6 +453,7 @@ def write_expansion_artifacts(
     *,
     normalized_spec: Mapping[str, Any],
     expansion: ExpansionResult,
+    source_spec_parent: str | Path | None = None,
 ) -> dict[str, Path]:
     """Write study.spec.yaml, study.expansion.json, and experiment.yaml."""
     root = Path(output_dir)
@@ -369,12 +463,24 @@ def write_expansion_artifacts(
     expansion_path = root / "study.expansion.json"
     experiment_path = root / "experiment.yaml"
 
-    spec_path.write_text(_dump_yaml(dict(normalized_spec)), encoding="utf-8")
+    spec_to_write: dict[str, Any] = dict(normalized_spec)
+    parent = coerce_source_spec_parent(source_spec_parent)
+    if parent is not None:
+        spec_to_write = copy.deepcopy(dict(normalized_spec))
+        study = dict(spec_to_write.get("study") or {})
+        raw_dataset = study.get("dataset")
+        if isinstance(raw_dataset, dict):
+            study["dataset"] = pin_dataset_paths_against_parent(raw_dataset, spec_parent=parent)
+            spec_to_write["study"] = study
+
+    spec_path.write_text(_dump_yaml(spec_to_write), encoding="utf-8")
     expansion_payload = {
         "study_identity_hash": expansion.study_identity_hash,
         "run_count": expansion.run_count,
         "factor_map": expansion.factor_map,
     }
+    if parent is not None:
+        expansion_payload["source_spec_parent"] = str(parent)
     expansion_path.write_text(
         json.dumps(expansion_payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -390,13 +496,16 @@ def write_expansion_artifacts(
 def expand_study_to_directory(
     spec: Mapping[str, Any],
     output_dir: str | Path,
+    *,
+    source_spec_parent: str | Path | None = None,
 ) -> ExpansionResult:
     """Validate, expand, and write the three RS2 artifacts."""
     normalized = validate_study_spec(normalize_study_spec(spec))
-    expansion = _expand_validated(normalized)
+    expansion = _expand_validated(normalized, source_spec_parent=source_spec_parent)
     write_expansion_artifacts(
         output_dir,
         normalized_spec=normalized,
         expansion=expansion,
+        source_spec_parent=source_spec_parent,
     )
     return expansion

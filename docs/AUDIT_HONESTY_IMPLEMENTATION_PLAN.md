@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **AH0 landed. AH1 this PR.** AH2–AH6 specified, not implemented.  
+**Status:** **AH0 + AH1 landed. AH2 this PR.** AH3–AH6 specified, not implemented.  
 **Series code:** **AH** (Audit Honesty)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Inputs:** `AUDIT_FINAL.md` on `cursor/audit-final-merge-3a8e` (slices 0–7 at `83a42f8`); CTO review ranking (research-honesty first; C2/H2 before C3 for Studies-first ops; H6 first-wave with golden-stop)  
@@ -191,7 +191,7 @@ Cutoff admission in loop 1 is per-candidate (correct). Flatten in loop 2 is not.
 
 ### 6.2 AH2 — Study dataset path identity (C2 + H2)
 
-**Status:** Specified  
+**Status:** Implemented  
 **Closes:** C2, H2
 
 #### Defect (verified)
@@ -240,12 +240,12 @@ Cutoff admission in loop 1 is per-candidate (correct). Flatten in loop 2 is not.
 
 #### Acceptance
 
-- [ ] P1–P3 fail on unpatched `main` when both files exist
-- [ ] `run_batch` fail-fast / origin / workers unchanged
-- [ ] `study run` still uses `run_experiment` + ledger continue
-- [ ] AGENT_GUIDE no longer claims identity-equivalent replay beyond **dataset bytes**
-- [ ] No CSV copy; no `cli.py` base_directory rewrite
-- [ ] Goldens untouched
+- [x] P1–P3 fail on unpatched `main` when both files exist
+- [x] `run_batch` fail-fast / origin / workers unchanged
+- [x] `study run` still uses `run_experiment` + ledger continue
+- [x] AGENT_GUIDE no longer claims identity-equivalent replay beyond **dataset bytes**
+- [x] No CSV copy; no `cli.py` base_directory rewrite
+- [x] Goldens untouched
 
 #### Out of AH2
 
