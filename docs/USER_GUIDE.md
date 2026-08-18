@@ -965,8 +965,9 @@ overview ranking, OTF delta, Research Study Runner
    `study promote out/study1 --output drafts/admit.yaml --top-n 1 --admit-tod auto`
    (or `--admit-run-name NAME`), or Inspect **Draft Admit follow-up** onto
    Preview. Child `output_dir` is new; this does **not** `study run`.
-   Thin / `avg_r` tie / missing zip refuse unless `--allow-thin`.
-   Hour/30min: `--tod-group entry_hour_bucket` (CLI-only).
+   Thin buckets refuse unless `--allow-thin` (`lineage.admit.thin`).
+   `avg_r` tie and missing zip still refuse. Hour/30min:
+   `--tod-group entry_hour_bucket` (CLI-only; requires `--admit-tod`).
 7. Inspect artifacts in the **Studies viewer (read-only)** page, or preview a
    canonical StudySpec YAML there for cell count / `--confirm`. After a
    successful preview, **Run via CLI** (or **Bind confirm** then **Confirm and

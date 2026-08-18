@@ -268,7 +268,7 @@ def extract_cell_time_of_day(
     try:
         bucketed = add_time_buckets(trades, bucket_tz=TOD_BUCKET_TZ, session_tz=TOD_BUCKET_TZ)
         grouped = summarize_by_group(bucketed, col, min_trades=min_trades)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, KeyError):
         return empty, None, "Time-of-day buckets could not be computed from this zip."
     if grouped is None or grouped.empty:
         return empty, None, "No time-of-day groups (empty R sample)."

@@ -9,7 +9,12 @@ import pytest
 import yaml
 
 from thesistester.cli import main as cli_main
-from thesistester.study.admit_followup import ADMIT_TOD_GROUP, select_admit_bucket
+from thesistester.study.admit_followup import (
+    ADMIT_TOD_GROUP,
+    AdmitFollowupError,
+    extract_admit_bucket,
+    select_admit_bucket,
+)
 from thesistester.study.briefing import TOD_GROUP_COL, extract_cell_time_of_day
 from thesistester.study.promote import (
     StudyPromoteError,
@@ -46,6 +51,31 @@ def test_tod_group_hour_emits_clock_range(tmp_path: Path):
     assert draft["study"]["constants"]["entry_window"] == window
 
 
+def test_tod_group_30min_emits_clock_range(tmp_path: Path):
+    study_dir = _write_admit_fixture(tmp_path)
+    out = tmp_path / "half.yaml"
+    promote_study(
+        study_dir,
+        output=out,
+        top_n=1,
+        admit_tod="auto",
+        tod_group="entry_30min_bucket",
+    )
+    draft = load_study_spec(out)
+    window = draft["study"]["constants"]["backtest"]["entry_window"]
+    assert window["enabled"] is True
+    assert window["mode"] == "clock_range"
+    assert window["start_time"] == "09:30"
+    assert window["end_time"] == "10:00"
+    lineage = draft["study"]["lineage"]
+    assert lineage["admit"]["group"] == "entry_30min_bucket"
+    assert lineage["admit"]["value"] == "09:30"
+    assert lineage["admit"]["thin"] is False
+    assert draft["study"]["name"].endswith("_admit_0930")
+    assert draft["study"]["constants"]["grid"]["entry_window"] == window
+    assert draft["study"]["constants"]["entry_window"] == window
+
+
 def test_tod_group_and_allow_thin_require_admit_tod(tmp_path: Path):
     study_dir = _write_admit_fixture(tmp_path)
     out = tmp_path / "flags.yaml"
@@ -76,6 +106,14 @@ def test_admit_tod_without_new_flags_still_rth_and_refuses_thin(tmp_path: Path):
     draft = load_study_spec(out)
     assert draft["study"]["lineage"]["admit"]["group"] == ADMIT_TOD_GROUP
     assert draft["study"]["constants"]["backtest"]["entry_window"]["mode"] == "rth_segments"
+
+    thin_root = tmp_path / "thin_default"
+    thin_root.mkdir()
+    thin_dir = _write_admit_fixture(thin_root, open_r=[1.0] * 5, min_trades=30)
+    thin_out = tmp_path / "default_thin.yaml"
+    with pytest.raises(StudyPromoteError, match="thin"):
+        promote_study(thin_dir, output=thin_out, top_n=1, admit_tod="auto")
+    assert not thin_out.exists()
 
 
 def test_inspect_helper_stays_rth_and_refuses_thin(tmp_path: Path):
@@ -142,6 +180,20 @@ def test_cli_tod_group_hour_and_flags_without_admit_tod(tmp_path: Path):
     assert code == 2
     assert not refused.exists()
 
+    thin_flag = tmp_path / "cli_thin_no_admit.yaml"
+    code = cli_main(
+        [
+            "study",
+            "promote",
+            str(study_dir),
+            "--output",
+            str(thin_flag),
+            "--allow-thin",
+        ]
+    )
+    assert code == 2
+    assert not thin_flag.exists()
+
 
 def test_select_admit_bucket_allow_thin_keeps_thin_true():
     frame = pd.DataFrame(
@@ -152,11 +204,43 @@ def test_select_admit_bucket_allow_thin_keeps_thin_true():
             "sample_warning": [True],
         }
     )
-    with pytest.raises(Exception, match="thin"):
+    with pytest.raises(AdmitFollowupError, match="thin"):
         select_admit_bucket(frame, min_trades=30)
     picked = select_admit_bucket(frame, min_trades=30, allow_thin=True)
     assert picked["thin"] is True
     assert picked["value"] == "rth_open_30m"
+    tied = pd.DataFrame(
+        {
+            "entry_rth_segment": ["rth_open_30m", "rth_morning"],
+            "avg_r": [0.5, 0.5],
+            "trade_count": [4, 4],
+            "sample_warning": [True, True],
+        }
+    )
+    with pytest.raises(AdmitFollowupError, match="tied"):
+        select_admit_bucket(tied, min_trades=30, allow_thin=True)
+
+
+def test_extract_admit_bucket_rejects_unknown_group_before_extract(tmp_path: Path):
+    study_dir = _write_admit_fixture(tmp_path)
+    top = str(report_study(study_dir).ranked.iloc[0]["run_name"])
+    zip_path = study_dir / f"{top}.research.zip"
+    with pytest.raises(AdmitFollowupError, match="--tod-group"):
+        extract_admit_bucket(zip_path, min_trades=1, group_col="not_a_bucket")
+
+
+def test_extract_cell_time_of_day_unknown_group_is_empty(tmp_path: Path):
+    study_dir = _write_admit_fixture(tmp_path)
+    top = str(report_study(study_dir).ranked.iloc[0]["run_name"])
+    zip_path = study_dir / f"{top}.research.zip"
+    display, best, caption = extract_cell_time_of_day(
+        zip_path,
+        min_trades=1,
+        group_col="not_a_bucket",
+    )
+    assert display.empty
+    assert best is None
+    assert caption is not None
 
 
 def test_page_inspect_stays_dumb_no_tod_group_ui():

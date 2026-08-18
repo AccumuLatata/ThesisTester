@@ -9,7 +9,7 @@ Inspect progress is derived from the already-loaded ledger / overview counts
 metric, ETA, or job queue.
 
 SV1 catalog discovery scans one level of ``results/studies/`` and ``out/``
-under trusted roots. It does not call ``report_study``.
+under trusted roots. It does not call ``report_study`` or ``promote``.
 
 SV2 projects failed-cell errors, ``report.group_summaries``, optional
 ``study.rollup.*`` files, and a ``study.launch.log`` tail. It does not call
@@ -314,6 +314,11 @@ def _catalog_entry_from_dir(study_dir: Path) -> StudyCatalogEntry:
         if ledger is not None:
             ledger_present = True
             counts = _ledger_status_counts(ledger)
+        # Parent label is best-effort and must not discard identity / ledger.
+        try:
+            parent = _read_catalog_parent(study_dir)
+        except Exception:  # noqa: BLE001 — corrupt lineage → "—", keep the row
+            parent = "—"
         return StudyCatalogEntry(
             study_dir=study_dir,
             study_name=spec_name or study_dir.name,
@@ -327,7 +332,7 @@ def _catalog_entry_from_dir(study_dir: Path) -> StudyCatalogEntry:
             ledger_present=ledger_present,
             index_present=(study_dir / RESULTS_INDEX).is_file(),
             mtime=_catalog_mtime(study_dir),
-            parent=_read_catalog_parent(study_dir),
+            parent=parent,
         )
     except Exception:  # noqa: BLE001 — one corrupt dir must not fail the catalog
         return _fallback_catalog_entry(study_dir)
@@ -340,7 +345,7 @@ def discover_study_dirs(
 ) -> tuple[StudyCatalogEntry, ...]:
     """List study dirs one level under ``results/studies/`` and ``out/``.
 
-    Does not call ``report_study``, ``run_study``, or ``rollup_study``.
+    Does not call ``report_study``, ``promote``, ``run_study``, or ``rollup_study``.
     Corrupt ledger / expansion / spec on one dir does not fail the catalog.
     ``roots is None`` uses default trusted roots. An empty ``roots`` tuple
     skips the prefix scan (CLI ``--root`` extras-only).
@@ -651,11 +656,11 @@ def _catalog_parent_label(raw: object, *, cwd: Path | None = None) -> str:
     """Basename or cwd-relative path from ``study.lineage.parent_output_dir``."""
     if not isinstance(raw, str) or not raw.strip():
         return "—"
-    path = Path(raw.strip())
-    name = path.name.strip()
-    if name:
-        return name
     try:
+        path = Path(raw.strip())
+        name = path.name.strip()
+        if name:
+            return name
         base = Path(cwd) if cwd is not None else Path.cwd()
         resolved = path.expanduser()
         if not resolved.is_absolute():
@@ -665,7 +670,7 @@ def _catalog_parent_label(raw: object, *, cwd: Path | None = None) -> str:
         rel = resolved.relative_to(base.resolve())
         text = rel.as_posix()
         return text if text and text != "." else (resolved.name or "—")
-    except (OSError, ValueError):
+    except (OSError, TypeError, ValueError):
         return "—"
 
 
@@ -690,7 +695,10 @@ def _read_catalog_parent(study_dir: Path) -> str:
     lineage = study.get("lineage")
     if not isinstance(lineage, Mapping):
         return "—"
-    return _catalog_parent_label(lineage.get("parent_output_dir"))
+    try:
+        return _catalog_parent_label(lineage.get("parent_output_dir"))
+    except Exception:  # noqa: BLE001 — catalog parent is best-effort only
+        return "—"
 
 
 def _read_identity(study_dir: Path) -> tuple[str | None, int | None, str | None]:

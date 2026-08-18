@@ -172,6 +172,10 @@ def extract_admit_bucket(
 ) -> dict[str, Any]:
     """Best ToD bucket from ``trades.parquet`` (no re-sim)."""
     col = str(group_col or ADMIT_TOD_GROUP).strip() or ADMIT_TOD_GROUP
+    if col not in ADMIT_TOD_GROUPS:
+        raise AdmitFollowupError(
+            f"--tod-group must be one of {sorted(ADMIT_TOD_GROUPS)}; got {group_col!r}"
+        )
     display, _best, caption = extract_cell_time_of_day(
         Path(bundle_path),
         min_trades=int(min_trades),

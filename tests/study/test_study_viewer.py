@@ -582,7 +582,16 @@ def test_discover_study_dirs_tolerates_corrupt_ledger_and_skips_report(tmp_path:
     def _boom(*_args, **_kwargs):
         raise AssertionError("discover must not call report_study")
 
+    def _boom_promote(*_args, **_kwargs):
+        raise AssertionError("discover must not call promote")
+
     monkeypatch.setattr("thesistester.study.viewer.report_study", _boom)
+    monkeypatch.setattr("thesistester.study.viewer.promote_study", _boom_promote, raising=False)
+    monkeypatch.setattr(
+        "thesistester.study.promote.promote_study",
+        _boom_promote,
+        raising=False,
+    )
     entries = discover_study_dirs(
         (tmp_path.resolve(),),
         extra_dirs=(str(extra),),
@@ -669,6 +678,29 @@ def test_catalog_parent_from_lineage_basename(tmp_path: Path):
     assert "parent_screen" in table
 
 
+def test_catalog_parent_failure_does_not_discard_identity(tmp_path: Path, monkeypatch):
+    child = _write_catalog_study(
+        tmp_path / "out",
+        "child_keep_identity",
+        ledger_ok=2,
+        run_count=4,
+        parent_output_dir=str(tmp_path / "results" / "studies" / "parent_screen"),
+    )
+
+    def _boom(_study_dir):
+        raise RuntimeError("parent read exploded")
+
+    monkeypatch.setattr("thesistester.study.viewer._read_catalog_parent", _boom)
+    entries = discover_study_dirs((tmp_path.resolve(),))
+    match = next(entry for entry in entries if entry.study_dir == child.resolve())
+    assert match.parent == "—"
+    assert match.study_name == "child_keep_identity"
+    assert match.study_identity_hash == "hash-child_keep_identity"
+    assert match.run_count == 4
+    assert match.ok == 2
+    assert match.ledger_present is True
+
+
 def test_cli_study_list_additive_and_refuses_extra_root(tmp_path: Path, monkeypatch, capsys):
     from thesistester.cli import main as cli_main
 
@@ -681,6 +713,7 @@ def test_cli_study_list_additive_and_refuses_extra_root(tmp_path: Path, monkeypa
     out = capsys.readouterr().out
     assert "cli_alpha" in out
     assert "study_name" in out
+    assert "parent" in out.splitlines()[0]
 
     outside = tmp_path.parent / "outside_sv1_cli"
     outside.mkdir(exist_ok=True)
@@ -837,6 +870,9 @@ def test_inspect_catalog_handler_does_not_call_load_study_view():
     assert "load_study_view" not in catalog_src
     assert "run_study" not in catalog_src
     assert "rollup_study" not in catalog_src
+    assert "report_study" not in catalog_src
+    assert "promote_study" not in catalog_src
+    assert "admit_followup" not in catalog_src
 
 
 def test_inspect_charts_use_ranked_frames_and_honesty():
