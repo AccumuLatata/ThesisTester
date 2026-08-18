@@ -172,6 +172,47 @@ def _path_after_entry(vertices: list[float], entry_price: float | None) -> list[
     return []
 
 
+def _sl_first_hits_after_entry(
+    *,
+    open_price: float,
+    high: float,
+    low: float,
+    close: float,
+    stop_price: float,
+    target_price: float,
+    direction: str,
+    entry_price: float,
+) -> tuple[bool, bool]:
+    """Range SL/TP hits required on every OHLC path that contains ``entry_price``.
+
+    Reuses ``_path_after_entry``. Does not pick a first event — ``sl_first``
+    stays a range rule. A hit that exists only on the pre-entry side of one
+    pessimistic path is ignored.
+    """
+    paths = (
+        [open_price, high, low, close],
+        [open_price, low, high, close],
+    )
+    stop_hits: list[bool] = []
+    target_hits: list[bool] = []
+    for vertices in paths:
+        active = _path_after_entry(vertices, entry_price)
+        if not active:
+            continue
+        stop_hit, target_hit = _hits(
+            low=min(active),
+            high=max(active),
+            stop_price=stop_price,
+            target_price=target_price,
+            direction=direction,
+        )
+        stop_hits.append(stop_hit)
+        target_hits.append(target_hit)
+    if not stop_hits:
+        return False, False
+    return all(stop_hits), all(target_hits)
+
+
 def _ohlc_validation_masks(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     """Return per-row finite and OHLC-invariant validation masks.
 
@@ -348,7 +389,30 @@ def resolve_ohlc_bar(
     if not stop_hit and not target_hit:
         return IntrabarResolution(None, "no_hit", False)
     if model == "sl_first":
-        kind: Literal["SL", "TP"] = "SL" if stop_hit else "TP"
+        if entry_price is not None:
+            # Conservative fallback omits entry_price and stays on the
+            # unclipped sl_first return below (still SL-kills).
+            clipped_stop, clipped_target = _sl_first_hits_after_entry(
+                open_price=open_price,
+                high=high,
+                low=low,
+                close=close,
+                stop_price=stop_price,
+                target_price=target_price,
+                direction=direction,
+                entry_price=entry_price,
+            )
+            if not clipped_stop and not clipped_target:
+                return IntrabarResolution(None, "no_hit", both_hit)
+            kind: Literal["SL", "TP"] = "SL" if clipped_stop else "TP"
+            clipped_both = clipped_stop and clipped_target
+            return IntrabarResolution(
+                kind,
+                "legacy_sl_first" if clipped_both else "single_hit",
+                both_hit,
+                ambiguous=clipped_both,
+            )
+        kind = "SL" if stop_hit else "TP"
         return IntrabarResolution(
             kind,
             "legacy_sl_first" if both_hit else "single_hit",

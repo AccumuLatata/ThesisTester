@@ -21,7 +21,7 @@ Assistant-related contracts:
 | Study Builder (UX) | `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB) | ✅ **SB1–SB3 complete**. Emits canonical StudySpec YAML onto the existing Studies Preview pane; no in-process execute; no new factor axes |
 | Study Ingest Alignment | `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA) | ✅ **SIA0–SIA3**. Studies authoring/defaults/examples only; execute stays `run_experiment`; no engine/Data edits |
 | Study Viewer (Inspect UX) | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV); operator `docs/STUDY_RUNNER.md` §SV | ✅ **SV0–SV5**. Catalog + `study list` + quality panes + overview charts + cell peek + trader briefing / per-cell SL/TP grid / NY RTH ToD. No in-process execute; no classic-session hydrate |
-| Audit honesty remediations | `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` (AH) | **AH0–AH4.** AH5–AH6 specified. Flatten leak fixed; Study paths pinned; OTF-matrix train prefix-sliced; leftover bundle keys managed. Next: 3c `sl_first` clip → `BASE_COLUMNS` validator. No composer collapse; no golden regen except AH5 hard-stop |
+| Audit honesty remediations | `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` (AH) | **AH0–AH5.** AH6 specified. Flatten leak fixed; Study paths pinned; OTF-matrix train prefix-sliced; leftover bundle keys managed; `sl_first` honors 3c entry activation. Next: `BASE_COLUMNS` validator. No composer collapse; no golden regen except AH5 hard-stop |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1293,7 +1293,7 @@ USER_GUIDE extends H2 `Studies viewer (read-only)` (no new H2). Parked
 RS-D1 / D3 / D6 stay parked. RS-D2/D8/D9/SB/SIA behavior stays identical
 except additive Inspect panes and additive `study list`.
 
-## Audit Honesty (AH0–AH6) — AH0–AH4
+## Audit Honesty (AH0–AH6) — AH0–AH5
 
 Research-honesty remediations from the 2026-08-18 audit merge. The engine
 happy path stays causal; identity / flatten / restore / one headless
@@ -1310,7 +1310,7 @@ collapse the two composers, flip omitted-key defaults, or regen goldens
 | AH2 | Pin Study dataset paths at expand; promote/launch search spec parent first ✅ |
 | AH3 | Prefix-slice OTF-matrix train prices (`otf_validation.py` only) ✅ |
 | AH4 | Manage leftover bundle session keys; no dataset-less bootstrap refill ✅ |
-| AH5 | `sl_first` honors 3c entry activation (golden-stop if legacy trades move) |
+| AH5 | `sl_first` honors 3c entry activation (golden-stop if legacy trades move) ✅ |
 | AH6 | Reject `BASE_COLUMNS` in `validate_setup_config` |
 
 **Regression posture:** §4 golden families stay identity-only. Probe tests

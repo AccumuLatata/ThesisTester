@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **AH0–AH3 landed. AH4 this PR.** AH5–AH6 specified, not implemented.  
+**Status:** **AH0–AH5 landed. AH6 specified, not implemented.**  
 **Series code:** **AH** (Audit Honesty)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Inputs:** `AUDIT_FINAL.md` on `cursor/audit-final-merge-3a8e` (slices 0–7 at `83a42f8`); CTO review ranking (research-honesty first; C2/H2 before C3 for Studies-first ops; H6 first-wave with golden-stop)  
@@ -375,7 +375,7 @@ Hash-fail-closed page 12; refusing bootstrap on every page; export schema versio
 
 ### 6.5 AH5 — `sl_first` pre-entry SL on 3c (H6)
 
-**Status:** Specified  
+**Status:** Implemented  
 **Closes:** H6  
 **Hard stop:** if any golden trade frame changes, **stop**. Do not silent-regen.
 
@@ -413,11 +413,11 @@ Goldens are default `sl_first` and flatten-off. They may or may not include a 3c
 
 #### Acceptance
 
-- [ ] P1 fails on unpatched `main`
-- [ ] P2 unchanged
-- [ ] Goldens green **or** PR stopped for isolated regen
-- [ ] No new `intrabar_model` value
-- [ ] ASSUMPTIONS matches code
+- [x] P1 fails on unpatched `main`
+- [x] P2 unchanged
+- [x] Goldens green **or** PR stopped for isolated regen
+- [x] No new `intrabar_model` value
+- [x] ASSUMPTIONS matches code
 
 #### Out of AH5
 
