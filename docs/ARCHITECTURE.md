@@ -117,7 +117,14 @@ call `report_study`. Time-of-day stays a post-hoc projection, not a new
 StudySpec factor.
 `viewer.py` must not import `cli_study`, `thesistester.cli`, `execute`,
 `rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`; Plotly stays
-on `pages/15_Studies.py`). `launch.py` must not import `viewer` (trusted roots
+on `pages/15_Studies.py`).
+**SAF** (Study Admit Follow-up, `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`)
+is plan-locked: optional `study.lineage` + promote `--admit-tod` drafts a
+child Admit spec. Default promote stays RS5. Inspect may write Preview YAML
+(SAF2); it must not call `run_study`. `viewer.py` must not import `promote`
+or `admit_followup`. Engine Admit remains `backtest.entry_window` /
+`grid.entry_window` (SW). No `engine/` edit.
+`launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
 page-local — do not `from viewer import` those names. Studies-scoped keys:

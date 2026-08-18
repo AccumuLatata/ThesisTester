@@ -21,6 +21,7 @@ Assistant-related contracts:
 | Study Builder (UX) | `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB) | ✅ **SB1–SB3 complete**. Emits canonical StudySpec YAML onto the existing Studies Preview pane; no in-process execute; no new factor axes |
 | Study Ingest Alignment | `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA) | ✅ **SIA0–SIA3**. Studies authoring/defaults/examples only; execute stays `run_experiment`; no engine/Data edits |
 | Study Viewer (Inspect UX) | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV); operator `docs/STUDY_RUNNER.md` §SV | ✅ **SV0–SV5**. Catalog + `study list` + quality panes + overview charts + cell peek + trader briefing / per-cell SL/TP grid / NY RTH ToD. No in-process execute; no classic-session hydrate |
+| Study Admit Follow-up | `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF); operator `docs/STUDY_RUNNER.md` §SAF | 🔒 **SAF0 plan-locked**. SAF1–SAF3 not started. Drafts a linked child StudySpec with engine Admit (`backtest`/`grid` `entry_window`). Promote without flags stays RS5. No auto-run; no ToD factor axis |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1291,6 +1292,29 @@ no `apply_research_bundle_to_session`; Studies-scoped session keys only;
 USER_GUIDE extends H2 `Studies viewer (read-only)` (no new H2). Parked
 RS-D1 / D3 / D6 stay parked. RS-D2/D8/D9/SB/SIA behavior stays identical
 except additive Inspect panes and additive `study list`.
+
+## Study Admit Follow-up (SAF0–SAF3) 🔒 SAF0 plan-locked
+
+After an all-day study, SV5 names the strongest NY RTH segment on the
+crowned cell (post-hoc). SAF drafts a **child** StudySpec that re-sims that
+cell with Admit locked — `constants.backtest.entry_window` and
+`constants.grid.entry_window` (the engine path). Optional `study.lineage`
+links parent → child. `study promote` without `--admit-tod` stays RS5.
+Promote still never executes. Time-of-day stays off the factor cartesian.
+
+**Canonical spec:** `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| SAF0 | Plan lock + docs index 🔒 (this PR) |
+| SAF1 | CLI `--admit-tod auto` + lineage + engine-correct window stamp |
+| SAF2 | Inspect **Draft Admit follow-up** → Preview (no spawn) |
+| SAF3 | `--tod-group` hour/30min + `--allow-thin` + catalog parent column |
+| SAF4 | Parked: one-click child launch |
+
+**Regression posture:** no `engine/` edits; no golden regeneration; default
+promote identical; no `run_study` from promote/Inspect button; no new
+USER_GUIDE H2. Parked RS-D1 / D3 / D6 stay parked.
 
 ## Studies Inspect ledger progress (additive)
 
