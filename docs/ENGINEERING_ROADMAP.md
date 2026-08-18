@@ -23,6 +23,7 @@ Assistant-related contracts:
 | Study Viewer (Inspect UX) | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV); operator `docs/STUDY_RUNNER.md` §SV | ✅ **SV0–SV5**. Catalog + `study list` + quality panes + overview charts + cell peek + trader briefing / per-cell SL/TP grid / NY RTH ToD. No in-process execute; no classic-session hydrate |
 | Audit honesty remediations | `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` (AH) | **AH0–AH6.** Flatten leak fixed; Study paths pinned; OTF-matrix train prefix-sliced; leftover bundle keys managed; `sl_first` honors 3c entry activation; `BASE_COLUMNS` rejected in setup validator. No composer collapse; no golden regen except AH5 hard-stop |
 | Study Admit Follow-up | `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF); operator `docs/STUDY_RUNNER.md` §SAF | **SAF1–SAF3 shipped** (CLI `--admit-tod auto` + `--tod-group` / `--allow-thin` + Inspect draft → Preview + catalog `parent`). SAF4 parked. Promote without flags stays RS5. No auto-run; no ToD factor axis |
+| Level Catalog Contract | `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md` (LC) | **LC0 plan lock.** LC1–LC4 not started. Catalog completeness/correctness for already-emitted levels. No new price series; no `LEVEL_ENGINE_VERSION`; no golden regen |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1342,6 +1343,31 @@ Promote still never executes. Time-of-day stays off the factor cartesian.
 **Regression posture:** no `engine/` edits; no golden regeneration; default
 promote identical; no `run_study` from promote/Inspect button; no new
 USER_GUIDE H2. Parked RS-D1 / D3 / D6 stay parked.
+
+## Level Catalog Contract (LC0–LC4) — LC0 plan lock
+
+Prior-profile VAH/VAL/POC twins are already computed; StudySpec admits `pdPOC`
+only. Pivot StudySpec tokens (`Pivot_1min_*`) do not match engine columns
+(`Pivot_1m_*`). Suggested defaults advertise `VWAP_rolling_1h` while product
+windows are `30min`/`4h`. Assistant omitted-key defaults additionally expand
+`VWAP_WINDOW_OPTIONS` / `POC_WINDOW_OPTIONS` / `INDICATOR_LENGTH_OPTIONS`
+(not `DEFAULT_LEVELS_SETTINGS`). Implement **one PR per defect family**. Do not
+rename engine columns, emit new families, flip `compute_all_levels` defaults,
+or bump `LEVEL_ENGINE_VERSION`.
+
+**Canonical spec:** `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| LC0 | Plan lock + docs index (this PR) |
+| LC1 | Shared static catalog + admit `pd/pw/pm` VAH/VAL/POC twins |
+| LC2 | Pivot tokens = `Pivot_1m_*` / `Pivot_5m_*` / `Pivot_30m_*` / `Pivot_4h_*` |
+| LC3 | Suggested/Assistant catalogs ⊆ default `closed_level_token_set` |
+| LC4 | API global-cluster missing-column fail-closed (library unchanged) |
+
+**Regression posture:** no level-value edits; no golden regeneration; no
+`LEVEL_ENGINE_VERSION` bump. Parked: developing H/L/VA, rolling VAH/VAL, IB,
+`15min` MAs, adding `1h` to default `vwap_windows`, pivot `1min` aliases.
 
 ## Studies Inspect ledger progress (additive)
 
