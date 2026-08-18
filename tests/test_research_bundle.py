@@ -3,16 +3,20 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from thesistester.reporting import build_otf_filter_metadata
 from thesistester.research_bundle import (
+    BUNDLE_IMPORT_OMITTED_DATA_KEY,
     DATA_PAGE_INVALIDATE_SOURCE_KEY,
     apply_research_bundle_to_session,
     build_research_bundle,
     canonical_bundle_hash,
     load_research_bundle,
+    should_skip_dataset_bootstrap,
 )
 
 
@@ -826,3 +830,148 @@ def test_bundle_best_grid_result_series_nan_normalizes_to_none():
     assert result["stop_loss_ticks"] == 4.0
     assert result["take_profit_ticks"] is None
     assert result["expectancy_r"] is None
+
+
+# ---------------------------------------------------------------------------
+# AH4 — leftover keys + dataset-less bootstrap (H1)
+# ---------------------------------------------------------------------------
+
+
+def _leftover_otf_summary(*, rejected: int = 12) -> dict:
+    return {
+        "otf_filter_enabled": True,
+        "otf_algorithm_version": "otf-v1",
+        "otf_config_hash": "a" * 64,
+        "otf_filter_config": {"enabled": True, "timeframes": ["15m"]},
+        "candidate_signal_count": 20,
+        "otf_accepted_signal_count": 20 - rejected,
+        "otf_rejected_signal_count": rejected,
+        "rejection_rate": rejected / 20,
+    }
+
+
+def test_ah4_p1_leftover_otf_summary_cleared_on_cli_zip_without_otf():
+    """Leftover 12-rejected summary must not survive a zip with no OTF section."""
+    session = {
+        "otf_filter_summary": _leftover_otf_summary(rejected=12),
+        "otf_filter_result": object(),
+    }
+    bundle_bytes = build_research_bundle(
+        {
+            "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
+            "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [1.0]}),
+            "trade_summary": {"trade_count": 1},
+        }
+    )
+    apply_research_bundle_to_session(load_research_bundle(bundle_bytes), session)
+    assert "otf_filter_summary" not in session
+    assert "otf_filter_result" not in session
+    meta = build_otf_filter_metadata(session)
+    assert meta["available"] is False
+    assert meta["rejected_signal_count"] is None
+
+
+def test_ah4_p1_bundle_owned_otf_export_outranks_leftover_summary():
+    session = {"otf_filter_summary": _leftover_otf_summary(rejected=12)}
+    apply_research_bundle_to_session(
+        {
+            "session_values": {
+                "backtest_otf_filter": {
+                    "otf_filter_enabled": False,
+                    "otf_rejected_signal_count": 0,
+                    "otf_accepted_signal_count": 0,
+                    "candidate_signal_count": 0,
+                }
+            }
+        },
+        session,
+    )
+    assert "otf_filter_summary" not in session
+    meta = build_otf_filter_metadata(session)
+    assert meta["available"] is True
+    assert meta["enabled"] is False
+    assert meta["rejected_signal_count"] == 0
+
+
+def test_ah4_p2_focused_trades_and_setup_config_cleared_when_absent():
+    session = {
+        "focused_trades": pd.DataFrame({"trade_id": [99]}),
+        "setup_config": {"name": "leftover-setup", "tolerance_ticks": 99},
+        "data": _dataset_df(),
+        "dataset_id": "dataset-keep",
+        "instrument": "ES",
+        "base_interval": "1min",
+        "source_timezone": "America/New_York",
+        "exchange_timezone": "America/New_York",
+    }
+    bundle_bytes = build_research_bundle(
+        {
+            "data": _dataset_df(),
+            "dataset_id": "dataset-keep",
+            "instrument": "ES",
+            "base_interval": "1min",
+            "source_timezone": "America/New_York",
+            "exchange_timezone": "America/New_York",
+        }
+    )
+    apply_research_bundle_to_session(load_research_bundle(bundle_bytes), session)
+    assert "focused_trades" not in session
+    assert "setup_config" not in session
+    assert "data" in session
+
+
+def test_ah4_p3_dataset_less_import_skips_saved_dataset_bootstrap():
+    saved_a = _dataset_df()
+    session: dict = {
+        "trades": pd.DataFrame({"trade_id": [2]}),
+    }
+    bundle_bytes = build_research_bundle(
+        {
+            "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [0.5]}),
+            "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [0.5]}),
+            "trade_summary": {"trade_count": 1},
+        }
+    )
+    apply_research_bundle_to_session(load_research_bundle(bundle_bytes), session)
+    assert "data" not in session
+    assert session[BUNDLE_IMPORT_OMITTED_DATA_KEY] is True
+    assert should_skip_dataset_bootstrap(session) is True
+
+    def _bootstrap_would_refill_a() -> None:
+        session["data"] = saved_a
+
+    if not should_skip_dataset_bootstrap(session):
+        _bootstrap_would_refill_a()
+    assert "data" not in session
+
+    complete = build_research_bundle(
+        {
+            "data": _dataset_df(),
+            "dataset_id": "bundle-data",
+            "instrument": "ES",
+            "base_interval": "1min",
+            "source_timezone": "America/New_York",
+            "exchange_timezone": "America/New_York",
+        }
+    )
+    apply_research_bundle_to_session(load_research_bundle(complete), session)
+    assert session[BUNDLE_IMPORT_OMITTED_DATA_KEY] is False
+    assert should_skip_dataset_bootstrap(session) is False
+    assert "data" in session
+    pd.testing.assert_frame_equal(session["data"], _dataset_df())
+
+
+def test_ah4_p4_nonce_invalidation_still_set():
+    session: dict = {}
+    apply_research_bundle_to_session(
+        load_research_bundle(build_research_bundle({"data": _dataset_df()})),
+        session,
+    )
+    assert session[DATA_PAGE_INVALIDATE_SOURCE_KEY] is True
+
+
+def test_ah4_p5_page_12_stays_schema_only():
+    source = Path("pages/12_Research_Bundles.py").read_text(encoding="utf-8")
+    assert "canonical_bundle_hash" not in source
+    assert "should_skip_dataset_bootstrap" in source
+    assert "bootstrap_active_saved_dataset()" in source
