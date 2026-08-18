@@ -49,9 +49,7 @@ from thesistester.research_bundle import canonical_bundle_hash
 def test_lc1_session_level_catalog_replaces_pdpoc_with_prior_profile_block():
     catalog = list(SESSION_LEVEL_CATALOG)
     assert catalog != sorted(catalog)
-    assert catalog[: len(SESSION_STRUCTURAL_LEVEL_NAMES)] == list(
-        SESSION_STRUCTURAL_LEVEL_NAMES
-    )
+    assert catalog[: len(SESSION_STRUCTURAL_LEVEL_NAMES)] == list(SESSION_STRUCTURAL_LEVEL_NAMES)
     pm_eq = catalog.index("pmEQ")
     dvwap = catalog.index("dVWAP_RTH")
     assert tuple(catalog[pm_eq + 1 : dvwap]) == PRIOR_PROFILE_LEVEL_NAMES
