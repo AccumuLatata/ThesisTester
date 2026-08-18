@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **AH0–AH2 landed. AH3 this PR.** AH4–AH6 specified, not implemented.  
+**Status:** **AH0–AH3 landed. AH4 this PR.** AH5–AH6 specified, not implemented.  
 **Series code:** **AH** (Audit Honesty)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Inputs:** `AUDIT_FINAL.md` on `cursor/audit-final-merge-3a8e` (slices 0–7 at `83a42f8`); CTO review ranking (research-honesty first; C2/H2 before C3 for Studies-first ops; H6 first-wave with golden-stop)  
@@ -313,7 +313,7 @@ Study calling the matrix; `diagnostic_only` flag (H13, parked); UI heatmap copy 
 
 ### 6.4 AH4 — Restore leftover keys + dataset-less bootstrap (H1)
 
-**Status:** Specified  
+**Status:** Implemented  
 **Closes:** H1 leftovers + bootstrap mix. **Does not** close page-12 hash (M14 hash bar stays schema-only).
 
 #### Defect (verified)
@@ -361,11 +361,11 @@ Nonce invalidation (upload widgets) is real and stays. It does not clear these k
 
 #### Acceptance
 
-- [ ] P1–P3 fail on unpatched `main`
-- [ ] Page 12 still schema-only (tampered parquet still imports — parked)
-- [ ] Complete-bundle import still restores `data` from the zip when present
-- [ ] No engine/golden diff
-- [ ] ARCHITECTURE lists the new managed keys
+- [x] P1–P3 fail on unpatched `main`
+- [x] Page 12 still schema-only (tampered parquet still imports — parked)
+- [x] Complete-bundle import still restores `data` from the zip when present
+- [x] No engine/golden diff
+- [x] ARCHITECTURE lists the new managed keys
 
 #### Out of AH4
 
