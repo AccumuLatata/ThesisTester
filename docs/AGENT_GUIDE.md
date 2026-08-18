@@ -35,7 +35,9 @@ python -m thesistester study expand study.yaml --output-dir out/study1
 python -m thesistester study run study.yaml --output-dir out/study1 --confirm
 python -m thesistester study report out/study1
 python -m thesistester study promote out/study1 --output draft.yaml --top-n 10
-# optional replay of the emitted experiment via the unchanged R18 path:
+# optional replay of the emitted experiment (same dataset bytes when the
+# expand-time file still exists; still run_batch — fail-fast, origin=cli,
+# no index status — not study run):
 python -m thesistester run out/study1/experiment.yaml
 ```
 
@@ -269,6 +271,8 @@ Agent safety requirements:
 
 - Treat YAML and API arguments as research specifications, not permission to
   alter engine behavior. Unknown facade configuration keys fail closed.
+  `selected_levels` / anchor rule levels reject `close` and other OHLCV
+  `BASE_COLUMNS`; those columns are not levels.
 - Preserve explicit `random_state` values. Never compare raw ZIP bytes:
   `canonical_bundle_hash()` removes archive/manifest time metadata and hashes
   logical DataFrame contents.

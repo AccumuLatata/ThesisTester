@@ -21,8 +21,10 @@ import pytest
 from thesistester.analytics.otf_validation import (
     OTF_V1_DEFAULTS,
     _MATRIX_SPECS,
+    _ROW_ID_COL,
     _add_train_ranking,
     _chronological_train_oos_sets,
+    _train_price_split_bar,
     build_otf_matrix_configs,
     run_otf_validation_matrix,
 )
@@ -877,3 +879,215 @@ def test_result_is_dataframe_with_five_rows():
     )
     assert isinstance(result, pd.DataFrame)
     assert len(result) == 5
+
+
+# ---------------------------------------------------------------------------
+# AH3 — train price prefix (C3)
+# ---------------------------------------------------------------------------
+
+
+def _flat_bars(
+    count: int, *, spike_at: int | None = None, spike_high: float = 110.0
+) -> pd.DataFrame:
+    timestamps = pd.date_range("2026-01-02 09:00", periods=count, freq="1min", tz=TZ)
+    rows = []
+    for i, ts in enumerate(timestamps):
+        high = spike_high if spike_at is not None and i >= spike_at else 100.0
+        rows.append(
+            {
+                "timestamp": ts,
+                "open": 100.0,
+                "high": high,
+                "low": 100.0,
+                "close": 100.0,
+                "volume": 100.0,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _signal_at(source: pd.DataFrame, *, signal_id: int, bar_index: int) -> dict:
+    row = _signals(n=1).iloc[0].to_dict()
+    row["signal_id"] = signal_id
+    row["bar_index"] = bar_index
+    row["timestamp"] = source.iloc[bar_index]["timestamp"]
+    return row
+
+
+def test_ah3_p1_oos_spike_does_not_inflate_train_expectancy(monkeypatch):
+    """OOS-only spike must not lift train_expectancy_r (fails on full-frame leak)."""
+    from thesistester.analytics import otf_validation as ov
+    from thesistester.analytics.metrics import summarize_trades
+    from thesistester.engine.backtest import simulate_trades
+
+    n_bars = 30
+    oos_bar = 18
+    spike_at = 22
+    source = _flat_bars(n_bars, spike_at=spike_at)
+    train_sig = _signal_at(source, signal_id=0, bar_index=2)
+    oos_sig = _signal_at(source, signal_id=1, bar_index=oos_bar)
+    sigs = pd.DataFrame([train_sig, oos_sig])
+    train_only = pd.DataFrame([train_sig])
+
+    leak_trades = simulate_trades(
+        source,
+        train_only,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+    )
+    prefix_trades = simulate_trades(
+        source.iloc[:oos_bar],
+        train_only,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+    )
+    leak_r = summarize_trades(leak_trades).get("expectancy_r")
+    prefix_r = summarize_trades(prefix_trades).get("expectancy_r")
+    assert leak_r is not None and prefix_r is not None
+    assert leak_r != prefix_r
+
+    seen_lens: list[int] = []
+    real_filter = ov.apply_otf_filter
+
+    def _spy(source_df, *args, **kwargs):
+        seen_lens.append(len(source_df))
+        return real_filter(source_df, *args, **kwargs)
+
+    monkeypatch.setattr(ov, "apply_otf_filter", _spy)
+
+    result = run_otf_validation_matrix(
+        source_df=source,
+        candidate_signals=sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+        train_fraction=0.7,
+        session_timezone=TZ,
+    )
+    no_otf = result[result["configuration_label"] == "no_otf"].iloc[0]
+    assert no_otf["train_expectancy_r"] == prefix_r
+    assert no_otf["train_expectancy_r"] != leak_r
+    assert seen_lens == [n_bars] * 5
+    assert int(result["is_train_selected"].sum()) == 1
+    selected = result[result["is_train_selected"]].iloc[0]
+    assert selected["train_expectancy_r"] == result["train_expectancy_r"].max()
+
+
+def test_ah3_p2_no_oos_uses_full_train_prices(monkeypatch):
+    empty = pd.DataFrame()
+    assert _train_price_split_bar(empty, 30) == 30
+    assert _train_price_split_bar(pd.DataFrame({"timestamp": []}), 12) == 12
+    # Object/string bar_index must use numeric min (9), not lexicographic ("18").
+    assert _train_price_split_bar(pd.DataFrame({"bar_index": ["18", "9", "20"]}), 30) == 9
+    assert _train_price_split_bar(pd.DataFrame({"bar_index": [float("inf"), 12]}), 30) == 12
+    assert _train_price_split_bar(pd.DataFrame({"bar_index": [float("inf")]}), 30) == 30
+
+    from thesistester.analytics import otf_validation as ov
+    from thesistester.analytics.metrics import summarize_trades
+    from thesistester.engine.backtest import simulate_trades
+
+    source = _flat_bars(24)
+    sigs = pd.DataFrame(
+        [
+            _signal_at(source, signal_id=0, bar_index=3),
+            _signal_at(source, signal_id=1, bar_index=8),
+        ]
+    )
+
+    def _all_train(signals, _train_fraction):
+        if _ROW_ID_COL in signals.columns:
+            return frozenset(signals[_ROW_ID_COL].tolist()), frozenset()
+        return frozenset(signals.index.tolist()), frozenset()
+
+    monkeypatch.setattr(ov, "_chronological_train_oos_sets", _all_train)
+    result = run_otf_validation_matrix(
+        source_df=source,
+        candidate_signals=sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+        train_fraction=0.7,
+        session_timezone=TZ,
+    )
+    today_trades = simulate_trades(
+        source,
+        sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+    )
+    expected_train = summarize_trades(today_trades).get("expectancy_r")
+    no_otf = result[result["configuration_label"] == "no_otf"].iloc[0]
+    assert no_otf["oos_trade_count"] == 0
+    assert no_otf["train_expectancy_r"] == expected_train
+
+
+def test_ah3_p2_single_signal_is_all_oos():
+    """1-signal + train_fraction=0.7 → n_train=0; OOS metrics match today."""
+    from thesistester.analytics.metrics import summarize_trades
+    from thesistester.engine.backtest import simulate_trades
+
+    source = _flat_bars(24)
+    sigs = pd.DataFrame([_signal_at(source, signal_id=0, bar_index=3)])
+    result = run_otf_validation_matrix(
+        source_df=source,
+        candidate_signals=sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+        train_fraction=0.7,
+        session_timezone=TZ,
+    )
+    oos_trades = simulate_trades(
+        source,
+        sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+    )
+    expected_oos = summarize_trades(oos_trades).get("expectancy_r")
+    no_otf = result[result["configuration_label"] == "no_otf"].iloc[0]
+    assert no_otf["train_trade_count"] == 0
+    assert no_otf["train_expectancy_r"] is None
+    assert no_otf["oos_expectancy_r"] == expected_oos
+
+
+def test_ah3_p3_ranking_still_uses_train_columns_only():
+    source, sigs = _source_and_signals_for_validation()
+    result = run_otf_validation_matrix(
+        source_df=source,
+        candidate_signals=sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+        session_timezone=TZ,
+    )
+    assert (result["selected_by_train_metric"] == "train_expectancy_r").all()
+    assert int(result["is_train_selected"].sum()) == 1
+    selected = result[result["is_train_selected"]].iloc[0]
+    ranked = result.dropna(subset=["train_expectancy_r"])
+    assert selected["train_expectancy_r"] == ranked["train_expectancy_r"].max()
+
+
+def test_ah3_p4_otf_validation_does_not_import_walk_forward():
+    import ast
+    from pathlib import Path
+
+    source = Path("thesistester/analytics/otf_validation.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert "walk_forward" not in alias.name
+        if isinstance(node, ast.ImportFrom) and node.module:
+            assert "walk_forward" not in node.module

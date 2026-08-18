@@ -984,3 +984,60 @@ def test_session_has_primary_data_requires_dataframe():
     assert data_page._session_has_primary_data({}) is False
     assert data_page._session_has_primary_data({"data": None}) is False
     assert data_page._session_has_primary_data({"data": pd.DataFrame({"timestamp": [1]})}) is True
+
+
+def test_ah4_dataset_less_bundle_blocks_data_page_auto_fill(monkeypatch):
+    """Dataset-less import must not bootstrap A or auto-apply sample on Data."""
+    from thesistester.research_bundle import (
+        BUNDLE_IMPORT_OMITTED_DATA_KEY,
+        apply_research_bundle_to_session,
+        build_research_bundle,
+        load_research_bundle,
+    )
+
+    session_state: dict = {BUNDLE_IMPORT_OMITTED_DATA_KEY: True}
+    apply_research_bundle_to_session(
+        load_research_bundle(
+            build_research_bundle(
+                {
+                    "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [0.5]}),
+                    "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [0.5]}),
+                    "trade_summary": {"trade_count": 1},
+                }
+            )
+        ),
+        session_state,
+    )
+    assert session_state[BUNDLE_IMPORT_OMITTED_DATA_KEY] is True
+    assert "data" not in session_state
+
+    data_page = _import_data_page_module(session_state)
+    assert data_page._preserve_dataset_less_bundle(session_state) is True
+    assert not data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Sample data",
+        has_session_data=data_page._session_has_primary_data(session_state)
+        or data_page._preserve_dataset_less_bundle(session_state),
+    )
+    assert data_page._should_apply_source_dataset(
+        file_present=True,
+        source="Upload CSV",
+        has_session_data=data_page._session_has_primary_data(session_state)
+        or data_page._preserve_dataset_less_bundle(session_state),
+    )
+
+    monkeypatch.setattr(data_page, "ensure_display_timezone", lambda *a, **k: None)
+    monkeypatch.setattr(data_page, "set_active_dataset_id", lambda *a, **k: None)
+    monkeypatch.setattr(data_page, "clear_active_dataset_id", lambda *a, **k: None)
+    loaded = pd.DataFrame({"timestamp": [1], "open": [1], "high": [1], "low": [1], "close": [1]})
+    data_page._set_active_dataset_state(
+        loaded,
+        instrument="ES",
+        base_interval="1min",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        resampled_data={},
+        saved_dataset_id=None,
+    )
+    assert BUNDLE_IMPORT_OMITTED_DATA_KEY not in session_state
+    assert data_page._preserve_dataset_less_bundle(session_state) is False

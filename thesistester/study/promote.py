@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 
 from thesistester.setup import normalize_otf_filter_config
+from thesistester.study.expand import coerce_source_spec_parent, dataset_path_search_roots
 from thesistester.study.report import (
     StudyReportError,
     report_study,
@@ -174,8 +175,8 @@ def _rewrite_dataset_paths_for_draft(
     ``study run`` resolves relative ``dataset.path`` against the StudySpec
     parent. Promote often writes under ``drafts/`` (or cwd), which would break
     paths authored for the original study file. Prefer an existing file under
-    ``search_roots``; otherwise absolutize against cwd so the draft no longer
-    depends on its own parent directory.
+    ``search_roots`` (spec parent first, cwd last); otherwise absolutize
+    against cwd so the draft no longer depends on its own parent directory.
     """
     dataset = study.get("dataset")
     if not isinstance(dataset, dict):
@@ -220,6 +221,7 @@ def build_promoted_draft(
     primary_metric: str,
     top_n: int,
     output_path: str | Path | None = None,
+    source_spec_parent: str | Path | None = None,
 ) -> dict[str, Any]:
     """Construct a draft StudySpec with ``stage.mode: explicit_cells``."""
     if not selected_run_names:
@@ -255,9 +257,13 @@ def build_promoted_draft(
     study["description"] = f"{prior_desc} {promote_note}".strip() if prior_desc else promote_note
 
     source_root = Path(source_study_dir).resolve()
-    search_roots: list[Path] = [Path.cwd().resolve(), source_root]
+    extra_roots: list[Path] = [source_root]
     if output_path is not None:
-        search_roots.append(Path(output_path).resolve().parent)
+        extra_roots.append(Path(output_path).resolve().parent)
+    search_roots = dataset_path_search_roots(
+        source_spec_parent=source_spec_parent,
+        extra_roots=extra_roots,
+    )
     path_notes = _rewrite_dataset_paths_for_draft(study, search_roots=search_roots)
     if path_notes:
         study["description"] = f"{study['description']} {' '.join(path_notes)}"
@@ -332,6 +338,10 @@ def promote_study(
     factor_map = expansion.get("factor_map")
     if not isinstance(factor_map, Mapping) or not factor_map:
         raise StudyPromoteError("study.expansion.json must contain a non-empty factor_map")
+    raw_parent = expansion.get("source_spec_parent")
+    source_spec_parent = (
+        coerce_source_spec_parent(raw_parent) if isinstance(raw_parent, str) else None
+    )
 
     draft = build_promoted_draft(
         source_spec,
@@ -341,6 +351,7 @@ def promote_study(
         primary_metric=primary,
         top_n=top_n,
         output_path=out_path,
+        source_spec_parent=source_spec_parent,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

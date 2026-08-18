@@ -250,16 +250,20 @@ def build_otf_filter_metadata(session_state: Mapping[str, Any]) -> dict[str, Any
 
     Session-state keys consumed
     ---------------------------
-    - ``otf_filter_result`` / ``otf_filter_summary`` — backtest scope
+    - ``backtest_otf_filter`` — bundle-owned backtest scope (preferred)
+    - ``otf_filter_result`` / ``otf_filter_summary`` — live backtest scope
     - ``grid_otf_filter`` — grid-search scope
     - ``walk_forward_otf_filter`` — walk-forward scope
     """
     applied_scopes: list[str] = []
 
-    # Prefer the full result object; fall back to the summary dict
+    # Bundle-owned export first so a leftover live summary cannot outrank it.
+    backtest_export = session_state.get("backtest_otf_filter")
     backtest_summary = session_state.get("otf_filter_summary")
     backtest_result = session_state.get("otf_filter_result")
-    if backtest_result is not None and hasattr(backtest_result, "to_summary_dict"):
+    if isinstance(backtest_export, Mapping) and len(backtest_export) > 0:
+        backtest_summary = dict(backtest_export)
+    elif backtest_result is not None and hasattr(backtest_result, "to_summary_dict"):
         backtest_summary = backtest_result.to_summary_dict()
 
     grid_summary = session_state.get("grid_otf_filter")

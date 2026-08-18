@@ -297,6 +297,17 @@ def normalize_trigger_timeframe(value: Any) -> str:
     return normalized or DEFAULT_TRIGGER_TIMEFRAME
 
 
+def _normalized_level_token(value: Any) -> str:
+    """Strip a setup level token for validator membership checks.
+
+    Anchor / rule checks already ``strip()`` before comparing. Selected-levels
+    must use the same identity so ``" close"`` cannot stay headless-legal.
+    """
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
 def is_setup_eligible_level_column(column: str) -> bool:
     """Return True when *column* may be selected as a confluence/setup level."""
     return column not in BASE_COLUMNS and column not in NON_LEVEL_OUTPUT_COLUMNS
@@ -410,6 +421,18 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
                     "Selected levels include diagnostic (non-level) columns that "
                     f"cannot be used for confluence: {banned}."
                 )
+            banned_base = sorted(
+                {
+                    token
+                    for level in selected_levels
+                    if (token := _normalized_level_token(level)) in BASE_COLUMNS
+                }
+            )
+            if banned_base:
+                errors.append(
+                    "Selected levels include OHLCV/base columns that "
+                    f"cannot be used for confluence: {banned_base}."
+                )
 
         try:
             tolerance_ticks = float(config.get("tolerance_ticks", 0.0))
@@ -446,6 +469,11 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
                 f"Anchor level '{anchor_level}' is a diagnostic column and cannot "
                 "be used as a setup level."
             )
+        elif anchor_level in BASE_COLUMNS:
+            errors.append(
+                f"Anchor level '{anchor_level}' is an OHLCV/base column and cannot "
+                "be used as a setup level."
+            )
 
         confluence_rules = config.get("confluence_rules", [])
         if not isinstance(confluence_rules, list) or not confluence_rules:
@@ -478,6 +506,11 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
                     errors.append(
                         f"Confluence rule {index} level '{rule_level}' is a diagnostic "
                         "column and cannot be used as a setup level."
+                    )
+                elif rule_level in BASE_COLUMNS:
+                    errors.append(
+                        f"Confluence rule {index} level '{rule_level}' is an "
+                        "OHLCV/base column and cannot be used as a setup level."
                     )
                 if rule_level == anchor_level:
                     errors.append(f"Confluence rule {index} level must not equal anchor_level.")
