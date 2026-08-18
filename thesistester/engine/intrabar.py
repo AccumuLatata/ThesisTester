@@ -390,7 +390,9 @@ def resolve_ohlc_bar(
         return IntrabarResolution(None, "no_hit", False)
     if model == "sl_first":
         if entry_price is not None:
-            stop_hit, target_hit = _sl_first_hits_after_entry(
+            # Conservative fallback omits entry_price and stays on the
+            # unclipped sl_first return below (still SL-kills).
+            clipped_stop, clipped_target = _sl_first_hits_after_entry(
                 open_price=open_price,
                 high=high,
                 low=low,
@@ -400,10 +402,17 @@ def resolve_ohlc_bar(
                 direction=direction,
                 entry_price=entry_price,
             )
-            if not stop_hit and not target_hit:
-                return IntrabarResolution(None, "no_hit", False)
-            both_hit = stop_hit and target_hit
-        kind: Literal["SL", "TP"] = "SL" if stop_hit else "TP"
+            if not clipped_stop and not clipped_target:
+                return IntrabarResolution(None, "no_hit", both_hit)
+            kind: Literal["SL", "TP"] = "SL" if clipped_stop else "TP"
+            clipped_both = clipped_stop and clipped_target
+            return IntrabarResolution(
+                kind,
+                "legacy_sl_first" if clipped_both else "single_hit",
+                both_hit,
+                ambiguous=clipped_both,
+            )
+        kind = "SL" if stop_hit else "TP"
         return IntrabarResolution(
             kind,
             "legacy_sl_first" if both_hit else "single_hit",
