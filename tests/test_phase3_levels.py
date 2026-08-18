@@ -3,7 +3,12 @@ import pandas as pd
 import pytest
 
 from thesistester.data.sessions import tag_session
-from thesistester.levels import compute_all_levels, compute_indicator_levels, compute_profile_levels
+from thesistester.levels import (
+    PRIOR_PROFILE_LEVEL_NAMES,
+    compute_all_levels,
+    compute_indicator_levels,
+    compute_profile_levels,
+)
 
 
 TZ = "America/New_York"
@@ -245,6 +250,7 @@ def test_rolling_poc_correctness_on_simple_dataset():
     )
     out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
     assert out["POC_rolling_30min"].iloc[-1] == 100.0
+    assert set(PRIOR_PROFILE_LEVEL_NAMES) <= set(out.columns)
 
 
 def test_prior_day_profile_levels_use_completed_prior_day_only():

@@ -8,9 +8,11 @@ import pytest
 import yaml
 
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+from thesistester.levels.catalog import PRIOR_PROFILE_LEVEL_NAMES, STATIC_STUDY_LEVEL_NAMES
 from thesistester.study.schema import (
     STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
+    STUDY_STATIC_LEVEL_NAMES,
     StudySpecError,
     closed_level_token_set,
     load_study_spec,
@@ -129,6 +131,37 @@ def test_static_catalog_excludes_suggested_rolling_vwap():
     assert "VWAP_rolling_1h" not in tokens
     tokens_with_window = closed_level_token_set({"vwap_windows": ["1h"]})
     assert "VWAP_rolling_1h" in tokens_with_window
+
+
+@pytest.mark.parametrize("core_level", ["pdVAH", "pwPOC", "pmVAL"])
+def test_lc1_prior_profile_twins_are_core_level_tokens(core_level):
+    raw = _minimal_study()
+    raw["study"]["factors"]["core_level"] = [core_level]
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["core_level"] == [core_level]
+
+
+def test_lc1_closed_set_includes_prior_profile_twins_not_gated_or_rolling():
+    tokens = closed_level_token_set(
+        {
+            "vwap_windows": [],
+            "poc_windows": [],
+            "pivots_enabled": False,
+            "prev30m_vwap_enabled": False,
+        }
+    )
+    assert set(PRIOR_PROFILE_LEVEL_NAMES) <= tokens
+    assert not any(name.startswith("VWAP_rolling_") for name in tokens)
+    assert not any(name.startswith("POC_rolling_") for name in tokens)
+    assert not any(name.startswith("Pivot_") for name in tokens)
+    assert "prev30mVWAP" not in tokens
+
+
+def test_lc1_study_static_names_are_catalog_identity():
+    assert STUDY_STATIC_LEVEL_NAMES is STATIC_STUDY_LEVEL_NAMES
+    assert STUDY_STATIC_LEVEL_NAMES == STATIC_STUDY_LEVEL_NAMES
+    assert not any(name.startswith("VWAP_rolling_") for name in STUDY_STATIC_LEVEL_NAMES)
+    assert not any(name.startswith("POC_rolling_") for name in STUDY_STATIC_LEVEL_NAMES)
 
 
 def test_load_study_spec_from_yaml(tmp_path: Path):

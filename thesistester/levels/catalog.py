@@ -1,0 +1,73 @@
+"""Single source of truth for static StudySpec / Assistant level token names.
+
+Engine modules remain the source of *emitted column strings*. This module
+lists the always-on session/profile/session-VWAP/single-print/APOC names.
+Rolling VWAP/POC, MAs, ``prev30mVWAP*``, and ``Pivot_*`` are not static —
+they are implied only by ``study.levels`` (see ``closed_level_token_set``).
+"""
+
+from __future__ import annotations
+
+from .session_vwap import SESSION_VWAP_COLUMNS
+from .tpo import SINGLE_PRINT_COLUMNS
+
+# Exact ``ordered`` tuple from ``compute_session_levels`` (sessions.py).
+SESSION_STRUCTURAL_LEVEL_NAMES: tuple[str, ...] = (
+    "ONH",
+    "ONL",
+    "pONH",
+    "pONL",
+    "AsiaHigh",
+    "AsiaLow",
+    "LondonHigh",
+    "LondonLow",
+    "OR_High",
+    "OR_Low",
+    "RTH_Open",
+    "pRTH_Open",
+    "pRTH_High",
+    "pRTH_Low",
+    "prevSettlement",
+    "dOpen",
+    "wOpen",
+    "mOpen",
+    "pdOpen",
+    "pwOpen",
+    "pmOpen",
+    "pdHigh",
+    "pdLow",
+    "pwHigh",
+    "pwLow",
+    "pmHigh",
+    "pmLow",
+    "pdEQ",
+    "pwEQ",
+    "pmEQ",
+)
+
+# Always-on prior-profile columns from ``compute_profile_levels``.
+PRIOR_PROFILE_LEVEL_NAMES: tuple[str, ...] = (
+    "pdVAH",
+    "pdVAL",
+    "pdPOC",
+    "pwVAH",
+    "pwVAL",
+    "pwPOC",
+    "pmVAH",
+    "pmVAL",
+    "pmPOC",
+)
+
+SESSION_VWAP_LEVEL_NAMES: tuple[str, ...] = SESSION_VWAP_COLUMNS
+SINGLE_PRINT_LEVEL_NAMES: tuple[str, ...] = SINGLE_PRINT_COLUMNS
+APOC_LEVEL_NAMES: tuple[str, ...] = ("APOC", "pAPOC")
+
+STATIC_STUDY_LEVEL_NAMES: frozenset[str] = frozenset(
+    {
+        *SESSION_STRUCTURAL_LEVEL_NAMES,
+        *PRIOR_PROFILE_LEVEL_NAMES,
+        *SESSION_VWAP_LEVEL_NAMES,
+        *SINGLE_PRINT_LEVEL_NAMES,
+        *APOC_LEVEL_NAMES,
+    }
+)

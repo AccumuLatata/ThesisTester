@@ -23,6 +23,7 @@ from thesistester.assistant.thesis_compiler import (
     normalize_walk_forward_controls,
 )
 from thesistester.config import TIMEZONE_OPTIONS as _CONFIG_TIMEZONE_OPTIONS
+from thesistester.levels.catalog import PRIOR_PROFILE_LEVEL_NAMES
 from thesistester.levels.prev30m_vwap import prev30m_price_column_names
 from thesistester.setup import SUGGESTED_DEFAULT_LEVELS
 
@@ -137,7 +138,9 @@ WFA_MATRIX_METRICS: tuple[str, ...] = (
     "stitched_oos_total_r",
     "oos_profitable_fold_rate",
 )
+
 # Static session/profile/opt-in level names used when no Levels dataframe is loaded.
+# Order is session-first; LC1 only expands the prior-profile block. LC2 owns pivot spelling.
 SESSION_LEVEL_CATALOG: tuple[str, ...] = (
     "ONH",
     "ONL",
@@ -169,7 +172,7 @@ SESSION_LEVEL_CATALOG: tuple[str, ...] = (
     "pdEQ",
     "pwEQ",
     "pmEQ",
-    "pdPOC",
+    *PRIOR_PROFILE_LEVEL_NAMES,
     "dVWAP_RTH",
     "dVWAP",
     "prev30mVWAP",

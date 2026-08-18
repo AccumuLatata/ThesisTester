@@ -477,6 +477,8 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 **Remaining limitations (see full detail in `docs/POINT_IN_TIME_GUARANTEES.md`):**
 - Profile levels use a bar-level typical-price approximation. True intrabar
   volume-at-price data would change level values but would not introduce look-ahead.
+  Prior day/week/month VAH/VAL/POC (`pdVAH`/`pdVAL`/`pdPOC`, `pw*`, `pm*`) are
+  StudySpec tokens; the typical-price MVP is unchanged.
 - ONH/ONL is not available during ETH (by design; the overnight has not yet closed).
 - AsiaHigh/AsiaLow are unavailable during the Asia window (by design; not a rolling
   extreme). Pre-Asia ETH (e.g. 18:00–20:00 under the default window) is excluded from
