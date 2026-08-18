@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **AH0–AH5 landed. AH6 specified, not implemented.**  
+**Status:** **AH0–AH6 landed.**  
 **Series code:** **AH** (Audit Honesty)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Inputs:** `AUDIT_FINAL.md` on `cursor/audit-final-merge-3a8e` (slices 0–7 at `83a42f8`); CTO review ranking (research-honesty first; C2/H2 before C3 for Studies-first ops; H6 first-wave with golden-stop)  
@@ -40,7 +40,7 @@ Copied from the audit merge §5 and frozen here. An AH PR that “simplifies” 
 7. **`run_batch` abort semantics stay fail-fast.** AH2 does not make `thesistester run experiment.yaml` equal `study run` for origin / continue / index `status`.
 8. **Page 12 import stays schema-only** in AH0–AH6. Assistant open-exact stays hash-fail-closed. Do not collapse the three integrity bars. Page-12 hash is parked (§8).
 9. **Omitted `ingestion_mode` = `primary`.** Omitted levels keys = product `DEFAULT_LEVELS_SETTINGS`. Omitted battery `enabled` = `True` on API/CLI/assistant. Study expand already emits `{enabled: false}`. **Do not flip those defaults in this series.**
-10. **`validate_setup_config` does not reject `BASE_COLUMNS` today.** AH6 adds that rejection. Hits (`prev30mVWAP_hit_*`) stay rejected. UI pickers already exclude `close`.
+10. **`validate_setup_config` rejects `BASE_COLUMNS`** (AH6). Hits (`prev30mVWAP_hit_*`) stay rejected. UI pickers already exclude `close`.
 11. **Goldens are not regenerated** except the AH5 hard stop (§6.5). New probe families are additive.
 12. **Help-corpus paths stay frozen.**
 
@@ -427,7 +427,7 @@ Changing default to `path_open_proximity`; 3c void skip rows; MAE full-parent ch
 
 ### 6.6 AH6 — Reject `BASE_COLUMNS` in `validate_setup_config` (H3)
 
-**Status:** Specified  
+**Status:** Implemented  
 **Closes:** H3
 
 #### Defect (verified)
@@ -459,10 +459,10 @@ Changing default to `path_open_proximity`; 3c void skip rows; MAE full-parent ch
 
 #### Acceptance
 
-- [ ] P1 fails on unpatched `main`
-- [ ] UI path unchanged
-- [ ] Goldens untouched
-- [ ] No engine second-check required
+- [x] P1 fails on unpatched `main`
+- [x] UI path unchanged
+- [x] Goldens untouched
+- [x] No engine second-check required
 
 ---
 

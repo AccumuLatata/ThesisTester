@@ -264,6 +264,8 @@ Agent safety requirements:
 
 - Treat YAML and API arguments as research specifications, not permission to
   alter engine behavior. Unknown facade configuration keys fail closed.
+  `selected_levels` / anchor rule levels reject `close` and other OHLCV
+  `BASE_COLUMNS`; those columns are not levels.
 - Preserve explicit `random_state` values. Never compare raw ZIP bytes:
   `canonical_bundle_hash()` removes archive/manifest time metadata and hashes
   logical DataFrame contents.
