@@ -8,7 +8,8 @@
 **Depends on (already shipped):** Research Study Runner RS1–RS5 + RS-D7 + RS-D2 + RS-D4 + RS-D8 + RS-D9; Study Builder SB1–SB3; Study Ingest Alignment SIA0–SIA3  
 **Related living docs:** `docs/STUDY_RUNNER.md` §SV, `docs/USER_GUIDE.md` (H2 `Studies viewer (read-only)`), `docs/ARCHITECTURE.md`, `docs/AGENT_GUIDE.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`  
 **Does not reopen:** parked RS-D1 / D3 / D6; RS-D2 inspect path-paste / `write_artifacts=False` / no classic-session mutation; RS-D8 preview; RS-D9 CLI-spawn; SB emit/hydrate; SIA ingest tokens; `engine/`; golden-master regeneration  
-**Related but separate:** Research Bundles (`pages/12_Research_Bundles.py`) is upload/import of one zip into classic session. SV must **not** deep-link that page or call `apply_research_bundle_to_session`.
+**Related but separate:** Research Bundles (`pages/12_Research_Bundles.py`) is upload/import of one zip into classic session. SV must **not** deep-link that page or call `apply_research_bundle_to_session`.  
+**Related follow-on (do not implement here):** Study Admit Follow-up — `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF). Drafts a child Admit StudySpec from briefing ToD; does not reopen SV briefing / peek / catalog contracts.
 
 **Completeness posture:** SV1–SV4 is one shippable product update on the **existing** Studies page: an operator can list local study dirs, reopen one later, see failed-cell errors / group summaries / optional rollup files, chart the already-loaded overview frames, and peek one cell’s index + `trade_summary.json` — without a second runner, a new ranker, or classic `st.session_state` mutation. Inspect, Preview, launch, expand, execute, promote, and report stay behavior-identical except for additive Inspect panes and an additive `study list` CLI.
 

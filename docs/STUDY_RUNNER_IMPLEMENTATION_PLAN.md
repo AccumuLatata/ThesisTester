@@ -5,7 +5,7 @@
 **Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9 complete**. Parked: RS-D1 / RS-D3 / RS-D6. Study Builder UX: `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB1–SB3 ✅; not an RS PR). Study Viewer UX: `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV0 locked; not an RS PR)
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
-**Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`, `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB — form compiler; does not change this series’ execute/preview/launch contracts), `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV — Inspect catalog/quality/charts/peek; does not change this series’ execute/preview/launch contracts)  
+**Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`, `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB — form compiler; does not change this series’ execute/preview/launch contracts), `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV — Inspect catalog/quality/charts/peek/briefing; does not change this series’ execute/preview/launch contracts), `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF — Admit follow-up drafts; does not change this series’ execute loop or RS5 “promote never executes”)  
 **Related but separate:** `docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` (within-trade level membership — **not** cross-setup factorial studies; do not merge concepts)  
 **Depends on (already shipped):** R18 headless API + batch CLI (`thesistester/api.py`, `thesistester/cli.py`), RunSpec validation, research bundles, `results_index.csv`, Study Runner package `thesistester/study/`
 
@@ -984,6 +984,8 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 **Study Builder (separate SB series):** the parked “form-based factor builder” is specified in `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB0–SB3). It emits canonical `schema_version: 1` YAML onto the existing Preview pane. It is **not** a marketplace, **not** an NL compiler (RS-D1 stays parked), and **not** new factor types (RS-D6 stays parked). Do not implement SB inside an RS PR.
 
 **Study Viewer (separate SV series):** local study catalog, failed-cell / group-summary / rollup-file Inspect panes, overview charts, and cell peek are specified in `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV0–SV4). That series does **not** reopen this §12.4 RS-D2 contract (path-paste Inspect, `write_artifacts=False`, no classic-session mutation, no Research-Bundles deep-link). Local catalog is **not** “portfolio of studies cloud sync” (still out of scope here). Do not implement SV inside an RS PR.
+
+**Study Admit Follow-up (separate SAF series):** drafting a linked child StudySpec with Admit locked to a post-hoc ToD bucket is specified in `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF0–SAF3). That series does **not** reopen RS5 “promote never executes” or this series’ execute loop. Default `study promote` (flags omitted) stays identical. Do not implement SAF inside an RS PR.
 
 ---
 

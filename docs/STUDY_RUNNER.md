@@ -32,6 +32,11 @@ fail the cell.
 trader briefing / per-cell SL/TP grid / NY RTH ToD).
 Does not change preview / CLI-spawn / execute. Inspect remains artifacts-only
 (`report_study(..., write_artifacts=False)`; no `rollup_study()`).
+**SAF** (Study Admit Follow-up) 🔒 SAF0
+`docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`. Planned: draft a linked
+child StudySpec from a completed study with Admit locked to the briefing
+(or hour/30m) bucket. Promote without `--admit-tod` stays RS5. **Not shipped.**
+Does not auto-`study run` and does not add ToD as a factor axis.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -651,3 +656,27 @@ diagnostics. Cell peek / briefing / NY ToD are not a validated edge.
 Time-of-day is post-hoc on completed trades, not a cartesian factor.
 
 Paste `output_dir` remains valid alongside the catalog.
+
+---
+
+## SAF — Study Admit Follow-up (planned)
+
+**Status:** SAF0 plan-locked. SAF1–SAF3 not started. SAF4 parked.  
+**Plan:** `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.
+
+After a completed all-day study, draft a **child** StudySpec that re-sims the
+crowned cell with Admit locked. This is **not shipped** (no `--admit-tod`, no
+Inspect draft button yet).
+
+| Step | Planned | What does not happen |
+|---|---|---|
+| `study promote --admit-tod auto` (SAF1) | One ranked cell; stamp `backtest` + `grid` `entry_window`; write `study.lineage`; new `output_dir` | Auto-`study run`; ToD as a factor axis; default promote behavior change |
+| Inspect **Draft Admit follow-up** (SAF2) | Write child YAML onto Preview | In-process execute / second spawn path |
+| `--tod-group` / `--allow-thin` / catalog parent (SAF3) | Hour/30min Admit; thin override; parent column | Multi-bucket cartesian |
+
+**Honesty.** Child KPIs are a constrained re-sim (Focus ≠ Admit), not
+confirmation of the parent screen. Engine Admit is `backtest.entry_window`
+(and `grid.entry_window` when grid is present), not setup-only
+`constants.entry_window`.
+
+Default `study promote` (flags omitted) remains RS5.

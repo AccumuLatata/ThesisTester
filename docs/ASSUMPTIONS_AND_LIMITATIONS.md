@@ -1018,7 +1018,12 @@ other than the last bar in the dataset.
   cell's completed trades. It is a descriptive screen, not a live schedule
   and not a validated edge. Time-of-day is **not** a StudySpec factor (a
   7-bucket cartesian would multiply cells and overfit). Constrain the next
-  run with `constants.entry_window` / Admit after inspecting the bucket.
+  run with Admit (`constants.backtest.entry_window`, and `grid.entry_window`
+  when grid is present) after inspecting the bucket. Setup-only
+  `constants.entry_window` does not constrain `run_backtest`. Automated
+  child drafts (`docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`, SAF)
+  are **not shipped** (SAF0). A follow-up Admit run is a constrained
+  re-sim of one parent cell, not confirmation of the parent screen.
 - Ranked cells are the factor cartesian. The SL/TP grid is per-cell inside
   each research zip (`grid_results.parquet` / `best_grid_*` index columns).
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met
