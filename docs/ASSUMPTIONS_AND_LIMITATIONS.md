@@ -1011,6 +1011,10 @@ other than the last bar in the dataset.
   and not a validated edge. Time-of-day is **not** a StudySpec factor (a
   7-bucket cartesian would multiply cells and overfit). Constrain the next
   run with `constants.entry_window` / Admit after inspecting the bucket.
+  Inspect **Follow-on confirmation** and CLI `study follow-on` draft that
+  YAML (new `output_dir`, parent lineage). They do not re-simulate and do
+  not add ToD as a factor axis. A thin bucket (N < 10) is a hint, not a
+  schedule — `--allow-thin` / the Inspect checkbox is required to draft it.
 - Ranked cells are the factor cartesian. The SL/TP grid is per-cell inside
   each research zip (`grid_results.parquet` / `best_grid_*` index columns).
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met

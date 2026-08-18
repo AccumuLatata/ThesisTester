@@ -22,6 +22,11 @@ from thesistester.study.expand import (
     write_expansion_artifacts,
 )
 from thesistester.study.naming import build_run_name, factor_cell_fingerprint
+from thesistester.study.follow_on import (
+    StudyFollowOnError,
+    StudyFollowOnResult,
+    follow_on_study,
+)
 from thesistester.study.promote import (
     StudyPromoteError,
     StudyPromoteResult,
@@ -74,6 +79,8 @@ __all__ = [
     "StudyToolsDisabledError",
     "StudyToolsSettings",
     "StudyCatalogEntry",
+    "StudyFollowOnError",
+    "StudyFollowOnResult",
     "StudyViewerError",
     "StudyViewerModel",
     "ExpansionResult",
@@ -95,6 +102,7 @@ __all__ = [
     "execute_study_cell",
     "expand_study",
     "expand_study_to_directory",
+    "follow_on_study",
     "factor_cell_fingerprint",
     "load_study_spec",
     "load_study_tools_settings",

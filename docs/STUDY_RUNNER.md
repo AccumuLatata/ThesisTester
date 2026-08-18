@@ -26,12 +26,13 @@ example is legacy 1m). Execute is still CLI / `run_experiment`. Studies does
 not walk the Data page. The 15s-primary derive loader resolves OHLC-identical
 source duplicate opens (lowest volume) before 1m derivation; OHLC conflicts
 fail the cell.
-**SV** (Study Viewer) SV1–SV5 ✅
-`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0–**SV5** shipped (catalog +
+**SV** (Study Viewer) SV1–SV6 ✅
+`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0–**SV6** shipped (catalog +
 `study list` + click-to-load + quality panes + overview charts + cell peek +
-trader briefing / per-cell SL/TP grid / NY RTH ToD).
+trader briefing / per-cell SL/TP grid / NY RTH ToD + follow-on draft).
 Does not change preview / CLI-spawn / execute. Inspect remains artifacts-only
 (`report_study(..., write_artifacts=False)`; no `rollup_study()`).
+Follow-on YAML is download / Preview / CLI — it does not rewrite parent artifacts.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -344,6 +345,10 @@ python -m thesistester study promote out/pdPOC_stage40 \
 
 # 5) Human edit draft, then expand/run again after confirm
 python -m thesistester study expand drafts/pdPOC_survivors.yaml --output-dir out/pdPOC_survivors
+
+# Optional: one-cell Admit confirmation from a finished study (does NOT execute)
+python -m thesistester study follow-on out/pdPOC_stage40 \
+  --segment rth_open_30m --allow-thin
 ```
 
 ### `study promote`
@@ -364,6 +369,29 @@ Draft rules:
 - Header comments mark **DRAFT**; description notes source study_dir
 - Validates as StudySpec before write; **never** calls execute / `run_batch`
 - Phase-2 **800**-cell cartesian is reached by removing/widening `stage` on the **unpromoted** example (full factor domains). Dropping `stage` from a promote draft expands only the narrowed survivor domains — not 800.
+
+### `study follow-on`
+
+| Flag | Behavior |
+|---|---|
+| `study_dir` | Completed study output (spec + expansion + index) |
+| `--output` | Draft YAML (default: `<study_dir>/follow_on_<segment>.yaml`); refuses overwrite unless `--force` |
+| `--run-name` | Specific cell (default: study briefing winner) |
+| `--segment` | NY RTH Admit bucket (default: briefing strongest segment) |
+| `--no-pin-grid` | Keep parent SL/TP grid instead of pinning best ticks |
+| `--allow-thin` | Required when the chosen NY bucket has N < 10 |
+| `--force` | Replace an existing follow-on draft |
+
+Draft rules:
+
+- Factor domains narrowed to that one cell; `stage` dropped so expand is one run
+- `constants.entry_window` is Admit `rth_segments` for the chosen NY label
+- Optional pin of `best_grid_*` SL/TP and `grid.enabled: false`
+- New `name` / `output_dir`; description cites the parent study + cell
+- Relative dataset paths are absolutized (same pin as promote)
+- Validates as StudySpec before write; **never** calls execute / `run_batch`
+- Does **not** add ToD as a factor axis
+- Refuses to overwrite `study.spec.yaml`
 
 ### Example
 
@@ -625,12 +653,13 @@ Preview textarea key before that widget mounts (Build body runs first).
 
 ## SV — Study Viewer (operator contract)
 
-**Status:** SV0–**SV5** shipped. Plan:
+**Status:** SV0–**SV6** shipped. Plan:
 `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`.
 
 Inspect lists local study dirs (one-level `results/studies/` + `out/`) and
 still accepts a pasted path. Execute stays CLI (`study run` / Preview
-**Run via CLI**). Promote stays CLI.
+**Run via CLI**). Promote stays CLI. Follow-on YAML is Inspect download /
+Preview or `study follow-on`.
 
 | Step | What happens | What does not happen |
 |---|---|---|
@@ -640,6 +669,7 @@ still accepts a pasted path. Execute stays CLI (`study run` / Preview
 | Overview charts (SV3) ✅ | Plotly from already-loaded ranked / group frames | New metrics; unzip-all-cells equity charts |
 | Cell peek (SV4) ✅ | Selected `run_name` → index + ledger error + optional `trade_summary.json` | `apply_research_bundle_to_session`; classic session keys; Bundles / Backtest deep-link |
 | Briefing / grid / ToD (SV5) ✅ | Deterministic headline (highest primary-metric cell + settings + best SL/TP + NY RTH bucket); ranked `best_grid_*` columns; peek `grid_results.parquet` + `trades.parquet` ToD | New StudySpec factor axis; unzip-all-cells; classic-session hydrate; re-sim |
+| Follow-on draft (SV6) ✅ | One-cell Admit YAML (`entry_window` + narrowed factors + new `output_dir`); Inspect download / Preview; CLI `study follow-on` | ToD factor axis; in-process re-sim; overwrite parent `study.spec.yaml`; Inspect write of parent artifacts |
 
 **Honesty.** Catalog listing is discovery, not a quality score. Ledger
 `ok`/`failed` counts and Inspect progress are cell-status, not edge.

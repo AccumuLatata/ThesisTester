@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-16  
-**Status:** **SV0–SV5 shipped.**  
+**Status:** **SV0–SV6 shipped.**  
 **Series code:** **SV** (Study Viewer)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** Research Study Runner RS1–RS5 + RS-D7 + RS-D2 + RS-D4 + RS-D8 + RS-D9; Study Builder SB1–SB3; Study Ingest Alignment SIA0–SIA3  
@@ -29,7 +29,7 @@ Ship a **Study Viewer** that **projects artifacts the runner already writes**. N
 | Feature name | Study Viewer (catalog + quality + overview charts + cell peek) |
 | Package home | `thesistester/study/viewer.py` (extend; pages import this module directly) |
 | UI home | Same `pages/15_Studies.py` **Inspect** tab — no new nav slot |
-| CLI | Additive `python -m thesistester study list` (SV1). Existing `expand\|run\|report\|promote\|rollup` argv **unchanged** |
+| CLI | Additive `python -m thesistester study list` (SV1) and `study follow-on` (SV6). Existing `expand\|run\|report\|promote\|rollup` argv **unchanged** |
 | Load path | Existing `load_study_view` / `report_study(..., write_artifacts=False)` / `load_ledger` |
 | Engine / golden impact | **None** |
 | Schema / expand / execute / launch / promote / report write | **No behavior edits** |
@@ -37,13 +37,13 @@ Ship a **Study Viewer** that **projects artifacts the runner already writes**. N
 | Assistant / MCP | Unchanged (`assistant.study_tools` stays default-off; no new `STUDY.*`) |
 | Research Bundles / Backtest / Validation | **No** deep-link, `st.switch_page`, or `apply_research_bundle_to_session` |
 | Cloud / job queue / store schema | **Non-goals** |
-| Series complete when | SV4 acceptance checklist is green (catalog → load → errors/groups/rollup-if-present → charts → cell peek) |
+| Series complete when | SV4–SV6 acceptance is green (catalog → load → quality/charts/peek/briefing → follow-on YAML draft) |
 
 **Feasibility:** High. `StudyViewerModel` already holds ranked / low-N / unresolved / OTF Δ / overview frames. `StudyReportResult.group_summaries` is already computed and unused on the page. Ledger cells already store `error`. Plotly is already a classic-page dependency. Bundle PF/WR already reads `trade_summary.json` behind `_bundle_path_within_study`.
 
 ### 2.1 In-scope vs out
 
-| In SV1–SV4 | Explicitly out (entire series) |
+| In SV1–SV6 | Explicitly out (entire series) |
 |---|---|
 | Bounded local catalog under RS-D2 trusted roots | Recursive walk of the whole repo / store |
 | Click-to-load into existing Inspect | New sidebar page / numeric slot |
@@ -54,6 +54,7 @@ Ship a **Study Viewer** that **projects artifacts the runner already writes**. N
 | One-cell zip peek (`trade_summary.json` + index + ledger error) | Hydrate classic `CLASSIC_RESEARCH_SESSION_KEYS` |
 | Download selected `*.research.zip` | Research Bundles deep-link / `apply_research_bundle_to_session` |
 | Studies-scoped session keys only | Job queue, kill/retry, auto-refresh, cloud sync |
+| Follow-on YAML draft (SV6): one cell + Admit `entry_window` | ToD as a factor axis; Inspect write of parent artifacts; auto-run |
 | Extend USER_GUIDE H2 `Studies viewer (read-only)` | New USER_GUIDE H2 (HC allowlist) |
 | | Parked RS-D1 / D3 / D6; SB/SIA behavior edits |
 | | `engine/` edits; golden regeneration; `run_batch` semantics |
@@ -436,6 +437,25 @@ headline includes settings + SL/TP + `rth_open_30m`; low-N fallback when
 nothing passes `min_trades`; escaped `bundle_path` refuses ToD/grid; page
 shows Study briefing without `run_study` / bundle apply.
 
+### 6.7 SV6 — Follow-on confirmation draft (shipped)
+
+**Goal.** Make the briefing's Admit suggestion a one-step YAML draft: same
+study, one cell's factors, optional pinned SL/TP, `constants.entry_window`
+for a chosen NY RTH segment, new `output_dir`, lineage to the parent.
+
+**Locked decisions.**
+
+- YAML draft only. No execute / `run_study` / classic hydrate.
+- ToD stays Admit (`entry_window`), never a factor axis.
+- Inspect is read-only on the parent dir (download / Send to Preview).
+  CLI `study follow-on` writes `<study_dir>/follow_on_<segment>.yaml`.
+- Thin buckets (N < 10) require `--allow-thin` / Inspect checkbox.
+- Reuses promote path-pinning; refuses overwrite of `study.spec.yaml`.
+
+**Acceptance.** `tests/study/test_study_follow_on.py`: one-cell expand,
+Admit window set, no ToD factor, pin-grid disables grid, thin gate,
+protected spec refuse, CLI write.
+
 ---
 
 ## 7. End-to-end product acceptance (after SV4)
@@ -450,8 +470,9 @@ A researcher who finished `study run` (CLI or Preview **Run via CLI**) can:
 6. See the three locked overview charts (screening, not a validated edge).
 7. Select a cell → factors + KPIs + error + optional `trade_summary.json`; download the zip if they want classic import.
 8. (SV5) Read **Study briefing** first: highest primary-metric setup + settings + best SL/TP + NY RTH bucket. Peek the cell for the full SL/TP grid and session table.
+9. (SV6) **Follow-on confirmation** → Preview / download / `study follow-on`, then Run via CLI in a **new** output dir.
 
-CLI `study expand|run|report|promote|rollup` remains the academic path. `study list` is discovery only.
+CLI `study expand|run|report|promote|follow-on|rollup` remains the academic path. `study list` is discovery only.
 
 ---
 

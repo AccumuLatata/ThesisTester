@@ -12,6 +12,7 @@ from thesistester.study.execute import (
     prepare_study_expansion,
     run_study,
 )
+from thesistester.study.follow_on import StudyFollowOnError, follow_on_study
 from thesistester.study.promote import StudyPromoteError, promote_study
 from thesistester.study.report import StudyReportError, report_study
 from thesistester.study.rollup import StudyRollupError, rollup_study
@@ -29,7 +30,7 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``study`` command group on the root CLI parser."""
     study_parser = subparsers.add_parser(
         "study",
-        help="Research Study Runner (expand / run / report / promote / rollup / list)",
+        help="Research Study Runner (expand / run / report / promote / follow-on / rollup / list)",
     )
     study_sub = study_parser.add_subparsers(dest="study_command", required=True)
 
@@ -116,6 +117,49 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         help="Overwrite an existing draft StudySpec at --output",
     )
 
+    follow_on_parser = study_sub.add_parser(
+        "follow-on",
+        help="Draft one-cell Admit confirmation StudySpec; does not execute",
+    )
+    follow_on_parser.add_argument(
+        "study_dir",
+        type=Path,
+        help="Completed study output directory (spec + expansion + index)",
+    )
+    follow_on_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Draft YAML path (default: <study_dir>/follow_on_<segment>.yaml)",
+    )
+    follow_on_parser.add_argument(
+        "--run-name",
+        type=str,
+        default=None,
+        help="Specific cell (default: study briefing winner)",
+    )
+    follow_on_parser.add_argument(
+        "--segment",
+        type=str,
+        default=None,
+        help="NY RTH segment to Admit (default: briefing strongest bucket)",
+    )
+    follow_on_parser.add_argument(
+        "--no-pin-grid",
+        action="store_true",
+        help="Keep parent SL/TP grid instead of pinning the cell's best ticks",
+    )
+    follow_on_parser.add_argument(
+        "--allow-thin",
+        action="store_true",
+        help="Allow a thin NY bucket (N < 10) to be drafted anyway",
+    )
+    follow_on_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing follow-on draft at --output",
+    )
+
     rollup_parser = study_sub.add_parser(
         "rollup",
         help="Compose per-cell WFA/validation/overfitting diagnostics (no new inference)",
@@ -146,7 +190,7 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def dispatch_study(args: argparse.Namespace) -> int:
-    """Dispatch ``study expand|run|report|promote|rollup|list``; return process exit code."""
+    """Dispatch ``study expand|run|report|promote|follow-on|rollup|list``; return process exit code."""
     try:
         if args.study_command == "expand":
             return _cmd_expand(args)
@@ -156,6 +200,8 @@ def dispatch_study(args: argparse.Namespace) -> int:
             return _cmd_report(args)
         if args.study_command == "promote":
             return _cmd_promote(args)
+        if args.study_command == "follow-on":
+            return _cmd_follow_on(args)
         if args.study_command == "rollup":
             return _cmd_rollup(args)
         if args.study_command == "list":
@@ -168,6 +214,9 @@ def dispatch_study(args: argparse.Namespace) -> int:
         return 2
     except StudyPromoteError as exc:
         print(f"Study promote error: {exc}", file=sys.stderr)
+        return 2
+    except StudyFollowOnError as exc:
+        print(f"Study follow-on error: {exc}", file=sys.stderr)
         return 2
     except StudyRollupError as exc:
         print(f"Study rollup error: {exc}", file=sys.stderr)
@@ -254,6 +303,28 @@ def _cmd_promote(args: argparse.Namespace) -> int:
         f"Draft StudySpec written: {result.output_path} "
         f"({result.cell_count} survivor cell(s) by {result.primary_metric})"
     )
+    print("This is a DRAFT — edit and confirm before `study run` (no auto-execution).")
+    print(f"Expand preview: python -m thesistester study expand {result.output_path}")
+    return os.EX_OK
+
+
+def _cmd_follow_on(args: argparse.Namespace) -> int:
+    result = follow_on_study(
+        args.study_dir,
+        run_name=args.run_name,
+        segment=args.segment,
+        pin_grid=not bool(args.no_pin_grid),
+        allow_thin=bool(args.allow_thin),
+        output=args.output,
+        write=True,
+        force=bool(args.force),
+    )
+    print(
+        f"Follow-on draft written: {result.output_path} "
+        f"(cell {result.run_name}, NY `{result.segment}`)"
+    )
+    if result.thin_sample:
+        print("Thin NY bucket — treat as a hint, not a live schedule.")
     print("This is a DRAFT — edit and confirm before `study run` (no auto-execution).")
     print(f"Expand preview: python -m thesistester study expand {result.output_path}")
     return os.EX_OK

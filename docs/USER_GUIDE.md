@@ -980,16 +980,17 @@ robustness (honest next steps after screening).
 **What it is.** Streamlit **Studies** Inspect lists `results/studies/` and
 `out/` (one level), loads `output_dir`, and shows a **Study briefing** (highest
 primary-metric cell + factor settings + best SL/TP + NY RTH bucket), ledger,
-groups, ranked / low-N, charts, and cell peek (grid + time-of-day). **Preview**
-validates YAML. **Run via CLI** spawns `study run`. **Build** emits YAML.
+groups, ranked / low-N, charts, cell peek (grid + time-of-day), and a
+**Follow-on confirmation** YAML draft. **Preview** validates YAML.
+**Run via CLI** spawns `study run`. **Build** emits YAML.
 
 **When to use it.** After a completed study, read the briefing first — then
-decide whether to constrain NY session (`entry_window` / Admit) or promote
-survivors. Author on Build; Promote stays CLI-only.
+draft a follow-on (narrowed cell + Admit `entry_window`) or promote survivors.
+Author on Build; Promote stays CLI-only.
 
-**Related terms.** Studies viewer, study briefing, time of day, NY session,
-RTH segment, grid results, best SL/TP, ranked cells, low-N, study catalog,
-study list, StudyDraft
+**Related terms.** Studies viewer, study briefing, follow-on, time of day,
+NY session, RTH segment, grid results, best SL/TP, ranked cells, low-N,
+study catalog, study list, StudyDraft
 
 **Key settings.**
 
@@ -1000,6 +1001,7 @@ study list, StudyDraft
 | Study briefing | Highest `primary_metric` cell + settings + SL/TP + NY bucket | Descriptive only; low-N if below `min_trades` |
 | Ranked cells | Factor cartesian (partner × trigger × tf × side) | Not the per-cell SL/TP grid |
 | Cell peek grid / ToD | Zip `grid_results` + NY RTH on that cell's trades | ToD is post-hoc, not a factor axis |
+| Follow-on confirmation | YAML: one cell + Admit NY segment + new `output_dir` | Does not re-sim; Inspect does not write the parent dir |
 | Canonical YAML / Preview | Validate + expand (cap 2_000) | Changed YAML reseeds CLI output dir |
 | CLI output directory | Spawn target for `study run` | Do not reuse another study’s dir |
 | Run via CLI / Confirm | Spawn existing CLI argv | Not in-process; watch Inspect → Refresh |
@@ -1012,8 +1014,8 @@ study list, StudyDraft
 
 1. CLI `study expand` → `study run` → `study report`, or Build / Preview first.
 2. Inspect: **Load selected** or paste `output_dir`. Read **Study briefing**,
-   then Ranked cells (factor grid) and Cell peek (SL/TP grid + NY RTH).
-   Time Analysis / Admit is how you lock one session bucket for the next run.
+   then **Follow-on confirmation** (or CLI `study follow-on`) to lock one
+   cell + NY bucket via Admit. Ranked cells = factor grid; peek = SL/TP + ToD.
 3. Build (optional): **Start from example** (`pRTH_open_ma.yaml`, 32 cells).
    Apply to Preview → Validate / Preview. Workers=1 on Windows.
 4. New CLI output dir. Under threshold: **Run via CLI**. Over: **Bind confirm**

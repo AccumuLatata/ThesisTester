@@ -58,7 +58,9 @@ execute loop (`run_experiment` + `build_research_bundle`) with per-cell ledger,
 soft resume, and continue-on-failure; RS4 adds `study report` (overview CSV/MD,
 OTF Δ, honesty; PF from bundle `trade_summary` unless present on the index);
 RS5 adds `study promote` (draft `explicit_cells` survivors; no auto-run) plus
-stage-first examples under `examples/studies/`. RS-D7 adds additive index
+stage-first examples under `examples/studies/`. **SV6** adds `study follow-on`
+(one narrowed cell + Admit `constants.entry_window`; YAML draft only; no
+auto-run; Inspect download / Preview, no parent-dir write). RS-D7 adds additive index
 `profit_factor` / `win_rate`; RS6 adds default-off `STUDY.*` assistant
 capabilities. **RS-D2** adds a **read-only** Streamlit Studies viewer
 (`pages/15_Studies.py`) over completed study artifacts via

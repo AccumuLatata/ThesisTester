@@ -469,8 +469,9 @@ def _supporting_lines(
     if grid_caption and best_grid:
         lines.append(grid_caption)
     lines.append(
-        "To constrain the next run to one NY bucket, set `constants.entry_window` "
-        "(Admit / session window) — do not treat ToD as a free search axis."
+        "To constrain the next run to one NY bucket, use Inspect Follow-on "
+        "or `study follow-on` (Admit `constants.entry_window`) — do not treat "
+        "ToD as a free search axis."
     )
     return lines
 

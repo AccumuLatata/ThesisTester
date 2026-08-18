@@ -35,6 +35,7 @@ python -m thesistester study expand study.yaml --output-dir out/study1
 python -m thesistester study run study.yaml --output-dir out/study1 --confirm
 python -m thesistester study report out/study1
 python -m thesistester study promote out/study1 --output draft.yaml --top-n 10
+python -m thesistester study follow-on out/study1 --segment rth_open_30m --allow-thin
 # optional replay of the emitted experiment via the unchanged R18 path:
 python -m thesistester run out/study1/experiment.yaml
 ```

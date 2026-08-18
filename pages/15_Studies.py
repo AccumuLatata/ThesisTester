@@ -152,6 +152,11 @@ from thesistester.study.schema import StudySpecError
 from thesistester.study import preview as _study_preview
 from thesistester.study import viewer as _study_viewer
 
+try:
+    from thesistester.study import follow_on as _study_follow_on
+except ImportError:  # stale tree without follow_on.py
+    _study_follow_on = None
+
 # Page-local Studies session keys + catalog cap. Do not from-import these
 # from viewer — a stale or mid-init viewer.py raises ImportError and bricks
 # Studies. String values must stay identical to thesistester.study.viewer.
@@ -304,9 +309,10 @@ def _apply_builder_ingestion_mode(draft: Any, value: Any) -> None:
 st.title("Studies")
 st.caption(
     "Inspect a completed study: briefing (best cell + settings + SL/TP + NY "
-    "session), ranked factor cartesian, and cell peek. Preview a canonical "
-    "StudySpec YAML (cell count / confirm gate), or build one without typing "
-    "YAML. Run via CLI (Preview tab) spawns the existing "
+    "session), ranked factor cartesian, and cell peek. Follow-on confirmation "
+    "drafts a related YAML (narrowed cell + Admit window) without re-simulating. "
+    "Preview a canonical StudySpec YAML (cell count / confirm gate), or build "
+    "one without typing YAML. Run via CLI (Preview tab) spawns the existing "
     "`python -m thesistester study run` process. Promote stays on the CLI "
     "(or optional STUDY.* assistant tools)."
 )
@@ -696,8 +702,8 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
     st.markdown("**Time of day (NY RTH segments)**")
     st.caption(
         "Post-hoc grouping of completed trades on this cell. Not a StudySpec "
-        "factor and not a re-simulation. Promote a strong bucket via Admit "
-        "`entry_window` before the next run."
+        "factor and not a re-simulation. Follow-on confirmation (or Admit "
+        "`entry_window`) constrains the next run to one bucket."
     )
     tod_best = getattr(peek, "time_of_day_best", None)
     if isinstance(tod_best, dict) and tod_best:
@@ -775,6 +781,125 @@ def _render_inspect_briefing(model: StudyViewerModel) -> None:
     caveats = getattr(briefing, "caveats", ()) or ()
     for caveat in caveats:
         st.caption(str(caveat))
+    _render_inspect_follow_on(model)
+
+
+def _render_inspect_follow_on(model: StudyViewerModel) -> None:
+    """SV6: YAML-only follow-on draft. Inspect stays read-only (no study-dir write)."""
+    st.markdown("#### Follow-on confirmation")
+    module = _study_follow_on
+    follow_on_study = getattr(module, "follow_on_study", None) if module else None
+    follow_on_error = getattr(module, "StudyFollowOnError", ValueError) if module else ValueError
+    segments = getattr(module, "FOLLOW_ON_SEGMENTS", None) if module else None
+    if not callable(follow_on_study) or not segments:
+        st.caption(
+            "Follow-on helper is missing from `thesistester.study.follow_on`. "
+            "Restart Streamlit after updating."
+        )
+        return
+
+    briefing = getattr(model, "briefing", None)
+    default_run = str(getattr(briefing, "run_name", "") or "").strip()
+    tod_best = getattr(briefing, "tod_best", None) or {}
+    default_segment = str(tod_best.get("segment") or "").strip()
+    peek_names = getattr(model, "peek_run_names", ()) or ()
+    run_names = [str(name) for name in peek_names if str(name)]
+    if default_run and default_run not in run_names:
+        run_names = [default_run, *run_names]
+    if not run_names:
+        st.caption("No finished cell to draft a follow-on from yet.")
+        return
+
+    st.caption(
+        "Narrow this study to one cell and Admit one NY RTH segment. "
+        "Writes a related StudySpec (new name / output_dir) — not a ToD factor, "
+        "not a re-sim. Inspect does not write the parent study dir; use "
+        "Download, Send to Preview, or CLI `study follow-on`."
+    )
+    run_index = run_names.index(default_run) if default_run in run_names else 0
+    selected_run = st.selectbox(
+        "Cell",
+        options=run_names,
+        index=run_index,
+        key="studies_follow_on_run",
+        help="Defaults to the briefing cell. Settings come from study.expansion.json.",
+    )
+    segment_list = list(segments)
+    seg_index = segment_list.index(default_segment) if default_segment in segment_list else 0
+    selected_segment = st.selectbox(
+        "NY RTH segment (Admit)",
+        options=segment_list,
+        index=seg_index,
+        key="studies_follow_on_segment",
+        help="Becomes constants.entry_window. Changing cell does not recompute ToD.",
+    )
+    pin_grid = st.checkbox(
+        "Pin best SL/TP and disable the per-cell grid",
+        value=True,
+        key="studies_follow_on_pin_grid",
+    )
+    briefing_thin = (
+        selected_run == default_run
+        and selected_segment == default_segment
+        and str(tod_best.get("sample_warning") or "").strip().lower() == "true"
+    )
+    if briefing_thin:
+        st.warning(
+            "This briefing bucket is thin (N < 10). A thin bucket is a hint, "
+            "not a live schedule."
+        )
+    allow_thin = st.checkbox(
+        "Allow a thin NY bucket",
+        value=False,
+        key="studies_follow_on_allow_thin",
+        help="Required when the chosen bucket has N < 10.",
+    )
+
+    send_col, download_slot = st.columns(2)
+    send = send_col.button(
+        "Send follow-on YAML to Preview",
+        help="Studies Preview only. Pick a new CLI output directory before Run via CLI.",
+    )
+    if send or download_slot.checkbox(
+        "Prepare follow-on download",
+        value=False,
+        key="studies_follow_on_prepare_download",
+        help="Builds the draft in memory for download. Does not write the study dir.",
+    ):
+        try:
+            result = follow_on_study(
+                model.study_dir,
+                run_name=str(selected_run),
+                segment=str(selected_segment),
+                pin_grid=bool(pin_grid),
+                allow_thin=bool(allow_thin),
+                write=False,
+            )
+        except follow_on_error as exc:
+            st.error(str(exc))
+            return
+        if send:
+            prev_cached_yaml = st.session_state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)
+            st.session_state[STUDIES_PREVIEW_YAML_KEY] = result.yaml_text
+            st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
+            st.session_state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
+            reset_launch_session_for_preview(
+                st.session_state,
+                prev_cached_yaml=prev_cached_yaml if isinstance(prev_cached_yaml, str) else None,
+                new_yaml=result.yaml_text,
+            )
+            st.success(
+                f"Preview holds `{result.study_name}` "
+                f"(Admit `{result.segment}`). Use a new CLI output directory."
+            )
+        if st.session_state.get("studies_follow_on_prepare_download"):
+            st.download_button(
+                "Download follow-on YAML",
+                data=result.yaml_text,
+                file_name=f"follow_on_{result.segment}.yaml",
+                mime="text/yaml",
+                key=f"studies_follow_on_download:{result.run_name}:{result.segment}",
+            )
 
 
 def _render_inspect() -> None:
