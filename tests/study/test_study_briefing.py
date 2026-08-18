@@ -278,10 +278,15 @@ def test_page_briefing_and_ranked_caption_are_present():
     assert "_render_inspect_briefing(model)" in source
     assert "apply_research_bundle_to_session" not in source
     start = source.index("def _render_inspect_briefing")
+    apply_start = source.index("def _apply_inspect_admit_followup")
     end = source.index("def _render_inspect(")
+    briefing_only = source[start:apply_start]
     briefing_src = source[start:end]
     assert "Draft Admit follow-up" in briefing_src
     assert "disabled=not ready" in briefing_src
+    assert "st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY" in briefing_only
+    assert "st.rerun()" in briefing_src
+    assert "st.error" in briefing_src
     assert "run_study" not in briefing_src
     assert "rollup_study" not in briefing_src
     assert "spawn_launch" not in briefing_src

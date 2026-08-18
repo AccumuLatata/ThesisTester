@@ -678,7 +678,7 @@ CLI-only. Inspect **Draft Admit follow-up** writes RTH YAML onto Preview
 | Step | Status | What does not happen |
 |---|---|---|
 | `study promote --admit-tod auto` (SAF1) | **Shipped.** One ranked cell; stamp `backtest` + `grid` `entry_window`; write `study.lineage`; new `output_dir`. Requires `--top-n 1` or `--admit-run-name`. Thin / `avg_r` tie / missing zip refuse | Auto-`study run`; ToD as a factor axis; default promote behavior change |
-| Inspect **Draft Admit follow-up** (SAF2) | **Shipped.** Same helper as `--admit-tod auto`; writes `studies_preview_yaml` + Apply cache-clear; refuse caption `studies_admit_followup_error`. Disabled without a ranked crown + NY segment | In-process execute / second spawn path; `drafts/` write; parent `study.overview.*` rewrite; classic keys |
+| Inspect **Draft Admit follow-up** (SAF2) | **Shipped.** Same helper as `--admit-tod auto`; writes `studies_preview_yaml` + Apply cache-clear; success flash `studies_admit_followup_notice` + `st.rerun()` (consumed next Inspect render) so the Preview textarea hydrates; refuse is `st.error` via `studies_admit_followup_error`. Disabled without a ranked crown + NY segment | In-process execute / second spawn path; `drafts/` write; parent `study.overview.*` rewrite; classic keys |
 | `--tod-group` / `--allow-thin` / catalog parent (SAF3) | **Shipped.** Hour/30min → `clock_range` via `entry_window_from_bucket`. Thin succeeds only with `--allow-thin` (`lineage.admit.thin: true`). Catalog / `study list` `parent` = basename of `parent_output_dir`. Inspect button stays RTH + thin-refuse | Multi-bucket cartesian; Inspect hour UI |
 
 **Honesty.** Child KPIs are a constrained re-sim (Focus ≠ Admit), not

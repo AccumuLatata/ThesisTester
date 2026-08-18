@@ -218,7 +218,7 @@ On a **loaded** Inspect model with a briefing that has a crowned cell + ToD segm
 - Calls the same helper as CLI `--admit-tod auto` (default group = `entry_rth_segment`, no `--allow-thin`).
 - Writes YAML into the existing Preview textarea key (`studies_preview_yaml` / equivalent) and clears launch-confirm / preview cache the same way **Apply to Preview** does.
 - Does **not** spawn CLI. Does **not** write `drafts/` unless we also offer an optional download (not required).
-- Refuse (caption, no write): parent in-flight (`running`/`pending` on the selected cell), missing zip, thin bucket, tie, extra-root, no ranked row.
+- Refuse (`st.error` via `studies_admit_followup_error`, no write): parent in-flight (`running`/`pending` on the selected cell), missing zip, thin bucket, tie, extra-root, no ranked row.
 - Studies-scoped keys only. Suggested additive: `studies_admit_followup_error` (string) for the refuse caption. Allow-list in page AST tests.
 - Honesty caption on the button: draft only; child is constrained re-sim; not a validated edge.
 
@@ -235,6 +235,7 @@ Best-effort: if `study.spec.yaml` has `study.lineage.parent_output_dir`, show a 
 | Key | PR | Role |
 |---|---|---|
 | `studies_admit_followup_error` | SAF2 | Last refuse caption (optional) |
+| `studies_admit_followup_notice` | SAF2 follow-up | One-shot success flash before `st.rerun()`; consumed on the next Inspect render |
 
 No classic keys. No new launch keys. Preview / launch keys stay owned by RS-D8/D9.
 
@@ -326,7 +327,7 @@ ENGINEERING_PROPOSAL.md §4.2.
 | | ☑ Button absent or disabled when Inspect has no crowned cell / no ToD segment |
 | | ☑ Success writes Preview textarea; does not create `study.launch.*` |
 | | ☑ Page AST: no `run_study(`; no `CLASSIC_RESEARCH_SESSION_KEYS` writes |
-| | ☑ Thin / missing zip → caption via `studies_admit_followup_error` (or equivalent), no YAML clobber |
+| | ☑ Thin / missing zip → `st.error` via `studies_admit_followup_error` (or equivalent), no YAML clobber |
 | | ☑ Extra-root parent refused |
 | | ☑ `viewer.py` still does not import promote / admit_followup |
 | | ☑ USER_GUIDE: draft ≠ run; extend H2 only |
