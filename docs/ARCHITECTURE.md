@@ -119,11 +119,13 @@ StudySpec factor.
 `rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`; Plotly stays
 on `pages/15_Studies.py`).
 **SAF** (Study Admit Follow-up, `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`)
-SAF1 CLI is shipped: optional fail-closed `study.lineage` +
-`study promote --admit-tod auto` drafts a child Admit spec with engine
-windows on `constants.backtest.entry_window` and `constants.grid.entry_window`
-(plus setup `constants.entry_window`). Default promote stays RS5. Inspect may
-write Preview YAML later (SAF2); it must not call `run_study`.
+SAF1 CLI + SAF2 Inspect draft are shipped: optional fail-closed
+`study.lineage` + `study promote --admit-tod auto` drafts a child Admit spec
+with engine windows on `constants.backtest.entry_window` and
+`constants.grid.entry_window` (plus setup `constants.entry_window`).
+Inspect **Draft Admit follow-up** writes that YAML onto `studies_preview_yaml`
+(Apply cache-clear). Refuse caption is `studies_admit_followup_error`.
+Default promote stays RS5. The button must not call `run_study`.
 `viewer.py` must not import `promote` or `admit_followup`.
 `admit_followup.py` must not import execute / launch / viewer / cli / Streamlit.
 Engine Admit remains `backtest.entry_window` / `grid.entry_window` (SW).
@@ -134,7 +136,7 @@ cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
 page-local — do not `from viewer import` those names. Studies-scoped keys:
 `studies_catalog_entries`, `studies_catalog_roots_key`,
 `studies_viewer_pending_path`, `studies_viewer_catalog_select`,
-`studies_viewer_selected_run`.
+`studies_viewer_selected_run`, `studies_admit_followup_error`.
 
 ## Classic/Assistant research identity boundary (CAI-1)
 

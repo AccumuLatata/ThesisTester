@@ -619,9 +619,8 @@ constrained re-simulation, RTH segments, clock range, outside_entry_window
   axis. Under `allow_all` + zero cooldown, Focus and Admit can share the same
   `signal_id` set (C7); restrictive exposure can diverge.
 - Study briefing NY buckets are Focus-family. `study promote --admit-tod auto`
-  drafts a child StudySpec that stamps engine Admit (`backtest`/`grid`
-  `entry_window`); it does not `study run`. The Inspect draft button is not
-  shipped.
+  and Inspect **Draft Admit follow-up** stamp engine Admit (`backtest`/`grid`
+  `entry_window`) onto a child spec; they do not `study run`.
 
 **Related pages.** Time Analysis; Backtest; **Exposure policy**;
 **Session close and entry cutoff**.
@@ -963,9 +962,10 @@ overview ranking, OTF delta, Research Study Runner
    StudySpec — not dropping `stage` from a narrowed promote draft.
    To lock the briefing NY RTH bucket and re-sim one ranked cell:
    `study promote out/study1 --output drafts/admit.yaml --top-n 1 --admit-tod auto`
-   (or `--admit-run-name NAME`). Child `output_dir` is new; this does **not**
-   `study run`. Thin / `avg_r` tie / missing zip refuse. Hour/30min and
-   `--allow-thin` are not shipped.
+   (or `--admit-run-name NAME`), or Inspect **Draft Admit follow-up** onto
+   Preview. Child `output_dir` is new; this does **not** `study run`.
+   Thin / `avg_r` tie / missing zip refuse. Hour/30min and `--allow-thin`
+   are not shipped.
 7. Inspect artifacts in the **Studies viewer (read-only)** page, or preview a
    canonical StudySpec YAML there for cell count / `--confirm`. After a
    successful preview, **Run via CLI** (or **Bind confirm** then **Confirm and
@@ -973,9 +973,8 @@ overview ranking, OTF delta, Research Study Runner
 
 **What it is not.**
 
-- Not confluence-combo attribution. Promote is not an in-app Streamlit control.
-  **Run via CLI** on Studies spawns the headless `study run` process (not an
-  in-process runner).
+- Not confluence-combo attribution. Inspect Admit draft writes Preview YAML
+  only. **Run via CLI** spawns headless `study run` (not in-process).
 - Overview ranking is descriptive screening, not a validated edge (multiple-testing
   bias). Prefer non-zero commission/slippage and held-out / walk-forward checks.
 - `study promote` does not execute cells and does not replace human confirmation.
@@ -993,10 +992,10 @@ groups, ranked / low-N, charts, and cell peek (grid + time-of-day). **Preview**
 validates YAML. **Run via CLI** spawns `study run`. **Build** emits YAML.
 
 **When to use it.** After a completed study, read the briefing first — then
-decide whether to constrain NY session (Admit / Time Analysis Promote) or
-promote survivors. Author on Build; Promote stays CLI-only. CLI Admit
-follow-up (`study promote --admit-tod auto`) is shipped; the Inspect
-**Draft Admit follow-up** button is **not shipped**.
+decide whether to constrain NY session (Admit) or promote survivors. Author
+on Build. Inspect **Draft Admit follow-up** writes a child Admit StudySpec
+onto Preview (same cache-clear as Apply; draft ≠ run). CLI
+`study promote --admit-tod auto` is the same helper.
 
 **Related terms.** Studies viewer, study briefing, time of day, NY session,
 RTH segment, grid results, best SL/TP, ranked cells, low-N, study catalog,
@@ -1018,22 +1017,26 @@ study list, StudyDraft
 | Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s path |
 | Start from example | pRTH (32 cells) or pdPOC | Replace `dataset.path` |
 | Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |
+| Draft Admit follow-up | Child Admit YAML → Preview | Disabled without ranked NY segment; does not run |
 
 **How to use.**
 
 1. CLI `study expand` → `study run` → `study report`, or Build / Preview first.
 2. Inspect: **Load selected** or paste `output_dir`. Read **Study briefing**,
    then Ranked cells (factor grid) and Cell peek (SL/TP grid + NY RTH).
-   Time Analysis / Admit is how you lock one session bucket for the next run.
+   **Draft Admit follow-up** (ranked crown + NY segment) writes the Admit
+   child onto Preview; Validate / Run via CLI still required.
 3. Build (optional): **Start from example** (`pRTH_open_ma.yaml`, 32 cells).
    Apply to Preview → Validate / Preview. Workers=1 on Windows.
 4. New CLI output dir. Under threshold: **Run via CLI**. Over: **Bind confirm**
    then **Confirm and run**. Child log: `study.launch.log`. Refresh Inspect.
-5. Promote: copy spec → delete losers on Build → Apply → Preview → Run via CLI.
+5. Promote survivors: copy spec → delete losers on Build → Apply → Preview →
+   Run via CLI. CLI Admit: `study promote --admit-tod auto`.
 
 **What it is not.**
 
 - Not an in-process runner or job queue. Not a validated edge.
+- **Draft Admit follow-up** does not spawn `study run` or write `drafts/`.
 - Time-of-day is **not** a StudySpec factor (avoids a 7× cartesian explosion).
   It is a post-hoc NY RTH breakdown of completed trades.
 - Ranked cells ≠ SL/TP grid. `grid.enabled` writes `best_grid_*` + zip
