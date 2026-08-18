@@ -1129,9 +1129,7 @@ def _token_levels_settings(levels_settings: Mapping[str, Any] | None) -> dict[st
             continue
         raw = settings[key]
         if isinstance(raw, (list, tuple)):
-            settings[key] = [
-                label for window in raw if (label := coerce_window_label(window))
-            ]
+            settings[key] = [label for window in raw if (label := coerce_window_label(window))]
     return settings
 
 
