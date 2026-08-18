@@ -379,7 +379,8 @@ def simulate_trades(
         Must be >= 0.
     flat_by_session_close:
         If ``True``, cap each trade's exit walk at the configured session close
-        for the entry date; otherwise preserve legacy dataset-end behavior.
+        for **that** trade's entry calendar date (per-candidate
+        ``entry_local_ts``); otherwise preserve legacy dataset-end behavior.
     session_close_time:
         Session close clock time (HH:MM or HH:MM:SS). Required when
         ``flat_by_session_close=True``.
@@ -402,7 +403,9 @@ def simulate_trades(
     return_skipped_signals:
         If ``True``, returns ``(trades_df, skipped_signals_df)`` where skipped
         signals include exposure-policy rejections and, when capture is on,
-        ``outside_entry_window`` / ``after_entry_cutoff`` admission rejects.
+        ``outside_entry_window`` / ``after_entry_cutoff`` admission rejects and
+        ``empty_session_close_cap`` when flatten finds no bar at or before the
+        per-entry close.
     entry_window:
         Optional opt-in entry-time admission window (SW2). ``None`` /
         disabled preserves legacy all-day admission. When enabled, membership
@@ -703,6 +706,7 @@ def simulate_trades(
                 "bar_idx": bar_idx,
                 "entry_bar_index": entry_bar_index,
                 "entry_ts": entry_ts,
+                "entry_local_ts": entry_local_ts,
                 "theoretical_entry_price": theoretical_entry_price,
                 "entry_price": entry_price,
                 "entry_model": entry_model,
@@ -735,6 +739,7 @@ def simulate_trades(
         bar_idx = int(candidate["bar_idx"])
         entry_bar_index = int(candidate["entry_bar_index"])
         entry_ts = candidate["entry_ts"]
+        entry_local_ts = candidate["entry_local_ts"]
         theoretical_entry_price = float(candidate["theoretical_entry_price"])
         entry_price = float(candidate["entry_price"])
         entry_model = str(candidate["entry_model"])
@@ -845,6 +850,22 @@ def simulate_trades(
                 (local_timestamps.index >= entry_bar_index) & (local_timestamps <= session_close_ts)
             ]
             if bars_until_close.empty:
+                if return_skipped_signals or return_result:
+                    skipped_signals.append(
+                        {
+                            "signal_id": int(sig["signal_id"]),
+                            "bar_index": bar_idx,
+                            "entry_bar_index": entry_bar_index,
+                            "trigger": trigger,
+                            "direction": direction,
+                            "exposure_policy": exposure_policy,
+                            "exposure_group_key": exposure_group_key,
+                            "skip_reason": "empty_session_close_cap",
+                            "blocking_trade_id": pd.NA,
+                            "blocking_exit_bar_index": pd.NA,
+                            "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                        }
+                    )
                 continue
             session_cap_bar = int(bars_until_close.index[-1])
             max_bar = min(max_bar, session_cap_bar)
