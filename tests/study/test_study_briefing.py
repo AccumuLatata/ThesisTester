@@ -280,5 +280,8 @@ def test_page_briefing_and_ranked_caption_are_present():
     start = source.index("def _render_inspect_briefing")
     end = source.index("def _render_inspect(")
     briefing_src = source[start:end]
+    assert "Draft Admit follow-up" in briefing_src
+    assert "disabled=not ready" in briefing_src
     assert "run_study" not in briefing_src
     assert "rollup_study" not in briefing_src
+    assert "spawn_launch" not in briefing_src

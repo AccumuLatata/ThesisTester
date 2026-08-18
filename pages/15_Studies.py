@@ -139,6 +139,11 @@ from thesistester.study.launch import (
     reset_launch_session_for_preview,
     spawn_launch,
 )
+from thesistester.study.promote import (
+    StudyPromoteError,
+    inspect_admit_followup_ready,
+    run_inspect_admit_followup,
+)
 from thesistester.study.preview import (
     STUDIES_PREVIEW_CACHED_KEY,
     STUDIES_PREVIEW_CACHED_YAML_KEY,
@@ -163,6 +168,7 @@ STUDIES_CATALOG_ROOTS_KEY = "studies_catalog_roots_key"
 STUDIES_VIEWER_PENDING_PATH_KEY = "studies_viewer_pending_path"
 STUDIES_VIEWER_CATALOG_SELECT_KEY = "studies_viewer_catalog_select"
 STUDIES_VIEWER_SELECTED_RUN_KEY = "studies_viewer_selected_run"
+STUDIES_ADMIT_FOLLOWUP_ERROR_KEY = "studies_admit_followup_error"
 CATALOG_DISPLAY_CAP = 50
 
 
@@ -776,6 +782,59 @@ def _render_inspect_briefing(model: StudyViewerModel) -> None:
     for caveat in caveats:
         st.caption(str(caveat))
 
+    ready = inspect_admit_followup_ready(briefing)
+    st.caption(
+        "Draft Admit follow-up writes a child StudySpec onto Preview only. "
+        "Constrained re-sim (Focus ≠ Admit), not a validated edge. Does not run."
+    )
+    if st.button(
+        "Draft Admit follow-up",
+        disabled=not ready,
+        help=(
+            "Draft only. Child is a constrained re-sim of the crowned NY bucket. "
+            "Validate / Preview still required before Run via CLI."
+        ),
+    ):
+        _apply_inspect_admit_followup(model)
+    error = st.session_state.get(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY)
+    if isinstance(error, str) and error.strip():
+        st.caption(error)
+
+
+def _apply_inspect_admit_followup(model: StudyViewerModel) -> None:
+    """SAF2: emit Admit child YAML onto Preview. Never spawns or writes drafts/."""
+    briefing = getattr(model, "briefing", None)
+    if not inspect_admit_followup_ready(briefing):
+        st.session_state[STUDIES_ADMIT_FOLLOWUP_ERROR_KEY] = (
+            "Draft Admit follow-up needs a ranked crowned cell with a NY RTH segment."
+        )
+        return
+    run_name = str(getattr(briefing, "run_name", "") or "").strip()
+    progress = getattr(model, "ledger_progress", None)
+    running_ids = tuple(getattr(progress, "running_ids", ()) or ())
+    prior_yaml = st.session_state.get(STUDIES_PREVIEW_YAML_KEY)
+    try:
+        yaml_text = run_inspect_admit_followup(
+            getattr(model, "study_dir"),
+            run_name=run_name,
+            ledger_cells=getattr(model, "ledger_cells", None),
+            running_ids=running_ids,
+            trusted_roots=default_study_viewer_roots(),
+        )
+    except StudyPromoteError as exc:
+        st.session_state[STUDIES_ADMIT_FOLLOWUP_ERROR_KEY] = str(exc)
+        if prior_yaml is None:
+            st.session_state.pop(STUDIES_PREVIEW_YAML_KEY, None)
+        else:
+            st.session_state[STUDIES_PREVIEW_YAML_KEY] = prior_yaml
+        return
+    st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY, None)
+    _write_preview_yaml(yaml_text)
+    st.success(
+        "Admit follow-up YAML is on the Preview tab — use **Validate / Preview**, "
+        "then existing Run via CLI. This does not spawn `study run`."
+    )
+
 
 def _render_inspect() -> None:
     pending = st.session_state.pop(STUDIES_VIEWER_PENDING_PATH_KEY, None)
@@ -841,6 +900,7 @@ def _render_inspect() -> None:
         or not study_viewer_model_is_current(cached_model)
     )
     if need_reload:
+        st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY, None)
         if not callable(load_study_view):
             st.error(
                 "load_study_view is missing from `thesistester.study.viewer`. "
@@ -1590,9 +1650,8 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     return draft
 
 
-def _apply_builder_draft_to_preview(draft: StudyDraft) -> str:
-    """Locked SB2 Apply to Preview sequence (§4.7). Does not spawn or auto-preview."""
-    yaml_text = emit_study_yaml(draft)
+def _write_preview_yaml(yaml_text: str) -> str:
+    """Write Preview textarea and clear confirm / preview cache (Apply sequence)."""
     prev_cached_yaml = st.session_state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)
     st.session_state[STUDIES_PREVIEW_YAML_KEY] = yaml_text
     st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
@@ -1603,6 +1662,11 @@ def _apply_builder_draft_to_preview(draft: StudyDraft) -> str:
         new_yaml=yaml_text,
     )
     return yaml_text
+
+
+def _apply_builder_draft_to_preview(draft: StudyDraft) -> str:
+    """Locked SB2 Apply to Preview sequence (§4.7). Does not spawn or auto-preview."""
+    return _write_preview_yaml(emit_study_yaml(draft))
 
 
 def _render_builder_live_strip(draft: StudyDraft) -> tuple[StudyPreview | None, Exception | None]:

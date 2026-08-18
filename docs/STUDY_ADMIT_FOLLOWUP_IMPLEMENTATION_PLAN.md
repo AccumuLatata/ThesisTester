@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **SAF1 this PR (CLI Admit draft). SAF0 landed. SAF2–SAF3 not started. SAF4 parked.**  
+**Status:** **SAF2 this PR (Inspect draft → Preview). SAF0–SAF1 landed. SAF3 not started. SAF4 parked.**  
 **Series code:** **SAF** (Study Admit Follow-up)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** RS1–RS5 + RS-D7 + RS-D8 + RS-D9; SB1–SB3; SIA0–SIA3; SV0–SV5 (briefing / per-cell NY ToD); SW C1–C9 (`entry_window_from_bucket`, Admit)  
@@ -248,7 +248,7 @@ No classic keys. No new launch keys. Preview / launch keys stay owned by RS-D8/D
 |---|---|---|
 | **SAF0** | Plan lock + living-doc pointers | Docs only (this PR) |
 | **SAF1** | CLI `--admit-tod auto` + lineage + engine-correct window stamp | `admit_followup.py`, `promote.py`, `schema.py`, CLI flags, tests |
-| **SAF2** | Inspect **Draft Admit follow-up** → Preview | `pages/15_Studies.py` + helper; no spawn |
+| **SAF2** | Inspect **Draft Admit follow-up** → Preview | `pages/15_Studies.py` + helper; no spawn (this PR) |
 | **SAF3** | `--tod-group` / `--allow-thin` + catalog `parent` | CLI + briefing group_col + viewer catalog field |
 | **SAF4** | Parked: one-click **Confirm and run** on the child (RS-D9 bind on child hash) | Do not implement |
 

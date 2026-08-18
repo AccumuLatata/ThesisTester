@@ -1,9 +1,11 @@
-"""Survivor promotion draft helper (RS5).
+"""Survivor promotion draft helper (RS5) + Admit follow-up YAML (SAF1/SAF2).
 
 Reads a completed study directory's overview ranking and writes a **draft**
 StudySpec with ``stage.mode: explicit_cells`` for the selected survivor factor
-tuples. Never executes backtests — human edit/confirm remains required before
-``study run``.
+tuples. Inspect **Draft Admit follow-up** uses the in-memory Admit path
+(``draft_admit_followup_yaml`` / ``run_inspect_admit_followup``) and never
+writes ``drafts/``. Never executes backtests — human edit/confirm remains
+required before ``study run``.
 """
 
 from __future__ import annotations
@@ -284,52 +286,27 @@ def build_promoted_draft(
     return validate_study_spec(draft)
 
 
-def _overview_bundle_rel(report: Any, run_name: str) -> str | None:
-    """``bundle_path`` for a ranked run from the overview frame."""
-    overview = getattr(report, "overview", None)
-    if overview is None or getattr(overview, "empty", True):
-        return None
-    if "run_name" not in overview.columns or "bundle_path" not in overview.columns:
-        return None
-    matched = overview.loc[overview["run_name"].astype(str) == str(run_name)]
-    if matched.empty:
-        return None
-    raw = matched.iloc[0].get("bundle_path")
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    return text or None
-
-
-def promote_study(
-    study_dir: str | Path,
+def _compose_promoted_draft(
+    root: Path,
     *,
-    output: str | Path,
-    top_n: int = 10,
-    metric: str | None = None,
-    run_names: Sequence[str] | None = None,
-    force: bool = False,
-    admit_tod: str | None = None,
-    admit_run_name: str | None = None,
-) -> StudyPromoteResult:
-    """Write a draft survivor StudySpec; never executes backtests.
+    top_n: int,
+    metric: str | None,
+    run_names: Sequence[str] | None,
+    admit_tod: str | None,
+    admit_run_name: str | None,
+    output_path: Path | None,
+    write_artifacts: bool = True,
+) -> tuple[dict[str, Any], list[str], str]:
+    """Build a promoted (and optional Admit) draft in memory.
 
-    ``admit_tod`` omitted → RS5 promote (no lineage, no Admit window).
-    ``admit_tod='auto'`` → one-cell Admit follow-up (SAF1).
+    Does not write the draft YAML. ``write_artifacts=True`` (CLI ``promote_study``)
+    may rewrite parent ``study.overview.*`` / ``study.otf_delta.csv``. The
+    Inspect in-memory path passes ``False`` so a Preview draft cannot mutate
+    the parent study dir.
     """
-    root = Path(study_dir)
-    if not root.is_dir():
-        raise StudyPromoteError(f"Study directory does not exist: {root}")
     spec_path = root / SPEC_YAML
     if not spec_path.is_file():
         raise StudyPromoteError(f"Missing {SPEC_YAML} under {root}")
-
-    out_path = Path(output)
-    if out_path.exists() and not force:
-        raise StudyPromoteError(
-            f"Refusing to overwrite existing draft {out_path}; pass --force to replace "
-            "(promote drafts are meant for human edits)"
-        )
 
     try:
         source_spec = load_study_spec(spec_path)
@@ -337,7 +314,7 @@ def promote_study(
         raise StudyPromoteError(f"Unable to load source StudySpec: {exc}") from exc
 
     try:
-        report = report_study(root)
+        report = report_study(root, write_artifacts=write_artifacts)
     except StudyReportError as exc:
         raise StudyPromoteError(f"Unable to build overview for promote: {exc}") from exc
 
@@ -404,7 +381,7 @@ def promote_study(
         source_study_dir=root,
         primary_metric=primary,
         top_n=top_n,
-        output_path=out_path,
+        output_path=output_path,
         source_spec_parent=source_spec_parent,
     )
 
@@ -437,9 +414,22 @@ def promote_study(
         except AdmitFollowupError as exc:
             raise StudyPromoteError(str(exc)) from exc
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    return draft, list(selected), primary
+
+
+def _promote_yaml_text(
+    draft: Mapping[str, Any],
+    *,
+    root: Path,
+    selected: Sequence[str],
+    primary: str,
+    top_n: int,
+    run_names: Sequence[str] | None,
+    admit_tod: str | None,
+    admit_run_name: str | None,
+) -> str:
     admit_header = ""
-    if admit_mode is not None:
+    if admit_tod is not None:
         admit_header = (
             "# Admit follow-up: one-cell constrained re-sim (Focus ≠ Admit).\n"
             "# Engine path is constants.backtest.entry_window "
@@ -460,7 +450,171 @@ def promote_study(
         "# unpromoted example (or remove its stage filter) — do not drop stage from\n"
         "# this narrowed survivor draft and expect 800 cells.\n"
     )
-    out_path.write_text(header + _dump_yaml(draft), encoding="utf-8")
+    return header + _dump_yaml(draft)
+
+
+def draft_admit_followup_yaml(
+    study_dir: str | Path,
+    *,
+    admit_run_name: str | None = None,
+) -> str:
+    """In-memory Admit follow-up YAML (SAF1 helper). Never writes. Never executes."""
+    root = Path(study_dir)
+    if not root.is_dir():
+        raise StudyPromoteError(f"Study directory does not exist: {root}")
+    draft, selected, primary = _compose_promoted_draft(
+        root,
+        top_n=1,
+        metric=None,
+        run_names=None,
+        admit_tod=ADMIT_TOD_MODE,
+        admit_run_name=admit_run_name,
+        output_path=None,
+        write_artifacts=False,
+    )
+    return _promote_yaml_text(
+        draft,
+        root=root,
+        selected=selected,
+        primary=primary,
+        top_n=1,
+        run_names=None,
+        admit_tod=ADMIT_TOD_MODE,
+        admit_run_name=admit_run_name,
+    )
+
+
+def inspect_cell_in_flight(
+    ledger_cells: Mapping[str, Any] | None,
+    run_name: str,
+    *,
+    running_ids: Sequence[str] = (),
+) -> bool:
+    """True when the crowned cell is still ``running`` or ``pending``."""
+    name = str(run_name or "").strip()
+    if not name:
+        return False
+    if name in {str(item) for item in running_ids}:
+        return True
+    if not isinstance(ledger_cells, Mapping):
+        return False
+    cell = ledger_cells.get(name)
+    if not isinstance(cell, Mapping):
+        return False
+    return str(cell.get("status") or "") in {"running", "pending"}
+
+
+def inspect_admit_followup_ready(briefing: Any) -> bool:
+    """True when Inspect has a ranked crown and a NY ToD segment."""
+    run_name = getattr(briefing, "run_name", None)
+    if not isinstance(run_name, str) or not run_name.strip() or run_name.strip() == "—":
+        return False
+    if str(getattr(briefing, "source", "") or "") != "ranked":
+        return False
+    tod = getattr(briefing, "tod_best", None) or {}
+    if not isinstance(tod, Mapping):
+        return False
+    segment = str(tod.get("segment") or "").strip()
+    return bool(segment) and segment != "—"
+
+
+def run_inspect_admit_followup(
+    study_dir: str | Path,
+    *,
+    run_name: str,
+    ledger_cells: Mapping[str, Any] | None = None,
+    running_ids: Sequence[str] = (),
+    trusted_roots: Sequence[Path] | None = None,
+) -> str:
+    """Inspect Admit draft YAML. Extra-root / in-flight refuse. Never writes files."""
+    name = str(run_name or "").strip()
+    if not name:
+        raise StudyPromoteError("No ranked cell to draft Admit follow-up")
+    if inspect_cell_in_flight(ledger_cells, name, running_ids=running_ids):
+        raise StudyPromoteError(
+            f"Selected cell {name!r} is still running or pending; wait for it to finish"
+        )
+    candidate = Path(study_dir).expanduser().resolve()
+    if trusted_roots:
+        allowed = tuple(Path(root).resolve() for root in trusted_roots)
+        if not any(candidate == root or candidate.is_relative_to(root) for root in allowed):
+            raise StudyPromoteError(
+                "Study path is outside the trusted local roots "
+                f"(cwd and store). Resolved path: {candidate}"
+            )
+    if not candidate.is_dir():
+        raise StudyPromoteError(f"Study directory does not exist: {candidate}")
+    return draft_admit_followup_yaml(candidate, admit_run_name=name)
+
+
+def _overview_bundle_rel(report: Any, run_name: str) -> str | None:
+    """``bundle_path`` for a ranked run from the overview frame."""
+    overview = getattr(report, "overview", None)
+    if overview is None or getattr(overview, "empty", True):
+        return None
+    if "run_name" not in overview.columns or "bundle_path" not in overview.columns:
+        return None
+    matched = overview.loc[overview["run_name"].astype(str) == str(run_name)]
+    if matched.empty:
+        return None
+    raw = matched.iloc[0].get("bundle_path")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def promote_study(
+    study_dir: str | Path,
+    *,
+    output: str | Path,
+    top_n: int = 10,
+    metric: str | None = None,
+    run_names: Sequence[str] | None = None,
+    force: bool = False,
+    admit_tod: str | None = None,
+    admit_run_name: str | None = None,
+) -> StudyPromoteResult:
+    """Write a draft survivor StudySpec; never executes backtests.
+
+    ``admit_tod`` omitted → RS5 promote (no lineage, no Admit window).
+    ``admit_tod='auto'`` → one-cell Admit follow-up (SAF1).
+    """
+    root = Path(study_dir)
+    if not root.is_dir():
+        raise StudyPromoteError(f"Study directory does not exist: {root}")
+
+    out_path = Path(output)
+    if out_path.exists() and not force:
+        raise StudyPromoteError(
+            f"Refusing to overwrite existing draft {out_path}; pass --force to replace "
+            "(promote drafts are meant for human edits)"
+        )
+
+    draft, selected, primary = _compose_promoted_draft(
+        root,
+        top_n=top_n,
+        metric=metric,
+        run_names=run_names,
+        admit_tod=admit_tod,
+        admit_run_name=admit_run_name,
+        output_path=out_path,
+    )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        _promote_yaml_text(
+            draft,
+            root=root,
+            selected=selected,
+            primary=primary,
+            top_n=top_n,
+            run_names=run_names,
+            admit_tod=admit_tod,
+            admit_run_name=admit_run_name,
+        ),
+        encoding="utf-8",
+    )
 
     return StudyPromoteResult(
         draft_spec=draft,
