@@ -1477,8 +1477,15 @@ def build_setup(config: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _require_level_columns(levels: pd.DataFrame, names: list[str]) -> None:
-    """Fail closed when a setup names columns absent from the levels frame."""
-    missing = sorted({column for column in names if column not in levels.columns})
+    """Fail closed when a setup names columns absent from the levels frame.
+
+    Names are stringified before membership and sorting so mixed/unhashable
+    ``selected_levels`` items raise this ``ValueError`` (same wording as
+    anchor-rules) instead of ``TypeError``. Exact names are required; do not
+    strip — a padded token must not silently match a live column and then be
+    dropped by ``detect_confluence_zones``.
+    """
+    missing = sorted({str(column) for column in names if str(column) not in levels.columns})
     if missing:
         raise ValueError(f"Setup references unavailable level columns: {missing}")
 

@@ -1,17 +1,22 @@
 """LC4 probes: API global-cluster missing-column fail-closed.
 
 P1–P3 lock ``api.generate_signals``. P4 locks the confluence library skip
-contract. See ``docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md`` §7.4.
+contract. Inheritance probes lock ``run_experiment`` / study cells. See
+``docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md`` §7.4.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
-from thesistester.api import generate_signals
+from thesistester.api import generate_signals, run_experiment
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.setup import build_setup_config
+from thesistester.study.execute import execute_study_cell
+from tests.fixtures.assistant_parity import parity_run_spec, write_parity_bars
 
 _MISSING = "Pivot_1min_High"
 _UNAVAILABLE = "unavailable level columns"
@@ -106,3 +111,39 @@ def test_lc4_p4_library_missing_columns_still_empty_schema():
     )
     assert result.empty
     assert list(result.columns) == _ZONE_COLUMNS
+
+
+def test_lc4_unhashable_selected_levels_raise_value_error_not_type_error():
+    """Malformed selected_levels must fail closed as ValueError, not TypeError."""
+    config = _cluster(selected_levels=["ONH", ["nested"], 1])
+    with pytest.raises(ValueError, match=_UNAVAILABLE) as exc_info:
+        generate_signals(_levels_frame(), config)
+    message = str(exc_info.value)
+    listed = message.split(":", 1)[-1]
+    assert "['nested']" in listed
+    assert "'1'" in listed
+    assert "ONH" not in listed
+
+
+def test_lc4_run_experiment_missing_column_raises(tmp_path: Path):
+    """run_experiment inherits the generate_signals missing-column ValueError."""
+    write_parity_bars(tmp_path / "bars.csv")
+    spec = parity_run_spec(dataset_path="bars.csv")
+    spec["setup"]["selected_levels"] = ["dOpen", _MISSING]
+    with pytest.raises(ValueError, match=_UNAVAILABLE) as exc_info:
+        run_experiment(spec, base_directory=tmp_path)
+    assert _MISSING in str(exc_info.value)
+
+
+def test_lc4_study_cell_missing_column_fails_closed(tmp_path: Path):
+    """Study cells record the ValueError as a failed cell; they do not swallow it."""
+    write_parity_bars(tmp_path / "bars.csv")
+    spec = parity_run_spec(dataset_path="bars.csv", name="lc4_missing")
+    spec["setup"]["selected_levels"] = ["dOpen", _MISSING]
+    payload = execute_study_cell((spec, str(tmp_path)))
+    assert payload["status"] == "failed"
+    assert payload["bundle"] is None
+    error = payload["error"] or ""
+    assert error.startswith("ValueError:")
+    assert _UNAVAILABLE in error
+    assert _MISSING in error
