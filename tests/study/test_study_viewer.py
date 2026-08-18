@@ -439,6 +439,11 @@ def test_pages_studies_is_read_only_source():
                 and slice_node.id == "STUDIES_ADMIT_FOLLOWUP_ERROR_KEY"
             ):
                 written_keys.add("studies_admit_followup_error")
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY"
+            ):
+                written_keys.add("studies_admit_followup_notice")
             elif isinstance(slice_node, ast.Name) and slice_node.id.startswith("WIDGET_KEY_"):
                 continue
             elif (
@@ -477,6 +482,7 @@ def test_pages_studies_is_read_only_source():
         STUDIES_VIEWER_CATALOG_SELECT_KEY,
         STUDIES_VIEWER_SELECTED_RUN_KEY,
         "studies_admit_followup_error",
+        "studies_admit_followup_notice",
     }
     assert STUDIES_BUILDER_DRAFT_KEY in written_keys
     assert STUDIES_BUILDER_PENDING_SYNC_KEY in written_keys

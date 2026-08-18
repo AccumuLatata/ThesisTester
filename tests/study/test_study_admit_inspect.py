@@ -207,6 +207,8 @@ def test_page_inspect_admit_ast_and_no_execute():
     assert "Draft Admit follow-up" in page
     assert "STUDIES_ADMIT_FOLLOWUP_ERROR_KEY" in page
     assert "studies_admit_followup_error" in page
+    assert "STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY" in page
+    assert "st.rerun()" in page
     assert "_apply_inspect_admit_followup" in page
     assert "run_inspect_admit_followup" in page
     assert "run_study(" not in page

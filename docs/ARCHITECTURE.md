@@ -127,7 +127,9 @@ with engine windows on `constants.backtest.entry_window` and
 best-effort `parent` from `study.lineage.parent_output_dir` (YAML only).
 Inspect **Draft Admit follow-up** writes RTH YAML onto `studies_preview_yaml`
 (Apply cache-clear) and must not rewrite parent `study.overview.*`.
-Refuse caption is `studies_admit_followup_error`.
+Refuse caption is `studies_admit_followup_error`; success flash is
+`studies_admit_followup_notice` then `st.rerun()` so the Preview textarea
+hydrates (Load-example pattern).
 Default promote stays RS5. The button must not call `run_study`.
 `viewer.py` must not import `promote` or `admit_followup`.
 `admit_followup.py` must not import execute / launch / viewer / cli / Streamlit.
@@ -139,7 +141,8 @@ cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
 page-local — do not `from viewer import` those names. Studies-scoped keys:
 `studies_catalog_entries`, `studies_catalog_roots_key`,
 `studies_viewer_pending_path`, `studies_viewer_catalog_select`,
-`studies_viewer_selected_run`, `studies_admit_followup_error`.
+`studies_viewer_selected_run`, `studies_admit_followup_error`,
+`studies_admit_followup_notice`.
 
 ## Classic/Assistant research identity boundary (CAI-1)
 

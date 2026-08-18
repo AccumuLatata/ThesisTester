@@ -169,6 +169,7 @@ STUDIES_VIEWER_PENDING_PATH_KEY = "studies_viewer_pending_path"
 STUDIES_VIEWER_CATALOG_SELECT_KEY = "studies_viewer_catalog_select"
 STUDIES_VIEWER_SELECTED_RUN_KEY = "studies_viewer_selected_run"
 STUDIES_ADMIT_FOLLOWUP_ERROR_KEY = "studies_admit_followup_error"
+STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY = "studies_admit_followup_notice"
 CATALOG_DISPLAY_CAP = 50
 
 
@@ -790,6 +791,7 @@ def _render_inspect_briefing(model: StudyViewerModel) -> None:
     )
     if st.button(
         "Draft Admit follow-up",
+        key="studies_admit_followup_btn",
         disabled=not ready,
         help=(
             "Draft only. Child is a constrained re-sim of the crowned NY bucket. "
@@ -797,9 +799,16 @@ def _render_inspect_briefing(model: StudyViewerModel) -> None:
         ),
     ):
         _apply_inspect_admit_followup(model)
+    if not ready:
+        st.caption(
+            "Disabled until Inspect has a ranked crowned cell with a NY RTH segment."
+        )
     error = st.session_state.get(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY)
     if isinstance(error, str) and error.strip():
-        st.caption(error)
+        st.error(error)
+    notice = st.session_state.get(STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY)
+    if isinstance(notice, str) and notice.strip():
+        st.success(notice)
 
 
 def _apply_inspect_admit_followup(model: StudyViewerModel) -> None:
@@ -809,6 +818,7 @@ def _apply_inspect_admit_followup(model: StudyViewerModel) -> None:
         st.session_state[STUDIES_ADMIT_FOLLOWUP_ERROR_KEY] = (
             "Draft Admit follow-up needs a ranked crowned cell with a NY RTH segment."
         )
+        st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY, None)
         return
     run_name = str(getattr(briefing, "run_name", "") or "").strip()
     progress = getattr(model, "ledger_progress", None)
@@ -824,17 +834,21 @@ def _apply_inspect_admit_followup(model: StudyViewerModel) -> None:
         )
     except StudyPromoteError as exc:
         st.session_state[STUDIES_ADMIT_FOLLOWUP_ERROR_KEY] = str(exc)
+        st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY, None)
         if prior_yaml is None:
             st.session_state.pop(STUDIES_PREVIEW_YAML_KEY, None)
         else:
             st.session_state[STUDIES_PREVIEW_YAML_KEY] = prior_yaml
         return
     st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY, None)
-    _write_preview_yaml(yaml_text)
-    st.success(
+    st.session_state[STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY] = (
         "Admit follow-up YAML is on the Preview tab — use **Validate / Preview**, "
         "then existing Run via CLI. This does not spawn `study run`."
     )
+    _write_preview_yaml(yaml_text)
+    # Widget-backed Preview textarea only hydrates the new YAML on the next run
+    # (same pattern as Load example / Copy spec).
+    st.rerun()
 
 
 def _render_inspect() -> None:

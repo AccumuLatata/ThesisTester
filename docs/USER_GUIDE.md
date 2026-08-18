@@ -1019,7 +1019,7 @@ study list, StudyDraft
 | Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s path |
 | Start from example | pRTH (32 cells) or pdPOC | Replace `dataset.path` |
 | Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |
-| Draft Admit follow-up | Child Admit YAML → Preview | Disabled without ranked NY segment; does not run or rewrite parent overview |
+| Draft Admit follow-up | Child Admit YAML → Preview | Greyed out = no ranked NY segment. Red error (thin/zip/extra-root) leaves Preview unchanged |
 | Catalog `parent` | Basename from `study.lineage.parent_output_dir` | Corrupt / missing lineage → `—`; hour Admit stays CLI |
 
 **How to use.**

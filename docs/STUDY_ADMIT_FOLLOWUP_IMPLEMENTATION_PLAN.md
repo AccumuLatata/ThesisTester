@@ -235,6 +235,7 @@ Best-effort: if `study.spec.yaml` has `study.lineage.parent_output_dir`, show a 
 | Key | PR | Role |
 |---|---|---|
 | `studies_admit_followup_error` | SAF2 | Last refuse caption (optional) |
+| `studies_admit_followup_notice` | SAF2 follow-up | Success flash before `st.rerun()` so Preview textarea hydrates |
 
 No classic keys. No new launch keys. Preview / launch keys stay owned by RS-D8/D9.
 
