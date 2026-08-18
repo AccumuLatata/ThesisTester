@@ -830,6 +830,10 @@ def _apply_inspect_admit_followup(model: StudyViewerModel) -> None:
         return
     st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY, None)
     _write_preview_yaml(yaml_text)
+    st.success(
+        "Admit follow-up YAML is on the Preview tab — use **Validate / Preview**, "
+        "then existing Run via CLI. This does not spawn `study run`."
+    )
 
 
 def _render_inspect() -> None:
@@ -896,6 +900,7 @@ def _render_inspect() -> None:
         or not study_viewer_model_is_current(cached_model)
     )
     if need_reload:
+        st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY, None)
         if not callable(load_study_view):
             st.error(
                 "load_study_view is missing from `thesistester.study.viewer`. "
