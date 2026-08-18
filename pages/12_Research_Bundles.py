@@ -20,11 +20,13 @@ from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     build_research_bundle,
     load_research_bundle,
+    should_skip_dataset_bootstrap,
 )
 
 st.title("🧳 Research Bundles")
 st.caption("Export and import portable research state snapshots for this session.")
-bootstrap_active_saved_dataset()
+if not should_skip_dataset_bootstrap(st.session_state):
+    bootstrap_active_saved_dataset()
 render_classic_thesis_chrome(
     page_key="research_bundles",
     dataset_id=st.session_state.get("dataset_id"),

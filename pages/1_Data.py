@@ -48,7 +48,11 @@ from thesistester.app_state import (
     bootstrap_active_saved_dataset,
     restore_saved_dataset_provenance,
 )
-from thesistester.research_bundle import DATA_PAGE_INVALIDATE_SOURCE_KEY
+from thesistester.research_bundle import (
+    BUNDLE_IMPORT_OMITTED_DATA_KEY,
+    DATA_PAGE_INVALIDATE_SOURCE_KEY,
+    should_skip_dataset_bootstrap,
+)
 from thesistester.persistence import (
     clear_active_dataset_id,
     compute_dataset_id,
@@ -277,6 +281,18 @@ def _session_has_primary_data(session_state=None) -> bool:
     """True when the session holds a primary OHLCV frame (bundle/upload/saved)."""
     state = st.session_state if session_state is None else session_state
     return isinstance(state.get("data"), pd.DataFrame)
+
+
+def _preserve_dataset_less_bundle(session_state=None) -> bool:
+    """True after a dataset-less import: do not auto-fill ``data``.
+
+    Saved-dataset bootstrap and Sample auto-load both treat missing ``data``
+    as an empty session. After AH4 that is also the honest dataset-less
+    restore shape (trades B, no bars). Auto-fill would mix A (or sample)
+    beside those trades until the user explicitly loads or uploads.
+    """
+    state = st.session_state if session_state is None else session_state
+    return should_skip_dataset_bootstrap(state)
 
 
 def _consume_data_page_source_invalidation(session_state=None) -> bool:
@@ -1021,6 +1037,7 @@ def _set_active_dataset_state(
             st.session_state.pop("setup_config", None)
             st.session_state.pop("_setup_builder_editor_config", None)
     st.session_state["data"] = df
+    st.session_state.pop(BUNDLE_IMPORT_OMITTED_DATA_KEY, None)
     st.session_state["resampled_data"] = resampled_data or {}
     st.session_state["instrument"] = instrument
     st.session_state["base_interval"] = base_interval
@@ -1249,7 +1266,8 @@ st.caption(
 )
 render_classic_nav_prefill_caption(target_page="pages/1_Data.py")
 
-bootstrap_active_saved_dataset()
+if not _preserve_dataset_less_bundle():
+    bootstrap_active_saved_dataset()
 _consume_data_page_source_invalidation()
 
 flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
@@ -1440,7 +1458,7 @@ explicit_sample_load = bool(st.session_state.pop(LOAD_SAMPLE_REQUESTED_KEY, Fals
 use_source_dataset = _should_apply_source_dataset(
     file_present=file is not None,
     source=source,
-    has_session_data=_session_has_primary_data(),
+    has_session_data=_session_has_primary_data() or _preserve_dataset_less_bundle(),
     explicit_sample_load=explicit_sample_load,
 )
 
@@ -1544,6 +1562,15 @@ if use_source_dataset:
             )
     except (DataValidationError, ValueError) as exc:
         st.error(str(exc))
+elif _preserve_dataset_less_bundle():
+    st.info(
+        "Imported research bundle omitted dataset bars. Sample data and the "
+        "active saved dataset are not applied automatically. Load a saved "
+        "dataset or upload a CSV if you want bars beside the imported trades."
+    )
+    if source == "Sample data" and st.button("Load sample data"):
+        st.session_state[LOAD_SAMPLE_REQUESTED_KEY] = True
+        st.rerun()
 elif _session_has_primary_data():
     if source == "Sample data":
         st.info(

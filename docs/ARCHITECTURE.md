@@ -1219,10 +1219,20 @@ a file is present. `apply_research_bundle_to_session` sets the one-shot
 instantiating uploaders — a leftover primary or lower-TF CSV widget must not
 replace a just-imported session dataset (a leftover lower file would re-apply
 on signature mismatch and clear execution dependents).
+Uploader nonce ≠ leftover research keys: apply also clears
+`otf_filter_summary`, `otf_filter_result`, `backtest_otf_filter`,
+`grid_otf_filter`, `otf_rejected_signals`, `otf_candidate_signals`,
+`otf_accepted_signals`, `setup_config`, `focused_trades`, and
+`focused_equity_curve`. After a dataset-less import,
+`bundle_import_omitted_data` skips page-12 and Data-page
+`bootstrap_active_saved_dataset` and blocks Data-page Sample auto-load
+so an active saved dataset (or the sample file) cannot refill `data`.
+The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
 | `data` | Data (`pages/1_Data.py`), Research Bundle import | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Report/Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV/session columns. Data page Sample auto-load applies only to empty sessions; navigation must not replace in-session bars. |
+| `bundle_import_omitted_data` | Research Bundle apply | Page 12 / Data bootstrap and Sample auto-load gate; cleared on Data-page successful load | `bool` — True when the imported zip omitted `data` |
 | `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
 | `raw_data` | NinjaTrader capture, data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated NinjaTrader 3/5-field capture or tick/trade rows restored from `raw.parquet`; never consumed by the bar engine. A canonical-only resave preserves an existing sidecar and its provenance. |
 | `raw_interval` | Data capture profiles / saved-dataset bootstrap | Local dataset provenance | Inferred raw capture interval restored from saved metadata and preserved with an existing raw sidecar |
