@@ -297,6 +297,17 @@ def normalize_trigger_timeframe(value: Any) -> str:
     return normalized or DEFAULT_TRIGGER_TIMEFRAME
 
 
+def _normalized_level_token(value: Any) -> str:
+    """Strip a setup level token for validator membership checks.
+
+    Anchor / rule checks already ``strip()`` before comparing. Selected-levels
+    must use the same identity so ``" close"`` cannot stay headless-legal.
+    """
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
 def is_setup_eligible_level_column(column: str) -> bool:
     """Return True when *column* may be selected as a confluence/setup level."""
     return column not in BASE_COLUMNS and column not in NON_LEVEL_OUTPUT_COLUMNS
@@ -411,7 +422,11 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
                     f"cannot be used for confluence: {banned}."
                 )
             banned_base = sorted(
-                {str(level) for level in selected_levels if str(level) in BASE_COLUMNS}
+                {
+                    token
+                    for level in selected_levels
+                    if (token := _normalized_level_token(level)) in BASE_COLUMNS
+                }
             )
             if banned_base:
                 errors.append(
