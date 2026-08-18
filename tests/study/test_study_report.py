@@ -252,6 +252,8 @@ def test_markdown_includes_multiple_testing_honesty(tmp_path: Path):
     assert "multiple-testing" in result.markdown.lower() or "multiple-testing" in result.markdown
     assert "not a validated edge" in result.markdown.lower() or "validated edge" in result.markdown
     assert "Top descriptive cell" in result.markdown
+    assert "best_grid_stop_loss_ticks" in result.markdown
+    assert "Time-of-day is not a StudySpec factor" in result.markdown
     assert (study_dir / "study.overview.md").is_file()
     assert "multiple-testing" in (study_dir / "study.overview.md").read_text().lower() or (
         "validated edge" in (study_dir / "study.overview.md").read_text()

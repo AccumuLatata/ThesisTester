@@ -26,9 +26,10 @@ example is legacy 1m). Execute is still CLI / `run_experiment`. Studies does
 not walk the Data page. The 15s-primary derive loader resolves OHLC-identical
 source duplicate opens (lowest volume) before 1m derivation; OHLC conflicts
 fail the cell.
-**SV** (Study Viewer) SV1–SV4 ✅
-`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0–**SV4** shipped (catalog +
-`study list` + click-to-load + quality panes + overview charts + cell peek).
+**SV** (Study Viewer) SV1–SV5 ✅
+`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0–**SV5** shipped (catalog +
+`study list` + click-to-load + quality panes + overview charts + cell peek +
+trader briefing / per-cell SL/TP grid / NY RTH ToD).
 Does not change preview / CLI-spawn / execute. Inspect remains artifacts-only
 (`report_study(..., write_artifacts=False)`; no `rollup_study()`).
 
@@ -624,7 +625,7 @@ Preview textarea key before that widget mounts (Build body runs first).
 
 ## SV — Study Viewer (operator contract)
 
-**Status:** SV0–**SV4** shipped. Plan:
+**Status:** SV0–**SV5** shipped. Plan:
 `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`.
 
 Inspect lists local study dirs (one-level `results/studies/` + `out/`) and
@@ -638,11 +639,13 @@ still accepts a pasted path. Execute stays CLI (`study run` / Preview
 | Quality panes (SV2) ✅ | Failed-cell `error` table; `report.group_summaries`; read `study.rollup.*` **if present**; tail `study.launch.log` | `rollup_study()` (that helper writes); auto-`study report` write |
 | Overview charts (SV3) ✅ | Plotly from already-loaded ranked / group frames | New metrics; unzip-all-cells equity charts |
 | Cell peek (SV4) ✅ | Selected `run_name` → index + ledger error + optional `trade_summary.json` | `apply_research_bundle_to_session`; classic session keys; Bundles / Backtest deep-link |
+| Briefing / grid / ToD (SV5) ✅ | Deterministic headline (highest primary-metric cell + settings + best SL/TP + NY RTH bucket); ranked `best_grid_*` columns; peek `grid_results.parquet` + `trades.parquet` ToD | New StudySpec factor axis; unzip-all-cells; classic-session hydrate; re-sim |
 
 **Honesty.** Catalog listing is discovery, not a quality score. Ledger
 `ok`/`failed` counts and Inspect progress are cell-status, not edge.
 Overview charts inherit RS4 ranking caveats (descriptive screen,
 `min_trades`, multiple-testing). Rollup-if-present is compose-only
-diagnostics. Cell peek is not a validated edge.
+diagnostics. Cell peek / briefing / NY ToD are not a validated edge.
+Time-of-day is post-hoc on completed trades, not a cartesian factor.
 
 Paste `output_dir` remains valid alongside the catalog.

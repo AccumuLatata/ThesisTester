@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-16  
-**Status:** **SV0–SV4 shipped.**  
+**Status:** **SV0–SV5 shipped.**  
 **Series code:** **SV** (Study Viewer)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** Research Study Runner RS1–RS5 + RS-D7 + RS-D2 + RS-D4 + RS-D8 + RS-D9; Study Builder SB1–SB3; Study Ingest Alignment SIA0–SIA3  
@@ -414,6 +414,30 @@ session keys, no st.switch_page. No engine/golden edits. Extend USER_GUIDE H2. �
 
 ---
 
+## 6.6 SV5 — Trader briefing + per-cell grid + NY time-of-day (shipped)
+
+**Goal.** After `study run`, Inspect must answer the money question without a
+file hunt: highest R (or other primary) cell, its factor settings, the
+per-cell SL/TP grid winner, and the strongest NY RTH bucket on that cell.
+
+**Locked decisions.**
+
+- No new StudySpec factor axis. ToD stays post-hoc (`add_time_buckets` +
+  `summarize_by_group` on one cell's `trades.parquet`).
+- Ranked table = factor cartesian. SL/TP grid = per-cell zip + `best_grid_*`.
+- Briefing is deterministic (`thesistester/study/briefing.py`). No LLM.
+- Peek may read `grid_results.parquet` / `trades.parquet` for **one** selected
+  cell. Do not unzip every cell. Do not hydrate classic session keys.
+- `report_study` markdown may mention the distinction and show `best_grid_*`;
+  it does not unzip trades for ToD (Inspect briefing does, one top cell).
+
+**Acceptance.** Fixture tests in `tests/study/test_study_briefing.py`: ranked
+headline includes settings + SL/TP + `rth_open_30m`; low-N fallback when
+nothing passes `min_trades`; escaped `bundle_path` refuses ToD/grid; page
+shows Study briefing without `run_study` / bundle apply.
+
+---
+
 ## 7. End-to-end product acceptance (after SV4)
 
 A researcher who finished `study run` (CLI or Preview **Run via CLI**) can:
@@ -425,6 +449,7 @@ A researcher who finished `study run` (CLI or Preview **Run via CLI**) can:
 5. If they already ran `study rollup`, see that table; if not, a caption tells them to use the CLI.
 6. See the three locked overview charts (screening, not a validated edge).
 7. Select a cell → factors + KPIs + error + optional `trade_summary.json`; download the zip if they want classic import.
+8. (SV5) Read **Study briefing** first: highest primary-metric setup + settings + best SL/TP + NY RTH bucket. Peek the cell for the full SL/TP grid and session table.
 
 CLI `study expand|run|report|promote|rollup` remains the academic path. `study list` is discovery only.
 

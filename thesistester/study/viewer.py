@@ -1,4 +1,4 @@
-"""RS-D2 / SV1 / SV2 read-only Studies viewer helpers.
+"""RS-D2 / SV1 / SV2 / SV5 read-only Studies viewer helpers.
 
 Loads completed study artifacts via ``report_study`` / ``load_ledger``. Does not
 execute cells, promote drafts, rewrite overview artifacts, or mutate classic
@@ -21,7 +21,11 @@ Plotly or Streamlit.
 SV4 cell peek reads index + ledger error and optional ``trade_summary.json``
 behind the existing bundle-path sandbox. Ledger status comes from the cached
 ``ledger_cells`` snapshot (same Load/Refresh as the failed-cell table). It
-does not hydrate classic session keys or unzip trades/equity.
+does not hydrate classic session keys.
+
+SV5 adds a deterministic trader briefing plus optional one-cell
+``grid_results.parquet`` / NY RTH ``trades.parquet`` projection (still no
+classic-session hydrate, no unzip-all-cells).
 """
 
 from __future__ import annotations
@@ -34,6 +38,15 @@ from typing import Any, Mapping, Sequence
 import pandas as pd
 
 from thesistester.persistence.local_store import get_store_root
+from thesistester.study.briefing import (
+    StudyMoneyBriefing,
+    build_study_briefing,
+    bundle_missing_caption,
+    empty_briefing,
+    extract_cell_grid,
+    extract_cell_time_of_day,
+    resolve_cell_bundle,
+)
 from thesistester.study.ledger import load_ledger
 from thesistester.study.report import (
     RESULTS_INDEX,
@@ -97,8 +110,17 @@ PEEK_KPI_COLUMNS: tuple[str, ...] = (
     "profit_factor",
     "win_rate",
     "max_drawdown_r",
+    "best_grid_stop_loss_ticks",
+    "best_grid_take_profit_ticks",
     "bundle_path",
     "profit_factor_source",
+)
+RANKED_FACTOR_COLUMNS: tuple[str, ...] = (
+    "factor_partner_levels",
+    "factor_trigger",
+    "factor_trigger_timeframe",
+    "factor_direction",
+    "factor_confluence_mode",
 )
 
 
@@ -750,13 +772,21 @@ class StudyCellPeek:
     trade_summary_caption: str | None
     zip_path: Path | None
     zip_name: str | None
+    best_grid: dict[str, Any] | None
+    grid_display: pd.DataFrame
+    grid_caption: str | None
+    time_of_day: pd.DataFrame
+    time_of_day_best: dict[str, str] | None
+    time_of_day_caption: str | None
 
 
 def peek_study_cell(model: StudyViewerModel, run_name: str) -> StudyCellPeek:
-    """Index + ledger error + optional ``trade_summary.json`` (sandboxed).
+    """Index + ledger error + optional zip members (sandboxed).
 
-    Does not unzip ``trades.parquet`` / equity / signals. Escaping
-    ``bundle_path`` is refused. Missing zip member is a caption.
+    Reads ``trade_summary.json``, and when present ``best_grid_result.json`` /
+    ``grid_results.parquet`` / ``trades.parquet`` for ToD. Does not hydrate
+    classic session keys or unzip equity / signals. Escaping ``bundle_path``
+    is refused. Missing zip member is a caption.
     """
     name = str(run_name or "").strip()
     row = _overview_row(model.report.overview, name)
@@ -809,6 +839,16 @@ def peek_study_cell(model: StudyViewerModel, run_name: str) -> StudyCellPeek:
             trade_summary = _read_bundle_trade_summary(resolved)
             if trade_summary is None:
                 caption = "trade_summary.json is missing from the zip (or unreadable)."
+    grid_bundle = resolve_cell_bundle(model.study_dir, bundle_rel or None)
+    missing = (
+        None
+        if grid_bundle is not None
+        else bundle_missing_caption(model.study_dir, bundle_rel or None)
+    )
+    best_grid, grid_display, grid_caption = extract_cell_grid(grid_bundle, missing_caption=missing)
+    time_of_day, tod_best, tod_caption = extract_cell_time_of_day(
+        grid_bundle, missing_caption=missing
+    )
     return StudyCellPeek(
         run_name=name,
         present=present,
@@ -820,6 +860,12 @@ def peek_study_cell(model: StudyViewerModel, run_name: str) -> StudyCellPeek:
         trade_summary_caption=caption,
         zip_path=zip_path,
         zip_name=zip_name,
+        best_grid=best_grid,
+        grid_display=grid_display,
+        grid_caption=grid_caption,
+        time_of_day=time_of_day,
+        time_of_day_best=tod_best,
+        time_of_day_caption=tod_caption,
     )
 
 
@@ -862,10 +908,11 @@ class StudyViewerModel:
     launch_log_tail: str
     peek_run_names: tuple[str, ...]
     ledger_cells: dict[str, Any]
+    briefing: StudyMoneyBriefing
 
 
 def study_viewer_model_is_current(model: object) -> bool:
-    """True when a cached Inspect model has the SV2 quality + SV4 peek fields."""
+    """True when a cached Inspect model has SV2/SV4/SV5 briefing fields."""
     return all(
         hasattr(model, name)
         for name in (
@@ -878,6 +925,7 @@ def study_viewer_model_is_current(model: object) -> bool:
             "launch_log_tail",
             "peek_run_names",
             "ledger_cells",
+            "briefing",
         )
     )
 
@@ -1011,6 +1059,9 @@ def load_study_view(
         "profit_factor",
         "win_rate",
         "max_drawdown_r",
+        "best_grid_stop_loss_ticks",
+        "best_grid_take_profit_ticks",
+        *RANKED_FACTOR_COLUMNS,
         "bundle_path",
         "profit_factor_source",
     ]
@@ -1019,6 +1070,11 @@ def load_study_view(
     unique_lines = unique_failed_error_lines(ledger)
     rollup = read_rollup_files(root)
     log_tail = tail_launch_log(root)
+    briefing = (
+        empty_briefing(reason="Ledger-only view: briefing waits for results_index.csv.")
+        if not report_present
+        else build_study_briefing(report, study_dir=root)
+    )
     return StudyViewerModel(
         study_dir=root,
         study_name=study_name,
@@ -1056,4 +1112,5 @@ def load_study_view(
         launch_log_tail=log_tail or "",
         peek_run_names=peek_run_names(report.overview, ledger),
         ledger_cells=_mapping_ledger_cells(ledger),
+        briefing=briefing,
     )

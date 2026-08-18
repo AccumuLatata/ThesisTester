@@ -1,4 +1,4 @@
-"""RS-D2/RS-D8/RS-D9 + SB2/SB3 + SV1–SV4 — Studies inspect, preview, CLI-spawn, Build."""
+"""RS-D2/RS-D8/RS-D9 + SB2/SB3 + SV1–SV5 — Studies inspect, preview, CLI-spawn, Build."""
 
 from __future__ import annotations
 
@@ -303,9 +303,10 @@ def _apply_builder_ingestion_mode(draft: Any, value: Any) -> None:
 
 st.title("Studies")
 st.caption(
-    "Inspect a completed study output directory, preview a canonical StudySpec "
-    "YAML (cell count / confirm gate), or build one without typing YAML. "
-    "Run via CLI (Preview tab) spawns the existing "
+    "Inspect a completed study: briefing (best cell + settings + SL/TP + NY "
+    "session), ranked factor cartesian, and cell peek. Preview a canonical "
+    "StudySpec YAML (cell count / confirm gate), or build one without typing "
+    "YAML. Run via CLI (Preview tab) spawns the existing "
     "`python -m thesistester study run` process. Promote stays on the CLI "
     "(or optional STUDY.* assistant tools)."
 )
@@ -608,8 +609,9 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
     st.markdown("### Cell peek")
     st.caption(
         "Index KPIs, factor tags, and ledger error for one `run_name`. "
-        "Optional `trade_summary.json` from an in-dir zip. Not a validated edge. "
-        "Full trade/equity charts stay Research Bundles upload/import — "
+        "Optional zip members: `trade_summary.json`, SL/TP grid, NY RTH "
+        "time-of-day from completed trades. Not a validated edge. "
+        "Full equity charts stay Research Bundles upload/import — "
         "this page does not deep-link or hydrate classic session keys."
     )
     if not callable(peek_study_cell):
@@ -667,6 +669,52 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
         )
     if peek.trade_summary_caption:
         st.caption(peek.trade_summary_caption)
+
+    st.markdown("**SL/TP grid (this cell)**")
+    st.caption(
+        "Per-cell SL/TP grid from the zip. Distinct from the factor cartesian "
+        "in Ranked cells. Descriptive only."
+    )
+    best_grid = getattr(peek, "best_grid", None)
+    if isinstance(best_grid, dict) and best_grid:
+        st.caption("best_grid_result.json")
+        st.dataframe(
+            {
+                "field": [str(key) for key in best_grid],
+                "value": [_peek_summary_value(value) for value in best_grid.values()],
+            },
+            hide_index=True,
+            width="stretch",
+        )
+    grid_display = getattr(peek, "grid_display", None)
+    if grid_display is not None and hasattr(grid_display, "empty") and not grid_display.empty:
+        st.dataframe(grid_display, hide_index=True, width="stretch")
+    grid_caption = getattr(peek, "grid_caption", None)
+    if grid_caption:
+        st.caption(str(grid_caption))
+
+    st.markdown("**Time of day (NY RTH segments)**")
+    st.caption(
+        "Post-hoc grouping of completed trades on this cell. Not a StudySpec "
+        "factor and not a re-simulation. Promote a strong bucket via Admit "
+        "`entry_window` before the next run."
+    )
+    tod_best = getattr(peek, "time_of_day_best", None)
+    if isinstance(tod_best, dict) and tod_best:
+        segment = tod_best.get("segment", "—")
+        warn = str(tod_best.get("sample_warning") or "").strip().lower()
+        thin = " (thin bucket)" if warn == "true" else ""
+        st.caption(
+            f"Strongest NY segment on this cell: `{segment}` "
+            f"(avg_r={tod_best.get('avg_r', '—')}, "
+            f"N={tod_best.get('trade_count', '—')}){thin}."
+        )
+    tod = getattr(peek, "time_of_day", None)
+    if tod is not None and hasattr(tod, "empty") and not tod.empty:
+        st.dataframe(tod, hide_index=True, width="stretch")
+    tod_caption = getattr(peek, "time_of_day_caption", None)
+    if tod_caption:
+        st.caption(str(tod_caption))
     if peek.zip_path is not None and peek.zip_name:
         st.caption(
             "Zip download reads bytes from disk only after Prepare. "
@@ -702,6 +750,31 @@ def _peek_summary_value(value: object) -> str:
     if value is None:
         return "—"
     return str(value)
+
+
+def _render_inspect_briefing(model: StudyViewerModel) -> None:
+    """SV5: trader headline from the cached Inspect model. No classic hydrate."""
+    st.markdown("### Study briefing")
+    st.caption(
+        "Highest primary-metric cell, its factor settings, best SL/TP if the "
+        "per-cell grid ran, and the strongest NY RTH segment on that cell's "
+        "trades. Descriptive only — not a validated edge and not a live schedule."
+    )
+    briefing = getattr(model, "briefing", None)
+    if briefing is None:
+        st.caption(
+            "Briefing helper is missing from `thesistester.study.viewer`. Restart Streamlit."
+        )
+        return
+    headline = str(getattr(briefing, "headline", "") or "")
+    if headline:
+        st.info(headline)
+    lines = getattr(briefing, "lines", ()) or ()
+    for line in lines:
+        st.markdown(f"- {line}")
+    caveats = getattr(briefing, "caveats", ()) or ()
+    for caveat in caveats:
+        st.caption(str(caveat))
 
 
 def _render_inspect() -> None:
@@ -803,6 +876,8 @@ def _render_inspect() -> None:
         + (" · best-cell crowning suppressed" if model.report.best_cell_suppressed else "")
     )
 
+    _render_inspect_briefing(model)
+
     st.markdown("### Ledger status")
     progress = model.ledger_progress
     if progress.total > 0:
@@ -841,6 +916,12 @@ def _render_inspect() -> None:
     _render_inspect_quality(model)
 
     st.markdown("### Ranked cells")
+    st.caption(
+        "Factor cartesian (partner × trigger × timeframe × direction). "
+        "The SL/TP grid is per-cell — see Best SL/TP columns and Cell peek. "
+        "NY session buckets are post-hoc on the peeked cell, not a factor axis. "
+        "Descriptive screening, not a validated edge."
+    )
     if model.ranked_display.empty:
         if not model.report_present:
             st.info("Ranked tables stay empty until Refresh after `results_index.csv` appears.")

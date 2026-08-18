@@ -2,7 +2,7 @@
 
 Operator contract: [`docs/STUDY_RUNNER.md`](../../docs/STUDY_RUNNER.md)  
 Plan: [`docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md)  
-Study Viewer (SV1–SV4 shipped: catalog + `study list` + quality panes + overview charts + cell peek): [`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md)  
+Study Viewer (SV1–SV5 shipped: catalog + `study list` + quality panes + overview charts + cell peek + trader briefing / grid / NY ToD): [`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md)  
 External Grok routine pack (RS-D5): [`docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md`](../../docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md) · [`agents/`](agents/)
 
 | File | Cells | Notes |
@@ -34,4 +34,4 @@ python -m thesistester study report out/dopen_ma_3c_mnq
 
 Replace `dataset.path` before `study run` (promote absolutizes relative paths when possible). For pdPOC, that path must be the same 15s Quantower export used on Data. Promote writes a **draft** only — edit and confirm before re-running; use `--force` to overwrite an existing draft. The phase-2 **800**-cell path is “remove/widen `stage` on this example,” not on a narrowed promote draft.
 
-`dopen_ma_3c_mnq.yaml` enables `grid` (20 SL/TP cells per run, inside the $40 / $500 MNQ envelope). Time-of-day expectancy is **not** expanded as a factor: after a cell finishes, rank `entry_rth_segment` / `entry_hour_bucket` on that cell's trades via the Time Analysis page or `thesistester.api.run_time_analysis`.
+Both `pRTH_open_ma.yaml` and `dopen_ma_3c_mnq.yaml` may enable a **per-cell SL/TP grid** (`constants.grid`). That grid is **not** the factor cartesian shown as Ranked cells — Inspect **Study briefing** / Cell peek now project `best_grid_*` and `grid_results.parquet`. Time-of-day expectancy is **not** expanded as a factor: after a cell finishes, Inspect shows NY `entry_rth_segment` on that cell's trades (post-hoc). To constrain the next run, set `constants.entry_window` (Admit) rather than adding a 7-bucket factor axis.

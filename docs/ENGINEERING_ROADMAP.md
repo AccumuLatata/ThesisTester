@@ -20,7 +20,7 @@ Assistant-related contracts:
 | Research Study Runner | `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (RS); operator `docs/STUDY_RUNNER.md`; Grok pack `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` | ✅ **RS1–RS5 MVP + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9**; parked D1/D3/D6 |
 | Study Builder (UX) | `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB) | ✅ **SB1–SB3 complete**. Emits canonical StudySpec YAML onto the existing Studies Preview pane; no in-process execute; no new factor axes |
 | Study Ingest Alignment | `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA) | ✅ **SIA0–SIA3**. Studies authoring/defaults/examples only; execute stays `run_experiment`; no engine/Data edits |
-| Study Viewer (Inspect UX) | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV); operator `docs/STUDY_RUNNER.md` §SV | ✅ **SV0–SV4**. Catalog + `study list` + quality panes + overview charts + cell peek. No in-process execute; no classic-session hydrate |
+| Study Viewer (Inspect UX) | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV); operator `docs/STUDY_RUNNER.md` §SV | ✅ **SV0–SV5**. Catalog + `study list` + quality panes + overview charts + cell peek + trader briefing / per-cell SL/TP grid / NY RTH ToD. No in-process execute; no classic-session hydrate |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1261,15 +1261,18 @@ Post-SIA: `default_study_draft()` ingest identity is MNQ + UTC +
 `data/mnq_15s.csv` (AMP/Rithmic HE). `StudyDraft()` field defaults stay
 legacy-safe. Operator template: `examples/studies/pRTH_open_ma.yaml`.
 
-## Study Viewer (SV0–SV4) ✅ SV4 shipped
+## Study Viewer (SV0–SV5) ✅ SV5 shipped
 
 Inspect today is catalog + path-paste + tables + quality panes + overview
-charts + cell peek (`report_study(..., write_artifacts=False)`). SV1 lists
-local study dirs and reuses the existing Load path. SV2 projects failed-cell
-errors, group summaries, optional rollup files, and a launch-log tail. SV3
-plots already-loaded ranked / group frames (page-only Plotly). SV4 peeks one
-cell’s index + ledger error + optional `trade_summary.json` on that **same**
-Studies page — without a second runner or classic `st.session_state` mutation.
+charts + cell peek + trader briefing (`report_study(..., write_artifacts=False)`).
+SV1 lists local study dirs and reuses the existing Load path. SV2 projects
+failed-cell errors, group summaries, optional rollup files, and a launch-log
+tail. SV3 plots already-loaded ranked / group frames (page-only Plotly). SV4
+peeks one cell’s index + ledger error + optional `trade_summary.json` on that
+**same** Studies page. **SV5** adds a deterministic briefing (highest
+primary-metric cell + settings + best SL/TP + NY RTH bucket) and projects
+one-cell `grid_results.parquet` / `trades.parquet` ToD — still no second
+runner or classic `st.session_state` mutation.
 
 **Canonical spec:** `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`
 
@@ -1280,6 +1283,7 @@ Studies page — without a second runner or classic `st.session_state` mutation.
 | SV2 | Failed-cell errors + `group_summaries` + read-only rollup files if present + launch-log tail ✅ |
 | SV3 | Locked Plotly set from already-loaded ranked / group frames ✅ |
 | SV4 | Cell peek (`trade_summary.json` + index + ledger error); no Bundles hydrate ✅ |
+| SV5 | Trader briefing + ranked `best_grid_*` + peek SL/TP grid / NY RTH ToD ✅ |
 
 **Regression posture:** no `engine/` edits; no golden regeneration; no
 `report_study` write on Inspect; do **not** call `rollup_study()` (it writes);

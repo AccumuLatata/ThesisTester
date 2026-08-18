@@ -81,7 +81,12 @@ def test_load_study_view_from_fixture(tmp_path: Path):
     assert model.ledger_progress.running_ids == ()
     assert not model.ranked_display.empty
     assert "bundle_path" in model.ranked_display.columns
+    assert "best_grid_stop_loss_ticks" in model.ranked_display.columns
+    assert "best_grid_take_profit_ticks" in model.ranked_display.columns
     assert list(model.ranked_display.columns) == list(dict.fromkeys(model.ranked_display.columns))
+    assert model.briefing.run_name is not None
+    assert "Highest" in model.briefing.headline
+    assert model.briefing.source == "ranked"
     assert not model.low_n_display.empty
     assert "Honesty" in model.overview_md or "descriptive" in model.overview_md.lower()
     assert model.report.min_trades == 30
@@ -194,6 +199,8 @@ def test_load_study_view_ledger_only_when_index_missing(tmp_path: Path):
     assert model.ledger_progress.total == 4
     assert model.ranked_display.empty
     assert not (study_dir / "study.overview.csv").exists()
+    assert model.briefing.source == "none"
+    assert "Ledger-only" in model.briefing.headline
 
 
 def test_load_study_view_missing_index_without_ledger_still_errors(tmp_path: Path):
@@ -1193,6 +1200,7 @@ def test_study_viewer_model_is_current_requires_sv2_fields():
         launch_log_present = None
         launch_log_tail = None
         peek_run_names = ()
+        ledger_cells = {}
 
     assert study_viewer_model_is_current(_Sv2()) is False
 
@@ -1299,10 +1307,13 @@ def test_inspect_peek_does_not_hydrate_or_switch_page():
     assert 'key="studies_viewer_peek_zip_prepare"' not in peek_src
     assert "apply_research_bundle_to_session" not in peek_src
     assert "st.switch_page" not in peek_src
-    assert "trades.parquet" not in peek_src
     assert "equity_curve" not in peek_src
     assert "run_study" not in peek_src
     assert "rollup_study" not in peek_src
+    assert "SL/TP grid (this cell)" in peek_src
+    assert "Time of day (NY RTH segments)" in peek_src
+    assert 'st.session_state["trades"]' not in peek_src
+    assert "apply_research_bundle_to_session" not in peek_src
 
 
 def test_peek_run_names_skips_non_mapping_cells_and_uses_cached_ledger(tmp_path: Path):

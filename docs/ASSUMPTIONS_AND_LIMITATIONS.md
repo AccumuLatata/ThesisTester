@@ -984,7 +984,7 @@ other than the last bar in the dataset.
   before expecting dense overfitting columns in the rollup.
 - Rollup markdown is descriptive only: present diagnostics ≠ validated edge.
 
-## Studies Inspect listing, quality panes, charts, and cell peek (SV1–SV4 shipped)
+## Studies Inspect listing, quality panes, charts, and cell peek (SV1–SV5 shipped)
 
 - The Study Viewer catalog (`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`, SV1)
   **lists** local study directories under `results/studies/` and `out/`.
@@ -1005,6 +1005,16 @@ other than the last bar in the dataset.
 - Cell peek of `trade_summary.json` is the same per-cell summary already
   used for PF/WR fallback — not a validated edge and not a classic-session
   import. Full trade/equity charts stay Research Bundles upload/import.
+- Study briefing (SV5) names the highest primary-metric cell plus factor
+  settings, per-cell best SL/TP, and the strongest NY RTH segment on that
+  cell's completed trades. It is a descriptive screen, not a live schedule
+  and not a validated edge. Time-of-day is **not** a StudySpec factor (a
+  7-bucket cartesian would multiply cells and overfit). Constrain the next
+  run with `constants.entry_window` / Admit after inspecting the bucket.
+- Ranked cells are the factor cartesian. The SL/TP grid is per-cell inside
+  each research zip (`grid_results.parquet` / `best_grid_*` index columns).
+  Missing Best SL/TP usually means `grid.enabled: false` or no grid row met
+  the cell's grid `min_trades`.
 
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
