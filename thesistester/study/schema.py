@@ -14,7 +14,7 @@ from typing import Any, Mapping
 import yaml
 
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
-from thesistester.levels.catalog import STATIC_STUDY_LEVEL_NAMES
+from thesistester.levels.catalog import STATIC_STUDY_LEVEL_NAMES, pivot_column_names
 from thesistester.levels.common import normalized_window_label
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
@@ -261,11 +261,13 @@ def closed_level_token_set(levels: Mapping[str, Any] | None) -> frozenset[str]:
         tokens.update(prev30m_price_column_names(max(validity, 1)))
 
     if bool(settings.get("pivots_enabled", False)):
-        for timeframe in settings.get("pivot_timeframes") or []:
-            label = str(timeframe).strip()
-            if label:
-                tokens.add(f"Pivot_{label}_High")
-                tokens.add(f"Pivot_{label}_Low")
+        try:
+            tokens.update(pivot_column_names(settings.get("pivot_timeframes") or []))
+        except KeyError as exc:
+            raise StudySpecError(
+                f"Unsupported study.levels.pivot_timeframes value {exc.args[0]!r}; "
+                "choose from engine pivot labels (1min, 5min, 30min, 4h)"
+            ) from exc
 
     return frozenset(tokens)
 

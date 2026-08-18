@@ -8,6 +8,9 @@ they are implied only by ``study.levels`` (see ``closed_level_token_set``).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
+from .pivots import _PIVOT_COLUMN_LABELS
 from .session_vwap import SESSION_VWAP_COLUMNS
 from .tpo import SINGLE_PRINT_COLUMNS
 
@@ -71,3 +74,20 @@ STATIC_STUDY_LEVEL_NAMES: frozenset[str] = frozenset(
         *APOC_LEVEL_NAMES,
     }
 )
+
+
+def pivot_column_names(timeframes: Iterable[str]) -> tuple[str, ...]:
+    """Return engine pivot column names for *timeframes* settings keys.
+
+    Uses ``pivots._PIVOT_COLUMN_LABELS`` (``1min`` → ``1m``). Does not re-spell
+    labels. Empty strings are skipped. Unknown timeframe keys raise ``KeyError``.
+    """
+    names: list[str] = []
+    for raw in timeframes:
+        key = str(raw).strip()
+        if not key:
+            continue
+        label = _PIVOT_COLUMN_LABELS[key]
+        names.append(f"Pivot_{label}_High")
+        names.append(f"Pivot_{label}_Low")
+    return tuple(names)

@@ -122,7 +122,9 @@ A core/partner token is valid if it is in:
    the levels engine; explicit `[]` → no MA tokens), plus `VWAP_rolling_*` /
    `POC_rolling_*` windows, and `prev30mVWAP*` / `Pivot_*` **only when**
    `prev30m_vwap_enabled` / `pivots_enabled` are true in the merged levels
-   settings.
+   settings. Pivot tokens match engine columns: `Pivot_1m_*` / `Pivot_5m_*` /
+   `Pivot_30m_*` / `Pivot_4h_*` (not `Pivot_1min_*`). Hand-edited YAML that
+   uses `Pivot_1min_*` fails closed at validate.
 
 Unknown tokens fail at validate time with an actionable error.
 
