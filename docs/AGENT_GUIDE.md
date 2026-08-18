@@ -35,7 +35,9 @@ python -m thesistester study expand study.yaml --output-dir out/study1
 python -m thesistester study run study.yaml --output-dir out/study1 --confirm
 python -m thesistester study report out/study1
 python -m thesistester study promote out/study1 --output draft.yaml --top-n 10
-# optional replay of the emitted experiment via the unchanged R18 path:
+# optional replay of the emitted experiment (same dataset bytes when the
+# expand-time file still exists; still run_batch — fail-fast, origin=cli,
+# no index status — not study run):
 python -m thesistester run out/study1/experiment.yaml
 ```
 
