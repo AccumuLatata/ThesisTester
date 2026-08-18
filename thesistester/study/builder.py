@@ -317,6 +317,7 @@ class StudyDraft:
     stage_mode: str | None = None
     stage_include: dict[str, list[Any]] = field(default_factory=dict)
     stage_cells: list[dict[str, Any]] = field(default_factory=list)
+    lineage: dict[str, Any] | None = None
 
 
 def normalize_builder_format_profile(value: Any) -> str:
@@ -943,6 +944,8 @@ def emit_study_spec(draft: StudyDraft) -> dict[str, Any]:
     stage = _emit_stage(draft)
     if stage is not None:
         study["stage"] = stage
+    if draft.lineage is not None:
+        study["lineage"] = copy.deepcopy(draft.lineage)
     payload = {"schema_version": STUDY_SCHEMA_VERSION, "study": study}
     require_enabled_grid_ticks(study["constants"]["grid"])
     return validate_study_spec(normalize_study_spec(payload))
@@ -1160,6 +1163,11 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
         stage_mode=stage_mode,
         stage_include=stage_include,
         stage_cells=stage_cells,
+        lineage=(
+            copy.deepcopy(dict(study["lineage"]))
+            if isinstance(study.get("lineage"), Mapping)
+            else None
+        ),
     )
 
 

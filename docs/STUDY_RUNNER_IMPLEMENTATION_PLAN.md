@@ -985,7 +985,7 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 **Study Viewer (separate SV series):** local study catalog, failed-cell / group-summary / rollup-file Inspect panes, overview charts, and cell peek are specified in `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV0–SV4). That series does **not** reopen this §12.4 RS-D2 contract (path-paste Inspect, `write_artifacts=False`, no classic-session mutation, no Research-Bundles deep-link). Local catalog is **not** “portfolio of studies cloud sync” (still out of scope here). Do not implement SV inside an RS PR.
 
-**Study Admit Follow-up (separate SAF series):** drafting a linked child StudySpec with Admit locked to a post-hoc ToD bucket is specified in `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF0–SAF3). That series does **not** reopen RS5 “promote never executes” or this series’ execute loop. Default `study promote` (flags omitted) stays identical. Do not implement SAF inside an RS PR.
+**Study Admit Follow-up (separate SAF series):** drafting a linked child StudySpec with Admit locked to a post-hoc ToD bucket is specified in `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF1 CLI `--admit-tod auto` shipped; SAF2–SAF3 not started). That series does **not** reopen RS5 “promote never executes” or this series’ execute loop. Default `study promote` (flags omitted) stays identical. Do not implement SAF inside an RS PR.
 
 ---
 

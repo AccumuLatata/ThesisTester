@@ -618,6 +618,10 @@ constrained re-simulation, RTH segments, clock range, outside_entry_window
 - Grid / WFA inherit a fixed enabled Admit window when present — not a swept
   axis. Under `allow_all` + zero cooldown, Focus and Admit can share the same
   `signal_id` set (C7); restrictive exposure can diverge.
+- Study briefing NY buckets are Focus-family. `study promote --admit-tod auto`
+  drafts a child StudySpec that stamps engine Admit (`backtest`/`grid`
+  `entry_window`); it does not `study run`. The Inspect draft button is not
+  shipped.
 
 **Related pages.** Time Analysis; Backtest; **Exposure policy**;
 **Session close and entry cutoff**.
@@ -936,7 +940,7 @@ overview ranking, OTF delta, Research Study Runner
 | `stage.mode: filter` | Subset factor axes before cartesian product | Prefer stage-first on large studies (example: 800 → 40) |
 | `confirm_above_runs` | `study run` refuses large expansions without `--confirm` | Confirm is required before rewriting expansion artifacts |
 | `report.min_trades` | Ranked overview excludes low-N cells | Meeting N is not statistical significance |
-| `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs; `--admit-tod` follow-up is **not shipped** |
+| `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs. `--admit-tod auto` drafts a one-cell Admit child (`backtest`/`grid` `entry_window` + `study.lineage`); omit the flag for RS5 survivors |
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
 | `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
 
@@ -957,6 +961,11 @@ overview ranking, OTF delta, Research Study Runner
    (refuses overwrite without `--force`), then edit the draft before any further `study run`.
    Phase-2 full cartesian (example: 800) means restoring/opening axes on the unpromoted
    StudySpec — not dropping `stage` from a narrowed promote draft.
+   To lock the briefing NY RTH bucket and re-sim one ranked cell:
+   `study promote out/study1 --output drafts/admit.yaml --top-n 1 --admit-tod auto`
+   (or `--admit-run-name NAME`). Child `output_dir` is new; this does **not**
+   `study run`. Thin / `avg_r` tie / missing zip refuse. Hour/30min and
+   `--allow-thin` are not shipped.
 7. Inspect artifacts in the **Studies viewer (read-only)** page, or preview a
    canonical StudySpec YAML there for cell count / `--confirm`. After a
    successful preview, **Run via CLI** (or **Bind confirm** then **Confirm and
@@ -985,8 +994,9 @@ validates YAML. **Run via CLI** spawns `study run`. **Build** emits YAML.
 
 **When to use it.** After a completed study, read the briefing first — then
 decide whether to constrain NY session (Admit / Time Analysis Promote) or
-promote survivors. Author on Build; Promote stays CLI-only. Automated
-Admit follow-up drafts (`study promote --admit-tod`) are **not shipped**.
+promote survivors. Author on Build; Promote stays CLI-only. CLI Admit
+follow-up (`study promote --admit-tod auto`) is shipped; the Inspect
+**Draft Admit follow-up** button is **not shipped**.
 
 **Related terms.** Studies viewer, study briefing, time of day, NY session,
 RTH segment, grid results, best SL/TP, ranked cells, low-N, study catalog,

@@ -102,11 +102,12 @@ Inspect. `viewer.py` must not import `cli_study` / `thesistester.cli` /
 `st.session_state`. Do not add time-of-day as a StudySpec factor axis.
 Operator contract: `docs/STUDY_RUNNER.md` §SV.
 
-**SAF (SAF0 plan-locked):** Study Admit Follow-up —
-`docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`. Draft a linked child
-StudySpec with Admit on `backtest`/`grid` `entry_window`. Do not implement
-SAF inside an RS/SV/SB/SIA PR. Promote without `--admit-tod` stays RS5.
-Do not auto-`study run`. Do not add ToD as a factor axis. Operator
+**SAF (SAF1 CLI shipped):** Study Admit Follow-up —
+`docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.
+`study promote --admit-tod auto` drafts a linked child StudySpec with Admit
+on `backtest`/`grid` `entry_window` and optional `study.lineage`. Do not
+implement SAF2/SAF3 inside an RS/SV/SB/SIA PR. Promote without `--admit-tod`
+stays RS5. Do not auto-`study run`. Do not add ToD as a factor axis. Operator
 contract: `docs/STUDY_RUNNER.md` §SAF.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /

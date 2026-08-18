@@ -159,6 +159,60 @@ def test_unknown_study_key_fails_closed():
         validate_study_spec(normalize_study_spec(raw))
 
 
+def _valid_lineage() -> dict:
+    return {
+        "parent_output_dir": "/tmp/parent_study",
+        "parent_identity_hash": "abc123",
+        "parent_run_name": "cell_000",
+        "admit": {
+            "group": "entry_rth_segment",
+            "value": "rth_open_30m",
+            "rule": "briefing_best_avg_r",
+            "min_trades": 30,
+            "thin": False,
+        },
+    }
+
+
+def test_omitted_lineage_still_validates():
+    raw = _minimal_study()
+    assert "lineage" not in raw["study"]
+    spec = validate_study_spec(normalize_study_spec(raw))
+    assert "lineage" not in spec["study"]
+
+
+def test_valid_lineage_validates():
+    raw = _minimal_study()
+    raw["study"]["lineage"] = _valid_lineage()
+    spec = validate_study_spec(normalize_study_spec(raw))
+    assert spec["study"]["lineage"]["admit"]["group"] == "entry_rth_segment"
+
+
+def test_unknown_lineage_key_fails_closed():
+    raw = _minimal_study()
+    raw["study"]["lineage"] = {**_valid_lineage(), "extra": True}
+    with pytest.raises(StudySpecError, match="Unknown study.lineage keys"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_unknown_lineage_admit_key_fails_closed():
+    raw = _minimal_study()
+    lineage = _valid_lineage()
+    lineage["admit"]["bucket"] = "nope"
+    raw["study"]["lineage"] = lineage
+    with pytest.raises(StudySpecError, match="Unknown study.lineage.admit keys"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_invalid_lineage_admit_group_fails_closed():
+    raw = _minimal_study()
+    lineage = _valid_lineage()
+    lineage["admit"]["group"] = "session_name"
+    raw["study"]["lineage"] = lineage
+    with pytest.raises(StudySpecError, match="study.lineage.admit.group"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
 def test_invalid_trigger_rejected():
     raw = _minimal_study()
     raw["study"]["factors"]["trigger"] = ["teleport"]
