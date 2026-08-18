@@ -29,6 +29,9 @@ IDENTITY_META_FILENAME = identity_meta_filename()
 # One-shot Data-page signal: drop leftover primary-CSV widget state so a
 # prior Upload CSV value cannot replace the just-imported session dataset.
 DATA_PAGE_INVALIDATE_SOURCE_KEY = "_data_page_invalidate_source"
+# Page-12 only: skip saved-dataset bootstrap after a dataset-less import so
+# leftover active dataset A cannot refill ``data`` beside restored trades B.
+BUNDLE_IMPORT_OMITTED_DATA_KEY = "bundle_import_omitted_data"
 
 _DATASET_META_KEYS = (
     "dataset_id",
@@ -157,6 +160,12 @@ _MANAGED_RESEARCH_KEYS = {
     "focus_entry_window",
     "focus_provenance",
     "focused_trade_summary",
+    # AH4: leftover research keys that nonce invalidation does not clear.
+    "otf_filter_summary",
+    "otf_filter_result",
+    "backtest_otf_filter",
+    "setup_config",
+    "focused_trades",
     "equity_curve",
     "grid_results",
     "best_grid_result",
@@ -1075,6 +1084,7 @@ def apply_research_bundle_to_session(
     # cannot clobber this restore (sample auto-load is separately gated on
     # empty sessions only).
     session_state[DATA_PAGE_INVALIDATE_SOURCE_KEY] = True
+    session_state[BUNDLE_IMPORT_OMITTED_DATA_KEY] = "data" not in session_values
 
     return {
         "cleared_keys": sorted(set(cleared_keys)),
@@ -1082,3 +1092,8 @@ def apply_research_bundle_to_session(
         "restored_keys": restored_keys,
         "restored_count": len(restored_keys),
     }
+
+
+def should_skip_dataset_bootstrap(session_state: Any) -> bool:
+    """True after a dataset-less bundle apply (page-12 bootstrap gate)."""
+    return bool(session_state.get(BUNDLE_IMPORT_OMITTED_DATA_KEY))

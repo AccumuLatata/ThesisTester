@@ -48,7 +48,10 @@ from thesistester.app_state import (
     bootstrap_active_saved_dataset,
     restore_saved_dataset_provenance,
 )
-from thesistester.research_bundle import DATA_PAGE_INVALIDATE_SOURCE_KEY
+from thesistester.research_bundle import (
+    BUNDLE_IMPORT_OMITTED_DATA_KEY,
+    DATA_PAGE_INVALIDATE_SOURCE_KEY,
+)
 from thesistester.persistence import (
     clear_active_dataset_id,
     compute_dataset_id,
@@ -1021,6 +1024,7 @@ def _set_active_dataset_state(
             st.session_state.pop("setup_config", None)
             st.session_state.pop("_setup_builder_editor_config", None)
     st.session_state["data"] = df
+    st.session_state.pop(BUNDLE_IMPORT_OMITTED_DATA_KEY, None)
     st.session_state["resampled_data"] = resampled_data or {}
     st.session_state["instrument"] = instrument
     st.session_state["base_interval"] = base_interval
