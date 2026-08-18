@@ -14,7 +14,11 @@ import yaml
 
 from thesistester.cli import EXPERIMENT_SCHEMA_VERSION
 from thesistester.study.execute import prepare_study_expansion
-from thesistester.study.expand import expand_study, expand_study_to_directory
+from thesistester.study.expand import (
+    dataset_path_search_roots,
+    expand_study,
+    expand_study_to_directory,
+)
 from thesistester.study.launch import build_launch_plan
 from thesistester.study.preview import example_study_spec_path
 from thesistester.study.promote import promote_study
@@ -209,3 +213,79 @@ def test_ah2_p5_unpinned_write_keeps_v1_schema(tmp_path: Path):
     copied = yaml.safe_load((tmp_path / "study.spec.yaml").read_text(encoding="utf-8"))
     assert copied["schema_version"] == STUDY_SCHEMA_VERSION
     assert copied["study"]["dataset"]["path"] == "data/es_1m.csv"
+
+
+def test_ah2_search_roots_keep_study_output_before_draft_when_cwd_is_output(
+    tmp_path: Path, monkeypatch
+):
+    spec_home = tmp_path / "orig_spec"
+    study_out = tmp_path / "study_out"
+    drafts = tmp_path / "drafts"
+    spec_home.mkdir()
+    study_out.mkdir()
+    drafts.mkdir()
+    monkeypatch.chdir(study_out)
+    roots = dataset_path_search_roots(
+        source_spec_parent=spec_home,
+        extra_roots=(study_out, drafts),
+        cwd=study_out,
+    )
+    assert roots == [spec_home.resolve(), study_out.resolve(), drafts.resolve()]
+
+
+def test_ah2_launch_without_parent_keeps_cwd_root_ahead_of_store(
+    tmp_path: Path, monkeypatch
+):
+    cwd_home = tmp_path / "cwd_home"
+    store_home = tmp_path / "store_home"
+    cwd_csv = _write_csv(cwd_home / "data" / "es_15s.csv", "CWD")
+    store_csv = _write_csv(store_home / "data" / "es_15s.csv", "STORE")
+    yaml_text = example_study_spec_path().read_text(encoding="utf-8")
+    monkeypatch.chdir(cwd_home)
+    plan = build_launch_plan(
+        yaml_text,
+        cached_yaml=yaml_text,
+        expanded=True,
+        run_count=40,
+        output_dir_raw=str(cwd_home / "out" / "study1"),
+        roots=(cwd_home, store_home),
+    )
+    pinned = Path(plan.pinned_spec["study"]["dataset"]["path"])
+    assert pinned == cwd_csv.resolve()
+    assert pinned.read_bytes() == cwd_csv.read_bytes()
+    assert pinned.read_bytes() != store_csv.read_bytes()
+
+
+def test_ah2_blank_source_spec_parent_does_not_pin_cwd(tmp_path: Path, monkeypatch):
+    cwd_home = tmp_path / "cwd_home"
+    _write_csv(cwd_home / "data" / "a.csv", "CWD")
+    spec = _one_cell_spec()
+    monkeypatch.chdir(cwd_home)
+    expansion = expand_study(spec, source_spec_parent="")
+    assert expansion.experiment["runs"][0]["dataset"]["path"] == "data/a.csv"
+    out = tmp_path / "out"
+    expand_study_to_directory(spec, out, source_spec_parent="   ")
+    payload = json.loads((out / "study.expansion.json").read_text(encoding="utf-8"))
+    assert "source_spec_parent" not in payload
+    copied = yaml.safe_load((out / "study.spec.yaml").read_text(encoding="utf-8"))
+    assert copied["study"]["dataset"]["path"] == "data/a.csv"
+
+
+def test_ah2_promote_from_study_dir_prefers_output_over_draft(
+    tmp_path: Path, monkeypatch
+):
+    study_dir = _write_report_fixture(tmp_path)
+    output_csv = _write_csv(study_dir / "data" / "a.csv", "OUTPUT")
+    draft_csv = _write_csv(tmp_path / "drafts" / "data" / "a.csv", "DRAFT")
+    spec_path = study_dir / "study.spec.yaml"
+    spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    spec["study"]["dataset"]["path"] = "data/a.csv"
+    spec_path.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    monkeypatch.chdir(study_dir)
+    draft_path = tmp_path / "drafts" / "draft.yaml"
+    promote_study(study_dir, output=draft_path, top_n=1)
+    draft = yaml.safe_load(draft_path.read_text(encoding="utf-8"))
+    pinned = Path(draft["study"]["dataset"]["path"])
+    assert pinned == output_csv.resolve()
+    assert pinned.read_bytes() == output_csv.read_bytes()
+    assert pinned.read_bytes() != draft_csv.read_bytes()
