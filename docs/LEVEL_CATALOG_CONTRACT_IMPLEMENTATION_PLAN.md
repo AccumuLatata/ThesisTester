@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **LC2 landed.** LC3–LC4 not started.  
+**Status:** **LC3 landed.** LC4 not started.  
 **Series code:** **LC** (Level Catalog)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 
@@ -348,7 +348,7 @@ Suggested VWAP; Assistant `closed_level_token_set` unification; API raise; new p
 
 ### 7.3 LC3 — Suggested defaults + Assistant closed-set unification
 
-**Status:** Not started  
+**Status:** Implemented  
 **Closes:** D3  
 
 #### Defect (verified)

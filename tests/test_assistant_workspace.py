@@ -687,8 +687,8 @@ def test_confluence_and_timezone_catalogs_support_searchable_widgets():
     assert coerce_multiselect_defaults(["dVWAP_RTH", "missing"], options) == ["dVWAP_RTH"]
     assert option_index((5, 15, 30), 30) == 2
     assert option_index((5, 15, 30), "15") == 1
-    # Explicit empty windows/lengths must not expand into the full catalogs.
-    # (Static SUGGESTED_DEFAULT_LEVELS may still include VWAP_rolling_1h.)
+    # Explicit empty windows/lengths must not expand into widget catalogs.
+    # Suggested defaults use VWAP_rolling_30min (product default), not 1h.
     cleared = build_confluence_level_options(
         selected_levels=["dVWAP_RTH"],
         levels_settings={
@@ -750,6 +750,60 @@ def test_confluence_and_timezone_catalogs_support_searchable_widgets():
     assert "coerce_window_label(" in source
     assert "vwap_window_options" in source
     assert "poc_window_options" in source
+
+
+def test_lc3_default_confluence_options_use_closed_set_not_widget_catalogs():
+    from thesistester.assistant.workspace import build_confluence_level_options
+
+    options = build_confluence_level_options(levels_settings=None)
+    for name in (
+        "VWAP_rolling_30min",
+        "VWAP_rolling_4h",
+        "POC_rolling_30min",
+        "pdVAH",
+        "Pivot_1m_High",
+        "SMA_50_1min",
+        "SMA_50_5min",
+        "SMA_50_30min",
+        "EMA_21_30min",
+    ):
+        assert name in options
+    for name in (
+        "VWAP_rolling_1h",
+        "VWAP_rolling_15min",
+        "POC_rolling_1h",
+        "POC_rolling_4h",
+        "SMA_9_30min",
+        "SMA_20_30min",
+        "SMA_100_30min",
+        "Pivot_1min_High",
+    ):
+        assert name not in options
+
+
+def test_lc3_empty_windows_and_lengths_do_not_expand_indicator_tokens():
+    from thesistester.assistant.workspace import build_confluence_level_options
+
+    options = build_confluence_level_options(
+        levels_settings={
+            "vwap_windows": [],
+            "sma_lengths": [],
+            "ema_lengths": [],
+            "poc_windows": [],
+        }
+    )
+    assert "dVWAP_RTH" in options
+    assert not any(name.startswith("VWAP_rolling_") for name in options)
+    assert not any(name.startswith("POC_rolling_") for name in options)
+    assert not any(name.startswith("SMA_") for name in options)
+    assert not any(name.startswith("EMA_") for name in options)
+
+
+def test_lc3_explicit_1h_vwap_window_admits_rolling_token():
+    from thesistester.assistant.workspace import build_confluence_level_options
+
+    options = build_confluence_level_options(levels_settings={"vwap_windows": ["1h"]})
+    assert "VWAP_rolling_1h" in options
 
 
 def test_latest_unresolved_assumptions_only_from_newest_spec():

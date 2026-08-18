@@ -3,17 +3,21 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.setup import (
     BASE_COLUMNS,
     DEFAULT_OTF_FILTER_CONFIG,
+    SUGGESTED_DEFAULT_LEVELS,
     available_level_columns,
     build_setup_config,
+    default_selected_levels,
     get_effective_entry_window_config,
     get_effective_otf_filter_config,
     normalize_otf_filter_config,
     validate_otf_filter_config,
     validate_setup_config,
 )
+from thesistester.study.schema import closed_level_token_set
 
 
 def _base_config(**overrides) -> dict:
@@ -50,6 +54,38 @@ def _anchor_config(**overrides) -> dict:
     )
     config.update(overrides)
     return config
+
+
+def test_lc3_suggested_defaults_implied_by_default_closed_set():
+    assert set(SUGGESTED_DEFAULT_LEVELS) <= closed_level_token_set(DEFAULT_LEVELS_SETTINGS)
+    assert "VWAP_rolling_30min" in SUGGESTED_DEFAULT_LEVELS
+    assert "VWAP_rolling_1h" not in SUGGESTED_DEFAULT_LEVELS
+    assert "pdVAH" not in SUGGESTED_DEFAULT_LEVELS
+
+
+def test_lc3_default_selected_levels_use_product_vwap_window():
+    columns = [
+        "ONH",
+        "ONL",
+        "AsiaHigh",
+        "AsiaLow",
+        "LondonHigh",
+        "LondonLow",
+        "OR_High",
+        "OR_Low",
+        "RTH_Open",
+        "pRTH_High",
+        "pRTH_Low",
+        "pdHigh",
+        "pdLow",
+        "pdPOC",
+        "VWAP_rolling_30min",
+        "VWAP_rolling_4h",
+        "VWAP_rolling_1h",
+    ]
+    selected = default_selected_levels(columns)
+    assert "VWAP_rolling_30min" in selected
+    assert "VWAP_rolling_1h" not in selected
 
 
 def test_available_level_columns_excludes_base_columns():
