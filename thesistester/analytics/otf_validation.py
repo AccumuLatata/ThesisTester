@@ -172,18 +172,27 @@ def _train_price_split_bar(
     oos_signals: pd.DataFrame | None,
     n_bars: int,
 ) -> int:
-    """First OOS signal ``bar_index``, or ``n_bars`` when no OOS signals exist.
+    """First numeric OOS signal ``bar_index``, or ``n_bars`` when none exist.
 
     Train simulation uses ``source_df.iloc[:split_bar]`` so OOS bars cannot
     fill a last-train trade. OOS simulation stays on the full frame.
+
+    ``bar_index`` is coerced with :func:`pandas.to_numeric` so object/string
+    columns cannot lexicographically pick a later split (and leak OOS
+    prices). Non-finite values are ignored rather than aborting the matrix.
     """
     n = int(n_bars)
     if oos_signals is None or oos_signals.empty or "bar_index" not in oos_signals.columns:
         return n
-    raw = oos_signals["bar_index"].dropna()
+    raw = pd.to_numeric(oos_signals["bar_index"], errors="coerce")
+    raw = raw.replace([float("inf"), float("-inf")], pd.NA).dropna()
     if raw.empty:
         return n
-    return max(0, min(n, int(raw.min())))
+    try:
+        split = int(raw.min())
+    except (TypeError, ValueError, OverflowError):
+        return n
+    return max(0, min(n, split))
 
 
 def _count_period(df: pd.DataFrame | None, period_set: frozenset) -> int:
@@ -361,8 +370,8 @@ def run_otf_validation_matrix(
 
     # Chronological train/OOS split on stamped row ids.
     train_set, oos_set = _chronological_train_oos_sets(candidates, train_fraction)
-    oos_candidates = _filter_period(candidates, oos_set)
-    split_bar = _train_price_split_bar(oos_candidates, len(source_df))
+    oos_split_signals = _filter_period(candidates, oos_set)
+    split_bar = _train_price_split_bar(oos_split_signals, len(source_df))
     train_price_df = source_df.iloc[:split_bar]
 
     matrix_entries = build_otf_matrix_configs()
