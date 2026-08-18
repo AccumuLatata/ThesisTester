@@ -236,9 +236,7 @@ def follow_on_study(
         factor_map=factor_map,
     )
     if resolved_run not in factor_map:
-        raise StudyFollowOnError(
-            f"run_name {resolved_run!r} is missing from study.expansion.json"
-        )
+        raise StudyFollowOnError(f"run_name {resolved_run!r} is missing from study.expansion.json")
 
     thin_sample, sl_ticks, tp_ticks = _sample_and_grid(
         root,
@@ -340,13 +338,11 @@ def _resolve_run_and_segment(
         )
     if not resolved_segment or resolved_segment in {"—", "-"}:
         raise StudyFollowOnError(
-            "No NY segment on the briefing. Pass --segment (one of "
-            f"{list(FOLLOW_ON_SEGMENTS)})."
+            f"No NY segment on the briefing. Pass --segment (one of {list(FOLLOW_ON_SEGMENTS)})."
         )
     if resolved_segment not in FOLLOW_ON_SEGMENTS:
         raise StudyFollowOnError(
-            f"Unknown RTH segment {resolved_segment!r}. "
-            f"Expected one of {list(FOLLOW_ON_SEGMENTS)}."
+            f"Unknown RTH segment {resolved_segment!r}. Expected one of {list(FOLLOW_ON_SEGMENTS)}."
         )
     return resolved_run, resolved_segment, briefing
 
@@ -448,9 +444,7 @@ def _assert_safe_output(out_path: Path, *, parent_spec: Path, force: bool) -> No
         )
     try:
         if out_path.resolve() == parent_spec.resolve():
-            raise StudyFollowOnError(
-                "Refusing to overwrite the parent study.spec.yaml"
-            )
+            raise StudyFollowOnError("Refusing to overwrite the parent study.spec.yaml")
     except OSError:
         pass
     if out_path.exists() and not force:

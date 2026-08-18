@@ -845,8 +845,7 @@ def _render_inspect_follow_on(model: StudyViewerModel) -> None:
     )
     if briefing_thin:
         st.warning(
-            "This briefing bucket is thin (N < 10). A thin bucket is a hint, "
-            "not a live schedule."
+            "This briefing bucket is thin (N < 10). A thin bucket is a hint, not a live schedule."
         )
     allow_thin = st.checkbox(
         "Allow a thin NY bucket",
