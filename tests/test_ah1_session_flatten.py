@@ -16,6 +16,23 @@ TZ = "America/New_York"
 TICK = 0.25
 POINT_VALUE = 50.0
 WIDE = dict(stop_loss_ticks=100, take_profit_ticks=100)
+EMPTY_SESSION_CLOSE_CAP = "empty_session_close_cap"
+# Same skip-row schema as ``after_entry_cutoff`` (AH1 §6.1 change 4).
+_SKIP_ROW_COLUMNS = frozenset(
+    {
+        "signal_id",
+        "bar_index",
+        "entry_bar_index",
+        "trigger",
+        "direction",
+        "exposure_policy",
+        "exposure_group_key",
+        "skip_reason",
+        "blocking_trade_id",
+        "blocking_exit_bar_index",
+        "cooldown_bars_after_exit",
+    }
+)
 
 
 def _bar(ts: str, price: float = 100.0) -> dict:
@@ -33,12 +50,12 @@ def _df(*timestamps: str) -> pd.DataFrame:
     return pd.DataFrame([_bar(ts) for ts in timestamps])
 
 
-def _signal(bar_index: int, signal_id: int) -> pd.DataFrame:
+def _signal(bar_index: int, signal_id: int, timestamp: str) -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
                 "signal_id": signal_id,
-                "timestamp": pd.Timestamp("2026-01-05 18:00:00", tz=TZ),
+                "timestamp": pd.Timestamp(timestamp, tz=TZ),
                 "bar_index": bar_index,
                 "trigger": "touch",
                 "direction": "long",
@@ -71,27 +88,41 @@ def _p1_frame() -> pd.DataFrame:
 
 
 def _p1_signals() -> pd.DataFrame:
-    return pd.concat([_signal(bar_index=0, signal_id=1), _signal(bar_index=2, signal_id=2)])
+    return pd.concat(
+        [
+            _signal(bar_index=0, signal_id=1, timestamp="2026-01-05 18:29"),
+            _signal(bar_index=2, signal_id=2, timestamp="2026-01-06 01:59"),
+        ],
+        ignore_index=True,
+    )
+
+
+def _assert_empty_cap_skip(skipped: pd.DataFrame, *, signal_id: int) -> None:
+    assert _SKIP_ROW_COLUMNS <= set(skipped.columns)
+    assert list(skipped["skip_reason"]) == [EMPTY_SESSION_CLOSE_CAP]
+    assert list(skipped["signal_id"]) == [signal_id]
 
 
 def test_ah1_p1_mon_eth_does_not_inherit_tuesday_flatten_clock():
     """AH1-P1: last first-loop entry Tue 02:00 must not flatten Mon 18:30 to Tuesday."""
+    kwargs = dict(
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone=TZ,
+    )
     result = simulate_trades(
         _p1_frame(),
         _p1_signals(),
         TICK,
         POINT_VALUE,
         **WIDE,
-        flat_by_session_close=True,
-        session_close_time="16:00",
-        session_timezone=TZ,
+        **kwargs,
         return_result=True,
     )
     assert isinstance(result, SimulationResult)
     trades = result.trades
     skipped = result.skipped_signals
-    assert list(skipped["skip_reason"]) == ["empty_session_close_cap"]
-    assert list(skipped["signal_id"]) == [1]
+    _assert_empty_cap_skip(skipped, signal_id=1)
     assert len(trades) == 1
     assert int(trades.iloc[0]["signal_id"]) == 2
     assert trades.iloc[0]["exit_reason"] == "SESSION_CLOSE"
@@ -99,9 +130,19 @@ def test_ah1_p1_mon_eth_does_not_inherit_tuesday_flatten_clock():
     assert pd.Timestamp(trades.iloc[0]["entry_timestamp"]) == pd.Timestamp(
         "2026-01-06 02:00", tz=TZ
     )
-    assert pd.Timestamp(trades.iloc[0]["exit_timestamp"]) == pd.Timestamp(
-        "2026-01-06 16:00", tz=TZ
+    assert pd.Timestamp(trades.iloc[0]["exit_timestamp"]) == pd.Timestamp("2026-01-06 16:00", tz=TZ)
+
+    trades_tuple, skipped_tuple = simulate_trades(
+        _p1_frame(),
+        _p1_signals(),
+        TICK,
+        POINT_VALUE,
+        **WIDE,
+        **kwargs,
+        return_skipped_signals=True,
     )
+    pd.testing.assert_frame_equal(trades.reset_index(drop=True), trades_tuple.reset_index(drop=True))
+    _assert_empty_cap_skip(skipped_tuple, signal_id=1)
 
 
 def test_ah1_p2_tue_rth_does_not_inherit_monday_flatten_clock():
@@ -115,7 +156,13 @@ def test_ah1_p2_tue_rth_does_not_inherit_monday_flatten_clock():
         "2026-01-06 16:00",
     )
     # First-loop order: Tue RTH first, Mon ETH last (leaked clock = Mon 18:30).
-    signals = pd.concat([_signal(bar_index=2, signal_id=2), _signal(bar_index=0, signal_id=1)])
+    signals = pd.concat(
+        [
+            _signal(bar_index=2, signal_id=2, timestamp="2026-01-06 09:30"),
+            _signal(bar_index=0, signal_id=1, timestamp="2026-01-05 18:29"),
+        ],
+        ignore_index=True,
+    )
     result = simulate_trades(
         df,
         signals,
@@ -129,8 +176,7 @@ def test_ah1_p2_tue_rth_does_not_inherit_monday_flatten_clock():
     )
     trades = result.trades
     skipped = result.skipped_signals
-    assert list(skipped["skip_reason"]) == ["empty_session_close_cap"]
-    assert list(skipped["signal_id"]) == [1]
+    _assert_empty_cap_skip(skipped, signal_id=1)
     assert len(trades) == 1
     assert int(trades.iloc[0]["signal_id"]) == 2
     assert trades.iloc[0]["exit_reason"] == "SESSION_CLOSE"
@@ -138,6 +184,7 @@ def test_ah1_p2_tue_rth_does_not_inherit_monday_flatten_clock():
     assert pd.Timestamp(trades.iloc[0]["entry_timestamp"]) == pd.Timestamp(
         "2026-01-06 09:31", tz=TZ
     )
+    assert pd.Timestamp(trades.iloc[0]["exit_timestamp"]) == pd.Timestamp("2026-01-06 16:00", tz=TZ)
 
 
 def test_ah1_p3_single_signal_rth_flatten_unchanged():
@@ -162,7 +209,7 @@ def test_ah1_p3_single_signal_rth_flatten_unchanged():
     )
     trades = simulate_trades(
         df,
-        _signal(bar_index=0, signal_id=0),
+        _signal(bar_index=0, signal_id=0, timestamp="2026-01-02 15:58"),
         TICK,
         POINT_VALUE,
         stop_loss_ticks=100,
@@ -189,9 +236,22 @@ def test_ah1_p4_flatten_off_multi_date_has_no_session_close():
         **WIDE,
         session_timezone=TZ,
     )
+    captured = simulate_trades(
+        _p1_frame(),
+        _p1_signals(),
+        TICK,
+        POINT_VALUE,
+        **WIDE,
+        session_timezone=TZ,
+        return_result=True,
+    )
     assert len(trades) == 2
     assert set(trades["exit_reason"]) == {"EOD"}
     assert set(trades["signal_id"].astype(int)) == {1, 2}
+    pd.testing.assert_frame_equal(
+        trades.reset_index(drop=True), captured.trades.reset_index(drop=True)
+    )
+    assert captured.skipped_signals.empty
 
 
 def test_ah1_p5_empty_cap_default_return_is_trades_only():
@@ -199,7 +259,7 @@ def test_ah1_p5_empty_cap_default_return_is_trades_only():
     df = _df("2026-01-05 18:29", "2026-01-05 18:30")
     out = simulate_trades(
         df,
-        _signal(bar_index=0, signal_id=1),
+        _signal(bar_index=0, signal_id=1, timestamp="2026-01-05 18:29"),
         TICK,
         POINT_VALUE,
         **WIDE,
