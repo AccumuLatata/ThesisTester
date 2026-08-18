@@ -127,9 +127,9 @@ with engine windows on `constants.backtest.entry_window` and
 best-effort `parent` from `study.lineage.parent_output_dir` (YAML only).
 Inspect **Draft Admit follow-up** writes RTH YAML onto `studies_preview_yaml`
 (Apply cache-clear) and must not rewrite parent `study.overview.*`.
-Refuse caption is `studies_admit_followup_error`; success flash is
+Refuse is `st.error` via `studies_admit_followup_error`; success flash is
 `studies_admit_followup_notice` then `st.rerun()` so the Preview textarea
-hydrates (Load-example pattern).
+hydrates (Load-example pattern). The notice is consumed after that rerun.
 Default promote stays RS5. The button must not call `run_study`.
 `viewer.py` must not import `promote` or `admit_followup`.
 `admit_followup.py` must not import execute / launch / viewer / cli / Streamlit.

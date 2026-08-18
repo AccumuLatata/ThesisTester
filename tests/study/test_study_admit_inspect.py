@@ -36,6 +36,7 @@ from thesistester.study.report import (
 from tests.study.test_study_admit_followup import _write_admit_fixture
 
 STUDIES_ADMIT_FOLLOWUP_ERROR_KEY = "studies_admit_followup_error"
+STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY = "studies_admit_followup_notice"
 
 
 def _write_preview_like_apply(session: dict, yaml_text: str) -> None:
@@ -139,12 +140,21 @@ def test_inspect_admit_writes_preview_and_clears_confirm(tmp_path: Path):
         STUDIES_ADMIT_FOLLOWUP_ERROR_KEY: "stale",
     }
     session.pop(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY, None)
+    session[STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY] = (
+        "Admit follow-up YAML is on the Preview tab — use **Validate / Preview**, "
+        "then existing Run via CLI. This does not spawn `study run`."
+    )
     _write_preview_like_apply(session, yaml_text)
     assert session[STUDIES_PREVIEW_YAML_KEY] == yaml_text
     assert STUDIES_PREVIEW_CACHED_KEY not in session
     assert STUDIES_PREVIEW_CACHED_YAML_KEY not in session
     assert STUDIES_LAUNCH_APPROVAL_KEY not in session
     assert STUDIES_ADMIT_FOLLOWUP_ERROR_KEY not in session
+    assert STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY in session
+    # Page consumes the flash after st.rerun() (same as classic_flash).
+    flashed = session.pop(STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY, None)
+    assert isinstance(flashed, str) and flashed.strip()
+    assert STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY not in session
     assert not list(study_dir.glob("study.launch.*"))
 
 
@@ -209,6 +219,15 @@ def test_page_inspect_admit_ast_and_no_execute():
     assert "studies_admit_followup_error" in page
     assert "STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY" in page
     assert "st.rerun()" in page
+    briefing_start = page.index("def _render_inspect_briefing")
+    apply_start = page.index("def _apply_inspect_admit_followup")
+    briefing_only = page[briefing_start:apply_start]
+    assert "st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY" in briefing_only
+    assert "st.success" in briefing_only
+    assert "st.error" in briefing_only
+    apply_src = page[apply_start : page.index("def _render_inspect(")]
+    assert "st.rerun()" in apply_src
+    assert "_write_preview_yaml" in apply_src
     assert "_apply_inspect_admit_followup" in page
     assert "run_inspect_admit_followup" in page
     assert "run_study(" not in page

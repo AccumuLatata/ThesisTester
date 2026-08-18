@@ -800,13 +800,12 @@ def _render_inspect_briefing(model: StudyViewerModel) -> None:
     ):
         _apply_inspect_admit_followup(model)
     if not ready:
-        st.caption(
-            "Disabled until Inspect has a ranked crowned cell with a NY RTH segment."
-        )
+        st.caption("Disabled until Inspect has a ranked crowned cell with a NY RTH segment.")
     error = st.session_state.get(STUDIES_ADMIT_FOLLOWUP_ERROR_KEY)
     if isinstance(error, str) and error.strip():
         st.error(error)
-    notice = st.session_state.get(STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY)
+    # One-shot: survives the post-write st.rerun(), then is consumed.
+    notice = st.session_state.pop(STUDIES_ADMIT_FOLLOWUP_NOTICE_KEY, None)
     if isinstance(notice, str) and notice.strip():
         st.success(notice)
 
