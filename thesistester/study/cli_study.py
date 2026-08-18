@@ -122,9 +122,9 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         choices=("auto",),
         default=None,
         help=(
-            "Draft a one-cell Admit follow-up (NY entry_rth_segment). "
-            "Requires --top-n 1 or --admit-run-name. Absence keeps RS5 promote. "
-            "Never executes."
+            "Draft a one-cell Admit follow-up (default NY entry_rth_segment). "
+            "Requires --top-n 1 or --admit-run-name. Optional --tod-group / "
+            "--allow-thin. Absence keeps RS5 promote. Never executes."
         ),
     )
     promote_parser.add_argument(
@@ -132,6 +132,27 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         type=str,
         default=None,
         help="Ranked run_name to constrain for --admit-tod (default: first ranked row)",
+    )
+    promote_parser.add_argument(
+        "--tod-group",
+        choices=(
+            "entry_rth_segment",
+            "entry_hour_bucket",
+            "entry_30min_bucket",
+        ),
+        default=None,
+        help=(
+            "ToD grouping for --admit-tod (default: entry_rth_segment). "
+            "Requires --admit-tod. Hour/30min stay CLI-only."
+        ),
+    )
+    promote_parser.add_argument(
+        "--allow-thin",
+        action="store_true",
+        help=(
+            "Permit a thin Admit bucket (N < report.min_trades / sample_warning). "
+            "Requires --admit-tod. Sets lineage.admit.thin true."
+        ),
     )
 
     rollup_parser = study_sub.add_parser(
@@ -269,6 +290,8 @@ def _cmd_promote(args: argparse.Namespace) -> int:
         force=bool(args.force),
         admit_tod=getattr(args, "admit_tod", None),
         admit_run_name=getattr(args, "admit_run_name", None),
+        tod_group=getattr(args, "tod_group", None),
+        allow_thin=bool(getattr(args, "allow_thin", False)),
     )
     print(
         f"Draft StudySpec written: {result.output_path} "

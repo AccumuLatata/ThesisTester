@@ -32,14 +32,15 @@ fail the cell.
 trader briefing / per-cell SL/TP grid / NY RTH ToD).
 Does not change preview / CLI-spawn / execute. Inspect remains artifacts-only
 (`report_study(..., write_artifacts=False)`; no `rollup_study()`).
-**SAF** (Study Admit Follow-up) — SAF1 CLI + SAF2 Inspect draft shipped
+**SAF** (Study Admit Follow-up) — SAF1–SAF3 shipped
 `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.
 `study promote --admit-tod auto` drafts a linked child StudySpec with Admit
-locked to the briefing NY `entry_rth_segment`. Inspect **Draft Admit follow-up**
-writes the same YAML onto Preview (Apply cache-clear; no spawn). Promote
-without `--admit-tod` stays RS5. `--tod-group` / `--allow-thin` are **not
-shipped** (SAF3). Does not auto-`study run` and does not add ToD as a factor
-axis.
+locked to the briefing NY `entry_rth_segment`. `--tod-group` hour/30min and
+`--allow-thin` are CLI-only. Inspect **Draft Admit follow-up** stays RTH +
+thin-refuse and writes Preview YAML only. Catalog / `study list` show a
+best-effort `parent` from `study.lineage`. Promote without `--admit-tod`
+stays RS5. SAF4 (one-click child launch) is parked. Does not auto-`study run`
+and does not add ToD as a factor axis.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -665,19 +666,20 @@ Paste `output_dir` remains valid alongside the catalog.
 
 ## SAF — Study Admit Follow-up
 
-**Status:** SAF1 CLI + SAF2 Inspect draft shipped. SAF3 not started. SAF4 parked.  
+**Status:** SAF1–SAF3 shipped. SAF4 parked.  
 **Plan:** `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.
 
 After a completed all-day study, `study promote --admit-tod auto --top-n 1`
 drafts a **child** StudySpec that re-sims one ranked cell with Admit locked to
-the briefing NY `entry_rth_segment`. Inspect **Draft Admit follow-up** writes
-that YAML onto Preview (does **not** `study run`).
+the briefing NY `entry_rth_segment`. `--tod-group` / `--allow-thin` stay
+CLI-only. Inspect **Draft Admit follow-up** writes RTH YAML onto Preview
+(does **not** `study run`). Catalog / `study list` show `parent` from lineage.
 
 | Step | Status | What does not happen |
 |---|---|---|
 | `study promote --admit-tod auto` (SAF1) | **Shipped.** One ranked cell; stamp `backtest` + `grid` `entry_window`; write `study.lineage`; new `output_dir`. Requires `--top-n 1` or `--admit-run-name`. Thin / `avg_r` tie / missing zip refuse | Auto-`study run`; ToD as a factor axis; default promote behavior change |
 | Inspect **Draft Admit follow-up** (SAF2) | **Shipped.** Same helper as `--admit-tod auto`; writes `studies_preview_yaml` + Apply cache-clear; refuse caption `studies_admit_followup_error`. Disabled without a ranked crown + NY segment | In-process execute / second spawn path; `drafts/` write; parent `study.overview.*` rewrite; classic keys |
-| `--tod-group` / `--allow-thin` / catalog parent (SAF3) | Not shipped | Multi-bucket cartesian |
+| `--tod-group` / `--allow-thin` / catalog parent (SAF3) | **Shipped.** Hour/30min → `clock_range` via `entry_window_from_bucket`. Thin succeeds only with `--allow-thin` (`lineage.admit.thin: true`). Catalog / `study list` `parent` = basename of `parent_output_dir`. Inspect button stays RTH + thin-refuse | Multi-bucket cartesian; Inspect hour UI |
 
 **Honesty.** Child KPIs are a constrained re-sim (Focus ≠ Admit), not
 confirmation of the parent screen. Engine Admit is `backtest.entry_window`

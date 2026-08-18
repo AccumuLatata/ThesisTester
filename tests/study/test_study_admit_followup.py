@@ -317,13 +317,15 @@ def test_cli_promote_help_mentions_admit_flags():
     promote_help = promote.format_help()
     assert "--admit-tod" in promote_help
     assert "--admit-run-name" in promote_help
-    assert "--tod-group" not in promote_help
-    assert "--allow-thin" not in promote_help
+    assert "--tod-group" in promote_help
+    assert "--allow-thin" in promote_help
     for cmd in (expand, run, report, listing):
         assert cmd is not None
         text = cmd.format_help()
         assert "--admit-tod" not in text
         assert "--admit-run-name" not in text
+        assert "--tod-group" not in text
+        assert "--allow-thin" not in text
 
 
 def test_select_admit_bucket_prefers_non_warning_and_refuses_tie():

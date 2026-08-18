@@ -169,6 +169,7 @@ class StudyCatalogEntry:
     ledger_present: bool
     index_present: bool
     mtime: float
+    parent: str = "—"
 
 
 def is_study_dir(path: Path) -> bool:
@@ -296,6 +297,7 @@ def _fallback_catalog_entry(study_dir: Path) -> StudyCatalogEntry:
         ledger_present=False,
         index_present=(study_dir / RESULTS_INDEX).is_file(),
         mtime=_catalog_mtime(study_dir),
+        parent="—",
     )
 
 
@@ -325,6 +327,7 @@ def _catalog_entry_from_dir(study_dir: Path) -> StudyCatalogEntry:
             ledger_present=ledger_present,
             index_present=(study_dir / RESULTS_INDEX).is_file(),
             mtime=_catalog_mtime(study_dir),
+            parent=_read_catalog_parent(study_dir),
         )
     except Exception:  # noqa: BLE001 — one corrupt dir must not fail the catalog
         return _fallback_catalog_entry(study_dir)
@@ -378,12 +381,13 @@ def format_study_catalog_table(entries: Sequence[StudyCatalogEntry]) -> str:
     """Stable text table for ``study list`` (no JSON schema)."""
     if not entries:
         return "No study directories found under results/studies/ or out/."
-    headers = ("study_name", "ok/failed/skipped/running/pending", "run_count", "path")
-    rows: list[tuple[str, str, str, str]] = []
+    headers = ("study_name", "parent", "ok/failed/skipped/running/pending", "run_count", "path")
+    rows: list[tuple[str, str, str, str, str]] = []
     for entry in entries:
         counts = f"{entry.ok}/{entry.failed}/{entry.skipped}/{entry.running}/{entry.pending}"
         run_count = "—" if entry.run_count is None else str(entry.run_count)
-        rows.append((entry.study_name, counts, run_count, str(entry.study_dir)))
+        parent = str(getattr(entry, "parent", None) or "—")
+        rows.append((entry.study_name, parent, counts, run_count, str(entry.study_dir)))
     widths = [len(header) for header in headers]
     for row in rows:
         for index, cell in enumerate(row):
@@ -641,6 +645,52 @@ def summarize_ledger_progress(
         in_flight=pending > 0 or running_count > 0,
         fraction=fraction,
     )
+
+
+def _catalog_parent_label(raw: object, *, cwd: Path | None = None) -> str:
+    """Basename or cwd-relative path from ``study.lineage.parent_output_dir``."""
+    if not isinstance(raw, str) or not raw.strip():
+        return "—"
+    path = Path(raw.strip())
+    name = path.name.strip()
+    if name:
+        return name
+    try:
+        base = Path(cwd) if cwd is not None else Path.cwd()
+        resolved = path.expanduser()
+        if not resolved.is_absolute():
+            resolved = (base / resolved).resolve()
+        else:
+            resolved = resolved.resolve()
+        rel = resolved.relative_to(base.resolve())
+        text = rel.as_posix()
+        return text if text and text != "." else (resolved.name or "—")
+    except (OSError, ValueError):
+        return "—"
+
+
+def _read_catalog_parent(study_dir: Path) -> str:
+    """Best-effort lineage parent label. Corrupt / missing → ``—``."""
+    spec_path = study_dir / STUDY_SPEC_FILENAME
+    if not spec_path.is_file():
+        return "—"
+    try:
+        import yaml
+    except ImportError:
+        return "—"
+    try:
+        spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError):
+        return "—"
+    if not isinstance(spec, Mapping):
+        return "—"
+    study = spec.get("study")
+    if not isinstance(study, Mapping):
+        return "—"
+    lineage = study.get("lineage")
+    if not isinstance(lineage, Mapping):
+        return "—"
+    return _catalog_parent_label(lineage.get("parent_output_dir"))
 
 
 def _read_identity(study_dir: Path) -> tuple[str | None, int | None, str | None]:

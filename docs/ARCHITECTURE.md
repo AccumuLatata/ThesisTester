@@ -119,11 +119,13 @@ StudySpec factor.
 `rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`; Plotly stays
 on `pages/15_Studies.py`).
 **SAF** (Study Admit Follow-up, `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`)
-SAF1 CLI + SAF2 Inspect draft are shipped: optional fail-closed
+SAF1–SAF3 are shipped: optional fail-closed
 `study.lineage` + `study promote --admit-tod auto` drafts a child Admit spec
 with engine windows on `constants.backtest.entry_window` and
 `constants.grid.entry_window` (plus setup `constants.entry_window`).
-Inspect **Draft Admit follow-up** writes that YAML onto `studies_preview_yaml`
+`--tod-group` / `--allow-thin` are CLI-only. Catalog / `study list` add
+best-effort `parent` from `study.lineage.parent_output_dir` (YAML only).
+Inspect **Draft Admit follow-up** writes RTH YAML onto `studies_preview_yaml`
 (Apply cache-clear) and must not rewrite parent `study.overview.*`.
 Refuse caption is `studies_admit_followup_error`.
 Default promote stays RS5. The button must not call `run_study`.

@@ -388,6 +388,7 @@ def _render_inspect_catalog() -> None:
     st.dataframe(
         {
             "study_name": [entry.study_name for entry in shown],
+            "parent": [getattr(entry, "parent", "—") or "—" for entry in shown],
             "ok": [entry.ok for entry in shown],
             "failed": [entry.failed for entry in shown],
             "skipped": [entry.skipped for entry in shown],
