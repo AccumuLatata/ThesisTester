@@ -236,6 +236,9 @@ def build_promoted_draft(
         )
 
     study = copy.deepcopy(dict(source_spec["study"]))
+    # Default promote is RS5: never copy parent lineage (stale admit metadata).
+    # ``--admit-tod`` re-attaches a new closed mapping in ``apply_admit_followup``.
+    study.pop("lineage", None)
     axis_keys = list(study["factors"].keys())
     cells: list[dict[str, Any]] = []
     for name in selected_run_names:
@@ -411,8 +414,14 @@ def promote_study(
             raise StudyPromoteError(
                 "study.expansion.json missing study_identity_hash; re-run study expand"
             )
-        parent_name = str(source_spec.get("study", {}).get("name") or "study")
-        instrument = source_spec.get("study", {}).get("dataset", {}).get("instrument")
+        parent_study = source_spec.get("study")
+        parent_name = "study"
+        instrument = ""
+        if isinstance(parent_study, Mapping):
+            parent_name = str(parent_study.get("name") or "study")
+            dataset = parent_study.get("dataset")
+            if isinstance(dataset, Mapping):
+                instrument = dataset.get("instrument")
         run_name = selected[0]
         try:
             draft = apply_admit_followup(

@@ -26,7 +26,8 @@ from thesistester.study.briefing import (
 )
 from thesistester.study.schema import RUN_NAME_RE, StudySpecError, validate_study_spec
 
-ADMIT_TOD_GROUP = "entry_rth_segment"
+# SAF1 hard-codes the briefing NY RTH column (SV5 ``TOD_GROUP_COL``).
+ADMIT_TOD_GROUP = TOD_GROUP_COL
 ADMIT_RULE = "briefing_best_avg_r"
 ADMIT_TOD_MODE = "auto"
 
@@ -256,6 +257,12 @@ def apply_admit_followup(
     study = payload.get("study")
     if not isinstance(study, dict):
         raise AdmitFollowupError("Admit follow-up draft is missing study mapping")
+    stage = study.get("stage")
+    cells = stage.get("cells") if isinstance(stage, Mapping) else None
+    if not isinstance(cells, list) or len(cells) != 1:
+        raise AdmitFollowupError(
+            "Admit follow-up requires a one-cell explicit_cells draft"
+        )
 
     stamp_admit_windows(study, window)
     child_name = child_study_name(parent_study_name, str(bucket["value"]))

@@ -348,6 +348,9 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
         study_dict.setdefault("levels", {})
         if "name" in study_dict and "output_dir" not in study_dict:
             study_dict["output_dir"] = f"results/studies/{study_dict['name']}"
+        # Optional lineage: null / missing → omit (do not emit empty {}).
+        if "lineage" in study_dict and study_dict["lineage"] is None:
+            study_dict.pop("lineage")
         report = study_dict.get("report")
         factors = study_dict.get("factors")
         factor_keys = set(factors) if isinstance(factors, Mapping) else set()
