@@ -31,9 +31,9 @@ from thesistester.levels.catalog import (
     SINGLE_PRINT_LEVEL_NAMES,
     pivot_column_names,
 )
+from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
 from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES
-from thesistester.levels.prev30m_vwap import prev30m_price_column_names
-from thesistester.setup import SUGGESTED_DEFAULT_LEVELS
+from thesistester.study.schema import StudySpecError, closed_level_token_set
 
 # Additive Streamlit staging keys owned by the Research Assistant page.
 ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
@@ -1120,25 +1120,65 @@ def coerce_multiselect_defaults(
     return values
 
 
-def _levels_setting_sequence(
-    settings: Mapping[str, Any],
-    key: str,
-    *,
-    default: Sequence[Any],
-) -> list[Any]:
-    """Return a levels-settings sequence.
+def _as_draft_sequence(value: Any) -> list[Any]:
+    """Normalize a staged levels value to a list without inventing defaults."""
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(value, Iterable) and not isinstance(value, (bytes, bytearray, Mapping)):
+        return list(value)
+    return [value]
 
-    Missing / ``None`` uses ``default``. An explicit empty list/tuple is preserved
-    so cleared windows/lengths do not expand back into the full catalog.
+
+def _token_levels_settings(levels_settings: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Copy staged settings into a shape ``closed_level_token_set`` accepts.
+
+    Assistant widgets keep ``SMA_TIMEFRAMES`` / numeric legacy windows as editor
+    catalogs. Those shapes are not StudySpec-valid (``15min`` MA TFs are parked;
+    lengths must be real lists of ints). Coerce or drop them here so the
+    confluence picker cannot raise; unsupported MA TFs are not implied tokens.
     """
-    if key not in settings:
-        return list(default)
-    raw = settings.get(key)
-    if raw is None:
-        return list(default)
-    if isinstance(raw, (list, tuple)):
-        return list(raw)
-    return list(default)
+    if not isinstance(levels_settings, Mapping):
+        return {}
+    settings = dict(levels_settings)
+    for key in ("vwap_windows", "poc_windows"):
+        if key not in settings or settings[key] is None:
+            continue
+        settings[key] = [
+            label
+            for window in _as_draft_sequence(settings[key])
+            if (label := coerce_window_label(window))
+        ]
+    for key in ("sma_lengths", "ema_lengths"):
+        if key not in settings or settings[key] is None:
+            continue
+        settings[key] = [
+            parsed
+            for item in _as_draft_sequence(settings[key])
+            if (parsed := safe_int(item, 0)) > 0
+        ]
+    for key in ("sma_timeframes", "ema_timeframes"):
+        if key not in settings or settings[key] is None:
+            continue
+        settings[key] = [
+            text
+            for item in _as_draft_sequence(settings[key])
+            if (text := str(item).strip()) in SUPPORTED_INDICATOR_TIMEFRAMES
+        ]
+    if "pivot_timeframes" in settings and settings["pivot_timeframes"] is not None:
+        settings["pivot_timeframes"] = [
+            text
+            for item in _as_draft_sequence(settings["pivot_timeframes"])
+            if (text := str(item).strip()) in SUPPORTED_PIVOT_TIMEFRAMES
+        ]
+    if (
+        "prev30m_vwap_validity_periods" in settings
+        and settings["prev30m_vwap_validity_periods"] is not None
+    ):
+        settings["prev30m_vwap_validity_periods"] = max(
+            safe_int(settings["prev30m_vwap_validity_periods"], 1),
+            1,
+        )
+    return settings
 
 
 def build_confluence_level_options(
@@ -1149,11 +1189,11 @@ def build_confluence_level_options(
 ) -> list[str]:
     """Build a searchable confluence catalog for Assistant multiselects.
 
-    Prefers live Levels-page columns when available, then static session/profile
-    names, then indicator names implied by the staged levels settings, and
-    always retains any already-selected draft levels. Explicit empty
-    ``vwap_windows`` / ``poc_windows`` / indicator-length lists stay empty —
-    they do not fall back to the full default catalogs.
+    Tokens are ``closed_level_token_set`` for the staged settings (DEFAULT
+    merge when keys are omitted), plus live Levels columns and already-selected
+    draft tokens. Explicit empty windows/lengths stay empty — they do not fall
+    back to widget catalogs (``VWAP_WINDOW_OPTIONS`` / ``POC_WINDOW_OPTIONS`` /
+    ``INDICATOR_LENGTH_OPTIONS`` / ``SMA_TIMEFRAMES`` beyond the engine set).
     """
     options: list[str] = []
 
@@ -1163,50 +1203,11 @@ def build_confluence_level_options(
             if text and text not in options:
                 options.append(text)
 
-    _add(SUGGESTED_DEFAULT_LEVELS)
-    _add(SESSION_LEVEL_CATALOG)
-    settings = levels_settings if isinstance(levels_settings, Mapping) else {}
-    sma_lengths = [
-        value
-        for value in _levels_setting_sequence(
-            settings, "sma_lengths", default=INDICATOR_LENGTH_OPTIONS
-        )
-        if safe_int(value, 0) > 0
-    ]
-    ema_lengths = [
-        value
-        for value in _levels_setting_sequence(
-            settings, "ema_lengths", default=INDICATOR_LENGTH_OPTIONS
-        )
-        if safe_int(value, 0) > 0
-    ]
-    sma_timeframes = [
-        str(value).strip()
-        for value in _levels_setting_sequence(settings, "sma_timeframes", default=("30min",))
-        if str(value).strip()
-    ]
-    ema_timeframes = [
-        str(value).strip()
-        for value in _levels_setting_sequence(settings, "ema_timeframes", default=())
-        if str(value).strip()
-    ]
-    for length in sma_lengths:
-        for timeframe in sma_timeframes:
-            _add((f"SMA_{int(length)}_{timeframe}",))
-    for length in ema_lengths:
-        for timeframe in ema_timeframes:
-            _add((f"EMA_{int(length)}_{timeframe}",))
-    for window in _levels_setting_sequence(settings, "vwap_windows", default=VWAP_WINDOW_OPTIONS):
-        label = coerce_window_label(window)
-        if label:
-            _add((f"VWAP_rolling_{label}",))
-    for window in _levels_setting_sequence(settings, "poc_windows", default=POC_WINDOW_OPTIONS):
-        label = coerce_window_label(window)
-        if label:
-            _add((f"POC_rolling_{label}",))
-    if bool(settings.get("prev30m_vwap_enabled", False)):
-        validity = safe_int(settings.get("prev30m_vwap_validity_periods"), 1)
-        _add(prev30m_price_column_names(max(validity, 1)))
+    try:
+        tokens = closed_level_token_set(_token_levels_settings(levels_settings))
+    except StudySpecError:
+        tokens = closed_level_token_set({})
+    _add(sorted(tokens))
     _add(available_columns)
     _add(selected_levels)
     return options

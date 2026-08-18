@@ -51,7 +51,7 @@ SUGGESTED_DEFAULT_LEVELS = [
     "pdHigh",
     "pdLow",
     "pdPOC",
-    "VWAP_rolling_1h",
+    "VWAP_rolling_30min",
 ]
 
 DEFAULT_3C_PARAMS: dict[str, Any] = {
