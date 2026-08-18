@@ -30,6 +30,22 @@ _REQUIRED_CELL_AXES = ("confluence_mode", "trigger", "trigger_timeframe")
 _DATASET_PATH_KEYS = ("path", "subtimeframe_path")
 
 
+def coerce_source_spec_parent(raw: str | Path | None) -> Path | None:
+    """Return a resolved spec-parent directory, or None when unset/blank.
+
+    Blank strings must not resolve to cwd — that would silently pin the
+    cwd twin (the C2/H2 defect AH2 exists to stop).
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        return Path(text).resolve()
+    return Path(raw).resolve()
+
+
 def pin_dataset_paths_against_parent(
     dataset: Mapping[str, Any],
     *,
@@ -40,7 +56,9 @@ def pin_dataset_paths_against_parent(
     Missing files stay relative. Does not search cwd and does not copy CSVs.
     """
     out = dict(dataset)
-    parent = Path(spec_parent).resolve()
+    parent = coerce_source_spec_parent(spec_parent)
+    if parent is None:
+        return out
     for key in _DATASET_PATH_KEYS:
         raw = out.get(key)
         if raw is None or not isinstance(raw, (str, Path)):
@@ -61,9 +79,12 @@ def dataset_path_search_roots(
     extra_roots: Sequence[str | Path] = (),
     cwd: str | Path | None = None,
 ) -> list[Path]:
-    """Search order: spec parent → extra roots (except cwd) → cwd last.
+    """Search order: spec parent → extra_roots (given order) → cwd if absent.
 
-    If cwd *is* the spec parent, it stays first (not duplicated at the end).
+    ``cwd last`` means cwd is not inserted at the front. An extra root that
+    happens to be cwd keeps its extra_roots position so study output stays
+    ahead of draft parent when the operator runs promote from the study dir.
+    Blank ``source_spec_parent`` is ignored (not treated as cwd).
     """
     cwd_resolved = Path(cwd).resolve() if cwd is not None else Path.cwd().resolve()
     ordered: list[Path] = []
@@ -78,13 +99,11 @@ def dataset_path_search_roots(
         seen.add(path)
         ordered.append(path)
 
-    _add(source_spec_parent)
+    _add(coerce_source_spec_parent(source_spec_parent))
     for root in extra_roots:
-        resolved = Path(root).resolve()
-        if resolved == cwd_resolved:
-            continue
-        _add(resolved)
-    _add(cwd_resolved)
+        _add(root)
+    if cwd_resolved not in seen:
+        _add(cwd_resolved)
     return ordered
 
 
@@ -356,8 +375,9 @@ def _expand_validated(
 
     constants = dict(study.get("constants") or {})
     dataset = dict(study["dataset"])
-    if source_spec_parent is not None:
-        dataset = pin_dataset_paths_against_parent(dataset, spec_parent=source_spec_parent)
+    parent = coerce_source_spec_parent(source_spec_parent)
+    if parent is not None:
+        dataset = pin_dataset_paths_against_parent(dataset, spec_parent=parent)
     levels = dict(study.get("levels") or {})
     raw_backtest = constants.get("backtest")
     if not isinstance(raw_backtest, Mapping) or not raw_backtest:
@@ -444,9 +464,8 @@ def write_expansion_artifacts(
     experiment_path = root / "experiment.yaml"
 
     spec_to_write: dict[str, Any] = dict(normalized_spec)
-    parent: Path | None = None
-    if source_spec_parent is not None:
-        parent = Path(source_spec_parent).resolve()
+    parent = coerce_source_spec_parent(source_spec_parent)
+    if parent is not None:
         spec_to_write = copy.deepcopy(dict(normalized_spec))
         study = dict(spec_to_write.get("study") or {})
         raw_dataset = study.get("dataset")

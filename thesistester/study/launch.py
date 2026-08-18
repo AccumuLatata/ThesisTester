@@ -584,9 +584,10 @@ def _pin_dataset_paths(
     roots: Sequence[Path],
     source_spec_parent: str | Path | None = None,
 ) -> None:
-    """Pin relative dataset paths (spec parent first, cwd last); sandbox the result.
+    """Pin relative dataset paths (spec parent first, then roots, cwd if absent).
 
     Mirrors promote's search order without importing promote or execute.
+    ``cwd last`` does not demote a trusted root that happens to be cwd.
     """
     study = spec.get("study")
     if not isinstance(study, dict):

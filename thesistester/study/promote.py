@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from thesistester.setup import normalize_otf_filter_config
-from thesistester.study.expand import dataset_path_search_roots
+from thesistester.study.expand import coerce_source_spec_parent, dataset_path_search_roots
 from thesistester.study.report import (
     StudyReportError,
     report_study,
@@ -339,9 +339,9 @@ def promote_study(
     if not isinstance(factor_map, Mapping) or not factor_map:
         raise StudyPromoteError("study.expansion.json must contain a non-empty factor_map")
     raw_parent = expansion.get("source_spec_parent")
-    source_spec_parent: Path | None = None
-    if isinstance(raw_parent, str) and raw_parent.strip():
-        source_spec_parent = Path(raw_parent)
+    source_spec_parent = (
+        coerce_source_spec_parent(raw_parent) if isinstance(raw_parent, str) else None
+    )
 
     draft = build_promoted_draft(
         source_spec,
