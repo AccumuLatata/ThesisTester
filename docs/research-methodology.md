@@ -65,6 +65,8 @@ Use OTF v1 defaults unless a controlled sensitivity study is explicitly scoped:
    unbiased OOS evidence.
 5. Treat multi-configuration comparison as a multiple-testing risk; require
    caution before claiming improvement over `no_otf`.
+6. Train-period `simulate_trades` uses the positional OHLCV prefix before the
+   first OOS signal `bar_index`. OTF filter still runs on the full frame.
 
 ## 5. Optional walk-forward extension
 

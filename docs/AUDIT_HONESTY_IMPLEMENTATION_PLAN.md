@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **AH0 + AH1 landed. AH2 this PR.** AH3–AH6 specified, not implemented.  
+**Status:** **AH0–AH2 landed. AH3 this PR.** AH4–AH6 specified, not implemented.  
 **Series code:** **AH** (Audit Honesty)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Inputs:** `AUDIT_FINAL.md` on `cursor/audit-final-merge-3a8e` (slices 0–7 at `83a42f8`); CTO review ranking (research-honesty first; C2/H2 before C3 for Studies-first ops; H6 first-wave with golden-stop)  
@@ -255,7 +255,7 @@ Portable relative rewrite for coworker machines; changing `confirm_above_runs`; 
 
 ### 6.3 AH3 — OTF validation matrix train path leak (C3)
 
-**Status:** Specified  
+**Status:** Implemented  
 **Closes:** C3
 
 #### Defect (verified)
@@ -299,11 +299,11 @@ Portable relative rewrite for coworker machines; changing `confirm_above_runs`; 
 
 #### Acceptance
 
-- [ ] P1 fails on unpatched `main`
-- [ ] Filter still runs on full `source_df` (PIT unchanged)
-- [ ] `is_train_selected` still from train metrics only
-- [ ] No `walk_forward.py` diff
-- [ ] Goldens untouched (matrix is not in the golden pipeline)
+- [x] P1 fails on unpatched `main`
+- [x] Filter still runs on full `source_df` (PIT unchanged)
+- [x] `is_train_selected` still from train metrics only
+- [x] No `walk_forward.py` diff
+- [x] Goldens untouched (matrix is not in the golden pipeline)
 
 #### Out of AH3
 

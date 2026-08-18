@@ -10,7 +10,9 @@ Methodology
 - Candidate signals are split chronologically (default 70/30 train/OOS).
 - OTF filtering is applied independently and point-in-time safely using the
   existing ``apply_otf_filter()`` engine.
-- Trades are simulated separately for train and OOS periods.
+- Trades are simulated separately for train and OOS periods. Train **prices**
+  are the positional OHLCV prefix before the first OOS signal ``bar_index``.
+  OOS evaluation may use later bars. OTF filter still runs on the full frame.
 - Ranking, if used, is based on train metrics only; OOS metrics never affect
   selection.
 
@@ -166,6 +168,33 @@ def _filter_period(df: pd.DataFrame, period_set: frozenset) -> pd.DataFrame:
     return df[df.index.isin(period_set)].copy()
 
 
+def _train_price_split_bar(
+    oos_signals: pd.DataFrame | None,
+    n_bars: int,
+) -> int:
+    """First numeric OOS signal ``bar_index``, or ``n_bars`` when none exist.
+
+    Train simulation uses ``source_df.iloc[:split_bar]`` so OOS bars cannot
+    fill a last-train trade. OOS simulation stays on the full frame.
+
+    ``bar_index`` is coerced with :func:`pandas.to_numeric` so object/string
+    columns cannot lexicographically pick a later split (and leak OOS
+    prices). Non-finite values are ignored rather than aborting the matrix.
+    """
+    n = int(n_bars)
+    if oos_signals is None or oos_signals.empty or "bar_index" not in oos_signals.columns:
+        return n
+    raw = pd.to_numeric(oos_signals["bar_index"], errors="coerce")
+    raw = raw.replace([float("inf"), float("-inf")], pd.NA).dropna()
+    if raw.empty:
+        return n
+    try:
+        split = int(raw.min())
+    except (TypeError, ValueError, OverflowError):
+        return n
+    return max(0, min(n, split))
+
+
 def _count_period(df: pd.DataFrame | None, period_set: frozenset) -> int:
     if df is None or df.empty or not period_set:
         return 0
@@ -271,8 +300,9 @@ def run_otf_validation_matrix(
     ----------
     source_df:
         Canonical OHLCV DataFrame (columns: timestamp, open, high, low,
-        close, volume).  The full dataset is used for OTF state calculation;
-        only signals in each period drive the trade simulation.
+        close, volume).  The full dataset is used for OTF state calculation
+        (PIT). Train trade simulation uses the positional prefix before the
+        first OOS signal ``bar_index``; OOS simulation uses the full frame.
     candidate_signals:
         All candidate signals to evaluate.  Not mutated.
     tick_size:
@@ -340,6 +370,9 @@ def run_otf_validation_matrix(
 
     # Chronological train/OOS split on stamped row ids.
     train_set, oos_set = _chronological_train_oos_sets(candidates, train_fraction)
+    oos_split_signals = _filter_period(candidates, oos_set)
+    split_bar = _train_price_split_bar(oos_split_signals, len(source_df))
+    train_price_df = source_df.iloc[:split_bar]
 
     matrix_entries = build_otf_matrix_configs()
     rows: list[dict[str, Any]] = []
@@ -386,9 +419,10 @@ def run_otf_validation_matrix(
         train_rejected = len(rejected_train)
         oos_rejected = len(rejected_oos)
 
-        # Simulate trades.
+        # Simulate trades. Train prices are the prefix before the first OOS
+        # signal bar; OOS evaluation keeps the full frame.
         train_trades = _simulate(
-            source_df,
+            train_price_df,
             accepted_train,
             tick_size,
             point_value,
