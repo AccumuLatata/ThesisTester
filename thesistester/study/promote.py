@@ -21,6 +21,8 @@ import yaml
 
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.admit_followup import (
+    ADMIT_TOD_GROUP,
+    ADMIT_TOD_GROUPS,
     ADMIT_TOD_MODE,
     AdmitFollowupError,
     apply_admit_followup,
@@ -296,6 +298,8 @@ def _compose_promoted_draft(
     admit_run_name: str | None,
     output_path: Path | None,
     write_artifacts: bool = True,
+    tod_group: str | None = None,
+    allow_thin: bool = False,
 ) -> tuple[dict[str, Any], list[str], str]:
     """Build a promoted (and optional Admit) draft in memory.
 
@@ -335,6 +339,15 @@ def _compose_promoted_draft(
         raise StudyPromoteError("--admit-run-name must be a non-empty ranked run_name")
     if admit_run_name is not None and admit_mode is None:
         raise StudyPromoteError("--admit-run-name requires --admit-tod")
+    if (tod_group is not None or allow_thin) and admit_mode is None:
+        raise StudyPromoteError("--tod-group / --allow-thin require --admit-tod")
+    resolved_group = ADMIT_TOD_GROUP
+    if tod_group is not None:
+        resolved_group = str(tod_group).strip()
+        if resolved_group not in ADMIT_TOD_GROUPS:
+            raise StudyPromoteError(
+                f"--tod-group must be one of {sorted(ADMIT_TOD_GROUPS)}; got {tod_group!r}"
+            )
     if admit_mode is not None:
         if admit_mode != ADMIT_TOD_MODE:
             raise StudyPromoteError(
@@ -410,6 +423,8 @@ def _compose_promoted_draft(
                 bundle_rel=_overview_bundle_rel(report, run_name),
                 min_trades=int(report.min_trades),
                 instrument=str(instrument or ""),
+                group_col=resolved_group,
+                allow_thin=bool(allow_thin),
             )
         except AdmitFollowupError as exc:
             raise StudyPromoteError(str(exc)) from exc
@@ -574,11 +589,14 @@ def promote_study(
     force: bool = False,
     admit_tod: str | None = None,
     admit_run_name: str | None = None,
+    tod_group: str | None = None,
+    allow_thin: bool = False,
 ) -> StudyPromoteResult:
     """Write a draft survivor StudySpec; never executes backtests.
 
     ``admit_tod`` omitted → RS5 promote (no lineage, no Admit window).
     ``admit_tod='auto'`` → one-cell Admit follow-up (SAF1).
+    ``tod_group`` / ``allow_thin`` require ``admit_tod`` (SAF3).
     """
     root = Path(study_dir)
     if not root.is_dir():
@@ -599,6 +617,8 @@ def promote_study(
         admit_tod=admit_tod,
         admit_run_name=admit_run_name,
         output_path=out_path,
+        tod_group=tod_group,
+        allow_thin=allow_thin,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

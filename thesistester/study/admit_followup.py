@@ -1,8 +1,9 @@
-"""SAF1 Admit follow-up draft helper.
+"""SAF Admit follow-up draft helper.
 
-Selects the briefing NY ``entry_rth_segment`` bucket, maps it to an engine
-Admit window, stamps setup + backtest + grid, and builds optional
-``study.lineage``. Never executes backtests.
+Selects a briefing ToD bucket (default NY ``entry_rth_segment``), maps it to
+an engine Admit window, stamps setup + backtest + grid, and builds optional
+``study.lineage``. ``--tod-group`` / ``--allow-thin`` are SAF3. Never executes
+backtests.
 
 Must not import ``execute``, ``launch``, ``viewer``, ``cli_study``,
 ``thesistester.cli``, Streamlit, pages, or ``run_batch``.
@@ -26,8 +27,15 @@ from thesistester.study.briefing import (
 )
 from thesistester.study.schema import RUN_NAME_RE, StudySpecError, validate_study_spec
 
-# SAF1 hard-codes the briefing NY RTH column (SV5 ``TOD_GROUP_COL``).
+# Default group matches SV5 briefing (NY RTH). SAF3 may override via CLI.
 ADMIT_TOD_GROUP = TOD_GROUP_COL
+ADMIT_TOD_GROUPS = frozenset(
+    {
+        "entry_rth_segment",
+        "entry_hour_bucket",
+        "entry_30min_bucket",
+    }
+)
 ADMIT_RULE = "briefing_best_avg_r"
 ADMIT_TOD_MODE = "auto"
 
@@ -70,21 +78,26 @@ def select_admit_bucket(
     *,
     min_trades: int,
     group_col: str = ADMIT_TOD_GROUP,
+    allow_thin: bool = False,
 ) -> dict[str, Any]:
-    """Pick the briefing-best NY bucket; refuse ties and thin samples.
+    """Pick the briefing-best bucket; refuse ties and thin samples.
 
     Sort matches ``briefing._best_tod_bucket`` (prefer non-``sample_warning``,
-    ``avg_r`` desc, label asc). SAF1 hard-codes ``entry_rth_segment``.
+    ``avg_r`` desc, label asc). Default group is ``entry_rth_segment``.
+    Thin buckets require ``allow_thin`` (SAF3 ``--allow-thin``).
     """
-    if group_col != ADMIT_TOD_GROUP:
-        raise AdmitFollowupError(f"SAF1 Admit only supports {ADMIT_TOD_GROUP!r}; got {group_col!r}")
+    col = str(group_col or ADMIT_TOD_GROUP).strip() or ADMIT_TOD_GROUP
+    if col not in ADMIT_TOD_GROUPS:
+        raise AdmitFollowupError(
+            f"--tod-group must be one of {sorted(ADMIT_TOD_GROUPS)}; got {group_col!r}"
+        )
     if frame is None or frame.empty or "avg_r" not in frame.columns:
         raise AdmitFollowupError(
             "No time-of-day groups in this cell zip; cannot draft Admit follow-up"
         )
-    if group_col not in frame.columns:
+    if col not in frame.columns:
         raise AdmitFollowupError(
-            f"Time-of-day table is missing {group_col!r}; cannot draft Admit follow-up"
+            f"Time-of-day table is missing {col!r}; cannot draft Admit follow-up"
         )
     work = frame.copy()
     work["avg_r"] = pd.to_numeric(work["avg_r"], errors="coerce")
@@ -98,7 +111,7 @@ def select_admit_bucket(
         if not solid.empty:
             work = solid
     work = work.sort_values(
-        ["avg_r", group_col],
+        ["avg_r", col],
         ascending=[False, True],
         kind="mergesort",
     )
@@ -111,26 +124,26 @@ def select_admit_bucket(
                 "Inspect Time Analysis / briefing and choose explicitly later."
             )
     top = work.iloc[0]
-    label = str(top.get(group_col) or "").strip()
+    label = str(top.get(col) or "").strip()
     if not label or label == "—":
         raise AdmitFollowupError("Admit bucket label is empty; cannot draft follow-up")
     trade_count = pd.to_numeric(top.get("trade_count"), errors="coerce")
     sample_warning = bool(top["sample_warning"]) if "sample_warning" in top.index else False
     n = None if pd.isna(trade_count) else int(trade_count)
     thin = bool(sample_warning or n is None or n < int(min_trades))
-    if thin:
+    if thin and not allow_thin:
         raise AdmitFollowupError(
             f"Admit bucket {label!r} is thin "
             f"(sample_warning={sample_warning}, N={n}, min_trades={min_trades}). "
-            "SAF1 refuses thin buckets (--allow-thin is SAF3)."
+            "Pass --allow-thin to draft anyway (lineage.admit.thin will be true)."
         )
     return {
-        "group": group_col,
+        "group": col,
         "value": label,
         "avg_r": float(top["avg_r"]),
         "trade_count": n,
         "sample_warning": sample_warning,
-        "thin": False,
+        "thin": thin,
         "min_trades": int(min_trades),
         "rule": ADMIT_RULE,
     }
@@ -154,29 +167,44 @@ def extract_admit_bucket(
     bundle_path: Path,
     *,
     min_trades: int,
+    group_col: str = ADMIT_TOD_GROUP,
+    allow_thin: bool = False,
 ) -> dict[str, Any]:
-    """NY ``entry_rth_segment`` best bucket from ``trades.parquet`` (no re-sim)."""
+    """Best ToD bucket from ``trades.parquet`` (no re-sim)."""
+    col = str(group_col or ADMIT_TOD_GROUP).strip() or ADMIT_TOD_GROUP
+    if col not in ADMIT_TOD_GROUPS:
+        raise AdmitFollowupError(
+            f"--tod-group must be one of {sorted(ADMIT_TOD_GROUPS)}; got {group_col!r}"
+        )
     display, _best, caption = extract_cell_time_of_day(
         Path(bundle_path),
         min_trades=int(min_trades),
+        group_col=col,
     )
     if display is None or display.empty:
         detail = caption or "empty time-of-day table"
         raise AdmitFollowupError(
-            f"Cannot extract NY RTH buckets from {Path(bundle_path).name}: {detail}"
+            f"Cannot extract {col} buckets from {Path(bundle_path).name}: {detail}"
         )
-    return select_admit_bucket(display, min_trades=int(min_trades))
+    return select_admit_bucket(
+        display,
+        min_trades=int(min_trades),
+        group_col=col,
+        allow_thin=allow_thin,
+    )
 
 
 def admit_window_for_bucket(
     bucket_value: str,
     *,
     exchange_tz: str,
+    group_col: str = ADMIT_TOD_GROUP,
 ) -> dict[str, Any]:
-    """Normalized Admit window for the selected NY RTH segment."""
+    """Normalized Admit window for the selected ToD bucket."""
+    col = str(group_col or ADMIT_TOD_GROUP).strip() or ADMIT_TOD_GROUP
     try:
         window = entry_window_from_bucket(
-            ADMIT_TOD_GROUP,
+            col,
             bucket_value,
             exchange_tz=exchange_tz,
         )
@@ -241,13 +269,29 @@ def apply_admit_followup(
     bundle_rel: str | None,
     min_trades: int,
     instrument: str,
+    group_col: str = ADMIT_TOD_GROUP,
+    allow_thin: bool = False,
 ) -> dict[str, Any]:
     """Post-pass: stamp Admit windows + lineage + child identity; re-validate."""
     root = Path(parent_study_dir).resolve()
+    col = str(group_col or ADMIT_TOD_GROUP).strip() or ADMIT_TOD_GROUP
+    if col not in ADMIT_TOD_GROUPS:
+        raise AdmitFollowupError(
+            f"--tod-group must be one of {sorted(ADMIT_TOD_GROUPS)}; got {group_col!r}"
+        )
     bundle = resolve_admit_bundle(root, bundle_rel)
-    bucket = extract_admit_bucket(bundle, min_trades=int(min_trades))
+    bucket = extract_admit_bucket(
+        bundle,
+        min_trades=int(min_trades),
+        group_col=col,
+        allow_thin=allow_thin,
+    )
     exchange_tz = exchange_tz_for_instrument(instrument)
-    window = admit_window_for_bucket(str(bucket["value"]), exchange_tz=exchange_tz)
+    window = admit_window_for_bucket(
+        str(bucket["value"]),
+        exchange_tz=exchange_tz,
+        group_col=col,
+    )
 
     payload = copy.deepcopy(dict(draft))
     study = payload.get("study")
@@ -274,7 +318,7 @@ def apply_admit_followup(
     prior = str(study.get("description") or "").strip()
     admit_note = (
         f"Admit follow-up of {root.as_posix()} cell {parent_run_name} "
-        f"({ADMIT_TOD_GROUP}={bucket['value']}). Constrained re-sim (Focus ≠ Admit), "
+        f"({col}={bucket['value']}). Constrained re-sim (Focus ≠ Admit), "
         "not a new screen. Engine path is constants.backtest.entry_window "
         "(and grid.entry_window when grid is present)."
     )

@@ -501,6 +501,7 @@ def _write_catalog_study(
     corrupt_ledger: bool = False,
     corrupt_spec: bool = False,
     run_count: int | None = 2,
+    parent_output_dir: str | None = None,
 ) -> Path:
     parent.mkdir(parents=True, exist_ok=True)
     study_dir = parent / name
@@ -511,8 +512,22 @@ def _write_catalog_study(
             encoding="utf-8",
         )
     else:
+        lineage = ""
+        if parent_output_dir:
+            lineage = (
+                "  lineage:\n"
+                f"    parent_output_dir: {parent_output_dir}\n"
+                "    parent_identity_hash: hash-parent\n"
+                "    parent_run_name: cell_000\n"
+                "    admit:\n"
+                "      group: entry_rth_segment\n"
+                "      value: rth_open_30m\n"
+                "      rule: briefing_best_avg_r\n"
+                "      min_trades: 30\n"
+                "      thin: false\n"
+            )
         (study_dir / "study.spec.yaml").write_text(
-            f"schema_version: 1\nstudy:\n  name: {name}\n",
+            f"schema_version: 1\nstudy:\n  name: {name}\n{lineage}",
             encoding="utf-8",
         )
     if run_count is not None:
@@ -567,7 +582,16 @@ def test_discover_study_dirs_tolerates_corrupt_ledger_and_skips_report(tmp_path:
     def _boom(*_args, **_kwargs):
         raise AssertionError("discover must not call report_study")
 
+    def _boom_promote(*_args, **_kwargs):
+        raise AssertionError("discover must not call promote")
+
     monkeypatch.setattr("thesistester.study.viewer.report_study", _boom)
+    monkeypatch.setattr("thesistester.study.viewer.promote_study", _boom_promote, raising=False)
+    monkeypatch.setattr(
+        "thesistester.study.promote.promote_study",
+        _boom_promote,
+        raising=False,
+    )
     entries = discover_study_dirs(
         (tmp_path.resolve(),),
         extra_dirs=(str(extra),),
@@ -594,6 +618,7 @@ def test_discover_study_dirs_tolerates_corrupt_spec_yaml(tmp_path: Path):
     assert bad.resolve() in by_dir
     assert by_dir[good.resolve()].study_name == "good_spec"
     assert by_dir[bad.resolve()].study_name == "bad_spec"
+    assert by_dir[bad.resolve()].parent == "—"
     assert by_dir[bad.resolve()].run_count is None
     assert by_dir[bad.resolve()].ledger_present is False
 
@@ -629,11 +654,51 @@ def test_format_study_catalog_table_stable_headers(tmp_path: Path):
     entries = discover_study_dirs((tmp_path.resolve(),))
     table = format_study_catalog_table(entries)
     assert table.startswith("study_name")
-    assert "ok/failed/skipped/running/pending" in table.splitlines()[0]
+    header = table.splitlines()[0]
+    assert "parent" in header
+    assert "ok/failed/skipped/running/pending" in header
     assert "delta" in table
     assert format_study_catalog_table(()) == (
         "No study directories found under results/studies/ or out/."
     )
+
+
+def test_catalog_parent_from_lineage_basename(tmp_path: Path):
+    child = _write_catalog_study(
+        tmp_path / "out",
+        "child_admit",
+        parent_output_dir=str((tmp_path / "results" / "studies" / "parent_screen").resolve()),
+    )
+    entries = discover_study_dirs((tmp_path.resolve(),))
+    match = next(entry for entry in entries if entry.study_dir == child.resolve())
+    assert match.parent == "parent_screen"
+    table = format_study_catalog_table(entries)
+    header = table.splitlines()[0]
+    assert header.split()[1] == "parent" or "parent" in header
+    assert "parent_screen" in table
+
+
+def test_catalog_parent_failure_does_not_discard_identity(tmp_path: Path, monkeypatch):
+    child = _write_catalog_study(
+        tmp_path / "out",
+        "child_keep_identity",
+        ledger_ok=2,
+        run_count=4,
+        parent_output_dir=str(tmp_path / "results" / "studies" / "parent_screen"),
+    )
+
+    def _boom(_study_dir):
+        raise RuntimeError("parent read exploded")
+
+    monkeypatch.setattr("thesistester.study.viewer._read_catalog_parent", _boom)
+    entries = discover_study_dirs((tmp_path.resolve(),))
+    match = next(entry for entry in entries if entry.study_dir == child.resolve())
+    assert match.parent == "—"
+    assert match.study_name == "child_keep_identity"
+    assert match.study_identity_hash == "hash-child_keep_identity"
+    assert match.run_count == 4
+    assert match.ok == 2
+    assert match.ledger_present is True
 
 
 def test_cli_study_list_additive_and_refuses_extra_root(tmp_path: Path, monkeypatch, capsys):
@@ -648,6 +713,7 @@ def test_cli_study_list_additive_and_refuses_extra_root(tmp_path: Path, monkeypa
     out = capsys.readouterr().out
     assert "cli_alpha" in out
     assert "study_name" in out
+    assert "parent" in out.splitlines()[0]
 
     outside = tmp_path.parent / "outside_sv1_cli"
     outside.mkdir(exist_ok=True)
@@ -804,6 +870,9 @@ def test_inspect_catalog_handler_does_not_call_load_study_view():
     assert "load_study_view" not in catalog_src
     assert "run_study" not in catalog_src
     assert "rollup_study" not in catalog_src
+    assert "report_study" not in catalog_src
+    assert "promote_study" not in catalog_src
+    assert "admit_followup" not in catalog_src
 
 
 def test_inspect_charts_use_ranked_frames_and_honesty():

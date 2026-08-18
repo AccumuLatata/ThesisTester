@@ -1024,9 +1024,10 @@ other than the last bar in the dataset.
   `study promote --admit-tod auto` (SAF1) stamps those engine paths and
   writes `study.lineage`; it does not execute. Inspect **Draft Admit
   follow-up** (SAF2) writes Preview YAML only; it does not execute or
-  rewrite parent overview artifacts. A
-  follow-up Admit run is a constrained re-sim of one parent cell, not
-  confirmation of the parent screen. Focus ≠ Admit.
+  rewrite parent overview artifacts. `--tod-group` / `--allow-thin` (SAF3)
+  are CLI-only; thin drafts set `lineage.admit.thin`. A follow-up Admit run
+  is a constrained re-sim of one parent cell, not confirmation of the
+  parent screen. Focus ≠ Admit.
 - Ranked cells are the factor cartesian. The SL/TP grid is per-cell inside
   each research zip (`grid_results.parquet` / `best_grid_*` index columns).
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met

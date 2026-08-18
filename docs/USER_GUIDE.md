@@ -620,7 +620,8 @@ constrained re-simulation, RTH segments, clock range, outside_entry_window
   `signal_id` set (C7); restrictive exposure can diverge.
 - Study briefing NY buckets are Focus-family. `study promote --admit-tod auto`
   and Inspect **Draft Admit follow-up** stamp engine Admit (`backtest`/`grid`
-  `entry_window`) onto a child spec; they do not `study run`.
+  `entry_window`) onto a child spec; they do not `study run`. Hour/30min
+  follow-ups are CLI `--tod-group` only.
 
 **Related pages.** Time Analysis; Backtest; **Exposure policy**;
 **Session close and entry cutoff**.
@@ -939,7 +940,7 @@ overview ranking, OTF delta, Research Study Runner
 | `stage.mode: filter` | Subset factor axes before cartesian product | Prefer stage-first on large studies (example: 800 → 40) |
 | `confirm_above_runs` | `study run` refuses large expansions without `--confirm` | Confirm is required before rewriting expansion artifacts |
 | `report.min_trades` | Ranked overview excludes low-N cells | Meeting N is not statistical significance |
-| `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs. `--admit-tod auto` drafts a one-cell Admit child (`backtest`/`grid` `entry_window` + `study.lineage`); omit the flag for RS5 survivors |
+| `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs. `--admit-tod auto` drafts a one-cell Admit child; `--tod-group` / `--allow-thin` require that flag. Omit `--admit-tod` for RS5 survivors |
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
 | `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
 
@@ -964,8 +965,9 @@ overview ranking, OTF delta, Research Study Runner
    `study promote out/study1 --output drafts/admit.yaml --top-n 1 --admit-tod auto`
    (or `--admit-run-name NAME`), or Inspect **Draft Admit follow-up** onto
    Preview. Child `output_dir` is new; this does **not** `study run`.
-   Thin / `avg_r` tie / missing zip refuse. Hour/30min and `--allow-thin`
-   are not shipped.
+   Thin buckets refuse unless `--allow-thin` (`lineage.admit.thin`).
+   `avg_r` tie and missing zip still refuse. Hour/30min:
+   `--tod-group entry_hour_bucket` (CLI-only; requires `--admit-tod`).
 7. Inspect artifacts in the **Studies viewer (read-only)** page, or preview a
    canonical StudySpec YAML there for cell count / `--confirm`. After a
    successful preview, **Run via CLI** (or **Bind confirm** then **Confirm and
@@ -1018,6 +1020,7 @@ study list, StudyDraft
 | Start from example | pRTH (32 cells) or pdPOC | Replace `dataset.path` |
 | Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |
 | Draft Admit follow-up | Child Admit YAML → Preview | Disabled without ranked NY segment; does not run or rewrite parent overview |
+| Catalog `parent` | Basename from `study.lineage.parent_output_dir` | Corrupt / missing lineage → `—`; hour Admit stays CLI |
 
 **How to use.**
 

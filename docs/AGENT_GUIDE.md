@@ -102,12 +102,13 @@ Inspect. `viewer.py` must not import `cli_study` / `thesistester.cli` /
 `st.session_state`. Do not add time-of-day as a StudySpec factor axis.
 Operator contract: `docs/STUDY_RUNNER.md` §SV.
 
-**SAF (SAF1 CLI + SAF2 Inspect draft shipped):** Study Admit Follow-up —
+**SAF (SAF1–SAF3 shipped):** Study Admit Follow-up —
 `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.
 `study promote --admit-tod auto` drafts a linked child StudySpec with Admit
-on `backtest`/`grid` `entry_window` and optional `study.lineage`. Inspect
-**Draft Admit follow-up** writes the same YAML onto Preview only. Do not
-implement SAF3 inside an RS/SV/SB/SIA PR. Promote without `--admit-tod`
+on `backtest`/`grid` `entry_window` and optional `study.lineage`.
+`--tod-group` / `--allow-thin` are CLI-only. Inspect **Draft Admit follow-up**
+stays RTH + thin-refuse and writes Preview YAML only. Catalog `parent` is
+best-effort YAML. Do not implement SAF4. Promote without `--admit-tod`
 stays RS5. Do not auto-`study run`. Do not add ToD as a factor axis. Operator
 contract: `docs/STUDY_RUNNER.md` §SAF.
 

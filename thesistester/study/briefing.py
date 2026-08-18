@@ -237,9 +237,16 @@ def extract_cell_time_of_day(
     *,
     min_trades: int = TOD_MIN_TRADES_WARNING,
     missing_caption: str | None = None,
+    group_col: str = TOD_GROUP_COL,
 ) -> tuple[pd.DataFrame, dict[str, str] | None, str | None]:
-    """NY RTH-segment table + best bucket from ``trades.parquet`` (no re-sim)."""
-    empty = pd.DataFrame(columns=list(TOD_DISPLAY_COLS))
+    """ToD table + best bucket from ``trades.parquet`` (no re-sim).
+
+    Default ``group_col`` is NY ``entry_rth_segment`` (SV5 Inspect). SAF3 CLI
+    may pass ``entry_hour_bucket`` / ``entry_30min_bucket``.
+    """
+    col = str(group_col or TOD_GROUP_COL).strip() or TOD_GROUP_COL
+    display_cols = (col,) + tuple(name for name in TOD_DISPLAY_COLS if name != TOD_GROUP_COL)
+    empty = pd.DataFrame(columns=list(display_cols))
     if bundle_path is None:
         return (
             empty,
@@ -260,14 +267,14 @@ def extract_cell_time_of_day(
         return empty, None, ("trades.parquet is missing entry_timestamp or r_multiple.")
     try:
         bucketed = add_time_buckets(trades, bucket_tz=TOD_BUCKET_TZ, session_tz=TOD_BUCKET_TZ)
-        grouped = summarize_by_group(bucketed, TOD_GROUP_COL, min_trades=min_trades)
-    except (TypeError, ValueError):
+        grouped = summarize_by_group(bucketed, col, min_trades=min_trades)
+    except (TypeError, ValueError, KeyError):
         return empty, None, "Time-of-day buckets could not be computed from this zip."
     if grouped is None or grouped.empty:
         return empty, None, "No time-of-day groups (empty R sample)."
-    present = [col for col in TOD_DISPLAY_COLS if col in grouped.columns]
+    present = [name for name in display_cols if name in grouped.columns]
     display = grouped.loc[:, present].copy()
-    best = _best_tod_bucket(display)
+    best = _best_tod_bucket(display, group_col=col)
     caption = (
         "Post-hoc NY RTH segments (America/New_York) on completed trades. "
         "Not a re-simulation and not a live schedule. "
@@ -531,10 +538,15 @@ def _rank_grid_display(grid: pd.DataFrame) -> pd.DataFrame:
     return work.loc[:, present].head(GRID_DISPLAY_LIMIT).reset_index(drop=True)
 
 
-def _best_tod_bucket(frame: pd.DataFrame) -> dict[str, str] | None:
+def _best_tod_bucket(
+    frame: pd.DataFrame,
+    *,
+    group_col: str = TOD_GROUP_COL,
+) -> dict[str, str] | None:
+    col = str(group_col or TOD_GROUP_COL).strip() or TOD_GROUP_COL
     if frame is None or frame.empty or "avg_r" not in frame.columns:
         return None
-    if TOD_GROUP_COL not in frame.columns:
+    if col not in frame.columns:
         return None
     work = frame.copy()
     work["avg_r"] = pd.to_numeric(work["avg_r"], errors="coerce")
@@ -547,13 +559,13 @@ def _best_tod_bucket(frame: pd.DataFrame) -> dict[str, str] | None:
         if not solid.empty:
             work = solid
     work = work.sort_values(
-        ["avg_r", TOD_GROUP_COL],
+        ["avg_r", col],
         ascending=[False, True],
         kind="mergesort",
     )
     top = work.iloc[0]
     out = {
-        "segment": _display_text(top.get(TOD_GROUP_COL)),
+        "segment": _display_text(top.get(col)),
         "avg_r": _fmt_num(top.get("avg_r")),
         "trade_count": _fmt_num(top.get("trade_count")),
     }
