@@ -14,7 +14,11 @@ This engine is for **research screening**, not proof of a durable edge.
 
 ### 2) Intrabar resolution is explicit and remains assumption-bound
 - `intrabar_model="sl_first"` is the default and exactly preserves the legacy
-  pessimistic rule: if stop and target are reachable in one OHLC bar, stop wins.
+  pessimistic rule on bars with no entry activation (`entry_price is None`):
+  if stop and target are reachable in one OHLC bar, stop wins. On the `3c` /
+  `confirm_3bar` entry parent, `sl_first` honors the already-passed
+  `entry_activation_price` and ignores SL/TP hits that exist only beyond that
+  fill (reuses `_path_after_entry`; no new `intrabar_model`).
 - `intrabar_model="path_open_proximity"` uses a deterministic three-segment
   heuristic. If the open is closer to the high, the path is O→H→L→C; otherwise
   O→L→H→C. Equal proximity remains SL-first and is counted as ambiguous.
@@ -28,8 +32,9 @@ This engine is for **research screening**, not proof of a durable edge.
   and SL-first for missing or misaligned lower groups. Diagnostics identify
   every fallback parent bar and exit; invalid OHLC and OHLC mismatches still
   reject the data.
-- For intrabar `3c`/legacy `confirm_3bar` entries, pre-entry movement is
-  excluded. If an entry and stop occur in one lower bar, stop is taken
+- For `3c`/legacy `confirm_3bar` entries, pre-entry movement is excluded on
+  the entry parent for `sl_first` (AH5) as well as path / subtimeframe
+  models. If an entry and stop occur in one lower bar, stop is taken
   pessimistically; a target seen only in that entry sub-bar is not credited
   because target-after-entry ordering is unproved. The event is counted as
   residual ambiguity.
