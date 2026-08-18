@@ -855,6 +855,11 @@ def test_ah4_p1_leftover_otf_summary_cleared_on_cli_zip_without_otf():
     session = {
         "otf_filter_summary": _leftover_otf_summary(rejected=12),
         "otf_filter_result": object(),
+        # Report falls through to grid when backtest keys are gone.
+        "grid_otf_filter": _leftover_otf_summary(rejected=12),
+        "otf_rejected_signals": pd.DataFrame({"signal_id": list(range(12))}),
+        "otf_candidate_signals": pd.DataFrame({"signal_id": [1]}),
+        "otf_accepted_signals": pd.DataFrame({"signal_id": [1]}),
     }
     bundle_bytes = build_research_bundle(
         {
@@ -866,6 +871,10 @@ def test_ah4_p1_leftover_otf_summary_cleared_on_cli_zip_without_otf():
     apply_research_bundle_to_session(load_research_bundle(bundle_bytes), session)
     assert "otf_filter_summary" not in session
     assert "otf_filter_result" not in session
+    assert "grid_otf_filter" not in session
+    assert "otf_rejected_signals" not in session
+    assert "otf_candidate_signals" not in session
+    assert "otf_accepted_signals" not in session
     meta = build_otf_filter_metadata(session)
     assert meta["available"] is False
     assert meta["rejected_signal_count"] is None
@@ -896,6 +905,7 @@ def test_ah4_p1_bundle_owned_otf_export_outranks_leftover_summary():
 def test_ah4_p2_focused_trades_and_setup_config_cleared_when_absent():
     session = {
         "focused_trades": pd.DataFrame({"trade_id": [99]}),
+        "focused_equity_curve": pd.DataFrame({"trade_id": [99], "cum_r": [1.0]}),
         "setup_config": {"name": "leftover-setup", "tolerance_ticks": 99},
         "data": _dataset_df(),
         "dataset_id": "dataset-keep",
@@ -916,6 +926,7 @@ def test_ah4_p2_focused_trades_and_setup_config_cleared_when_absent():
     )
     apply_research_bundle_to_session(load_research_bundle(bundle_bytes), session)
     assert "focused_trades" not in session
+    assert "focused_equity_curve" not in session
     assert "setup_config" not in session
     assert "data" in session
 
