@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **AH0 this PR.** AH1–AH6 specified, not implemented.  
+**Status:** **AH0 landed. AH1 this PR.** AH2–AH6 specified, not implemented.  
 **Series code:** **AH** (Audit Honesty)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Inputs:** `AUDIT_FINAL.md` on `cursor/audit-final-merge-3a8e` (slices 0–7 at `83a42f8`); CTO review ranking (research-honesty first; C2/H2 before C3 for Studies-first ops; H6 first-wave with golden-stop)  
@@ -127,7 +127,7 @@ pytest -q tests/test_golden_master.py tests/test_otf_golden.py tests/test_entry_
 
 ### 6.1 AH1 — Session flatten `entry_local_ts` leak (C1)
 
-**Status:** Specified  
+**Status:** Implemented  
 **Closes:** C1; M6/M7 only for flatten empty-cap skip (not 3c-void skip, not missing-entry-bar skip)
 
 #### Defect (verified)
@@ -176,12 +176,12 @@ Cutoff admission in loop 1 is per-candidate (correct). Flatten in loop 2 is not.
 
 #### Acceptance
 
-- [ ] Probe P1/P2 fail on unpatched `main` and pass after the fix
-- [ ] Existing `test_session_close_*` in `tests/test_phase5_backtest.py` green
+- [x] Probe P1/P2 fail on unpatched `main` and pass after the fix
+- [x] Existing `test_session_close_*` in `tests/test_phase5_backtest.py` green
 - [ ] Golden families green; no regen
-- [ ] ASSUMPTIONS §3 states per-entry calendar close + `empty_session_close_cap`
-- [ ] Skip capture still does not change which flatten-off trades fill
-- [ ] Diff does not touch OTF, Admit, R12, R13
+- [x] ASSUMPTIONS §3 states per-entry calendar close + `empty_session_close_cap`
+- [x] Skip capture still does not change which flatten-off trades fill
+- [x] Diff does not touch OTF, Admit, R12, R13
 
 #### Out of AH1
 

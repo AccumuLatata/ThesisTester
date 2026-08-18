@@ -148,9 +148,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) in `simulate_trades()` in `thesistester/engine/backtest.py`.
 - TIME exit uses that capped bar’s close in `simulate_trades()` in `thesistester/engine/backtest.py`.
 - Default mode keeps legacy behavior: if no SL/TP/TIME exit triggers, `EOD` is the **final bar in the loaded dataset**, not a session close event.
-- Optional session-aware mode (`flat_by_session_close=True`) caps exits to the configured session close for each trade entry date:
-  - `SESSION_CLOSE` means forced flat at the last available bar at or before the configured close time (when SL/TP is not hit first).
+- Optional session-aware mode (`flat_by_session_close=True`) caps exits to the configured session close for **this trade’s** entry calendar date (`entry_local_ts.normalize()` + `session_close_time`, default `16:00`). Each candidate stores its own `entry_local_ts`; flatten does not reuse another signal’s clock.
+  - `SESSION_CLOSE` means forced flat at the last available bar at or before that per-entry close (when SL/TP is not hit first). It is **not** CME session close and does not use `trading_session_date` or `eth_start`.
   - `DATA_END` means data ended before session close and the trade was force-closed at the last available bar.
+  - After-close ETH on that same calendar date (entry local time after the configured close) is a non-fill. With skip capture on (`return_result` / `return_skipped_signals`) the skip reason is `empty_session_close_cap`. Default `return_result=False` stays trades-only.
 - Current session-aware flattening is intended for same-calendar-day RTH-style sessions; overnight ETH session templates are not yet modeled.
 - If session-aware mode is not enabled, users can still unintentionally model overnight holds across sessions.
 
