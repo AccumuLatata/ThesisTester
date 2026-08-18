@@ -128,7 +128,10 @@ A core/partner token is valid if it is in:
 
 Suggested Setup defaults (`SUGGESTED_DEFAULT_LEVELS`) are a subset of the
 default closed token set. `VWAP_rolling_1h` is opt-in via
-`study.levels.vwap_windows`; it is not a product-default token.
+`study.levels.vwap_windows`; it is not a product-default token. Assistant
+confluence options use the same closed set ∪ live columns ∪ already-selected
+(DEFAULT merge when keys are omitted). Widget catalogs (`15min`/`1h` MA TFs)
+are not implied tokens.
 
 Unknown tokens fail at validate time with an actionable error.
 

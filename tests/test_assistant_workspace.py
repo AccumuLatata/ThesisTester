@@ -806,6 +806,48 @@ def test_lc3_explicit_1h_vwap_window_admits_rolling_token():
     assert "VWAP_rolling_1h" in options
 
 
+def test_lc3_widget_catalog_ma_timeframes_do_not_crash_or_imply_tokens():
+    """Assistant SMA_TIMEFRAMES includes 15min/1h/4h; those stay widget-only."""
+    from thesistester.assistant.workspace import build_confluence_level_options
+
+    mixed = build_confluence_level_options(
+        selected_levels=["SMA_50_15min"],
+        levels_settings={"sma_timeframes": ["15min", "30min"], "sma_lengths": [50]},
+    )
+    assert "SMA_50_30min" in mixed
+    assert "SMA_50_15min" in mixed
+    assert "SMA_50_1min" not in mixed
+    assert "dVWAP_RTH" in mixed
+
+    widget_only = build_confluence_level_options(
+        levels_settings={"sma_timeframes": ["15min"], "sma_lengths": [50]}
+    )
+    assert "dVWAP_RTH" in widget_only
+    assert not any(name.startswith("SMA_") for name in widget_only)
+
+    ema_widget = build_confluence_level_options(
+        levels_settings={"ema_timeframes": ["1h", "4h"], "ema_lengths": [21]}
+    )
+    assert "dVWAP_RTH" in ema_widget
+    assert not any(name.startswith("EMA_") for name in ema_widget)
+
+
+def test_lc3_malformed_draft_levels_do_not_crash_confluence_options():
+    from thesistester.assistant.workspace import build_confluence_level_options
+
+    float_lengths = build_confluence_level_options(levels_settings={"sma_lengths": [50.0]})
+    assert "SMA_50_1min" in float_lengths
+    assert "SMA_50_30min" in float_lengths
+
+    string_windows = build_confluence_level_options(levels_settings={"vwap_windows": "30min,1h"})
+    assert "VWAP_rolling_30min" in string_windows
+    assert "VWAP_rolling_1h" in string_windows
+    assert "VWAP_rolling_4h" not in string_windows
+
+    tuple_lengths = build_confluence_level_options(levels_settings={"sma_lengths": (50,)})
+    assert "SMA_50_30min" in tuple_lengths
+
+
 def test_latest_unresolved_assumptions_only_from_newest_spec():
     from types import SimpleNamespace
 

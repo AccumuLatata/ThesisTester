@@ -252,9 +252,12 @@ This engine is for **research screening**, not proof of a durable edge.
   closed at validate; there is no compatibility alias.
 - Setup `SUGGESTED_DEFAULT_LEVELS` is a subset of
   `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`. `VWAP_rolling_1h` is opt-in
-  via `vwap_windows`; product defaults remain `30min` / `4h`. Developing
-  `dHigh` / `RTH_High` / `dVAH`, rolling VAH/VAL, IB, `OR_Mid`, and `pVWAP` are
-  known catalog absences (not computed), not StudySpec holes.
+  via `vwap_windows`; product defaults remain `30min` / `4h`. Assistant
+  confluence options use that closed set (DEFAULT merge, plus live / selected);
+  widget-only MA timeframes (`15min` / `1h` / `4h`) are not implied tokens and
+  do not raise. Developing `dHigh` / `RTH_High` / `dVAH`, rolling VAH/VAL, IB,
+  `OR_Mid`, and `pVWAP` are known catalog absences (not computed), not StudySpec
+  holes.
 - Default fractal settings are `pivot_left=2` and `pivot_right=2`, matching the 5-candle pivot convention.
 - Each pivot column holds the latest confirmed pivot high/low for its timeframe; before the first confirmed pivot exists, the value is `NaN`.
 - Confirmed pivots are delayed by right-side confirmation and are not real-time swing predictions.
