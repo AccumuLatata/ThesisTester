@@ -29,15 +29,17 @@ This engine is for **research screening**, not proof of a durable edge.
   resolves SL-first.
 - `intrabar_model="subtimeframe_conservative"` is explicitly not full observed
   replay: it uses observed replay only for complete reconciled parent groups
-  and SL-first for missing or misaligned lower groups. Diagnostics identify
-  every fallback parent bar and exit; invalid OHLC and OHLC mismatches still
-  reject the data.
+  and SL-first for missing or misaligned lower groups. The fallback calls
+  `sl_first` **without** `entry_price`, so a pre-retrace parent extreme still
+  SL-kills. Diagnostics identify every fallback parent bar and exit; invalid
+  OHLC and OHLC mismatches still reject the data.
 - For `3c`/legacy `confirm_3bar` entries, pre-entry movement is excluded on
-  the entry parent for `sl_first` (AH5) as well as path / subtimeframe
-  models. If an entry and stop occur in one lower bar, stop is taken
-  pessimistically; a target seen only in that entry sub-bar is not credited
-  because target-after-entry ordering is unproved. The event is counted as
-  residual ambiguity.
+  the entry parent for `sl_first` (AH5), `path_open_proximity`, and strict
+  `subtimeframe`. Conservative fallback is not that clip — it remains
+  full-bar `sl_first` and still SL-kills. If an entry and stop occur in one
+  lower bar, stop is taken pessimistically; a target seen only in that entry
+  sub-bar is not credited because target-after-entry ordering is unproved.
+  The event is counted as residual ambiguity.
 - Path-model exits use `SL_intrabar_path` / `TP_intrabar_path`; lower-timeframe
   exits use `SL_subtimeframe` / `TP_subtimeframe`. Legacy reasons remain `SL` /
   `TP`.
