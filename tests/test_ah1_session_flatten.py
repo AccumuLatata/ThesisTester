@@ -141,7 +141,9 @@ def test_ah1_p1_mon_eth_does_not_inherit_tuesday_flatten_clock():
         **kwargs,
         return_skipped_signals=True,
     )
-    pd.testing.assert_frame_equal(trades.reset_index(drop=True), trades_tuple.reset_index(drop=True))
+    pd.testing.assert_frame_equal(
+        trades.reset_index(drop=True), trades_tuple.reset_index(drop=True)
+    )
     _assert_empty_cap_skip(skipped_tuple, signal_id=1)
 
 
