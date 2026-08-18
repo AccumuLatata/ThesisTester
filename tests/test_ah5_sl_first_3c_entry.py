@@ -12,7 +12,12 @@ import pandas as pd
 import pytest
 
 from thesistester.engine.backtest import SimulationResult, simulate_trades
-from thesistester.engine.intrabar import VALID_INTRABAR_MODELS, resolve_ohlc_bar
+from thesistester.engine.intrabar import (
+    VALID_INTRABAR_MODELS,
+    SubtimeframeContext,
+    resolve_ohlc_bar,
+)
+from thesistester.engine.sim_core import BarData, resolve_trade_bar
 
 TZ = "America/New_York"
 _LOCKED_INTRABAR_MODELS = frozenset(
@@ -34,6 +39,33 @@ def _three_c_signal(entry_price: float = 100.0) -> pd.DataFrame:
             "retrace_entry_price": [entry_price],
             "trigger": ["3c"],
             "direction": ["long"],
+            "status": ["filled"],
+        }
+    )
+
+
+def _confirm_3bar_signal(entry_price: float = 100.0) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "signal_id": [1],
+            "bar_index": [1],
+            "entry_reference_price": [entry_price],
+            "trigger": ["confirm_3bar"],
+            "direction": ["long"],
+            "status": ["filled"],
+        }
+    )
+
+
+def _three_c_short_signal(entry_price: float = 100.0) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "signal_id": [1],
+            "bar_index": [1],
+            "entry_bar_index": [1],
+            "retrace_entry_price": [entry_price],
+            "trigger": ["3c"],
+            "direction": ["short"],
             "status": ["filled"],
         }
     )
@@ -102,6 +134,100 @@ def test_ah5_p1_three_c_entry_parent_does_not_sl_on_pre_retrace_low():
     assert trade["theoretical_exit_price"] != pytest.approx(98.0)
     assert trade["exit_reason"] == "EOD"
     assert trade["theoretical_exit_price"] == pytest.approx(101.0)
+
+
+def test_ah5_p1_short_entry_parent_does_not_sl_on_pre_retrace_high():
+    """AH5-P1 short: parent high 103 is before the retrace fill at 100."""
+    raw = resolve_ohlc_bar(
+        open_price=103.0,
+        high=103.0,
+        low=97.0,
+        close=99.0,
+        stop_price=102.0,
+        target_price=96.0,
+        direction="short",
+        model="sl_first",
+        entry_price=100.0,
+    )
+    assert raw.exit_kind is None
+    assert raw.resolution == "no_hit"
+
+    result = simulate_trades(
+        _parent(entry_open=103.0, entry_high=103.0, entry_low=97.0, entry_close=99.0),
+        _three_c_short_signal(100.0),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="sl_first",
+        return_result=True,
+    )
+    assert isinstance(result, SimulationResult)
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "EOD"
+    assert trade["theoretical_exit_price"] == pytest.approx(99.0)
+
+
+def test_ah5_p1_confirm_3bar_entry_parent_uses_same_clip():
+    """AH5: confirm_3bar entry parent honors entry_reference_price the same way."""
+    result = simulate_trades(
+        _parent(entry_open=97.0, entry_high=103.0, entry_low=97.0, entry_close=101.0),
+        _confirm_3bar_signal(100.0),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="sl_first",
+        return_result=True,
+    )
+    assert isinstance(result, SimulationResult)
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "EOD"
+    assert trade["theoretical_exit_price"] == pytest.approx(101.0)
+
+
+def test_ah5_parent_both_hit_stays_full_bar_when_clip_drops_stop():
+    """Full-parent both-hit is not overwritten by the post-entry intersection."""
+    raw = resolve_ohlc_bar(
+        open_price=97.0,
+        high=105.0,
+        low=97.0,
+        close=101.0,
+        stop_price=98.0,
+        target_price=104.0,
+        direction="long",
+        model="sl_first",
+        entry_price=100.0,
+    )
+    assert raw.exit_kind == "TP"
+    assert raw.resolution == "single_hit"
+    assert raw.parent_both_hit is True
+    assert raw.ambiguous is False
+
+
+def test_ah5_conservative_fallback_still_sl_kills_pre_retrace_low():
+    """Lock: conservative fallback omits entry_price and still SL-kills."""
+    bars = BarData.from_frame(
+        _parent(entry_open=97.0, entry_high=103.0, entry_low=97.0, entry_close=101.0)
+    )
+    _, resolution = resolve_trade_bar(
+        bars,
+        bar_index=1,
+        intrabar_model="subtimeframe_conservative",
+        subtimeframe_context=SubtimeframeContext(
+            pd.Timedelta("5min"),
+            pd.Timedelta("1min"),
+            {},
+            fallback_reasons={1: "incomplete coverage"},
+        ),
+        stop_price=98.0,
+        target_price=104.0,
+        direction="long",
+        entry_activation_price=100.0,
+    )
+    assert resolution.exit_kind == "SL"
+    assert resolution.resolution == "subtimeframe_conservative_fallback_sl_first"
+    assert resolution.subtimeframe_fallback is True
 
 
 def test_ah5_p1_still_sl_when_post_entry_extreme_hits():
