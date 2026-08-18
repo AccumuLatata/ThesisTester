@@ -687,11 +687,7 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
             width="stretch",
         )
     grid_display = getattr(peek, "grid_display", None)
-    if (
-        grid_display is not None
-        and hasattr(grid_display, "empty")
-        and not grid_display.empty
-    ):
+    if grid_display is not None and hasattr(grid_display, "empty") and not grid_display.empty:
         st.dataframe(grid_display, hide_index=True, width="stretch")
     grid_caption = getattr(peek, "grid_caption", None)
     if grid_caption:
@@ -706,10 +702,12 @@ def _render_inspect_peek(model: StudyViewerModel) -> None:
     tod_best = getattr(peek, "time_of_day_best", None)
     if isinstance(tod_best, dict) and tod_best:
         segment = tod_best.get("segment", "—")
+        warn = str(tod_best.get("sample_warning") or "").strip().lower()
+        thin = " (thin bucket)" if warn == "true" else ""
         st.caption(
             f"Strongest NY segment on this cell: `{segment}` "
             f"(avg_r={tod_best.get('avg_r', '—')}, "
-            f"N={tod_best.get('trade_count', '—')})."
+            f"N={tod_best.get('trade_count', '—')}){thin}."
         )
     tod = getattr(peek, "time_of_day", None)
     if tod is not None and hasattr(tod, "empty") and not tod.empty:
@@ -764,7 +762,9 @@ def _render_inspect_briefing(model: StudyViewerModel) -> None:
     )
     briefing = getattr(model, "briefing", None)
     if briefing is None:
-        st.caption("Briefing helper is missing from `thesistester.study.viewer`. Restart Streamlit.")
+        st.caption(
+            "Briefing helper is missing from `thesistester.study.viewer`. Restart Streamlit."
+        )
         return
     headline = str(getattr(briefing, "headline", "") or "")
     if headline:

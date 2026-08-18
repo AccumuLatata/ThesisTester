@@ -41,6 +41,7 @@ from thesistester.persistence.local_store import get_store_root
 from thesistester.study.briefing import (
     StudyMoneyBriefing,
     build_study_briefing,
+    bundle_missing_caption,
     empty_briefing,
     extract_cell_grid,
     extract_cell_time_of_day,
@@ -839,8 +840,15 @@ def peek_study_cell(model: StudyViewerModel, run_name: str) -> StudyCellPeek:
             if trade_summary is None:
                 caption = "trade_summary.json is missing from the zip (or unreadable)."
     grid_bundle = resolve_cell_bundle(model.study_dir, bundle_rel or None)
-    best_grid, grid_display, grid_caption = extract_cell_grid(grid_bundle)
-    time_of_day, tod_best, tod_caption = extract_cell_time_of_day(grid_bundle)
+    missing = (
+        None
+        if grid_bundle is not None
+        else bundle_missing_caption(model.study_dir, bundle_rel or None)
+    )
+    best_grid, grid_display, grid_caption = extract_cell_grid(grid_bundle, missing_caption=missing)
+    time_of_day, tod_best, tod_caption = extract_cell_time_of_day(
+        grid_bundle, missing_caption=missing
+    )
     return StudyCellPeek(
         run_name=name,
         present=present,

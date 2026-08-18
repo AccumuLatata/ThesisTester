@@ -13,11 +13,13 @@ import pytest
 from thesistester.study.briefing import (
     BRIEFING_HONESTY,
     build_study_briefing,
+    bundle_missing_caption,
     extract_cell_grid,
     extract_cell_time_of_day,
     resolve_cell_bundle,
     spec_grid_enabled,
 )
+from thesistester.study.report import StudyReportResult
 from thesistester.study.ledger import empty_ledger, save_ledger
 from thesistester.study.report import RESULTS_INDEX, report_study
 from thesistester.study.viewer import load_study_view, peek_study_cell
@@ -142,6 +144,14 @@ def test_resolve_cell_bundle_refuses_escape(tmp_path: Path):
     secret.write_bytes(_grid_zip_bytes())
     assert resolve_cell_bundle(study_dir, str(secret.resolve())) is None
     assert resolve_cell_bundle(study_dir, "../secret.research.zip") is None
+    refused = bundle_missing_caption(study_dir, str(secret.resolve()))
+    assert refused is not None and "refused" in refused
+    _, _, grid_caption = extract_cell_grid(None, missing_caption=refused)
+    assert "refused" in (grid_caption or "")
+    _, _, tod_caption = extract_cell_time_of_day(None, missing_caption=refused)
+    assert "refused" in (tod_caption or "")
+    missing = bundle_missing_caption(study_dir, "gone.research.zip")
+    assert missing is not None and "not a file" in missing
 
 
 def test_briefing_uses_ranked_cell_and_zip(tmp_path: Path):
@@ -167,7 +177,9 @@ def test_briefing_uses_ranked_cell_and_zip(tmp_path: Path):
     assert "SMA_50_1min" in briefing.headline
     assert "best SL/TP 40/80" in briefing.headline
     assert "rth_open_30m" in briefing.headline
+    assert "thin bucket" in briefing.headline
     assert briefing.tod_best.get("segment") == "rth_open_30m"
+    assert briefing.tod_best.get("sample_warning") == "True"
     assert BRIEFING_HONESTY in briefing.caveats
     assert spec_grid_enabled(study_dir) is True
 
@@ -207,6 +219,36 @@ def test_load_study_view_briefing_and_peek_grid_tod(tmp_path: Path):
     assert peek.time_of_day_best is not None
     assert peek.time_of_day_best["segment"] == "rth_open_30m"
     assert not peek.time_of_day.empty
+
+
+def test_briefing_fallback_skips_object_factors_joined_orphans(tmp_path: Path):
+    overview = pd.DataFrame(
+        {
+            "run_name": ["orphan_cell", "joined_cell"],
+            "status": ["ok", "ok"],
+            "factors_joined": ["False", "True"],
+            "expectancy_r": [9.0, 1.0],
+            "trade_count": [5, 5],
+        }
+    )
+    report = StudyReportResult(
+        overview=overview,
+        ranked=pd.DataFrame(),
+        low_n=pd.DataFrame(),
+        unresolved=pd.DataFrame(),
+        group_summaries={},
+        otf_delta=pd.DataFrame(),
+        markdown="",
+        paths={},
+        primary_metric="expectancy_r",
+        min_trades=30,
+        multiple_testing="warn",
+        best_cell_suppressed=False,
+        study_name="orphan_gate",
+    )
+    briefing = build_study_briefing(report, study_dir=tmp_path)
+    assert briefing.run_name == "joined_cell"
+    assert briefing.source == "low_n"
 
 
 def test_briefing_module_import_allow_list():

@@ -1017,7 +1017,7 @@ study list, StudyDraft
 3. Build (optional): **Start from example** (`pRTH_open_ma.yaml`, 32 cells).
    Apply to Preview → Validate / Preview. Workers=1 on Windows.
 4. New CLI output dir. Under threshold: **Run via CLI**. Over: **Bind confirm**
-   then **Confirm and run**. Refresh Inspect for progress.
+   then **Confirm and run**. Child log: `study.launch.log`. Refresh Inspect.
 5. Promote: copy spec → delete losers on Build → Apply → Preview → Run via CLI.
 
 **What it is not.**

@@ -25,6 +25,7 @@ from thesistester.study.report import (
     StudyReportResult,
     _bundle_path_within_study,
     _coerce_float,
+    _factors_joined_mask,
     _fmt_num,
 )
 
@@ -133,6 +134,18 @@ def resolve_cell_bundle(study_dir: Path, bundle_rel: str | None) -> Path | None:
     return resolved
 
 
+def bundle_missing_caption(study_dir: Path, bundle_rel: str | None) -> str | None:
+    """Honest caption when ``resolve_cell_bundle`` returned None."""
+    if not isinstance(bundle_rel, str) or not bundle_rel.strip():
+        return None
+    resolved = _bundle_path_within_study(Path(study_dir), bundle_rel.strip())
+    if resolved is None:
+        return "bundle_path is outside the study directory and was refused."
+    if not resolved.is_file():
+        return "bundle_path is not a file inside the study directory."
+    return None
+
+
 def spec_grid_enabled(study_dir: Path) -> bool | None:
     """``study.constants.grid.enabled`` when the written spec is readable."""
     spec_path = Path(study_dir) / "study.spec.yaml"
@@ -185,21 +198,31 @@ def grid_from_index_row(row: Mapping[str, Any]) -> dict[str, str]:
     return out
 
 
-def extract_cell_grid(bundle_path: Path | None) -> tuple[dict[str, Any] | None, pd.DataFrame, str | None]:
+def extract_cell_grid(
+    bundle_path: Path | None,
+    *,
+    missing_caption: str | None = None,
+) -> tuple[dict[str, Any] | None, pd.DataFrame, str | None]:
     """Return ``(best_grid, ranked grid display, caption)`` from one zip."""
     if bundle_path is None:
-        return None, pd.DataFrame(columns=list(GRID_DISPLAY_COLS)), (
-            "No in-dir zip — SL/TP grid peek stays empty."
+        return (
+            None,
+            pd.DataFrame(columns=list(GRID_DISPLAY_COLS)),
+            missing_caption or "No in-dir zip — SL/TP grid peek stays empty.",
         )
     best = read_zip_json(bundle_path, "best_grid_result.json")
     grid = read_zip_parquet(bundle_path, "grid_results.parquet")
     if grid is None or grid.empty:
         if best:
-            return best, pd.DataFrame(columns=list(GRID_DISPLAY_COLS)), (
-                "best_grid_result.json is present; grid_results.parquet is missing."
+            return (
+                best,
+                pd.DataFrame(columns=list(GRID_DISPLAY_COLS)),
+                ("best_grid_result.json is present; grid_results.parquet is missing."),
             )
-        return None, pd.DataFrame(columns=list(GRID_DISPLAY_COLS)), (
-            "No SL/TP grid in this zip (grid disabled, or members missing)."
+        return (
+            None,
+            pd.DataFrame(columns=list(GRID_DISPLAY_COLS)),
+            ("No SL/TP grid in this zip (grid disabled, or members missing)."),
         )
     display = _rank_grid_display(grid)
     caption = (
@@ -213,21 +236,28 @@ def extract_cell_time_of_day(
     bundle_path: Path | None,
     *,
     min_trades: int = TOD_MIN_TRADES_WARNING,
+    missing_caption: str | None = None,
 ) -> tuple[pd.DataFrame, dict[str, str] | None, str | None]:
     """NY RTH-segment table + best bucket from ``trades.parquet`` (no re-sim)."""
     empty = pd.DataFrame(columns=list(TOD_DISPLAY_COLS))
     if bundle_path is None:
-        return empty, None, "No in-dir zip — time-of-day peek stays empty."
+        return (
+            empty,
+            None,
+            missing_caption or "No in-dir zip — time-of-day peek stays empty.",
+        )
     trades = read_zip_parquet(bundle_path, "trades.parquet")
     if trades is None or trades.empty:
-        return empty, None, (
-            "trades.parquet is missing from this zip, so NY session buckets "
-            "cannot be computed. Time-of-day is post-run, not a StudySpec factor."
+        return (
+            empty,
+            None,
+            (
+                "trades.parquet is missing from this zip, so NY session buckets "
+                "cannot be computed. Time-of-day is post-run, not a StudySpec factor."
+            ),
         )
     if "entry_timestamp" not in trades.columns or "r_multiple" not in trades.columns:
-        return empty, None, (
-            "trades.parquet is missing entry_timestamp or r_multiple."
-        )
+        return empty, None, ("trades.parquet is missing entry_timestamp or r_multiple.")
     try:
         bucketed = add_time_buckets(trades, bucket_tz=TOD_BUCKET_TZ, session_tz=TOD_BUCKET_TZ)
         grouped = summarize_by_group(bucketed, TOD_GROUP_COL, min_trades=min_trades)
@@ -267,8 +297,10 @@ def build_study_briefing(
     settings = settings_from_row(row)
     best_grid = grid_from_index_row(row)
 
-    bundle = resolve_cell_bundle(study_dir, _raw_bundle_rel(row.get("bundle_path")))
-    zip_best, _grid_display, grid_caption = extract_cell_grid(bundle)
+    bundle_rel = _raw_bundle_rel(row.get("bundle_path"))
+    bundle = resolve_cell_bundle(study_dir, bundle_rel)
+    missing = None if bundle is not None else bundle_missing_caption(study_dir, bundle_rel)
+    zip_best, _grid_display, grid_caption = extract_cell_grid(bundle, missing_caption=missing)
     if zip_best:
         sl = _fmt_num(zip_best.get("stop_loss_ticks"))
         tp = _fmt_num(zip_best.get("take_profit_ticks"))
@@ -276,7 +308,7 @@ def build_study_briefing(
             best_grid["stop_loss_ticks"] = sl
         if tp != "—":
             best_grid["take_profit_ticks"] = tp
-    _tod_display, tod_best, tod_caption = extract_cell_time_of_day(bundle)
+    _tod_display, tod_best, tod_caption = extract_cell_time_of_day(bundle, missing_caption=missing)
 
     headline = _headline(
         metric=metric,
@@ -331,9 +363,7 @@ def _pick_briefing_row(
     if "status" in work.columns:
         work = work.loc[work["status"].astype(str).eq("ok")].copy()
     if "factors_joined" in work.columns:
-        joined = work["factors_joined"]
-        if pd.api.types.is_bool_dtype(joined):
-            work = work.loc[joined.fillna(False)].copy()
+        work = work.loc[_factors_joined_mask(work)].copy()
     metric = str(report.primary_metric)
     if metric not in work.columns:
         return None, "none", False
@@ -379,10 +409,7 @@ def _headline(
         prefix = f"Highest `{metric}` (crowning suppressed)"
     elif source == "low_n":
         prefix = f"Highest `{metric}` among finished cells"
-    return (
-        f"{prefix} is `{run_name}` = {metric_value} ({n_note})"
-        f"{setup}{grid}{tod}."
-    )
+    return f"{prefix} is `{run_name}` = {metric_value} ({n_note}){setup}{grid}{tod}."
 
 
 def _supporting_lines(
@@ -433,11 +460,9 @@ def _supporting_lines(
         segment = tod_best.get("segment", "—")
         avg_r = tod_best.get("avg_r", "—")
         n = tod_best.get("trade_count", "—")
-        warn = tod_best.get("sample_warning", "")
-        thin = " (thin bucket)" if warn == "True" else ""
+        thin = " (thin bucket)" if _tod_is_thin(tod_best) else ""
         lines.append(
-            f"Strongest NY RTH segment on that cell: `{segment}` "
-            f"(avg_r={avg_r}, N={n}){thin}."
+            f"Strongest NY RTH segment on that cell: `{segment}` (avg_r={avg_r}, N={n}){thin}."
         )
     elif tod_caption:
         lines.append(tod_caption)
@@ -467,6 +492,11 @@ def _grid_clause(best_grid: Mapping[str, str]) -> str:
     return f", best SL/TP {sl or '—'}/{tp or '—'} ticks"
 
 
+def _tod_is_thin(tod_best: Mapping[str, str]) -> bool:
+    warn = tod_best.get("sample_warning")
+    return warn is True or str(warn).strip().lower() == "true"
+
+
 def _tod_clause(tod_best: Mapping[str, str] | None) -> str:
     if not tod_best:
         return ""
@@ -475,7 +505,8 @@ def _tod_clause(tod_best: Mapping[str, str] | None) -> str:
         return ""
     avg_r = tod_best.get("avg_r", "—")
     n = tod_best.get("trade_count", "—")
-    return f" at NY `{segment}` (avg_r={avg_r}, N={n})"
+    thin = ", thin bucket" if _tod_is_thin(tod_best) else ""
+    return f" at NY `{segment}` (avg_r={avg_r}, N={n}{thin})"
 
 
 def _rank_grid_display(grid: pd.DataFrame) -> pd.DataFrame:
@@ -557,8 +588,4 @@ def _display_text(value: Any) -> str:
 
 
 def _frame_has_rows(frame: object) -> bool:
-    return (
-        isinstance(frame, pd.DataFrame)
-        and not frame.empty
-        and "run_name" in frame.columns
-    )
+    return isinstance(frame, pd.DataFrame) and not frame.empty and "run_name" in frame.columns
