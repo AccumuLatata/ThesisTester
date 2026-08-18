@@ -258,6 +258,9 @@ This engine is for **research screening**, not proof of a durable edge.
   do not raise. Developing `dHigh` / `RTH_High` / `dVAH`, rolling VAH/VAL, IB,
   `OR_Mid`, and `pVWAP` are known catalog absences (not computed), not StudySpec
   holes.
+- Missing selected/anchor level columns fail closed at `api.generate_signals` /
+  `run_experiment` / study cells (`Setup references unavailable level columns`).
+  They are not silent drops. Classic Signals saved-setup blockers are unchanged.
 - Default fractal settings are `pivot_left=2` and `pivot_right=2`, matching the 5-candle pivot convention.
 - Each pivot column holds the latest confirmed pivot high/low for its timeframe; before the first confirmed pivot exists, the value is `NaN`.
 - Confirmed pivots are delayed by right-side confirmation and are not real-time swing predictions.

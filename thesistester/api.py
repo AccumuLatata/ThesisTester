@@ -1476,6 +1476,20 @@ def build_setup(config: Mapping[str, Any]) -> dict[str, Any]:
     return setup
 
 
+def _require_level_columns(levels: pd.DataFrame, names: list[str]) -> None:
+    """Fail closed when a setup names columns absent from the levels frame.
+
+    Names are stringified before membership and sorting so mixed/unhashable
+    ``selected_levels`` items raise this ``ValueError`` (same wording as
+    anchor-rules) instead of ``TypeError``. Exact names are required; do not
+    strip — a padded token must not silently match a live column and then be
+    dropped by ``detect_confluence_zones``.
+    """
+    missing = sorted({str(column) for column in names if str(column) not in levels.columns})
+    if missing:
+        raise ValueError(f"Setup references unavailable level columns: {missing}")
+
+
 def generate_signals(
     levels: pd.DataFrame,
     setup: Mapping[str, Any],
@@ -1493,6 +1507,7 @@ def generate_signals(
     selected_levels = list(setup_config.get("selected_levels", []))
 
     if mode == "global_cluster":
+        _require_level_columns(levels, selected_levels)
         zones = detect_confluence_zones(
             levels,
             level_columns=selected_levels,
@@ -1506,9 +1521,7 @@ def generate_signals(
         anchor_level = str(setup_config.get("anchor_level") or "")
         rules = list(setup_config.get("confluence_rules", []))
         referenced = [anchor_level, *(str(rule.get("level", "")) for rule in rules)]
-        missing = sorted({column for column in referenced if column not in levels.columns})
-        if missing:
-            raise ValueError(f"Setup references unavailable level columns: {missing}")
+        _require_level_columns(levels, referenced)
         zones = detect_anchor_confluence_zones(
             levels,
             anchor_level=anchor_level,

@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **LC3 landed.** LC4 not started.  
+**Status:** **LC4 landed.** Series complete.  
 **Series code:** **LC** (Level Catalog)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 
@@ -413,7 +413,7 @@ API missing-column raise; changing product `vwap_windows`; adding VAH to suggest
 
 ### 7.4 LC4 — API global-cluster missing-column fail-closed
 
-**Status:** Not started  
+**Status:** Implemented  
 **Closes:** D4  
 
 #### Defect (verified)
