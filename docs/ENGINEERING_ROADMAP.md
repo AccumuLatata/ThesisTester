@@ -1293,7 +1293,7 @@ USER_GUIDE extends H2 `Studies viewer (read-only)` (no new H2). Parked
 RS-D1 / D3 / D6 stay parked. RS-D2/D8/D9/SB/SIA behavior stays identical
 except additive Inspect panes and additive `study list`.
 
-## Audit Honesty (AH0–AH6) — AH0 plan lock
+## Audit Honesty (AH0–AH6) — AH0 + AH1
 
 Research-honesty remediations from the 2026-08-18 audit merge. The engine
 happy path stays causal; identity / flatten / restore / one headless
