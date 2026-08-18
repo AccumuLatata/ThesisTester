@@ -591,6 +591,39 @@ def build_otf_delta(
     ).reset_index(drop=True)
 
 
+def _briefing_settings_suffix(row: Mapping[str, Any] | pd.Series) -> str:
+    """Compact factor + best-grid clause for the overview top-cell sentence."""
+    parts: list[str] = []
+    for key, label in (
+        ("factor_partner_levels", "partner"),
+        ("factor_trigger", "trigger"),
+        ("factor_trigger_timeframe", "tf"),
+        ("factor_direction", "direction"),
+    ):
+        if key not in row:
+            continue
+        val = row.get(key)
+        if val is None:
+            continue
+        try:
+            if pd.isna(val):
+                continue
+        except (TypeError, ValueError):
+            pass
+        text = str(val).strip()
+        if text:
+            parts.append(f"{label}={text}")
+    sl = row.get("best_grid_stop_loss_ticks") if "best_grid_stop_loss_ticks" in row else None
+    tp = row.get("best_grid_take_profit_ticks") if "best_grid_take_profit_ticks" in row else None
+    sl_txt = _fmt_num(sl) if sl is not None else "—"
+    tp_txt = _fmt_num(tp) if tp is not None else "—"
+    if sl_txt != "—" or tp_txt != "—":
+        parts.append(f"best SL/TP {sl_txt}/{tp_txt}")
+    if not parts:
+        return ""
+    return " with " + ", ".join(parts)
+
+
 def _fmt_num(value: Any) -> str:
     number = _coerce_float(value)
     if number is None:
@@ -680,7 +713,16 @@ def render_overview_markdown(
         lines.append(
             f"Top descriptive cell by `{primary}` (not a validated edge): "
             f"`{top['run_name']}` = {_fmt_num(top.get(primary))} "
-            f"(N={_fmt_num(top.get('trade_count'))})."
+            f"(N={_fmt_num(top.get('trade_count'))})"
+            f"{_briefing_settings_suffix(top)}."
+        )
+        lines.append("")
+        lines.append(
+            "Time-of-day is not a StudySpec factor. After `study run`, Inspect "
+            "projects NY RTH segments from that cell's `trades.parquet` "
+            "(post-hoc; no re-sim). The SL/TP grid is per-cell "
+            "(`best_grid_*` / zip `grid_results.parquet`), not the factor "
+            "cartesian in the ranked table."
         )
         lines.append("")
     else:
@@ -694,6 +736,8 @@ def render_overview_markdown(
         "profit_factor",
         "max_drawdown_r",
         "total_r",
+        "best_grid_stop_loss_ticks",
+        "best_grid_take_profit_ticks",
         "profit_factor_source",
     ]
     lines.extend(_md_table(ranked, rank_cols))
@@ -770,7 +814,8 @@ def render_overview_markdown(
             "## Metric sources",
             "",
             "- Index columns: `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, "
-            "`profit_factor`, `win_rate`, `bundle_hash`, `bundle_path`, `status` "
+            "`profit_factor`, `win_rate`, `best_grid_stop_loss_ticks`, "
+            "`best_grid_take_profit_ticks`, `bundle_hash`, `bundle_path`, `status` "
             "(PF/WR additive since RS-D7; older indexes may omit them).",
             "- `profit_factor` / `win_rate`: each field prefers the study index when "
             "present, else bundle `trade_summary.json` "

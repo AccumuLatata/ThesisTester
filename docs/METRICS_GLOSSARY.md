@@ -476,6 +476,9 @@ Emitted by `python -m thesistester study report <study_dir>` into
 | **profit_factor (overview)** | Prefer index column when present (RS-D7 writers add it on ok cells); else read bundle `trade_summary.json`. Tracked as `profit_factor_source` ∈ `{index, bundle, missing}`. CSV may carry `inf`/`-inf` for infinite PF. |
 | **win_rate (overview)** | Resolves independently of PF: prefer index `win_rate` when present (RS-D7), else bundle `trade_summary.json` (even when PF came from the index). |
 | **multiple_testing** | `warn` (default): Markdown may name a top descriptive cell with caveats. `error`: best-cell crowning suppressed. |
+| **best_grid_stop_loss_ticks / best_grid_take_profit_ticks** | Per-cell SL/TP grid winner written to `results_index.csv` when `constants.grid.enabled`. Distinct from the factor cartesian (partner × trigger × tf × direction). |
+| **study briefing** | Deterministic Inspect headline: highest `primary_metric` cell + factor settings + best SL/TP + strongest NY `entry_rth_segment` (`avg_r`) on that cell's `trades.parquet`. Post-hoc; not a validated edge. |
+| **NY RTH segment (study ToD)** | Same buckets as Time Analysis (`pre_rth`, `rth_open_30m`, `rth_morning`, `rth_midday`, `rth_afternoon`, `rth_power_hour`, `post_rth`; America/New_York). Not a StudySpec factor. |
 
 ## Developing session VWAPs (`dVWAP_RTH`, `dVWAP`)
 

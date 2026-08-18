@@ -977,73 +977,60 @@ robustness (honest next steps after screening).
 
 ## Studies viewer (read-only)
 
-**What it is.** Streamlit **Studies** (`pages/15_Studies.py`): **Inspect** lists
-local dirs under `results/studies/` and `out/` (one level) and loads `output_dir`
-(ledger, failed cells / groups / optional rollup, ranked / low-N / charts / peek, OTF Δ,
-overview via `report_study(..., write_artifacts=False)`). Path paste still
-works. **Preview** validates `schema_version: 1` YAML (cell count /
-`--confirm`). **Run via CLI** spawns `python -m thesistester study run`.
-**Build StudySpec** emits YAML via widgets; **Apply to Preview** writes the
-Preview textarea. Validate / Preview is still required; Build does not spawn
-CLI.
+**What it is.** Streamlit **Studies** Inspect lists `results/studies/` and
+`out/` (one level), loads `output_dir`, and shows a **Study briefing** (highest
+primary-metric cell + factor settings + best SL/TP + NY RTH bucket), ledger,
+groups, ranked / low-N, charts, and cell peek (grid + time-of-day). **Preview**
+validates YAML. **Run via CLI** spawns `study run`. **Build** emits YAML.
 
-**When to use it.** Inspect after a CLI run; author on **Build**; preview YAML
-then start that CLI. Promote stays CLI-only.
+**When to use it.** After a completed study, read the briefing first — then
+decide whether to constrain NY session (`entry_window` / Admit) or promote
+survivors. Author on Build; Promote stays CLI-only.
 
-**Related terms.** Studies viewer, study catalog, study list, study output
-directory, study ledger, ranked cells, low-N, OTF delta, bundle_path,
-StudySpec preview, run_count, confirm_above_runs, StudyDraft
+**Related terms.** Studies viewer, study briefing, time of day, NY session,
+RTH segment, grid results, best SL/TP, ranked cells, low-N, study catalog,
+study list, StudyDraft
 
 **Key settings.**
 
 | Control | Meaning | Common pitfall |
 |---|---|---|
-| Study output directory | Study dir under cwd or local store | Extra-root paths refused |
-| Refresh catalog / Load selected | One-level `results/studies/` + `out/` list | Listing ≠ quality; empty catalog is OK |
-| Load / Refresh | In-memory overview, panes, charts, peek | Path field; no overview/rollup write |
-| Canonical YAML / Preview | `schema_version: 1` validate + expand (cap 2_000) | Shorthand fails closed; changed YAML reseeds CLI output dir |
-| Load example / Copy spec | Example YAML or Inspect `study.spec.yaml` | Copy needs a loaded Inspect dir |
-| CLI output directory | Spawn target for `study run` | Not the Inspect dir; do not reuse another study’s dir |
-| Run via CLI | Spawn without `--confirm` under threshold | Not in-process; watch Inspect → Refresh |
-| Bind confirm / Confirm and run | Two-step `{pinned hash, run_count, output_dir}` then `--confirm` | Hash is after dataset pin, not the preview hash |
-| Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |
-| Build StudySpec | Widgets → `emit_study_yaml` | Not a runner; does not spawn CLI |
-| Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary; omit = `primary` | 15s file without the mode ≠ Data R12 |
-| Start from example / Load Preview / Copy spec | Hydrate pRTH (default) or pdPOC, Preview YAML, or Inspect spec | Build Copy hydrates; Preview Copy fills textarea |
-| Stage radio | Full cartesian / Filter / Explicit cells | Filter includes ⊆ factor widgets; explicit table is delete-only |
-| Apply to Preview | Writes Preview YAML; clears cache + launch approval | Validate / Preview still required |
-| Download StudySpec YAML | Browser download of emitted YAML | Not a store write |
+| Study output directory | Study dir under cwd or store | Extra-root paths refused |
+| Load / Refresh | In-memory overview + briefing + peek | Does not rewrite overview/rollup |
+| Study briefing | Highest `primary_metric` cell + settings + SL/TP + NY bucket | Descriptive only; low-N if below `min_trades` |
+| Ranked cells | Factor cartesian (partner × trigger × tf × side) | Not the per-cell SL/TP grid |
+| Cell peek grid / ToD | Zip `grid_results` + NY RTH on that cell's trades | ToD is post-hoc, not a factor axis |
+| Canonical YAML / Preview | Validate + expand (cap 2_000) | Changed YAML reseeds CLI output dir |
+| CLI output directory | Spawn target for `study run` | Do not reuse another study’s dir |
+| Run via CLI / Confirm | Spawn existing CLI argv | Not in-process; watch Inspect → Refresh |
+| Build StudySpec | Widgets → YAML; Apply to Preview | Not a runner |
+| Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s path |
+| Start from example | pRTH (32 cells) or pdPOC | Replace `dataset.path` |
+| Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |
 
 **How to use.**
 
-1. CLI `study expand` → `study run` → `study report`, or author on Build / preview first.
-2. **Studies** Inspect: **Load selected** or paste `output_dir` then Load.
-   After Load: quality panes, charts, cell peek (optional zip download).
-   Refresh while in flight. `study list` is the CLI twin.
-3. **Build** (optional): closed catalog or example. New drafts emit MNQ /
-   UTC / HE `15s_primary_derive_1m` (same 15s CSV as Data). **Start from
-   example** defaults to `pRTH_open_ma.yaml` (32 cells); pdPOC on picker.
-   Filter ⊆ widgets; explicit delete-only. Workers=1 on Windows.
-4. **Apply to Preview**, then Preview → **Validate / Preview**.
-5. New CLI output dir (pins `dataset.path` and `dataset.subtimeframe_path`;
-   missing CSV is refused). Under threshold: **Run via CLI**. Over: **Bind
-   confirm** then **Confirm and run**. Child log: `study.launch.log`. Use
-   Inspect **Refresh** / the ledger for cell progress.
-6. Promote drafts: Copy spec into Preview, **Load YAML from Preview** on Build,
-   delete loser rows, Apply, then Validate / Preview → Run via CLI.
+1. CLI `study expand` → `study run` → `study report`, or Build / Preview first.
+2. Inspect: **Load selected** or paste `output_dir`. Read **Study briefing**,
+   then Ranked cells (factor grid) and Cell peek (SL/TP grid + NY RTH).
+   Time Analysis / Admit is how you lock one session bucket for the next run.
+3. Build (optional): **Start from example** (`pRTH_open_ma.yaml`, 32 cells).
+   Apply to Preview → Validate / Preview. Workers=1 on Windows.
+4. New CLI output dir. Under threshold: **Run via CLI**. Over: **Bind confirm**
+   then **Confirm and run**. Refresh Inspect for progress.
+5. Promote: copy spec → delete losers on Build → Apply → Preview → Run via CLI.
 
 **What it is not.**
 
-- Not an in-process runner or job queue (no kill/retry). **Run via CLI** is the
-  existing CLI argv. Over-cap previews cannot launch from the page.
-- Does not mutate classic research session state (Studies-scoped keys only).
-  Parity with Data is the emitted RunSpec, not shared `session_state`.
-- Does not deep-link Research Bundles. Ranking / `run_count` are screening, not
-  a validated edge.
-- Failed-cell errors / rollup / charts / peek ≠ quality. Full charts stay Bundles import.
+- Not an in-process runner or job queue. Not a validated edge.
+- Time-of-day is **not** a StudySpec factor (avoids a 7× cartesian explosion).
+  It is a post-hoc NY RTH breakdown of completed trades.
+- Ranked cells ≠ SL/TP grid. `grid.enabled` writes `best_grid_*` + zip
+  `grid_results.parquet` per cell — Inspect now shows those.
+- Does not mutate classic session keys or deep-link Research Bundles.
 
-**Related pages.** Research Study Runner (headless); Research Bundles; Validation
-and robustness.
+**Related pages.** Research Study Runner (headless); Time Analysis; Focus vs
+Admit; Research Bundles; Validation and robustness.
 
 ## When to use Help vs Discuss results
 

@@ -7,6 +7,8 @@
 # Active cartesian = 32 cells
 #   1 core × 4 partners × 1 mode × 2 triggers × 2 tfs × 2 directions
 # Each cell may also run the SL/TP grid below (per-cell, not a factor axis).
+# Studies Inspect briefing / Cell peek show best_grid_* and NY RTH ToD after run.
+# Time-of-day is post-hoc (not a factor). Constrain via constants.entry_window.
 #
 # Ingest matches Data-page 15s-primary for AMP/Rithmic History Exporter:
 #   format_profile: quantower_history_exporter
