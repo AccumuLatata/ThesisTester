@@ -730,12 +730,18 @@ def _validate_lineage(lineage: Any) -> None:
     missing = sorted(_LINEAGE_KEYS - set(lineage_map))
     if missing:
         raise StudySpecError(f"study.lineage is missing required keys: {missing}")
-    _require_nonempty_str(lineage_map.get("parent_output_dir"), field="study.lineage.parent_output_dir")
+    _require_nonempty_str(
+        lineage_map.get("parent_output_dir"),
+        field="study.lineage.parent_output_dir",
+    )
     _require_nonempty_str(
         lineage_map.get("parent_identity_hash"),
         field="study.lineage.parent_identity_hash",
     )
-    _require_nonempty_str(lineage_map.get("parent_run_name"), field="study.lineage.parent_run_name")
+    _require_nonempty_str(
+        lineage_map.get("parent_run_name"),
+        field="study.lineage.parent_run_name",
+    )
 
     admit = _require_mapping(lineage_map.get("admit"), section="study.lineage.admit")
     _unknown_keys(admit, _LINEAGE_ADMIT_KEYS, section="study.lineage.admit")

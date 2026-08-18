@@ -284,4 +284,6 @@ def apply_admit_followup(
     try:
         return validate_study_spec(payload)
     except StudySpecError as exc:
-        raise AdmitFollowupError(f"Admit follow-up draft failed StudySpec validation: {exc}") from exc
+        raise AdmitFollowupError(
+            f"Admit follow-up draft failed StudySpec validation: {exc}"
+        ) from exc

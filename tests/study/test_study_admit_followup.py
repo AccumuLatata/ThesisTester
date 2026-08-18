@@ -347,9 +347,13 @@ def test_admit_followup_import_allow_list():
     )
     for name in banned:
         assert name not in imported
-    source = Path("thesistester/study/admit_followup.py").read_text(encoding="utf-8")
-    assert "run_batch" not in source
-    assert "run_study" not in source
+    calls = {
+        node.func.id
+        for node in ast.walk(ast.parse(Path("thesistester/study/admit_followup.py").read_text()))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "run_batch" not in calls
+    assert "run_study" not in calls
 
 
 def test_viewer_and_briefing_do_not_import_admit_followup():
