@@ -178,7 +178,7 @@ Cutoff admission in loop 1 is per-candidate (correct). Flatten in loop 2 is not.
 
 - [x] Probe P1/P2 fail on unpatched `main` and pass after the fix
 - [x] Existing `test_session_close_*` in `tests/test_phase5_backtest.py` green
-- [ ] Golden families green; no regen
+- [x] Golden families green; no regen
 - [x] ASSUMPTIONS §3 states per-entry calendar close + `empty_session_close_cap`
 - [x] Skip capture still does not change which flatten-off trades fill
 - [x] Diff does not touch OTF, Admit, R12, R13
