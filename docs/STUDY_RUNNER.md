@@ -116,7 +116,7 @@ A core/partner token is valid if it is in:
    tokens `pdVAH` `pdVAL` `pdPOC` `pwVAH` `pwVAL` `pwPOC` `pmVAH` `pmVAL`
    `pmPOC`, plus `ONH`, `dOpen`, `APOC`, single prints, session VWAPs, etc.
    (`STATIC_STUDY_LEVEL_NAMES` in `thesistester/levels/catalog.py`;
-   `STUDY_STATIC_LEVEL_NAMES` is that set). Rolling VWAP/POC are not static, and
+   `STUDY_STATIC_LEVEL_NAMES` is that set). Rolling VWAP/POC are not static.
 2. **Implied by `study.levels`** — `SMA_{len}_{tf}` / `EMA_{len}_{tf}` from
    lengths×timeframes (`null` timeframes → bare `SMA_{len}` / `EMA_{len}` like
    the levels engine; explicit `[]` → no MA tokens), plus `VWAP_rolling_*` /

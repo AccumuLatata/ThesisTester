@@ -250,7 +250,6 @@ def test_rolling_poc_correctness_on_simple_dataset():
     )
     out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
     assert out["POC_rolling_30min"].iloc[-1] == 100.0
-    assert set(PRIOR_PROFILE_LEVEL_NAMES) <= set(out.columns)
 
 
 def test_prior_day_profile_levels_use_completed_prior_day_only():
@@ -276,6 +275,7 @@ def test_prior_day_profile_levels_use_completed_prior_day_only():
     )
     df = pd.concat([day1, day2], ignore_index=True)
     out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    assert set(PRIOR_PROFILE_LEVEL_NAMES) <= set(out.columns)
 
     first_day = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-01").date()]
     second_day = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]

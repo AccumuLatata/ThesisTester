@@ -1346,10 +1346,11 @@ USER_GUIDE H2. Parked RS-D1 / D3 / D6 stay parked.
 
 ## Level Catalog Contract (LC0–LC4) — LC1 landed
 
-Prior-profile VAH/VAL/POC twins are already computed; StudySpec admits `pdPOC`
-only. Pivot StudySpec tokens (`Pivot_1min_*`) do not match engine columns
-(`Pivot_1m_*`). Suggested defaults advertise `VWAP_rolling_1h` while product
-windows are `30min`/`4h`. Assistant omitted-key defaults additionally expand
+Prior-profile VAH/VAL/POC twins are already computed; LC1 admits all nine as
+StudySpec tokens (was `pdPOC` only). Pivot StudySpec tokens (`Pivot_1min_*`)
+do not match engine columns (`Pivot_1m_*`). Suggested defaults advertise
+`VWAP_rolling_1h` while product windows are `30min`/`4h`. Assistant omitted-key
+defaults additionally expand
 `VWAP_WINDOW_OPTIONS` / `POC_WINDOW_OPTIONS` / `INDICATOR_LENGTH_OPTIONS`
 (not `DEFAULT_LEVELS_SETTINGS`). Implement **one PR per defect family**. Do not
 rename engine columns, emit new families, flip `compute_all_levels` defaults,

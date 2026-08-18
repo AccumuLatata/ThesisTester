@@ -22,6 +22,7 @@ from thesistester.assistant import (
 from thesistester.assistant.tools import AssistantTools
 from thesistester.assistant.workspace import (
     ASSISTANT_ADVANCED_EXPANDER_KEY,
+    SESSION_LEVEL_CATALOG,
     apply_consumed_classic_focus,
     build_provenance_card,
     force_results_qa_expanders_open,
@@ -35,7 +36,31 @@ from thesistester.assistant.workspace import (
     parse_json_choices,
     parse_positive_number_list,
 )
+from thesistester.levels.catalog import (
+    APOC_LEVEL_NAMES,
+    PRIOR_PROFILE_LEVEL_NAMES,
+    SESSION_STRUCTURAL_LEVEL_NAMES,
+    SESSION_VWAP_LEVEL_NAMES,
+    SINGLE_PRINT_LEVEL_NAMES,
+)
 from thesistester.research_bundle import canonical_bundle_hash
+
+
+def test_lc1_session_level_catalog_replaces_pdpoc_with_prior_profile_block():
+    catalog = list(SESSION_LEVEL_CATALOG)
+    assert catalog != sorted(catalog)
+    assert catalog[: len(SESSION_STRUCTURAL_LEVEL_NAMES)] == list(
+        SESSION_STRUCTURAL_LEVEL_NAMES
+    )
+    pm_eq = catalog.index("pmEQ")
+    dvwap = catalog.index("dVWAP_RTH")
+    assert tuple(catalog[pm_eq + 1 : dvwap]) == PRIOR_PROFILE_LEVEL_NAMES
+    assert catalog.count("pdPOC") == 1
+    assert "Pivot_1min_High" in catalog
+    assert catalog[dvwap : dvwap + 2] == list(SESSION_VWAP_LEVEL_NAMES)
+    assert "prev30mVWAP" in catalog
+    assert set(APOC_LEVEL_NAMES) <= set(catalog)
+    assert set(SINGLE_PRINT_LEVEL_NAMES) <= set(catalog)
 
 
 def _make_streamlit_stub() -> types.ModuleType:

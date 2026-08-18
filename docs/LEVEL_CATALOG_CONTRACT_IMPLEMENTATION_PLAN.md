@@ -206,7 +206,7 @@ pytest -q tests/test_golden_master.py tests/test_otf_golden.py tests/study/test_
 
 ### 7.0 LC0 — Plan lock + docs index
 
-**Status:** This PR  
+**Status:** Landed  
 **Closes:** —
 
 #### Change

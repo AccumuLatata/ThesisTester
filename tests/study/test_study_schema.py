@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import ast
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
-from thesistester.levels.catalog import PRIOR_PROFILE_LEVEL_NAMES, STATIC_STUDY_LEVEL_NAMES
+from thesistester.levels.apoc import APOC_COLUMNS
+from thesistester.levels.catalog import (
+    APOC_LEVEL_NAMES,
+    PRIOR_PROFILE_LEVEL_NAMES,
+    SESSION_STRUCTURAL_LEVEL_NAMES,
+    STATIC_STUDY_LEVEL_NAMES,
+)
 from thesistester.study.schema import (
     STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
@@ -162,6 +170,19 @@ def test_lc1_study_static_names_are_catalog_identity():
     assert STUDY_STATIC_LEVEL_NAMES == STATIC_STUDY_LEVEL_NAMES
     assert not any(name.startswith("VWAP_rolling_") for name in STUDY_STATIC_LEVEL_NAMES)
     assert not any(name.startswith("POC_rolling_") for name in STUDY_STATIC_LEVEL_NAMES)
+
+
+def _session_levels_ordered_from_source() -> list[str]:
+    """Local ``ordered`` list in ``compute_session_levels`` (not a module attr)."""
+    source = Path("thesistester/levels/sessions.py").read_text(encoding="utf-8")
+    match = re.search(r"ordered = \[([^\]]+)\]", source)
+    assert match is not None, "compute_session_levels ordered list not found"
+    return ast.literal_eval("[" + match.group(1) + "]")
+
+
+def test_lc1_session_structural_names_match_compute_session_levels_ordered():
+    assert list(SESSION_STRUCTURAL_LEVEL_NAMES) == _session_levels_ordered_from_source()
+    assert tuple(APOC_LEVEL_NAMES) == APOC_COLUMNS
 
 
 def test_load_study_spec_from_yaml(tmp_path: Path):
