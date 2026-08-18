@@ -233,9 +233,7 @@ def test_ah2_search_roots_keep_study_output_before_draft_when_cwd_is_output(
     assert roots == [spec_home.resolve(), study_out.resolve(), drafts.resolve()]
 
 
-def test_ah2_launch_without_parent_keeps_cwd_root_ahead_of_store(
-    tmp_path: Path, monkeypatch
-):
+def test_ah2_launch_without_parent_keeps_cwd_root_ahead_of_store(tmp_path: Path, monkeypatch):
     cwd_home = tmp_path / "cwd_home"
     store_home = tmp_path / "store_home"
     cwd_csv = _write_csv(cwd_home / "data" / "es_15s.csv", "CWD")
@@ -271,9 +269,7 @@ def test_ah2_blank_source_spec_parent_does_not_pin_cwd(tmp_path: Path, monkeypat
     assert copied["study"]["dataset"]["path"] == "data/a.csv"
 
 
-def test_ah2_promote_from_study_dir_prefers_output_over_draft(
-    tmp_path: Path, monkeypatch
-):
+def test_ah2_promote_from_study_dir_prefers_output_over_draft(tmp_path: Path, monkeypatch):
     study_dir = _write_report_fixture(tmp_path)
     output_csv = _write_csv(study_dir / "data" / "a.csv", "OUTPUT")
     draft_csv = _write_csv(tmp_path / "drafts" / "data" / "a.csv", "DRAFT")
