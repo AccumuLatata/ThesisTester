@@ -2,7 +2,8 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **AH0 this PR.** AH1–AH6 specified, not implemented.  
+**Last revised:** 2026-08-18 (AH0 review: one recipe per PR; no implementer-or)  
+**Status:** **AH0 plan lock.** AH1–AH6 specified, not implemented.  
 **Series code:** **AH** (Audit Honesty)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Inputs:** `AUDIT_FINAL.md` on `cursor/audit-final-merge-3a8e` (slices 0–7 at `83a42f8`); CTO review ranking (research-honesty first; C2/H2 before C3 for Studies-first ops; H6 first-wave with golden-stop)  
@@ -35,7 +36,7 @@ Copied from the audit merge §5 and frozen here. An AH PR that “simplifies” 
 2. **Do not collapse composers** in this series. Do not route pages through `run_experiment`.
 3. **`session` ≠ `trading_session_date`.** Flatten is a third clock: calendar date of **this entry’s** `entry_local_ts` + configured close (default `16:00`). Not CME session close. Not `eth_start`.
 4. **OTF is not applied at signal generation.** OTF `T` = `trigger_timestamp` else `timestamp` (filled 3c: reversal, not fill).
-5. **Focus ≠ Admit.** C7 identity is `allow_all` + `cooldown_bars_after_time=0` only. Study does not run Focus. Study does not call `run_otf_validation_matrix`.
+5. **Focus ≠ Admit.** C7 identity is `allow_all` + `cooldown_bars_after_exit=0` only. Study does not run Focus. Study does not call `run_otf_validation_matrix`.
 6. **WFA fold slicing is already correct.** AH3 reuses that pattern inside `otf_validation.py` only. Do not edit `walk_forward.py`.
 7. **`run_batch` abort semantics stay fail-fast.** AH2 does not make `thesistester run experiment.yaml` equal `study run` for origin / continue / index `status`.
 8. **Page 12 import stays schema-only** in AH0–AH6. Assistant open-exact stays hash-fail-closed. Do not collapse the three integrity bars. Page-12 hash is parked (§8).
@@ -50,7 +51,7 @@ Copied from the audit merge §5 and frozen here. An AH PR that “simplifies” 
 |---|---|---|
 | ETH after-close flatten | Keep **calendar date of this entry + `session_close_time`**. After-close ETH (`entry_local_ts.time() > close` on that calendar date) remains a **non-fill**. AH1 adds a skip row when skip capture is on. | Next-RTH 16:00 hold; `trading_session_date` close; overnight ETH template |
 | `allow_all` | Stays default. | Switching default to `single_position` |
-| `sl_first` × 3c (AH5) | Honor already-passed `entry_activation_price` on the 3c/confirm **entry parent** so pre-retrace extremes cannot SL. Default model name stays `sl_first`. | New intrabar model; changing R10 `both_hit_rule`; path/subtimeframe edits |
+| `sl_first` × 3c (AH5) | Honor already-passed `entry_activation_price` on the 3c/confirm **entry parent** via the §6.5 clip only. Default model name stays `sl_first`. | New `intrabar_model`; R10 `both_hit_rule`; path/subtimeframe branch edits; `sim_core` conservative fallback as the rule |
 | Study replay | AH2 pins dataset **bytes** (absolute path at expand). Replay is still `run_batch`. | Making CLI ≡ `study run`; copying CSVs into `output_dir` |
 | Composer forks (OTF TZ, cutoff-without-flatten, Data-page fatal OHLCV) | **Parked** (§8). | Aligning or merging composers |
 | Battery / levels omit-means-on | **Parked.** Study Advanced OFF may later emit explicit `false` (AH7) without flipping API `.get("enabled", True)`. | API default-off migration |
@@ -88,6 +89,8 @@ Copied from the audit merge §5 and frozen here. An AH PR that “simplifies” 
 
 Highest honesty first. Not easy-first. Not golden-align-first.
 
+Intentional deviations from audit merge §6 (do not “complete” the skipped parts inside an AH PR): C2/H2 before C3 (Studies-first); H1 **without** page-12 hash (parked M14); H6 before H3 (default R12, golden-stop).
+
 | Order | PR | Closes | Why this order |
 |---|---|---|---|
 | **AH0** | This plan + docs index | — | Contract lock before any code |
@@ -117,7 +120,7 @@ Copy into each PR body as the “regression safety” paragraph.
 Suggested local gate (implementer, not CI-only):
 
 ```bash
-pytest -q tests/test_golden_master.py tests/test_otf_golden.py tests/test_entry_window_admission.py
+pytest -q tests/test_golden_master.py tests/test_otf_golden.py tests/test_entry_window_golden.py
 # plus the probe file named in that PR
 ```
 
@@ -207,14 +210,14 @@ Cutoff admission in loop 1 is per-candidate (correct). Flatten in loop 2 is not.
 
 #### Change (surgical)
 
-1. **Pin at expand (identity):** When expanding, resolve `dataset.path` and `dataset.subtimeframe_path` against the **StudySpec file parent**. If a relative path exists as a file there, write the **absolute resolved path** into:
+1. **Pin at expand (identity):** `expand_study(spec)` has **no file path** today. Pass `spec_parent` in from `prepare_study_expansion` (`study_path.parent`) — do not make `expand_study` guess cwd. When `spec_parent` is provided, resolve `dataset.path` and `dataset.subtimeframe_path` against it. If a relative path exists as a file there, write the **absolute resolved path** into:
    - in-memory `expansion.experiment` runs
    - emitted `experiment.yaml`
    - copied `study.spec.yaml` dataset block  
-   If the relative path is **not** found under the spec parent, leave it relative (do not invent cwd files; do not copy CSVs).
-2. **Record provenance:** `study.expansion.json` gains additive `source_spec_parent` (absolute string of the YAML parent). Old expansion JSON without the key remains readable.
+   If the relative path is **not** found under the spec parent, or `spec_parent` is omitted (in-memory tests), leave it relative (do not invent cwd files; do not copy CSVs).
+2. **Record provenance:** `study.expansion.json` gains additive `source_spec_parent` (absolute string of the YAML parent) when known. Old expansion JSON without the key remains readable. `schema_version` stays `1`.
 3. **Promote search order:** `source_spec_parent` (from expansion.json) → study output dir → draft parent → **cwd last**. Prefer an existing file; do not silently pick cwd when the spec-parent file exists.
-4. **Launch search order:** same preference: spec parent (from preview YAML location / recorded parent) before cwd. Keep sandbox `_ensure_within_roots`. Do not import `execute.py` into `launch.py`.
+4. **Launch search order:** spec parent (preview YAML location / recorded parent) **before** cwd. Keep `_ensure_within_roots`. If the spec-parent file is outside the sandbox, **fail closed** — do not fall through to a cwd file with the same relative name. Do not import `execute.py` into `launch.py`.
 5. **Docs:** AGENT_GUIDE L38–39 and `STUDY_RUNNER.md` “`thesistester run experiment.yaml` is unchanged” — state that **after pin**, replay loads the **same dataset bytes** when the expand-time file still exists; it is still `run_batch` (fail-fast, `origin=cli`, no index `status`). It is **not** `study run`.
 
 #### Files
@@ -222,7 +225,7 @@ Cutoff admission in loop 1 is per-candidate (correct). Flatten in loop 2 is not.
 | Touch | Do not touch |
 |---|---|
 | `thesistester/study/expand.py` | `cli.py` `base_directory=experiment_path.parent` |
-| `thesistester/study/execute.py` only if expand helper needs the spec path (prefer pass-in) | `run_batch` / `run_experiment` load semantics |
+| `thesistester/study/execute.py` (pass `spec_parent` only) | `run_batch` / `run_experiment` load semantics |
 | `thesistester/study/promote.py` search order | In-process `run_study`; viewer |
 | `thesistester/study/launch.py` search order | Copying dataset files into `output_dir` |
 | Study expand/promote/launch tests | Engine, goldens, Data page |
@@ -245,6 +248,7 @@ Cutoff admission in loop 1 is per-candidate (correct). Flatten in loop 2 is not.
 - [ ] `study run` still uses `run_experiment` + ledger continue
 - [ ] AGENT_GUIDE no longer claims identity-equivalent replay beyond **dataset bytes**
 - [ ] No CSV copy; no `cli.py` base_directory rewrite
+- [ ] Launch does not fall through to cwd when the spec-parent file is outside sandbox
 - [ ] Goldens untouched
 
 #### Out of AH2
@@ -264,21 +268,14 @@ Portable relative rewrite for coworker machines; changing `confirm_above_runs`; 
 
 #### Change (surgical)
 
-1. After building `accepted_train` / `accepted_oos`, derive a **price-split timestamp**:
-   - `split_ts` = minimum timestamp among OOS candidate signals if any OOS exist; else `+inf`.
-   - Use the same chronological order as `_chronological_train_oos_sets` (`timestamp`, `bar_index`).
-2. `train_df = source_df[source_df["timestamp"] < split_ts]` (half-open; OOS bars never enter the train walk). If no OOS, `train_df = source_df`.
-3. `oos_df = source_df[source_df["timestamp"] >= split_ts]` when OOS exists; else empty frame.
-4. `_simulate(train_df, accepted_train, …)` and `_simulate(oos_df, accepted_oos, …)`.
-5. Reset index on slices if `simulate_trades` requires 0-based `bar_index` alignment — **must rematch signal `bar_index` / `entry_bar_index` to the sliced frame or slice by the original index without resetting in a way that desyncs indices.**  
-   **Preferred (less drift):** pass a view that **keeps original `bar_index` labels** if the engine indexes by position. `simulate_trades` uses `df.reset_index(drop=True)` and `sig["bar_index"]` as positional. Therefore the slice **must remain a prefix/suffix of the original positional frame**:
-   - `split_bar` = minimum `bar_index` among OOS signals (or `len(source_df)` if none).
-   - `train_df = source_df.iloc[:split_bar]` (positional prefix — WFA-shaped).
-   - `oos_df = source_df.iloc[split_bar:]` **cannot** be used as-is because signal `bar_index` still refers to the full frame.
-   - **Lock:** simulate train on `source_df.iloc[:split_bar]` (prefix; indices 0..split_bar-1 still match). Simulate OOS on the **full** `source_df` but only with OOS signals whose `bar_index >= split_bar` (OOS holding may use later bars; that is evaluation, not selection).  
-   This is the minimum change that stops train ranking from seeing OOS prices. Do **not** rewrite OOS signal indices.
-6. Ranking remains `train_expectancy_r` only. OOS columns unused for selection.
-7. Docstring: remove “only signals drive simulation / full dataset for prices.” State train **prices** are the positional prefix before the first OOS signal bar.
+**Lock (one recipe).** `simulate_trades` does `df.reset_index(drop=True)` and treats `sig["bar_index"]` as a **positional** index. Timestamp filters + `reset_index` are out of scope — they desync signal indices.
+
+1. After `accepted_train` / `accepted_oos`: `split_bar` = minimum `bar_index` among OOS signals, or `len(source_df)` if none. Use the same chronological population as `_chronological_train_oos_sets`.
+2. Train: `_simulate(source_df.iloc[:split_bar], accepted_train, …)` — positional prefix; indices `0..split_bar-1` still match.
+3. OOS: `_simulate(source_df, accepted_oos, …)` on the **full** frame (OOS holding may use later bars; that is evaluation, not selection). Do **not** rewrite OOS `bar_index`.
+4. OTF **filter** stays on full `source_df` (PIT unchanged).
+5. Ranking remains `train_expectancy_r` only.
+6. Docstring: remove “only signals drive simulation / full dataset for prices.” State train **prices** are the positional prefix before the first OOS signal bar.
 
 #### Files
 
@@ -318,35 +315,35 @@ Study calling the matrix; `diagnostic_only` flag (H13, parked); UI heatmap copy 
 
 #### Defect (verified)
 
-`apply_research_bundle_to_session` clears `_MANAGED_RESEARCH_KEYS` then restores bundle values. Keys **not** in that set survive:
+`apply_research_bundle_to_session` clears `_MANAGED_RESEARCH_KEYS` then restores bundle values. Keys **not** in that set survive. Live leftovers (pages write them; Report reads them):
 
-- `otf_filter_summary` / `otf_filter_result` (Report `build_otf_filter_metadata` reads these)
+- `otf_filter_summary` / `otf_filter_result` / `backtest_otf_filter` (page 7)
+- `grid_otf_filter` (page 8; **not** already managed)
 - `setup_config`
-- `focused_trades` (Focus overlay)
+- `focused_trades` (Focus overlay; `focused_trade_summary` is already managed)
 
-`pages/12_Research_Bundles.py` calls `bootstrap_active_saved_dataset()` on load. Dataset-less zip + active saved dataset A → `data=A` while restored `trades` are from B.
+`pages/12_Research_Bundles.py` calls `bootstrap_active_saved_dataset()` at **module top**. Streamlit **re-runs the page after import**, so moving that call is not enough: bootstrap sees missing `data` and refills saved dataset A onto bundle trades B.
 
 Nonce invalidation (upload widgets) is real and stays. It does not clear these keys.
 
 #### Change (surgical)
 
-1. Add to `_MANAGED_RESEARCH_KEYS` (and clear on apply):  
-   `otf_filter_summary`, `otf_filter_result`, `backtest_otf_filter`, `setup_config`, `focused_trades`.  
-   If API/pages persist `grid_otf_filter` already via existing keys, do not rename. Prefer **clearing** leftovers over inventing new export schemas.
-2. `build_otf_filter_metadata`: if `backtest_otf_filter` is the scoped export key used by headless, read it **after** managed restore (bundle-owned). Do not keep reading a leftover `otf_filter_summary` that was not in the zip. If both absent → unavailable (current disabled/unavailable path).
-3. **Page 12 bootstrap:** do **not** change `bootstrap_active_saved_dataset()` globally. On page 12, call bootstrap **only when the import path did not just apply a bundle without `data`**. Concrete: move the module-level `bootstrap_active_saved_dataset()` so it does not run unconditionally after a dataset-less import in the same run, **or** have `apply_research_bundle_to_session` set a session flag `bundle_import_omitted_data=True` when `data` was not in `session_values`, and skip bootstrap when that flag is set. Clear the flag on Data-page successful load. Smallest diff that prevents A+B mix.
-4. Do **not** require `canonical_bundle_hash` on page 12.
-5. ARCHITECTURE: one sentence — nonce ≠ leftover research keys; listed keys are now managed.
+1. Add to `_MANAGED_RESEARCH_KEYS` (clear on apply, restore if present in the zip):  
+   `otf_filter_summary`, `otf_filter_result`, `backtest_otf_filter`, `grid_otf_filter`, `setup_config`, `focused_trades`.  
+   Prefer **clearing** leftovers over inventing new export schemas. Do not change `build_otf_filter_metadata` read order — after the clear, leftovers cannot survive apply.
+2. **Page 12 bootstrap — session flag only.** Do **not** change `bootstrap_active_saved_dataset()` globally. Do **not** “move the module-level call” as the fix (rerun would refill). `apply_research_bundle_to_session` sets `bundle_import_omitted_data=True` when `data` was not in `session_values`, else clears the flag. Page 12 skips bootstrap when the flag is set. Clear the flag on Data-page successful load. Pages 1–11 stay unchanged.
+3. Do **not** require `canonical_bundle_hash` on page 12.
+4. ARCHITECTURE: one sentence — nonce ≠ leftover research keys; listed keys are now managed.
 
 #### Files
 
 | Touch | Do not touch |
 |---|---|
-| `thesistester/research_bundle.py` (`_MANAGED_RESEARCH_KEYS` + apply) | Assistant open-exact / hash verifier |
-| `thesistester/reporting.py` (`build_otf_filter_metadata` read order) | Engine, Study execute |
-| `pages/12_Research_Bundles.py` (bootstrap gating only) | Page-12 schema validation rewrite |
-| `thesistester/app_state.py` **only** if a tiny skip-flag helper is cleaner than page-local logic | Changing bootstrap for pages 1–11 |
-| `tests/test_research_bundle.py` | Goldens |
+| `thesistester/research_bundle.py` (`_MANAGED_RESEARCH_KEYS` + apply flag) | Assistant open-exact / hash verifier |
+| `pages/12_Research_Bundles.py` (skip bootstrap when flag set) | `reporting.py` read-order rewrite |
+| Data-page successful-load flag clear (one line) | Page-12 schema validation rewrite |
+| `thesistester/app_state.py` **only** if a tiny flag constant is cleaner than a raw string | Changing bootstrap for pages 1–11 |
+| `tests/test_research_bundle.py` | Engine, Study execute, goldens |
 | `docs/ARCHITECTURE.md` session-key table (additive) | USER_GUIDE |
 
 #### Probe tests
@@ -354,8 +351,8 @@ Nonce invalidation (upload widgets) is real and stays. It does not clear these k
 | ID | Recipe | Assert |
 |---|---|---|
 | AH4-P1 | Session has `otf_filter_summary` (12 rejected) + import CLI zip with OTF off / no OTF section | After apply, Report metadata does **not** show 12 rejected. |
-| AH4-P2 | Session has `focused_trades` / `setup_config`; import bundle without those | Keys cleared; not leftover. |
-| AH4-P3 | Dataset-less bundle import while active saved dataset A exists | `data` is **not** A after import (missing or bundle data only). |
+| AH4-P2 | Session has `focused_trades` / `setup_config` / `grid_otf_filter`; import bundle without those | Keys cleared; not leftover. |
+| AH4-P3 | Dataset-less bundle import while active saved dataset A exists; then call `bootstrap_active_saved_dataset()` as page 12 does on rerun | `data` is **not** A (flag survives the second call). |
 | AH4-P4 | Existing bundle round-trip tests | Green; nonce tests still pass. |
 | AH4-P5 | Assistant open-exact tests | Untouched / green. |
 
@@ -369,7 +366,7 @@ Nonce invalidation (upload widgets) is real and stays. It does not clear these k
 
 #### Out of AH4
 
-Hash-fail-closed page 12; refusing bootstrap on every page; export schema version bump unless a test forces it (prefer additive clear-only).
+Hash-fail-closed page 12; refusing bootstrap on every page; `reporting.py` read-order rewrite; leftover `display_timezone` captions (M14 residual); export schema version bump unless a test forces it (prefer additive clear-only).
 
 ---
 
@@ -387,19 +384,24 @@ Goldens are default `sl_first` and flatten-off. They may or may not include a 3c
 
 #### Change (surgical)
 
+**Lock (one recipe).** `sim_core.py` conservative fallback (~106–118) is **not** this fix: it still calls `resolve_ohlc_bar(..., model="sl_first")` **without** `entry_price`, so a full-bar `stop_hit` still SL-kills. Do not reuse it. Do not add a new `intrabar_model`. Do not edit `path_open_proximity` / `subtimeframe*` branches.
+
 1. **First command in the PR:** run golden families on current `main` (baseline green).
-2. In `resolve_ohlc_bar`, for `model == "sl_first"` only: if `entry_price is not None`, ignore SL/TP hits that occur **beyond** the entry (same semantics as `_path_after_entry` / conservative fallback already used for other models). Minimum: for `sl_first`, do not count `stop_hit` from a long bar whose **low** is through the stop if that excursion is **before** entry on a pessimistic full-bar read — implement by treating the entry bar as “SL/TP only if the stop/target is on the **post-entry** side of `entry_price`” using the existing helper if one is already shared. **Do not reimplement a new path model.** Reuse `_path_after_entry` or the conservative clip already in `sim_core.py` (~106–118) if that is the identical rule.
-3. Non-entry bars (`entry_price is None`) stay exact current `sl_first`.
-4. `path_open_proximity` / `subtimeframe*` **no diff**.
-5. Re-run goldens.  
-   - **Green:** commit. ASSUMPTIONS §2: `sl_first` now honors entry-bar activation for 3c/confirm.  
-   - **Red:** **do not regen in this PR.** Open a follow-up `AH5-GOLDEN` with readable CSV diff + justification, or abort and park behind an explicit keyword (not preferred). Default model name must remain `sl_first`.
+2. In `resolve_ohlc_bar`, `model == "sl_first"` **only**, when `entry_price is not None`:
+   - Evaluate **both** OHLC orders already used by path-proximity (`[open, high, low, close]` and `[open, low, high, close]`).
+   - Clip each with existing `_path_after_entry(vertices, entry_price)`.
+   - On each clipped path, apply current `sl_first` to that path’s min/max (`_hits` then SL-wins).
+   - Outcome: `SL` if **either** clipped path stops; else `TP` if both clipped paths are TP-only; else no exit (entry not reached on that order, or unproved).
+3. `entry_price is None` (simple next-bar-open, and every bar after the 3c entry parent) stays **byte-identical** current `sl_first`.
+4. Re-run goldens.  
+   - **Green:** commit. ASSUMPTIONS §2: `sl_first` now honors 3c/confirm entry-parent activation via `_path_after_entry`.  
+   - **Red:** **do not regen in this PR.** Open a follow-up `AH5-GOLDEN` with readable CSV diff + justification, or abort. Default model name must remain `sl_first`.
 
 #### Files
 
 | Touch | Do not touch |
 |---|---|
-| `thesistester/engine/intrabar.py` (`sl_first` + `entry_price` only) and/or `sim_core.py` if that is the single chokepoint | `backtest.py` signature; WFA; Study |
+| `thesistester/engine/intrabar.py` (`sl_first` + `entry_price` only) | `sim_core.py`; `backtest.py` signature; WFA; Study |
 | New `tests/test_ah5_sl_first_3c_entry.py` | R10 excursions |
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` §2 | USER_GUIDE; new R12 model |
 
@@ -407,7 +409,7 @@ Goldens are default `sl_first` and flatten-off. They may or may not include a 3c
 
 | ID | Recipe | Assert |
 |---|---|---|
-| AH5-P1 | 3c long fill at 100; entry parent low 97 before retrace; SL 2 pts | **Not** SL on 97. Either hold / later exit, or SL only if post-entry extreme hits. |
+| AH5-P1 | 3c long fill at 100; entry parent low 97 only on the pre-entry side of both OHLC orders; SL 2 pts | **Not** SL on 97. Hold / later-bar exit unless a **clipped** path still hits the stop. |
 | AH5-P2 | Simple next-bar-open `sl_first` both-hit | Identical to today (`entry_price is None` on that bar). |
 | AH5-P3 | Golden families | Green, or hard-stop. |
 
@@ -474,7 +476,7 @@ Changing default to `path_open_proximity`; 3c void skip rows; MAE full-parent ch
 | AH1 | ASSUMPTIONS §3 | Flatten is per-entry calendar date; leak fixed; `empty_session_close_cap` |
 | AH2 | AGENT_GUIDE L38–39; STUDY_RUNNER replay paragraph | Dataset bytes pinned; replay ≠ `study run` |
 | AH3 | `otf-filter.md` or `research-methodology.md` | Train **prices** are prefix-sliced; filter remains full-frame PIT |
-| AH4 | ARCHITECTURE session keys | Listed leftovers are managed; nonce ≠ those keys |
+| AH4 | ARCHITECTURE session keys | Listed leftovers (incl. `grid_otf_filter`) are managed; nonce ≠ those keys |
 | AH5 | ASSUMPTIONS §2 | `sl_first` honors 3c/confirm entry activation on the entry parent |
 | AH6 | AGENT_GUIDE (optional one line) | `close` / OHLCV base cols are not levels |
 
@@ -542,9 +544,11 @@ Amend ASSUMPTIONS §3 only. Run golden + phase5 session-close tests.
 ```markdown
 Implement **AH2 only** from `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §6.2.
 
-Pin Study `dataset.path` / `subtimeframe_path` to absolute files resolved against
-the StudySpec parent at expand. Record `source_spec_parent` in `study.expansion.json`.
-Promote/launch search that parent **before** cwd.
+Pass `spec_parent` into expand from `prepare_study_expansion` (expand has no
+path today). Pin `dataset.path` / `subtimeframe_path` to absolute files under
+that parent. Record `source_spec_parent` in `study.expansion.json`.
+Promote/launch search that parent **before** cwd. Launch: sandbox fail-closed
+(no cwd fallback when the spec-parent file is outside roots).
 Do not change `cli.py` `base_directory`, `run_batch` fail-fast, or copy CSVs.
 Do not edit `engine/`. Do not regen goldens.
 Add AH2-P1–P5. Update AGENT_GUIDE L38–39 and STUDY_RUNNER: replay shares dataset
@@ -569,11 +573,13 @@ Goldens untouched.
 ```markdown
 Implement **AH4 only** from `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §6.4.
 
-Add leftover keys to `_MANAGED_RESEARCH_KEYS` and clear them on bundle apply.
-Gate page-12 `bootstrap_active_saved_dataset` so a dataset-less import cannot
-re-fill `data` from the active saved dataset.
+Add leftover keys (including `grid_otf_filter`) to `_MANAGED_RESEARCH_KEYS`
+and clear them on bundle apply. Set `bundle_import_omitted_data` when the zip
+omits `data`; page 12 skips bootstrap when that flag is set (Streamlit reruns
+the page — moving the module-level call is not the fix).
 Do **not** require `canonical_bundle_hash` on page 12.
-Do not edit engine/goldens. Add AH4-P1–P5. ARCHITECTURE: list new managed keys.
+Do not edit `reporting.py` read order, engine, or goldens.
+Add AH4-P1–P5. ARCHITECTURE: list new managed keys.
 ```
 
 ### AH5
@@ -582,8 +588,10 @@ Do not edit engine/goldens. Add AH4-P1–P5. ARCHITECTURE: list new managed keys
 Implement **AH5 only** from `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §6.5.
 
 `sl_first` must honor `entry_activation_price` on the 3c/confirm entry parent
-by reusing existing post-entry helpers. Do not add a new `intrabar_model`.
-Do not edit path/subtimeframe branches except reuse.
+using the §6.5 clip only: both OHLC orders, `_path_after_entry`, then current
+`sl_first` on each clipped min/max. Do **not** reuse `sim_core` conservative
+fallback (it still SL-kills). Do not add a new `intrabar_model`.
+Do not edit path/subtimeframe branches or `sim_core.py`.
 Run goldens first. If they go red, **stop** — no silent regen.
 Add AH5-P1–P3. Amend ASSUMPTIONS §2 only.
 ```

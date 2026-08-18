@@ -1309,7 +1309,7 @@ collapse the two composers, flip omitted-key defaults, or regen goldens
 | AH1 | Per-candidate flatten `entry_local_ts`; `empty_session_close_cap` skip |
 | AH2 | Pin Study dataset paths at expand; promote/launch search spec parent first |
 | AH3 | Prefix-slice OTF-matrix train prices (`otf_validation.py` only) |
-| AH4 | Manage leftover bundle session keys; no dataset-less bootstrap refill |
+| AH4 | Manage leftover bundle session keys (incl. `grid_otf_filter`); flag skips dataset-less bootstrap refill |
 | AH5 | `sl_first` honors 3c entry activation (golden-stop if legacy trades move) |
 | AH6 | Reject `BASE_COLUMNS` in `validate_setup_config` |
 
