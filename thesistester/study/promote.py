@@ -18,6 +18,11 @@ from typing import Any
 import yaml
 
 from thesistester.setup import normalize_otf_filter_config
+from thesistester.study.admit_followup import (
+    ADMIT_TOD_MODE,
+    AdmitFollowupError,
+    apply_admit_followup,
+)
 from thesistester.study.expand import coerce_source_spec_parent, dataset_path_search_roots
 from thesistester.study.report import (
     StudyReportError,
@@ -231,6 +236,9 @@ def build_promoted_draft(
         )
 
     study = copy.deepcopy(dict(source_spec["study"]))
+    # Default promote is RS5: never copy parent lineage (stale admit metadata).
+    # ``--admit-tod`` re-attaches a new closed mapping in ``apply_admit_followup``.
+    study.pop("lineage", None)
     axis_keys = list(study["factors"].keys())
     cells: list[dict[str, Any]] = []
     for name in selected_run_names:
@@ -276,6 +284,23 @@ def build_promoted_draft(
     return validate_study_spec(draft)
 
 
+def _overview_bundle_rel(report: Any, run_name: str) -> str | None:
+    """``bundle_path`` for a ranked run from the overview frame."""
+    overview = getattr(report, "overview", None)
+    if overview is None or getattr(overview, "empty", True):
+        return None
+    if "run_name" not in overview.columns or "bundle_path" not in overview.columns:
+        return None
+    matched = overview.loc[overview["run_name"].astype(str) == str(run_name)]
+    if matched.empty:
+        return None
+    raw = matched.iloc[0].get("bundle_path")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
 def promote_study(
     study_dir: str | Path,
     *,
@@ -284,8 +309,14 @@ def promote_study(
     metric: str | None = None,
     run_names: Sequence[str] | None = None,
     force: bool = False,
+    admit_tod: str | None = None,
+    admit_run_name: str | None = None,
 ) -> StudyPromoteResult:
-    """Write a draft survivor StudySpec; never executes backtests."""
+    """Write a draft survivor StudySpec; never executes backtests.
+
+    ``admit_tod`` omitted → RS5 promote (no lineage, no Admit window).
+    ``admit_tod='auto'`` → one-cell Admit follow-up (SAF1).
+    """
     root = Path(study_dir)
     if not root.is_dir():
         raise StudyPromoteError(f"Study directory does not exist: {root}")
@@ -322,11 +353,34 @@ def promote_study(
     else:
         ranked_names = [str(name) for name in report.ranked["run_name"].tolist()]
 
-    selected = select_survivor_run_names(
-        ranked_names,
-        top_n=top_n,
-        run_names=run_names,
-    )
+    admit_mode = str(admit_tod).strip() if admit_tod is not None else None
+    if admit_run_name is not None and not str(admit_run_name).strip():
+        raise StudyPromoteError("--admit-run-name must be a non-empty ranked run_name")
+    if admit_run_name is not None and admit_mode is None:
+        raise StudyPromoteError("--admit-run-name requires --admit-tod")
+    if admit_mode is not None:
+        if admit_mode != ADMIT_TOD_MODE:
+            raise StudyPromoteError(
+                f"--admit-tod must be {ADMIT_TOD_MODE!r} when set; got {admit_tod!r}"
+            )
+        if top_n != 1 and admit_run_name is None:
+            raise StudyPromoteError(
+                "--admit-tod requires --top-n 1 or --admit-run-name (one cell per draft)"
+            )
+        if admit_run_name is not None:
+            selected = select_survivor_run_names(
+                ranked_names,
+                top_n=top_n,
+                run_names=[str(admit_run_name).strip()],
+            )
+        else:
+            selected = select_survivor_run_names(ranked_names, top_n=1, run_names=None)
+    else:
+        selected = select_survivor_run_names(
+            ranked_names,
+            top_n=top_n,
+            run_names=run_names,
+        )
 
     expansion_path = root / "study.expansion.json"
     if not expansion_path.is_file():
@@ -354,14 +408,52 @@ def promote_study(
         source_spec_parent=source_spec_parent,
     )
 
+    if admit_mode is not None:
+        parent_hash = expansion.get("study_identity_hash")
+        if not isinstance(parent_hash, str) or not parent_hash.strip():
+            raise StudyPromoteError(
+                "study.expansion.json missing study_identity_hash; re-run study expand"
+            )
+        parent_study = source_spec.get("study")
+        parent_name = "study"
+        instrument = ""
+        if isinstance(parent_study, Mapping):
+            parent_name = str(parent_study.get("name") or "study")
+            dataset = parent_study.get("dataset")
+            if isinstance(dataset, Mapping):
+                instrument = dataset.get("instrument")
+        run_name = selected[0]
+        try:
+            draft = apply_admit_followup(
+                draft,
+                parent_study_dir=root,
+                parent_study_name=parent_name,
+                parent_identity_hash=parent_hash.strip(),
+                parent_run_name=run_name,
+                bundle_rel=_overview_bundle_rel(report, run_name),
+                min_trades=int(report.min_trades),
+                instrument=str(instrument or ""),
+            )
+        except AdmitFollowupError as exc:
+            raise StudyPromoteError(str(exc)) from exc
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    admit_header = ""
+    if admit_mode is not None:
+        admit_header = (
+            "# Admit follow-up: one-cell constrained re-sim (Focus ≠ Admit).\n"
+            "# Engine path is constants.backtest.entry_window "
+            "(and grid.entry_window when grid is present).\n"
+            "# This command never executes backtests.\n"
+        )
     header = (
         "# DRAFT StudySpec produced by `python -m thesistester study promote`.\n"
         "# Human edit + confirm are required before `study run`.\n"
         "# This command never executes backtests.\n"
+        f"{admit_header}"
         f"# Source study_dir: {root.as_posix()}\n"
         f"# Survivors: {len(selected)} cell(s) by {primary} "
-        f"(top_n={top_n if run_names is None else 'explicit'}).\n"
+        f"(top_n={top_n if run_names is None and admit_run_name is None else 'explicit'}).\n"
         "# dataset.path values are absolutized when possible so relocating this\n"
         "# draft under drafts/ does not reinterpret relative bars paths.\n"
         "# Phase-2 800-cell cartesian: restore original full factor domains on the\n"

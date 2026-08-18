@@ -115,6 +115,24 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Overwrite an existing draft StudySpec at --output",
     )
+    promote_parser.add_argument(
+        "--admit-tod",
+        nargs="?",
+        const="auto",
+        choices=("auto",),
+        default=None,
+        help=(
+            "Draft a one-cell Admit follow-up (NY entry_rth_segment). "
+            "Requires --top-n 1 or --admit-run-name. Absence keeps RS5 promote. "
+            "Never executes."
+        ),
+    )
+    promote_parser.add_argument(
+        "--admit-run-name",
+        type=str,
+        default=None,
+        help="Ranked run_name to constrain for --admit-tod (default: first ranked row)",
+    )
 
     rollup_parser = study_sub.add_parser(
         "rollup",
@@ -249,11 +267,18 @@ def _cmd_promote(args: argparse.Namespace) -> int:
         top_n=int(args.top_n),
         metric=args.metric,
         force=bool(args.force),
+        admit_tod=getattr(args, "admit_tod", None),
+        admit_run_name=getattr(args, "admit_run_name", None),
     )
     print(
         f"Draft StudySpec written: {result.output_path} "
         f"({result.cell_count} survivor cell(s) by {result.primary_metric})"
     )
+    if getattr(args, "admit_tod", None):
+        print(
+            f"Admit follow-up child: {result.study_name} "
+            "(constrained re-sim; Focus ≠ Admit; no auto-execution)."
+        )
     print("This is a DRAFT — edit and confirm before `study run` (no auto-execution).")
     print(f"Expand preview: python -m thesistester study expand {result.output_path}")
     return os.EX_OK

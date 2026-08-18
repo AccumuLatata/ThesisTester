@@ -36,6 +36,12 @@ def test_promote_writes_draft_explicit_cells_without_executing(tmp_path: Path):
     assert len(cells) == 2
     assert result.cell_count == 2
     assert result.selected_run_names == ranked_before[:2]
+    # SAF1: default promote stays RS5 — no lineage, no new Admit window.
+    assert "lineage" not in draft["study"]
+    constants = draft["study"]["constants"]
+    assert "entry_window" not in constants
+    assert "entry_window" not in constants.get("backtest", {})
+    assert "entry_window" not in constants.get("grid", {})
     # Relative dataset.path must be pinned absolute so drafts/ relocation is safe.
     assert Path(draft["study"]["dataset"]["path"]).is_absolute()
 

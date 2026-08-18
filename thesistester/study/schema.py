@@ -114,8 +114,34 @@ _STUDY_KEYS = frozenset(
         "mode_rules",
         "report",
         "stage",
+        "lineage",
     }
 )
+_LINEAGE_KEYS = frozenset(
+    {
+        "parent_output_dir",
+        "parent_identity_hash",
+        "parent_run_name",
+        "admit",
+    }
+)
+_LINEAGE_ADMIT_KEYS = frozenset(
+    {
+        "group",
+        "value",
+        "rule",
+        "min_trades",
+        "thin",
+    }
+)
+_LINEAGE_ADMIT_GROUPS = frozenset(
+    {
+        "entry_rth_segment",
+        "entry_hour_bucket",
+        "entry_30min_bucket",
+    }
+)
+_LINEAGE_ADMIT_RULES = frozenset({"briefing_best_avg_r", "explicit"})
 _SUPPORTED_FACTOR_AXES = frozenset(
     {
         "core_level",
@@ -322,6 +348,9 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
         study_dict.setdefault("levels", {})
         if "name" in study_dict and "output_dir" not in study_dict:
             study_dict["output_dir"] = f"results/studies/{study_dict['name']}"
+        # Optional lineage: null / missing → omit (do not emit empty {}).
+        if "lineage" in study_dict and study_dict["lineage"] is None:
+            study_dict.pop("lineage")
         report = study_dict.get("report")
         factors = study_dict.get("factors")
         factor_keys = set(factors) if isinstance(factors, Mapping) else set()
@@ -450,6 +479,10 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         stage_map = _require_mapping(stage, section="study.stage")
         _unknown_keys(stage_map, _STAGE_KEYS, section="study.stage")
         _validate_stage(stage_map, factors=factors)
+
+    lineage = study.get("lineage")
+    if lineage is not None:
+        _validate_lineage(lineage)
 
     return dict(payload)
 
@@ -685,6 +718,57 @@ def _validate_report(report: Mapping[str, Any], *, factor_keys: set[str]) -> Non
             raise StudySpecError("study.report.otf_baseline must include explicit enabled")
         if not isinstance(baseline_map["enabled"], bool):
             raise StudySpecError("study.report.otf_baseline.enabled must be a boolean")
+
+
+def _require_nonempty_str(value: Any, *, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise StudySpecError(f"{field} must be a non-empty string")
+    return value
+
+
+def _validate_lineage(lineage: Any) -> None:
+    """Fail-closed optional ``study.lineage`` (omit = valid; unknown keys error)."""
+    lineage_map = _require_mapping(lineage, section="study.lineage")
+    _unknown_keys(lineage_map, _LINEAGE_KEYS, section="study.lineage")
+    missing = sorted(_LINEAGE_KEYS - set(lineage_map))
+    if missing:
+        raise StudySpecError(f"study.lineage is missing required keys: {missing}")
+    _require_nonempty_str(
+        lineage_map.get("parent_output_dir"),
+        field="study.lineage.parent_output_dir",
+    )
+    _require_nonempty_str(
+        lineage_map.get("parent_identity_hash"),
+        field="study.lineage.parent_identity_hash",
+    )
+    _require_nonempty_str(
+        lineage_map.get("parent_run_name"),
+        field="study.lineage.parent_run_name",
+    )
+
+    admit = _require_mapping(lineage_map.get("admit"), section="study.lineage.admit")
+    _unknown_keys(admit, _LINEAGE_ADMIT_KEYS, section="study.lineage.admit")
+    missing_admit = sorted(_LINEAGE_ADMIT_KEYS - set(admit))
+    if missing_admit:
+        raise StudySpecError(f"study.lineage.admit is missing required keys: {missing_admit}")
+    group = admit.get("group")
+    if group not in _LINEAGE_ADMIT_GROUPS:
+        raise StudySpecError(
+            f"study.lineage.admit.group must be one of {sorted(_LINEAGE_ADMIT_GROUPS)}; "
+            f"got {group!r}"
+        )
+    _require_nonempty_str(admit.get("value"), field="study.lineage.admit.value")
+    rule = admit.get("rule")
+    if rule not in _LINEAGE_ADMIT_RULES:
+        raise StudySpecError(
+            f"study.lineage.admit.rule must be one of {sorted(_LINEAGE_ADMIT_RULES)}; got {rule!r}"
+        )
+    min_trades = admit.get("min_trades")
+    if isinstance(min_trades, bool) or not isinstance(min_trades, int) or min_trades < 1:
+        raise StudySpecError("study.lineage.admit.min_trades must be an integer >= 1")
+    thin = admit.get("thin")
+    if not isinstance(thin, bool):
+        raise StudySpecError("study.lineage.admit.thin must be a boolean")
 
 
 def _factor_axis_allows_value(

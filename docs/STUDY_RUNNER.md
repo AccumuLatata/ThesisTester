@@ -32,10 +32,11 @@ fail the cell.
 trader briefing / per-cell SL/TP grid / NY RTH ToD).
 Does not change preview / CLI-spawn / execute. Inspect remains artifacts-only
 (`report_study(..., write_artifacts=False)`; no `rollup_study()`).
-**SAF** (Study Admit Follow-up) 🔒 SAF0
-`docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`. Planned: draft a linked
-child StudySpec from a completed study with Admit locked to the briefing
-(or hour/30m) bucket. Promote without `--admit-tod` stays RS5. **Not shipped.**
+**SAF** (Study Admit Follow-up) — SAF1 CLI shipped
+`docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.
+`study promote --admit-tod auto` drafts a linked child StudySpec with Admit
+locked to the briefing NY `entry_rth_segment`. Promote without `--admit-tod`
+stays RS5. Inspect draft button / `--tod-group` are **not shipped** (SAF2–SAF3).
 Does not auto-`study run` and does not add ToD as a factor axis.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
@@ -81,6 +82,7 @@ study:
   mode_rules: { ... }                 # required when factors.confluence_mode present
   report: { ... }
   stage: { mode: filter, include: { ... } }   # optional
+  lineage: { parent_*, admit }                # optional SAF1; omit = valid
 ```
 
 Normalization defaults (when omitted): `workers=1`, `confirm_above_runs=200`,
@@ -659,20 +661,20 @@ Paste `output_dir` remains valid alongside the catalog.
 
 ---
 
-## SAF — Study Admit Follow-up (planned)
+## SAF — Study Admit Follow-up
 
-**Status:** SAF0 plan-locked. SAF1–SAF3 not started. SAF4 parked.  
+**Status:** SAF1 CLI shipped. SAF2–SAF3 not started. SAF4 parked.  
 **Plan:** `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.
 
-After a completed all-day study, draft a **child** StudySpec that re-sims the
-crowned cell with Admit locked. This is **not shipped** (no `--admit-tod`, no
-Inspect draft button yet).
+After a completed all-day study, `study promote --admit-tod auto --top-n 1`
+drafts a **child** StudySpec that re-sims one ranked cell with Admit locked to
+the briefing NY `entry_rth_segment`. Inspect draft button is **not shipped**.
 
-| Step | Planned | What does not happen |
+| Step | Status | What does not happen |
 |---|---|---|
-| `study promote --admit-tod auto` (SAF1) | One ranked cell; stamp `backtest` + `grid` `entry_window`; write `study.lineage`; new `output_dir` | Auto-`study run`; ToD as a factor axis; default promote behavior change |
-| Inspect **Draft Admit follow-up** (SAF2) | Write child YAML onto Preview | In-process execute / second spawn path |
-| `--tod-group` / `--allow-thin` / catalog parent (SAF3) | Hour/30min Admit; thin override; parent column | Multi-bucket cartesian |
+| `study promote --admit-tod auto` (SAF1) | **Shipped.** One ranked cell; stamp `backtest` + `grid` `entry_window`; write `study.lineage`; new `output_dir`. Requires `--top-n 1` or `--admit-run-name`. Thin / `avg_r` tie / missing zip refuse | Auto-`study run`; ToD as a factor axis; default promote behavior change |
+| Inspect **Draft Admit follow-up** (SAF2) | Not shipped | In-process execute / second spawn path |
+| `--tod-group` / `--allow-thin` / catalog parent (SAF3) | Not shipped | Multi-bucket cartesian |
 
 **Honesty.** Child KPIs are a constrained re-sim (Focus ≠ Admit), not
 confirmation of the parent screen. Engine Admit is `backtest.entry_window`

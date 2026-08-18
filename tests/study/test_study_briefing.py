@@ -264,6 +264,7 @@ def test_briefing_module_import_allow_list():
             imported.add(node.module)
     assert "thesistester.study.execute" not in imported
     assert "thesistester.study.cli_study" not in imported
+    assert "thesistester.study.promote" not in imported
     assert "thesistester.cli" not in imported
     assert "plotly" not in imported
     assert "streamlit" not in imported

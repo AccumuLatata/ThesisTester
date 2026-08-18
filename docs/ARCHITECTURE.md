@@ -119,11 +119,15 @@ StudySpec factor.
 `rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`; Plotly stays
 on `pages/15_Studies.py`).
 **SAF** (Study Admit Follow-up, `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`)
-is plan-locked: optional `study.lineage` + promote `--admit-tod` drafts a
-child Admit spec. Default promote stays RS5. Inspect may write Preview YAML
-(SAF2); it must not call `run_study`. `viewer.py` must not import `promote`
-or `admit_followup`. Engine Admit remains `backtest.entry_window` /
-`grid.entry_window` (SW). No `engine/` edit.
+SAF1 CLI is shipped: optional fail-closed `study.lineage` +
+`study promote --admit-tod auto` drafts a child Admit spec with engine
+windows on `constants.backtest.entry_window` and `constants.grid.entry_window`
+(plus setup `constants.entry_window`). Default promote stays RS5. Inspect may
+write Preview YAML later (SAF2); it must not call `run_study`.
+`viewer.py` must not import `promote` or `admit_followup`.
+`admit_followup.py` must not import execute / launch / viewer / cli / Streamlit.
+Engine Admit remains `backtest.entry_window` / `grid.entry_window` (SW).
+No `engine/` edit.
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
