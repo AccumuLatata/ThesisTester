@@ -389,8 +389,10 @@ def expand_study_capability(
     assert output_dir is not None
     base_dir = _default_base_directory(payload, data_roots=data_roots)
     study_path = payload.get("study_path")
+    source_spec_parent: Path | None = None
     if isinstance(study_path, str) and study_path.strip():
         path = _ensure_within_roots(study_path, data_roots)
+        source_spec_parent = path.parent
         normalized = _normalized_spec_from_payload(payload)
         _ensure_study_spec_paths_within_roots(
             normalized,
@@ -404,7 +406,11 @@ def expand_study_capability(
             data_roots,
             relative_base=base_dir,
         )
-    expansion = expand_study_to_directory(normalized, output_dir)
+    expansion = expand_study_to_directory(
+        normalized,
+        output_dir,
+        source_spec_parent=source_spec_parent,
+    )
     workers = int(normalized["study"].get("workers", 1))
     return {
         "run_count": expansion.run_count,

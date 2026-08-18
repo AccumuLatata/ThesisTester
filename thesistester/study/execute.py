@@ -512,15 +512,24 @@ def prepare_study_expansion(
 ) -> tuple[dict[str, Any], ExpansionResult, Path, Path]:
     """Load StudySpec, expand, optionally write artifacts.
 
+    Relative dataset paths that exist under the StudySpec parent are pinned
+    absolute on the expansion (identity hash stays on the unpinned spec).
+
     Returns ``(spec, expansion, output_dir, base_directory)``.
     """
     study_path = Path(study_path).resolve()
     spec = load_study_spec(study_path)
     out = _resolve_study_output_dir(study_path, spec, output_dir)
-    expansion = expand_study(spec)
+    spec_parent = study_path.parent
+    expansion = expand_study(spec, source_spec_parent=spec_parent)
     if write_artifacts:
-        write_expansion_artifacts(out, normalized_spec=spec, expansion=expansion)
-    return spec, expansion, out, study_path.parent
+        write_expansion_artifacts(
+            out,
+            normalized_spec=spec,
+            expansion=expansion,
+            source_spec_parent=spec_parent,
+        )
+    return spec, expansion, out, spec_parent
 
 
 def _apply_cell_result(
@@ -682,7 +691,12 @@ def run_study(
                 )
 
         # Gates passed — now persist expansion artifacts.
-        write_expansion_artifacts(out, normalized_spec=spec, expansion=expansion)
+        write_expansion_artifacts(
+            out,
+            normalized_spec=spec,
+            expansion=expansion,
+            source_spec_parent=base_directory,
+        )
 
         identity_changed = existing is not None and prior_hash != expansion.study_identity_hash
         if existing is None or (force and identity_changed):
