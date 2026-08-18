@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import yaml
 
 from thesistester.cli import main as cli_main
 from thesistester.study.admit_followup import (
@@ -17,7 +18,7 @@ from thesistester.study.admit_followup import (
     AdmitFollowupError,
     select_admit_bucket,
 )
-from thesistester.study.builder import default_study_draft, hydrate_study_draft
+from thesistester.study.builder import default_study_draft, emit_study_spec, hydrate_study_draft
 from thesistester.study.expand import expand_study
 from thesistester.study.promote import StudyPromoteError, promote_study
 from thesistester.study.report import report_study
@@ -203,6 +204,59 @@ def test_admit_followup_refuses_avg_r_tie(tmp_path: Path):
     assert not out.exists()
 
 
+def test_admit_tod_replaces_stale_parent_lineage(tmp_path: Path):
+    study_dir = _write_admit_fixture(tmp_path)
+    spec_path = study_dir / "study.spec.yaml"
+    spec = load_study_spec(spec_path)
+    spec["study"]["lineage"] = {
+        "parent_output_dir": "/tmp/grandparent",
+        "parent_identity_hash": "stalehash",
+        "parent_run_name": "cell_old",
+        "admit": {
+            "group": "entry_rth_segment",
+            "value": "rth_midday",
+            "rule": "briefing_best_avg_r",
+            "min_trades": 30,
+            "thin": False,
+        },
+    }
+    spec_path.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    out = tmp_path / "admit_replace.yaml"
+    promote_study(study_dir, output=out, top_n=1, admit_tod="auto")
+    draft = load_study_spec(out)
+    lineage = draft["study"]["lineage"]
+    assert lineage["parent_output_dir"] == study_dir.resolve().as_posix()
+    assert lineage["parent_run_name"] != "cell_old"
+    assert lineage["admit"]["value"] == "rth_open_30m"
+    assert lineage["parent_identity_hash"] != "stalehash"
+
+
+def test_default_promote_strips_parent_lineage(tmp_path: Path):
+    """RS5 promote must not copy a parent Admit child's study.lineage."""
+    study_dir = _write_admit_fixture(tmp_path)
+    spec_path = study_dir / "study.spec.yaml"
+    spec = load_study_spec(spec_path)
+    spec["study"]["lineage"] = {
+        "parent_output_dir": "/tmp/grandparent",
+        "parent_identity_hash": "stalehash",
+        "parent_run_name": "cell_old",
+        "admit": {
+            "group": "entry_rth_segment",
+            "value": "rth_open_30m",
+            "rule": "briefing_best_avg_r",
+            "min_trades": 30,
+            "thin": False,
+        },
+    }
+    spec_path.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    out = tmp_path / "survivors.yaml"
+    promote_study(study_dir, output=out, top_n=1)
+    draft = load_study_spec(out)
+    assert "lineage" not in draft["study"]
+    assert "entry_window" not in draft["study"]["constants"]
+    assert "entry_window" not in draft["study"]["constants"].get("backtest", {})
+
+
 def test_admit_run_name_without_admit_tod_refused(tmp_path: Path):
     study_dir = _write_admit_fixture(tmp_path)
     top = str(report_study(study_dir).ranked.iloc[0]["run_name"])
@@ -283,17 +337,40 @@ def test_select_admit_bucket_prefers_non_warning_and_refuses_tie():
     )
     picked = select_admit_bucket(frame, min_trades=30)
     assert picked["value"] == "rth_morning"
+    prefer_solid = pd.DataFrame(
+        {
+            "entry_rth_segment": ["rth_open_30m", "rth_morning"],
+            "avg_r": [0.4, 0.9],
+            "trade_count": [40, 10],
+            "sample_warning": [False, True],
+        }
+    )
+    solid = select_admit_bucket(prefer_solid, min_trades=30)
+    assert solid["value"] == "rth_open_30m"
     tied = frame.copy()
     tied.loc[:, "avg_r"] = 0.5
     with pytest.raises(AdmitFollowupError, match="tied"):
         select_admit_bucket(tied, min_trades=30)
 
 
+def test_builder_hydrate_emit_preserves_admit_windows(tmp_path: Path):
+    study_dir = _write_admit_fixture(tmp_path)
+    out = tmp_path / "admit_hydrate.yaml"
+    promote_study(study_dir, output=out, top_n=1, admit_tod="auto")
+    raw = load_study_spec(out)
+    hydrated = hydrate_study_draft(raw)
+    re_emitted = emit_study_spec(hydrated)
+    assert re_emitted["study"]["lineage"]["admit"]["value"] == "rth_open_30m"
+    window = re_emitted["study"]["constants"]["backtest"]["entry_window"]
+    assert window["enabled"] is True
+    assert window["rth_segments"] == ["rth_open_30m"]
+    assert re_emitted["study"]["constants"]["grid"]["entry_window"] == window
+    assert re_emitted["study"]["constants"]["entry_window"] == window
+
+
 def test_builder_default_omits_lineage_and_hydrates_when_present():
     default = default_study_draft()
     assert default.lineage is None
-    from thesistester.study.builder import emit_study_spec
-
     emitted = emit_study_spec(default)
     assert "lineage" not in emitted["study"]
 

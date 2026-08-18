@@ -82,6 +82,7 @@ study:
   mode_rules: { ... }                 # required when factors.confluence_mode present
   report: { ... }
   stage: { mode: filter, include: { ... } }   # optional
+  lineage: { parent_*, admit }                # optional SAF1; omit = valid
 ```
 
 Normalization defaults (when omitted): `workers=1`, `confirm_above_runs=200`,

@@ -181,6 +181,20 @@ def test_omitted_lineage_still_validates():
     assert "lineage" not in spec["study"]
 
 
+def test_null_lineage_is_omitted_after_normalize():
+    raw = _minimal_study()
+    raw["study"]["lineage"] = None
+    spec = validate_study_spec(normalize_study_spec(raw))
+    assert "lineage" not in spec["study"]
+
+
+def test_empty_lineage_mapping_fails_closed():
+    raw = _minimal_study()
+    raw["study"]["lineage"] = {}
+    with pytest.raises(StudySpecError, match="study.lineage is missing required keys"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
 def test_valid_lineage_validates():
     raw = _minimal_study()
     raw["study"]["lineage"] = _valid_lineage()
