@@ -142,7 +142,9 @@ def test_inspect_admit_refuses_in_flight(tmp_path: Path):
 
 
 def test_inspect_admit_refuses_thin_and_missing_zip(tmp_path: Path):
-    thin_dir = _write_admit_fixture(tmp_path / "thin", open_r=[1.0] * 5, min_trades=30)
+    thin_root = tmp_path / "thin"
+    thin_root.mkdir()
+    thin_dir = _write_admit_fixture(thin_root, open_r=[1.0] * 5, min_trades=30)
     top = str(report_study(thin_dir).ranked.iloc[0]["run_name"])
     with pytest.raises(StudyPromoteError, match="thin"):
         run_inspect_admit_followup(
@@ -150,7 +152,9 @@ def test_inspect_admit_refuses_thin_and_missing_zip(tmp_path: Path):
             run_name=top,
             trusted_roots=(tmp_path.resolve(),),
         )
-    missing = _write_admit_fixture(tmp_path / "missing")
+    missing_root = tmp_path / "missing"
+    missing_root.mkdir()
+    missing = _write_admit_fixture(missing_root)
     miss_top = str(report_study(missing).ranked.iloc[0]["run_name"])
     (missing / f"{miss_top}.research.zip").unlink()
     with pytest.raises(StudyPromoteError, match="zip"):
