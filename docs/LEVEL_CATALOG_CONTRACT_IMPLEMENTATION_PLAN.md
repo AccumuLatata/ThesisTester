@@ -21,7 +21,7 @@
 
 The level **engine** is ahead of the level **catalog**.
 
-Eight prior-profile columns are computed on every levels frame and are already selectable on Levels / Setup Builder / Signals, but StudySpec fail-closed rejects them. Pivot StudySpec tokens are spelled differently from the columns the engine emits, so a validated study can run with that core silently dropped. Suggested defaults advertise a rolling VWAP window the product defaults do not compute.
+Eight prior-profile columns are computed on every levels frame and are already selectable on Levels / Setup Builder / Signals, but StudySpec fail-closed rejects them. Pivot StudySpec tokens are spelled differently from the columns the engine emits, so a validated study can run with that core silently dropped (study expand sets min=max=N, so the cell zeros). Suggested defaults advertise `VWAP_rolling_1h`; Assistant omitted-key defaults also expand widget catalogs (`15min`/`1h` VWAP, `1h`/`4h` POC, SMA 9/20/100) that product defaults do not compute.
 
 This series makes the **token contract complete and correct** for what the engine already emits. It does **not** add new price series.
 
@@ -30,7 +30,7 @@ Series complete when:
 1. Every always-on prior-profile column is a StudySpec token.
 2. Every pivot token equals the emitted column name.
 3. Suggested / Assistant catalogs cannot advertise a token that default settings do not imply (unless a live frame or explicit `study.levels` window supplies it).
-4. Headless global-cluster setup generation fail-closes on missing columns the same way anchor-rules already does.
+4. Headless `api.generate_signals` / `run_experiment` / study cells fail-close on missing global-cluster columns the same way anchor-rules already does. Classic Signals saved-setup blockers stay; the confluence library stays permissive.
 
 ---
 
@@ -59,7 +59,7 @@ An LC PR that “simplifies” any of these is out of scope and must be rejected
 | Pivot spelling | Engine labels win: `Pivot_1m_*` `Pivot_5m_*` `Pivot_30m_*` `Pivot_4h_*` | Renaming engine columns to `1min`; classic floor pivots (PP/R1) |
 | Suggested VWAP | Drop `VWAP_rolling_1h` from `SUGGESTED_DEFAULT_LEVELS`. Replace with `VWAP_rolling_30min` (implied by default `vwap_windows`) | Adding `1h` to `DEFAULT_LEVELS_SETTINGS.vwap_windows` (changes every new levels frame) |
 | Suggested profile | Keep `pdPOC` only. Admission ≠ default-selected | Adding `pdVAH`/`pdVAL` to suggested defaults |
-| Assistant catalog | After LC3, options = `closed_level_token_set(settings)` ∪ live columns ∪ already-selected | Advertising `INDICATOR_LENGTH_OPTIONS` lengths the staged settings do not imply |
+| Assistant catalog | After LC3, options = `closed_level_token_set(settings)` ∪ live columns ∪ already-selected. Omitted keys use DEFAULT merge, not widget catalogs | Advertising `INDICATOR_LENGTH_OPTIONS` / `VWAP_WINDOW_OPTIONS` / `POC_WINDOW_OPTIONS` when settings omit keys |
 | Missing columns | API `generate_signals` / `run_experiment` global_cluster raises like anchor-rules | Changing `detect_confluence_zones` to raise |
 | Dual defaults | Document `compute_all_levels` vs `DEFAULT_LEVELS_SETTINGS`; do not flip | OR 30→15 on the raw API; enabling gates on the raw API |
 | Stale StudySpecs that used `Pivot_1min_*` | LC2 fail-closes at validate (honest). One-line ASSUMPTIONS note | Compatibility alias / silent rewrite |
@@ -85,8 +85,8 @@ An LC PR that “simplifies” any of these is out of scope and must be rejected
 | Admit `pdVAH`/`pdVAL` + week/month VAH/VAL/**POC** | Developing session H/L/EQ (`dHigh`…) |
 | Shared `thesistester/levels/catalog.py` for static names | Rewriting `profile.py` / `sessions.py` math |
 | Pivot tokens = `_PIVOT_COLUMN_LABELS` | Renaming pivot **columns** |
-| Suggested `VWAP_rolling_1h` → `VWAP_rolling_30min` | Default `vwap_windows` += `1h` |
-| Assistant catalog = closed set ∪ live ∪ selected | New MA timeframes (`15min`) |
+| Suggested `VWAP_rolling_1h` → `VWAP_rolling_30min`; Assistant omitted-key loops → `closed_level_token_set` | Default `vwap_windows` += `1h` |
+| Assistant catalog = closed set ∪ live ∪ selected (DEFAULT-implied MAs/windows) | New MA timeframes (`15min`); keeping widget catalogs as omitted-key token sources |
 | API global-cluster missing-column raise | `detect_confluence_zones` raise; engine second-check |
 | Probe tests that fail on `main` | Golden regen; `LEVEL_ENGINE_VERSION` bump |
 | One honesty sentence per living doc that currently overclaims | Help H2; PIT table rewrite; VAP upgrade |
@@ -131,19 +131,37 @@ _PIVOT_COLUMN_LABELS = {"1min": "1m", "5min": "5m", "30min": "30m", "4h": "4h"}
 
 `tests/study/test_study_schema.py::test_closed_level_token_set_gates_pivots_and_prev30m_on_flags` currently **locks the wrong spelling**.
 
-`detect_confluence_zones` then **drops** missing names. A StudySpec with `core_level: Pivot_1min_High` validates and can produce empty / incomplete zones.
+`detect_confluence_zones` then **drops** missing names. A StudySpec with `core_level: Pivot_1min_High` validates. Study expand then sets `min_confluences = max_confluences = len(selected_levels)` (`thesistester/study/expand.py`). A missing core therefore zeros the **entire cell** (not a thinner cluster): with one partner, N=2 and only the partner column present → empty `confluence_zones` → empty trades. Headless `run_experiment` / `api.generate_signals` inherit the same silent drop (D4).
 
-### 4.3 D3 — Suggested default not implied by default windows
+### 4.3 D3 — Suggested / Assistant catalogs advertise tokens default settings do not imply
 
-`SUGGESTED_DEFAULT_LEVELS` includes `VWAP_rolling_1h`.  
-`DEFAULT_LEVELS_SETTINGS["vwap_windows"]` is `["30min", "4h"]`.  
-`closed_level_token_set(DEFAULT_LEVELS_SETTINGS)` therefore does **not** contain `VWAP_rolling_1h`.
+Two independent sources. LC3 must close both.
 
-`schema._static_catalog_names` already strips rolling names from `SUGGESTED_DEFAULT_LEVELS` so StudySpec does not admit `1h` statically — but Setup `default_selected_levels` and Assistant `build_confluence_level_options` still advertise it.
+**D3a — Setup suggested list.** `SUGGESTED_DEFAULT_LEVELS` includes `VWAP_rolling_1h`. `DEFAULT_LEVELS_SETTINGS["vwap_windows"]` is `["30min", "4h"]`. `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)` therefore does **not** contain `VWAP_rolling_1h`. `schema._static_catalog_names` already strips rolling names from `SUGGESTED_DEFAULT_LEVELS` so StudySpec does not admit `1h` statically — but Setup `default_selected_levels` still prefers it (and silently skips it when the column is absent from a product-default frame).
 
-### 4.4 D4 — Global-cluster missing columns are silent
+**D3b — Assistant omitted-key widget catalogs** (`build_confluence_level_options` when the key is absent / `levels_settings=None`). Verified on `main`:
 
-`thesistester/api.py` raises `Setup references unavailable level columns` for **anchor_rules** only. Global-cluster calls `detect_confluence_zones`, which skips absent names (`tests/test_phase4_engine.py::test_missing_selected_columns_returns_empty_with_schema`).
+| Omitted key | Assistant fallback today | Product `DEFAULT_LEVELS_SETTINGS` | Tokens advertised that defaults do not imply |
+|---|---|---|---|
+| `vwap_windows` | `VWAP_WINDOW_OPTIONS` = `15min`/`30min`/`1h`/`4h` | `["30min", "4h"]` | `VWAP_rolling_15min`, `VWAP_rolling_1h` |
+| `poc_windows` | `POC_WINDOW_OPTIONS` = `30min`/`1h`/`4h` | `["30min"]` | `POC_rolling_1h`, `POC_rolling_4h` |
+| `sma_lengths` | `INDICATOR_LENGTH_OPTIONS` = 9/20/21/50/100/200 | `[50, 200]` | `SMA_9_30min`, `SMA_20_30min`, `SMA_21_30min`, `SMA_100_30min` |
+| `sma_timeframes` | `("30min",)` | `["1min", "5min", "30min"]` | (under-advertises `SMA_50_1min` / `SMA_50_5min`) |
+| `ema_lengths` / `ema_timeframes` | lengths from `INDICATOR_LENGTH_OPTIONS`; timeframes default `()` | `[9, 21]` × `["1min", "5min", "30min"]` | no `EMA_*` at all when settings are omitted |
+
+`_add(SUGGESTED_DEFAULT_LEVELS)` also injects D3a’s `VWAP_rolling_1h`. Swapping only the suggested list (D3a) and leaving these loops does **not** close D3. LC3 rewrite to `closed_level_token_set` is the required fix.
+
+**Expected LC3 default-picker delta** (intentional; lock it in LC3-P2): drop widget-only tokens (`VWAP_rolling_15min`/`1h`, `POC_rolling_1h`/`4h`, `SMA_9/20/21/100_30min`); add product-implied tokens (`SMA_50_1min`/`5min`/`30min`, `SMA_200_*`, `EMA_9_*`, `EMA_21_*`). `INDICATOR_LENGTH_OPTIONS` / `VWAP_WINDOW_OPTIONS` / `POC_WINDOW_OPTIONS` stay **widget catalogs** for the settings editors.
+
+### 4.4 D4 — Global-cluster missing columns are silent (headless / study)
+
+`thesistester/api.py` raises `Setup references unavailable level columns` for **anchor_rules** only. Global-cluster calls `detect_confluence_zones`, which skips absent names (`tests/test_phase4_engine.py::test_missing_selected_columns_returns_empty_with_schema`). `api.generate_signals` returns that empty frame under the key **`confluence_zones`** (not `zones`).
+
+`run_experiment` and study execute (`thesistester/study/execute.py`) call `api.generate_signals`. After LC4 they inherit the raise. That is intended: a cell that names a column the frame lacks becomes an explicit per-cell failure instead of empty trades.
+
+Classic Signals (`pages/6_Signals.py`) already fail-closes **saved** global-cluster setups via `_saved_setup_generation_blockers` / `_saved_setup_compatibility_issues`. The live picker is frame-driven (`available_level_columns`). **Do not edit** `pages/6_Signals.py` in LC4. Do not treat “optional Signals same-PR” as a license to fork messages or call the library raise.
+
+Static StudySpec tokens whose **compute** gates are off (`dVWAP_RTH` with `session_vwap_enabled=False`, `APOC` with `apoc_enabled=False`, single prints off) are already admitted at validate. After LC4, selecting them while the gate is off fail-closes at generate. That is honesty, not a new StudySpec gate. Do not start gating those families in `closed_level_token_set` in this series.
 
 ---
 
@@ -195,7 +213,7 @@ pytest -q tests/test_golden_master.py tests/test_otf_golden.py tests/study/test_
 
 1. Add this file.
 2. Index it in `docs/README.md` (normative contracts list).
-3. Add an **LC** stub to `docs/ENGINEERING_ROADMAP.md` (status table only).
+3. Add an **LC** row to the `docs/ENGINEERING_ROADMAP.md` top status table **and** a late-body LC stub (milestone table). Mark ✅ on the stub row in each landed LC PR.
 
 #### Files
 
@@ -203,12 +221,12 @@ pytest -q tests/test_golden_master.py tests/test_otf_golden.py tests/study/test_
 |---|---|
 | `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md` | Any `thesistester/` or `tests/` |
 | `docs/README.md` (one bullet) | USER_GUIDE; Help paths |
-| `docs/ENGINEERING_ROADMAP.md` (LC stub) | ASSUMPTIONS / STUDY_RUNNER (those wait for LC1–LC4) |
+| `docs/ENGINEERING_ROADMAP.md` (top status-table row + LC stub) | ASSUMPTIONS / STUDY_RUNNER (those wait for LC1–LC4) |
 
 #### Acceptance
 
 - [ ] Plan is the series SoT; implementers do not re-audit locked layers
-- [ ] README + roadmap index the plan
+- [ ] README + roadmap **top status table** + late-body stub index the plan
 - [ ] Diff is docs-only
 
 ---
@@ -232,13 +250,9 @@ See §4.1. `closed_level_token_set({})` / default merge contains `pdPOC` and not
    - `APOC_LEVEL_NAMES` — `APOC`, `pAPOC`.
    - `STATIC_STUDY_LEVEL_NAMES` = union of the above (frozenset).
 2. `thesistester/study/schema.py`: delete `_static_catalog_names` / the inline set. `STUDY_STATIC_LEVEL_NAMES = STATIC_STUDY_LEVEL_NAMES`. Keep the rolling-strip comment as a one-liner pointing at catalog (rolling still must not be in the static set).
-3. `thesistester/assistant/workspace.py`: `SESSION_LEVEL_CATALOG` becomes the static tuple **plus** the current unconditional Assistant extras (`prev30mVWAP` and the **current** pivot spellings) so LC1 does **not** change pivot behavior. Pivot spelling is LC2. Prefer:
+3. `thesistester/assistant/workspace.py`: keep the existing `SESSION_LEVEL_CATALOG` **order**. Replace the lone `pdPOC` entry with the nine-name `PRIOR_PROFILE_LEVEL_NAMES` block (`pdVAH` `pdVAL` `pdPOC` `pwVAH` `pwVAL` `pwPOC` `pmVAH` `pmVAL` `pmPOC`). Do **not** `sorted()` the tuple — that would scramble the session-first catalog (APOC before AsiaHigh) and violate “Assistant LC1 delta is profile twins only.”
 
-   ```text
-   SESSION_LEVEL_CATALOG = tuple(sorted(STATIC_STUDY_LEVEL_NAMES)) + ("prev30mVWAP",) + CURRENT_PIVOT_CATALOG_TUPLE
-   ```
-
-   `CURRENT_PIVOT_CATALOG_TUPLE` stays the existing `Pivot_1min_*` … strings in LC1 so Assistant LC1 delta is **profile twins only**.
+   Keep `prev30mVWAP` and the **current** `Pivot_1min_*` … strings in LC1. Pivot spelling is LC2.
 4. Do **not** add the twins to `SUGGESTED_DEFAULT_LEVELS` (LC3 owns suggested).
 5. Re-export `STATIC_STUDY_LEVEL_NAMES` / `PRIOR_PROFILE_LEVEL_NAMES` from `thesistester/levels/__init__.py` if needed by tests; do not grow a grab-bag.
 6. Docs: `STUDY_RUNNER.md` § Closed level token set lists the nine prior-profile names explicitly. `ASSUMPTIONS_AND_LIMITATIONS.md` one sentence: prior VAH/VAL/POC (day/week/month) are StudySpec tokens; math remains typical-price MVP.
@@ -313,7 +327,7 @@ See §4.2. Schema test currently asserts `Pivot_1min_High`.
 | ID | Recipe | Assert |
 |---|---|---|
 | LC2-P1 | `closed_level_token_set({"pivots_enabled": True, "pivot_timeframes": ["1min"]})` | `Pivot_1m_High` / `Pivot_1m_Low` in; `Pivot_1min_High` out |
-| LC2-P2 | `compute_pivot_levels(..., enabled=True, pivot_timeframes=["1min","5min","30min","4h"])` column set | Equals `pivot_column_names(...)` (no extras, no misses) |
+| LC2-P2 | `compute_pivot_levels(..., enabled=True, pivot_timeframes=["1min","5min","30min","4h"])` column set | Equals `pivot_column_names(...)` exactly (`compute_pivot_levels` returns only `Pivot_*` columns; do not subtract OHLCV) |
 | LC2-P3 | `validate_study_spec` mini study with `core_level: ["Pivot_1min_High"]` and default-on pivots | Fail closed after LC2 (unknown token). On `main` this **passes** validate — that is the defect |
 | LC2-P4 | Same with `core_level: ["Pivot_1m_High"]` | Fail on `main`; pass after LC2 |
 | LC2-P5 | `SESSION_LEVEL_CATALOG` | Contains `Pivot_1m_High`; does not contain `Pivot_1min_High` |
@@ -339,7 +353,7 @@ Suggested VWAP; Assistant `closed_level_token_set` unification; API raise; new p
 
 #### Defect (verified)
 
-See §4.3. Assistant `build_confluence_level_options` always `_add(SUGGESTED_DEFAULT_LEVELS)` (so `VWAP_rolling_1h` always appears) and, when settings omit keys, expands SMA lengths from `INDICATOR_LENGTH_OPTIONS` rather than `DEFAULT_LEVELS_SETTINGS`.
+See §4.3 (D3a + D3b). Assistant `build_confluence_level_options` always `_add(SUGGESTED_DEFAULT_LEVELS)` and, when keys are omitted, expands from `VWAP_WINDOW_OPTIONS` / `POC_WINDOW_OPTIONS` / `INDICATOR_LENGTH_OPTIONS` / `sma_timeframes=("30min",)` / `ema_timeframes=()` rather than `DEFAULT_LEVELS_SETTINGS`. Swapping only the suggested 1h token leaves D3b open.
 
 #### Change (surgical)
 
@@ -361,8 +375,8 @@ See §4.3. Assistant `build_confluence_level_options` always `_add(SUGGESTED_DEF
 #### Product lock
 
 - Setup Builder **new** default selection may now include `VWAP_rolling_30min` when that column exists (it does under product defaults). Saved setups unchanged.
-- Assistant picker no longer offers SMA 9/20/100 unless staged settings (or DEFAULT merge) imply them.
-- `INDICATOR_LENGTH_OPTIONS` / `VWAP_WINDOW_OPTIONS` remain **widget catalogs** for the Levels / Assistant settings editors. They are not implied tokens.
+- Assistant default picker (`levels_settings=None`) = `closed_level_token_set({})` (DEFAULT merge). That **drops** widget-only tokens (`VWAP_rolling_15min`/`1h`, `POC_rolling_1h`/`4h`, `SMA_9/20/21/100_30min`) and **adds** product-implied MA tokens (`SMA_50_1min`/`5min`/`30min`, `SMA_200_*`, `EMA_9_*`, `EMA_21_*`). Today’s omitted-key path advertises no `EMA_*` and only 30min SMA TFs — the expansion is intentional.
+- `INDICATOR_LENGTH_OPTIONS` / `VWAP_WINDOW_OPTIONS` / `POC_WINDOW_OPTIONS` remain **widget catalogs** for the Levels / Assistant settings editors. They are not implied tokens.
 
 #### Files
 
@@ -379,7 +393,7 @@ See §4.3. Assistant `build_confluence_level_options` always `_add(SUGGESTED_DEF
 | ID | Recipe | Assert |
 |---|---|---|
 | LC3-P1 | `set(SUGGESTED_DEFAULT_LEVELS) <= closed_level_token_set(DEFAULT_LEVELS_SETTINGS)` | Fail on `main` (`VWAP_rolling_1h`); pass after |
-| LC3-P2 | `build_confluence_level_options(levels_settings=None)` | Has `VWAP_rolling_30min`, `VWAP_rolling_4h`, `pdVAH`, `Pivot_1m_High`; no `VWAP_rolling_1h`; no `Pivot_1min_High` |
+| LC3-P2 | `build_confluence_level_options(levels_settings=None)` after LC1+LC2 | Has `VWAP_rolling_30min`, `VWAP_rolling_4h`, `POC_rolling_30min`, `pdVAH`, `Pivot_1m_High`, `SMA_50_1min`, `SMA_50_5min`, `SMA_50_30min`, `EMA_21_30min`. No `VWAP_rolling_1h`, `VWAP_rolling_15min`, `POC_rolling_1h`, `POC_rolling_4h`, `SMA_9_30min`, `SMA_20_30min`, `SMA_100_30min`, `Pivot_1min_High` |
 | LC3-P3 | `levels_settings={"vwap_windows": [], "sma_lengths": [], "ema_lengths": [], "poc_windows": []}` (other keys default-merge) | No `VWAP_rolling_*` / `POC_rolling_*` / `SMA_*` / `EMA_*` from those empty lists; static `dVWAP_RTH` still present |
 | LC3-P4 | `levels_settings={"vwap_windows": ["1h"]}` | `VWAP_rolling_1h` present |
 | LC3-P5 | `default_selected_levels` on a frame that has product-default columns | Includes `VWAP_rolling_30min` when present; does not require `VWAP_rolling_1h` |
@@ -411,23 +425,23 @@ See §4.4. After LC2, a well-formed StudySpec cannot name `Pivot_1min_High`. Han
 1. In `thesistester/api.py`, extract the existing anchor-rules missing-column check into a helper (e.g. `_require_level_columns(levels, names)`).
 2. Call it for **global_cluster** `selected_levels` before `detect_confluence_zones`, same `ValueError` text: `Setup references unavailable level columns: [...]`.
 3. Do **not** change `detect_confluence_zones` (library tests keep the empty-frame contract).
-4. Optional same-PR: `generate_signals` path used by classic Signals if it bypasses that helper — one admission point only; do not fork messages.
-5. ASSUMPTIONS one sentence: missing selected/anchor level columns fail closed at signal generation; they are not silent drops.
+4. Do **not** edit `pages/6_Signals.py`. Saved-setup missing columns are already blocked by `_saved_setup_generation_blockers`. Live selection is frame-driven. Do not fork UI messages to match the API `ValueError`.
+5. ASSUMPTIONS one sentence: missing selected/anchor level columns fail closed at `api.generate_signals` / `run_experiment` / study cells; they are not silent drops. Classic Signals saved-setup blockers stay as they are.
 
 #### Files
 
 | Touch | Do not touch |
 |---|---|
 | `thesistester/api.py` | `thesistester/engine/confluence.py` |
-| Tests around `api.generate_signals` / `build_setup` / existing API setup tests | `test_phase4_engine.py` missing-column empty-frame test |
+| Tests around `api.generate_signals` / `run_experiment` / existing API setup tests | `test_phase4_engine.py` missing-column empty-frame test; `pages/6_Signals.py` |
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | Study schema (already fail-closed on unknown **tokens**) |
 
 #### Probe tests (must exist)
 
 | ID | Recipe | Assert |
 |---|---|---|
-| LC4-P1 | `generate_signals` / the public API entry used by `run_experiment` with a levels frame that has `ONH` and `selected_levels=["ONH", "Pivot_1min_High"]`, global_cluster | Raises `ValueError` matching `unavailable level columns` and names `Pivot_1min_High`. On `main` this returns empty/incomplete zones |
-| LC4-P2 | Same with `selected_levels=["ONH"]` only | Unchanged zones vs today’s ONH-only behavior |
+| LC4-P1 | `api.generate_signals` with a levels frame that has `ONH`, `selected_levels=["ONH", "Pivot_1min_High"]`, `confluence_mode="global_cluster"`, `min_confluences=2` | Raises `ValueError` matching `unavailable level columns` and names `Pivot_1min_High`. On `main` this returns **empty** `confluence_zones` (key is not `zones`; N=2 and only `ONH` present) |
+| LC4-P2 | Same with `selected_levels=["ONH"]` only | Unchanged `confluence_zones` vs today’s ONH-only behavior (empty when `min_confluences=2`) |
 | LC4-P3 | Anchor-rules missing column (existing) | Same raise, same wording family |
 | LC4-P4 | `detect_confluence_zones(..., ["missingA","missingB"])` | Still empty schema frame (library unchanged) |
 
@@ -439,7 +453,7 @@ See §4.4. After LC2, a well-formed StudySpec cannot name `Pivot_1min_High`. Han
 
 #### Out of LC4
 
-Rejecting unknown tokens in `validate_setup_config` without a frame; changing library skip behavior.
+Rejecting unknown tokens in `validate_setup_config` without a frame; changing library skip behavior; editing `pages/6_Signals.py`; gating `dVWAP_*` / `APOC` / single prints in StudySpec.
 
 ---
 
@@ -456,7 +470,7 @@ These were real audit findings. They are **new compute or default-policy**, not 
 | P-E | `OR_Mid`, IB (60m), VA-mid ≠ `pdEQ` | New columns | Same |
 | P-F | `pVWAP` / `pRTH_VWAP` / ETH-only VWAP | New columns; classifier mentions `ETH_VWAP` today | Same |
 | P-G | MA `15min` TF; shared TF vocabulary | Product expansion; trigger/OTF already have 15 | Indicator plan |
-| P-H | Flip `compute_all_levels` OR=30 / gates-off / agg=1 to product 15 / on / 4-8-10 | Breaks the additive API contract | Never in LC; document only |
+| P-H | Flip `compute_all_levels` OR=30 / gates-off / agg=1 to product 15 / on / 4-8-10. Also: `compute_profile_levels(rolling_windows=None)` uses `DEFAULT_ROLLING_POC_WINDOWS` = `30min`/`1h`/`4h` vs product `poc_windows=["30min"]` | Breaks the additive API contract | Never in LC; document only |
 | P-I | `session_vwap_anchor` vestigial | Dead setting; harmless | Cleanup PR later |
 | P-J | `value_area_pct` passed into rolling POC unused | API wart; changing it could imply VA rolling | With P-D if ever |
 | P-K | Compatibility alias `Pivot_1min_*` → `Pivot_1m_*` | Hides the contract; rejected in §2.1 | Never |
@@ -470,7 +484,7 @@ LC3 docs may **list** P-A–P-F as known absences in ASSUMPTIONS (one short bull
 `thesistester/levels/catalog.py` is introduced in LC1 and only extended in LC2.
 
 ```text
-SESSION_STRUCTURAL_LEVEL_NAMES  # tuple, sessions.ordered order
+SESSION_STRUCTURAL_LEVEL_NAMES  # tuple, same order as the local `ordered` list in compute_session_levels
 PRIOR_PROFILE_LEVEL_NAMES       # tuple, pd then pw then pm, VAH/VAL/POC
 STATIC_STUDY_LEVEL_NAMES        # frozenset, no rolling, no MA, no Pivot, no prev30m
 pivot_column_names(timeframes)  # LC2; uses pivots._PIVOT_COLUMN_LABELS
@@ -483,9 +497,10 @@ Invariant tests (LC1 + LC2):
 ```text
 STATIC_STUDY_LEVEL_NAMES == STUDY_STATIC_LEVEL_NAMES
 PRIOR_PROFILE_LEVEL_NAMES ⊆ columns(compute_profile_levels(...))
-SESSION_STRUCTURAL_LEVEL_NAMES == sessions.ordered
+SESSION_STRUCTURAL_LEVEL_NAMES == the local `ordered` list in
+  compute_session_levels (sessions.py; not a module attribute)
 pivot_column_names(tfs) == columns(compute_pivot_levels(..., pivot_timeframes=tfs, enabled=True))
-  minus OHLCV/base
+  # compute_pivot_levels returns only Pivot_* columns — do not subtract OHLCV
 ```
 
 ---
@@ -512,7 +527,7 @@ Roadmap LC row: mark ✅ on each landed PR in that PR.
 |---|---|
 | Silent zone empty from wrong pivot token | LC2 + LC4 |
 | Second static list drifts again | `catalog.py` + identity tests LC1-P5 / LC2-P2 |
-| Suggested 1h computes nothing | LC3-P1 |
+| Suggested 1h / widget-catalog 15min·1h compute nothing | LC3-P1 + LC3-P2 negatives |
 | Engine values change | File deny-list; phase-3 / stage-2 / golden gates |
 | Cache invalidation surprise | No `LEVEL_ENGINE_VERSION` bump |
 | Scope creep into new families | §8 parked table |
@@ -536,7 +551,9 @@ build_confluence_level_options, api.py missing-column behavior, goldens, or engi
 
 Add thesistester/levels/catalog.py with STATIC_STUDY_LEVEL_NAMES including all nine
 prior-profile twins (pd/pw/pm × VAH/VAL/POC). Point STUDY_STATIC_LEVEL_NAMES at it.
-Add the twins to SESSION_LEVEL_CATALOG. Keep existing Pivot_1min_* strings until LC2.
+Replace the lone pdPOC entry in SESSION_LEVEL_CATALOG with the nine-name
+PRIOR_PROFILE block (preserve existing order; do not sorted()). Keep
+existing Pivot_1min_* strings until LC2.
 
 Land probe tests LC1-P1–P5 (must fail on main, pass after). Run
 pytest -q tests/study/test_study_schema.py tests/test_phase3_levels.py
@@ -569,8 +586,11 @@ Work regression-safe (§4). Replace SUGGESTED_DEFAULT_LEVELS VWAP_rolling_1h wit
 VWAP_rolling_30min. Do not add 1h to DEFAULT_LEVELS_SETTINGS. Do not add pdVAH
 to suggested. Rewrite build_confluence_level_options to
 closed_level_token_set(settings) ∪ available_columns ∪ selected.
+Do not keep VWAP_WINDOW_OPTIONS / POC_WINDOW_OPTIONS / INDICATOR_LENGTH_OPTIONS
+as omitted-key token sources (they stay widget catalogs only).
 Keep explicit-empty window semantics. Update assistant workspace tests (including
-the VWAP_rolling_1h comment). Land LC3-P1–P5. Same-PR ASSUMPTIONS/STUDY_RUNNER sentence.
+the VWAP_rolling_1h comment). Land LC3-P1–P5 (P2 must lock the widget-catalog
+negatives and the DEFAULT-implied MA positives). Same-PR ASSUMPTIONS/STUDY_RUNNER sentence.
 No engine/, no goldens, no LEVEL_ENGINE_VERSION.
 ```
 
@@ -582,7 +602,9 @@ Implement LC4 only from docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md §7.4
 Work regression-safe (§4). In thesistester/api.py, fail-closed global_cluster
 selected_levels that are absent from the levels frame using the same ValueError
 as anchor_rules. Do not change detect_confluence_zones. Do not edit engine/confluence.py.
-Land LC4-P1–P4. One ASSUMPTIONS sentence. Goldens unchanged.
+Do not edit pages/6_Signals.py (saved-setup blockers already exist).
+Land LC4-P1–P4 (P1 asserts the confluence_zones key and min_confluences=2).
+One ASSUMPTIONS sentence. Goldens unchanged.
 ```
 
 ---
