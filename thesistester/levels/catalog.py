@@ -81,7 +81,10 @@ def pivot_column_names(timeframes: Iterable[str]) -> tuple[str, ...]:
 
     Uses ``pivots._PIVOT_COLUMN_LABELS`` (``1min`` → ``1m``). Does not re-spell
     labels. Empty strings are skipped. Unknown timeframe keys raise ``KeyError``.
+    A bare string is rejected (it is iterable character-wise).
     """
+    if isinstance(timeframes, (str, bytes)):
+        raise TypeError("pivot_column_names() expected an iterable of timeframe keys, not a string")
     names: list[str] = []
     for raw in timeframes:
         key = str(raw).strip()

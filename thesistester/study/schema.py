@@ -18,6 +18,7 @@ from thesistester.levels.catalog import STATIC_STUDY_LEVEL_NAMES, pivot_column_n
 from thesistester.levels.common import normalized_window_label
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
+from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES
 from thesistester.levels.prev30m_vwap import prev30m_price_column_names
 from thesistester.setup import (
     VALID_CONFLUENCE_MODES,
@@ -207,10 +208,30 @@ def _validate_levels_map(levels_map: Mapping[str, Any]) -> None:
                 f"choose from {list(SUPPORTED_INDICATOR_TIMEFRAMES)}"
             )
 
-    for key in ("vwap_windows", "poc_windows", "pivot_timeframes"):
+    for key in ("vwap_windows", "poc_windows"):
         if key not in levels_map or levels_map[key] is None:
             continue
         _require_nonempty_str_list(levels_map[key], field=f"study.levels.{key}")
+
+    if "pivot_timeframes" in levels_map and levels_map["pivot_timeframes"] is not None:
+        parsed = _require_list(
+            levels_map["pivot_timeframes"],
+            field="study.levels.pivot_timeframes",
+        )
+        for index, item in enumerate(parsed):
+            if not isinstance(item, str) or not item.strip():
+                raise StudySpecError(
+                    f"study.levels.pivot_timeframes[{index}] must be a non-empty string"
+                )
+        # Raw items (SMA-style): do not strip into a token the engine will reject.
+        invalid = sorted(
+            {str(value) for value in parsed if str(value) not in SUPPORTED_PIVOT_TIMEFRAMES}
+        )
+        if invalid:
+            raise StudySpecError(
+                f"Unsupported study.levels.pivot_timeframes value(s): {invalid}; "
+                f"choose from {list(SUPPORTED_PIVOT_TIMEFRAMES)}"
+            )
 
     if "prev30m_vwap_validity_periods" in levels_map:
         _positive_int(
@@ -266,7 +287,7 @@ def closed_level_token_set(levels: Mapping[str, Any] | None) -> frozenset[str]:
         except KeyError as exc:
             raise StudySpecError(
                 f"Unsupported study.levels.pivot_timeframes value {exc.args[0]!r}; "
-                "choose from engine pivot labels (1min, 5min, 30min, 4h)"
+                f"choose from {list(SUPPORTED_PIVOT_TIMEFRAMES)}"
             ) from exc
 
     return frozenset(tokens)

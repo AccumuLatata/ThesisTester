@@ -31,6 +31,7 @@ from thesistester.levels.catalog import (
     SINGLE_PRINT_LEVEL_NAMES,
     pivot_column_names,
 )
+from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES
 from thesistester.levels.prev30m_vwap import prev30m_price_column_names
 from thesistester.setup import SUGGESTED_DEFAULT_LEVELS
 
@@ -156,7 +157,7 @@ SESSION_LEVEL_CATALOG: tuple[str, ...] = (
     "prev30mVWAP",
     *APOC_LEVEL_NAMES,
     *SINGLE_PRINT_LEVEL_NAMES,
-    *pivot_column_names(("1min", "5min", "30min", "4h")),
+    *pivot_column_names(SUPPORTED_PIVOT_TIMEFRAMES),
 )
 
 

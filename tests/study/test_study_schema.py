@@ -21,7 +21,7 @@ from thesistester.levels.catalog import (
     STATIC_STUDY_LEVEL_NAMES,
     pivot_column_names,
 )
-from thesistester.levels.pivots import compute_pivot_levels
+from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES, compute_pivot_levels
 from thesistester.study.schema import (
     STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
@@ -472,6 +472,22 @@ def test_lc2_closed_set_uses_engine_pivot_spelling():
     assert "Pivot_1m_Low" in tokens
     assert "Pivot_1min_High" not in tokens
 
+    all_tfs = closed_level_token_set(
+        {"pivots_enabled": True, "pivot_timeframes": list(SUPPORTED_PIVOT_TIMEFRAMES)}
+    )
+    assert {
+        "Pivot_1m_High",
+        "Pivot_5m_High",
+        "Pivot_30m_High",
+        "Pivot_4h_High",
+        "Pivot_1m_Low",
+        "Pivot_5m_Low",
+        "Pivot_30m_Low",
+        "Pivot_4h_Low",
+    } <= all_tfs
+    assert "Pivot_5min_High" not in all_tfs
+    assert "Pivot_30min_High" not in all_tfs
+
 
 def test_lc2_pivot_column_names_match_engine_columns():
     timestamps = pd.date_range("2026-06-02 09:30:00", periods=8, freq="1min", tz="America/New_York")
@@ -486,10 +502,32 @@ def test_lc2_pivot_column_names_match_engine_columns():
         }
     )
     timeframes = ["1min", "5min", "30min", "4h"]
-    result = compute_pivot_levels(
-        frame, instrument="ES", pivot_timeframes=timeframes, enabled=True
-    )
+    result = compute_pivot_levels(frame, instrument="ES", pivot_timeframes=timeframes, enabled=True)
     assert list(result.columns) == list(pivot_column_names(timeframes))
+    assert list(pivot_column_names(SUPPORTED_PIVOT_TIMEFRAMES)) == [
+        "Pivot_1m_High",
+        "Pivot_1m_Low",
+        "Pivot_5m_High",
+        "Pivot_5m_Low",
+        "Pivot_30m_High",
+        "Pivot_30m_Low",
+        "Pivot_4h_High",
+        "Pivot_4h_Low",
+    ]
+
+
+def test_lc2_pivot_column_names_rejects_bare_string():
+    with pytest.raises(TypeError, match="iterable of timeframe keys"):
+        pivot_column_names("1min")
+
+
+def test_lc2_unsupported_pivot_timeframe_fails_closed():
+    with pytest.raises(StudySpecError, match="pivot_timeframes"):
+        closed_level_token_set({"pivots_enabled": True, "pivot_timeframes": ["15min"]})
+    with pytest.raises(StudySpecError, match="pivot_timeframes"):
+        closed_level_token_set({"pivots_enabled": False, "pivot_timeframes": ["1m"]})
+    with pytest.raises(StudySpecError, match="pivot_timeframes"):
+        closed_level_token_set({"pivots_enabled": True, "pivot_timeframes": ["1min "]})
 
 
 def test_lc2_pivot_1min_token_fails_closed():
@@ -508,7 +546,11 @@ def test_lc2_pivot_1m_token_is_admitted():
 
 def test_lc2_session_level_catalog_uses_engine_pivot_spelling():
     assert "Pivot_1m_High" in SESSION_LEVEL_CATALOG
+    assert "Pivot_5m_High" in SESSION_LEVEL_CATALOG
+    assert "Pivot_30m_High" in SESSION_LEVEL_CATALOG
     assert "Pivot_1min_High" not in SESSION_LEVEL_CATALOG
+    assert "Pivot_5min_High" not in SESSION_LEVEL_CATALOG
+    assert "Pivot_30min_High" not in SESSION_LEVEL_CATALOG
 
 
 def test_schema_version_rejected():

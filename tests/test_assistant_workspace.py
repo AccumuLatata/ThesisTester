@@ -55,7 +55,11 @@ def test_lc1_session_level_catalog_replaces_pdpoc_with_prior_profile_block():
     assert tuple(catalog[pm_eq + 1 : dvwap]) == PRIOR_PROFILE_LEVEL_NAMES
     assert catalog.count("pdPOC") == 1
     assert "Pivot_1m_High" in catalog
+    assert "Pivot_5m_High" in catalog
+    assert "Pivot_30m_High" in catalog
     assert "Pivot_1min_High" not in catalog
+    assert "Pivot_5min_High" not in catalog
+    assert "Pivot_30min_High" not in catalog
     assert catalog[dvwap : dvwap + 2] == list(SESSION_VWAP_LEVEL_NAMES)
     assert "prev30mVWAP" in catalog
     assert set(APOC_LEVEL_NAMES) <= set(catalog)
