@@ -676,7 +676,7 @@ that YAML onto Preview (does **not** `study run`).
 | Step | Status | What does not happen |
 |---|---|---|
 | `study promote --admit-tod auto` (SAF1) | **Shipped.** One ranked cell; stamp `backtest` + `grid` `entry_window`; write `study.lineage`; new `output_dir`. Requires `--top-n 1` or `--admit-run-name`. Thin / `avg_r` tie / missing zip refuse | Auto-`study run`; ToD as a factor axis; default promote behavior change |
-| Inspect **Draft Admit follow-up** (SAF2) | **Shipped.** Same helper as `--admit-tod auto`; writes `studies_preview_yaml` + Apply cache-clear; refuse caption `studies_admit_followup_error`. Disabled without a ranked crown + NY segment | In-process execute / second spawn path; `drafts/` write; classic keys |
+| Inspect **Draft Admit follow-up** (SAF2) | **Shipped.** Same helper as `--admit-tod auto`; writes `studies_preview_yaml` + Apply cache-clear; refuse caption `studies_admit_followup_error`. Disabled without a ranked crown + NY segment | In-process execute / second spawn path; `drafts/` write; parent `study.overview.*` rewrite; classic keys |
 | `--tod-group` / `--allow-thin` / catalog parent (SAF3) | Not shipped | Multi-bucket cartesian |
 
 **Honesty.** Child KPIs are a constrained re-sim (Focus ≠ Admit), not

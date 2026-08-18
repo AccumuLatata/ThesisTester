@@ -295,8 +295,15 @@ def _compose_promoted_draft(
     admit_tod: str | None,
     admit_run_name: str | None,
     output_path: Path | None,
+    write_artifacts: bool = True,
 ) -> tuple[dict[str, Any], list[str], str]:
-    """Build a promoted (and optional Admit) draft in memory. Never writes."""
+    """Build a promoted (and optional Admit) draft in memory.
+
+    Does not write the draft YAML. ``write_artifacts=True`` (CLI ``promote_study``)
+    may rewrite parent ``study.overview.*`` / ``study.otf_delta.csv``. The
+    Inspect in-memory path passes ``False`` so a Preview draft cannot mutate
+    the parent study dir.
+    """
     spec_path = root / SPEC_YAML
     if not spec_path.is_file():
         raise StudyPromoteError(f"Missing {SPEC_YAML} under {root}")
@@ -307,7 +314,7 @@ def _compose_promoted_draft(
         raise StudyPromoteError(f"Unable to load source StudySpec: {exc}") from exc
 
     try:
-        report = report_study(root)
+        report = report_study(root, write_artifacts=write_artifacts)
     except StudyReportError as exc:
         raise StudyPromoteError(f"Unable to build overview for promote: {exc}") from exc
 
@@ -463,6 +470,7 @@ def draft_admit_followup_yaml(
         admit_tod=ADMIT_TOD_MODE,
         admit_run_name=admit_run_name,
         output_path=None,
+        write_artifacts=False,
     )
     return _promote_yaml_text(
         draft,

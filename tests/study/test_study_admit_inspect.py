@@ -27,7 +27,12 @@ from thesistester.study.promote import (
     inspect_cell_in_flight,
     run_inspect_admit_followup,
 )
-from thesistester.study.report import report_study
+from thesistester.study.report import (
+    OTF_DELTA_CSV,
+    OVERVIEW_CSV,
+    OVERVIEW_MD,
+    report_study,
+)
 from tests.study.test_study_admit_followup import _write_admit_fixture
 
 STUDIES_ADMIT_FOLLOWUP_ERROR_KEY = "studies_admit_followup_error"
@@ -72,9 +77,20 @@ def test_inspect_cell_in_flight():
     assert inspect_cell_in_flight({}, "cell_000", running_ids=("cell_000",)) is True
 
 
+def _parent_report_artifacts(study_dir: Path) -> dict[Path, tuple[bytes, int]]:
+    """Snapshot parent overview artifacts that Inspect must not rewrite."""
+    snapshot: dict[Path, tuple[bytes, int]] = {}
+    for name in (OVERVIEW_CSV, OVERVIEW_MD, OTF_DELTA_CSV):
+        path = study_dir / name
+        if path.is_file():
+            snapshot[path] = (path.read_bytes(), path.stat().st_mtime_ns)
+    return snapshot
+
+
 def test_inspect_admit_success_yaml_does_not_write_launch_or_drafts(tmp_path: Path):
     study_dir = _write_admit_fixture(tmp_path)
     top = str(report_study(study_dir).ranked.iloc[0]["run_name"])
+    before = _parent_report_artifacts(study_dir)
     text = run_inspect_admit_followup(
         study_dir,
         run_name=top,
@@ -87,6 +103,23 @@ def test_inspect_admit_success_yaml_does_not_write_launch_or_drafts(tmp_path: Pa
     assert not list(study_dir.glob("study.launch.*"))
     in_memory = draft_admit_followup_yaml(study_dir, admit_run_name=top)
     assert yaml.safe_load(in_memory)["study"]["name"] == payload["study"]["name"]
+    after = _parent_report_artifacts(study_dir)
+    assert after == before
+
+
+def test_inspect_admit_does_not_recreate_parent_overview(tmp_path: Path):
+    study_dir = _write_admit_fixture(tmp_path)
+    top = str(report_study(study_dir).ranked.iloc[0]["run_name"])
+    md_path = study_dir / OVERVIEW_MD
+    assert md_path.is_file()
+    md_path.unlink()
+    run_inspect_admit_followup(
+        study_dir,
+        run_name=top,
+        trusted_roots=(tmp_path.resolve(),),
+    )
+    assert not md_path.exists()
+    assert not (tmp_path / "drafts").exists()
 
 
 def test_inspect_admit_writes_preview_and_clears_confirm(tmp_path: Path):
@@ -146,23 +179,27 @@ def test_inspect_admit_refuses_thin_and_missing_zip(tmp_path: Path):
     thin_root.mkdir()
     thin_dir = _write_admit_fixture(thin_root, open_r=[1.0] * 5, min_trades=30)
     top = str(report_study(thin_dir).ranked.iloc[0]["run_name"])
+    thin_before = _parent_report_artifacts(thin_dir)
     with pytest.raises(StudyPromoteError, match="thin"):
         run_inspect_admit_followup(
             thin_dir,
             run_name=top,
             trusted_roots=(tmp_path.resolve(),),
         )
+    assert _parent_report_artifacts(thin_dir) == thin_before
     missing_root = tmp_path / "missing"
     missing_root.mkdir()
     missing = _write_admit_fixture(missing_root)
     miss_top = str(report_study(missing).ranked.iloc[0]["run_name"])
     (missing / f"{miss_top}.research.zip").unlink()
+    missing_before = _parent_report_artifacts(missing)
     with pytest.raises(StudyPromoteError, match="zip"):
         run_inspect_admit_followup(
             missing,
             run_name=miss_top,
             trusted_roots=(tmp_path.resolve(),),
         )
+    assert _parent_report_artifacts(missing) == missing_before
 
 
 def test_page_inspect_admit_ast_and_no_execute():
@@ -176,6 +213,14 @@ def test_page_inspect_admit_ast_and_no_execute():
     assert "promote_study" not in page
     assert "CLASSIC_RESEARCH_SESSION_KEYS" not in page
     assert "prior_yaml" in page
+    assert "write_artifacts=False" in Path("thesistester/study/promote.py").read_text(
+        encoding="utf-8"
+    )
+    assert "Admit follow-up YAML is on the Preview tab" in page
+    inspect_start = page.index("def _render_inspect()")
+    inspect_end = page.index("def _read_loaded_study_spec_text")
+    inspect_src = page[inspect_start:inspect_end]
+    assert "STUDIES_ADMIT_FOLLOWUP_ERROR_KEY" in inspect_src
     build_src = page[page.index("def _render_builder_live_strip") :]
     assert "Draft Admit follow-up" not in build_src
     tree = ast.parse(page)

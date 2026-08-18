@@ -124,7 +124,8 @@ SAF1 CLI + SAF2 Inspect draft are shipped: optional fail-closed
 with engine windows on `constants.backtest.entry_window` and
 `constants.grid.entry_window` (plus setup `constants.entry_window`).
 Inspect **Draft Admit follow-up** writes that YAML onto `studies_preview_yaml`
-(Apply cache-clear). Refuse caption is `studies_admit_followup_error`.
+(Apply cache-clear) and must not rewrite parent `study.overview.*`.
+Refuse caption is `studies_admit_followup_error`.
 Default promote stays RS5. The button must not call `run_study`.
 `viewer.py` must not import `promote` or `admit_followup`.
 `admit_followup.py` must not import execute / launch / viewer / cli / Streamlit.

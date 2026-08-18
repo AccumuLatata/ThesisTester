@@ -1023,7 +1023,8 @@ other than the last bar in the dataset.
   `constants.entry_window` does not constrain `run_backtest`.
   `study promote --admit-tod auto` (SAF1) stamps those engine paths and
   writes `study.lineage`; it does not execute. Inspect **Draft Admit
-  follow-up** (SAF2) writes Preview YAML only; it does not execute. A
+  follow-up** (SAF2) writes Preview YAML only; it does not execute or
+  rewrite parent overview artifacts. A
   follow-up Admit run is a constrained re-sim of one parent cell, not
   confirmation of the parent screen. Focus ≠ Admit.
 - Ranked cells are the factor cartesian. The SL/TP grid is per-cell inside

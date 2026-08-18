@@ -1017,7 +1017,7 @@ study list, StudyDraft
 | Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s path |
 | Start from example | pRTH (32 cells) or pdPOC | Replace `dataset.path` |
 | Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |
-| Draft Admit follow-up | Child Admit YAML → Preview | Disabled without ranked NY segment; does not run |
+| Draft Admit follow-up | Child Admit YAML → Preview | Disabled without ranked NY segment; does not run or rewrite parent overview |
 
 **How to use.**
 
