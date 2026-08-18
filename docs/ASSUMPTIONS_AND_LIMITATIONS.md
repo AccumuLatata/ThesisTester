@@ -247,6 +247,9 @@ This engine is for **research screening**, not proof of a durable edge.
 ### 5a) Confirmed pivots are opt-in scalar levels
 - The Levels page and headless API enable confirmed pivots in their built-in configuration. Direct `compute_all_levels` calls retain `pivots_enabled=False` by default.
 - Supported pivot timeframe settings remain exactly `1min`, `5min`, `30min`, and `4h`.
+- StudySpec pivot tokens are the engine column names `Pivot_1m_*` / `Pivot_5m_*` /
+  `Pivot_30m_*` / `Pivot_4h_*`. Hand-edited YAML that uses `Pivot_1min_*` fails
+  closed at validate; there is no compatibility alias.
 - Default fractal settings are `pivot_left=2` and `pivot_right=2`, matching the 5-candle pivot convention.
 - Each pivot column holds the latest confirmed pivot high/low for its timeframe; before the first confirmed pivot exists, the value is `NaN`.
 - Confirmed pivots are delayed by right-side confirmation and are not real-time swing predictions.

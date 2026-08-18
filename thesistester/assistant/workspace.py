@@ -29,7 +29,9 @@ from thesistester.levels.catalog import (
     SESSION_STRUCTURAL_LEVEL_NAMES,
     SESSION_VWAP_LEVEL_NAMES,
     SINGLE_PRINT_LEVEL_NAMES,
+    pivot_column_names,
 )
+from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES
 from thesistester.levels.prev30m_vwap import prev30m_price_column_names
 from thesistester.setup import SUGGESTED_DEFAULT_LEVELS
 
@@ -147,7 +149,7 @@ WFA_MATRIX_METRICS: tuple[str, ...] = (
 
 # Static session/profile/opt-in level names used when no Levels dataframe is loaded.
 # Order is session-first; compose from catalog.py so the static names cannot
-# drift. LC1 only expands the prior-profile block. LC2 owns pivot spelling.
+# drift. Pivot spellings come from pivot_column_names (engine labels).
 SESSION_LEVEL_CATALOG: tuple[str, ...] = (
     *SESSION_STRUCTURAL_LEVEL_NAMES,
     *PRIOR_PROFILE_LEVEL_NAMES,
@@ -155,14 +157,7 @@ SESSION_LEVEL_CATALOG: tuple[str, ...] = (
     "prev30mVWAP",
     *APOC_LEVEL_NAMES,
     *SINGLE_PRINT_LEVEL_NAMES,
-    "Pivot_1min_High",
-    "Pivot_1min_Low",
-    "Pivot_5min_High",
-    "Pivot_5min_Low",
-    "Pivot_30min_High",
-    "Pivot_30min_Low",
-    "Pivot_4h_High",
-    "Pivot_4h_Low",
+    *pivot_column_names(SUPPORTED_PIVOT_TIMEFRAMES),
 )
 
 

@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-18  
-**Status:** **LC1 landed.** LC2–LC4 not started.  
+**Status:** **LC2 landed.** LC3–LC4 not started.  
 **Series code:** **LC** (Level Catalog)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 
@@ -296,7 +296,7 @@ Pivot spelling; suggested-list edit; Assistant options rewrite; API fail-closed;
 
 ### 7.2 LC2 — Pivot token contract
 
-**Status:** Not started  
+**Status:** Implemented  
 **Closes:** D2  
 
 #### Defect (verified)

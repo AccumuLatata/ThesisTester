@@ -9,6 +9,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+import pandas as pd
+
+from thesistester.assistant.workspace import SESSION_LEVEL_CATALOG
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.levels.apoc import APOC_COLUMNS
 from thesistester.levels.catalog import (
@@ -16,7 +19,9 @@ from thesistester.levels.catalog import (
     PRIOR_PROFILE_LEVEL_NAMES,
     SESSION_STRUCTURAL_LEVEL_NAMES,
     STATIC_STUDY_LEVEL_NAMES,
+    pivot_column_names,
 )
+from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES, compute_pivot_levels
 from thesistester.study.schema import (
     STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
@@ -444,6 +449,7 @@ def test_closed_level_token_set_empty_timeframes_do_not_invent_bare_ma():
 
 def test_closed_level_token_set_gates_pivots_and_prev30m_on_flags():
     disabled = closed_level_token_set({"pivots_enabled": False, "prev30m_vwap_enabled": False})
+    assert "Pivot_1m_High" not in disabled
     assert "Pivot_1min_High" not in disabled
     assert "prev30mVWAP" not in disabled
 
@@ -455,8 +461,96 @@ def test_closed_level_token_set_gates_pivots_and_prev30m_on_flags():
             "prev30m_vwap_validity_periods": 1,
         }
     )
-    assert "Pivot_1min_High" in enabled
+    assert "Pivot_1m_High" in enabled
+    assert "Pivot_1min_High" not in enabled
     assert "prev30mVWAP" in enabled
+
+
+def test_lc2_closed_set_uses_engine_pivot_spelling():
+    tokens = closed_level_token_set({"pivots_enabled": True, "pivot_timeframes": ["1min"]})
+    assert "Pivot_1m_High" in tokens
+    assert "Pivot_1m_Low" in tokens
+    assert "Pivot_1min_High" not in tokens
+
+    all_tfs = closed_level_token_set(
+        {"pivots_enabled": True, "pivot_timeframes": list(SUPPORTED_PIVOT_TIMEFRAMES)}
+    )
+    assert {
+        "Pivot_1m_High",
+        "Pivot_5m_High",
+        "Pivot_30m_High",
+        "Pivot_4h_High",
+        "Pivot_1m_Low",
+        "Pivot_5m_Low",
+        "Pivot_30m_Low",
+        "Pivot_4h_Low",
+    } <= all_tfs
+    assert "Pivot_5min_High" not in all_tfs
+    assert "Pivot_30min_High" not in all_tfs
+
+
+def test_lc2_pivot_column_names_match_engine_columns():
+    timestamps = pd.date_range("2026-06-02 09:30:00", periods=8, freq="1min", tz="America/New_York")
+    frame = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 1.0,
+        }
+    )
+    timeframes = ["1min", "5min", "30min", "4h"]
+    result = compute_pivot_levels(frame, instrument="ES", pivot_timeframes=timeframes, enabled=True)
+    assert list(result.columns) == list(pivot_column_names(timeframes))
+    assert list(pivot_column_names(SUPPORTED_PIVOT_TIMEFRAMES)) == [
+        "Pivot_1m_High",
+        "Pivot_1m_Low",
+        "Pivot_5m_High",
+        "Pivot_5m_Low",
+        "Pivot_30m_High",
+        "Pivot_30m_Low",
+        "Pivot_4h_High",
+        "Pivot_4h_Low",
+    ]
+
+
+def test_lc2_pivot_column_names_rejects_bare_string():
+    with pytest.raises(TypeError, match="iterable of timeframe keys"):
+        pivot_column_names("1min")
+
+
+def test_lc2_unsupported_pivot_timeframe_fails_closed():
+    with pytest.raises(StudySpecError, match="pivot_timeframes"):
+        closed_level_token_set({"pivots_enabled": True, "pivot_timeframes": ["15min"]})
+    with pytest.raises(StudySpecError, match="pivot_timeframes"):
+        closed_level_token_set({"pivots_enabled": False, "pivot_timeframes": ["1m"]})
+    with pytest.raises(StudySpecError, match="pivot_timeframes"):
+        closed_level_token_set({"pivots_enabled": True, "pivot_timeframes": ["1min "]})
+
+
+def test_lc2_pivot_1min_token_fails_closed():
+    raw = _minimal_study()
+    raw["study"]["factors"]["core_level"] = ["Pivot_1min_High"]
+    with pytest.raises(StudySpecError, match="Unknown core_level token"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_lc2_pivot_1m_token_is_admitted():
+    raw = _minimal_study()
+    raw["study"]["factors"]["core_level"] = ["Pivot_1m_High"]
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["core_level"] == ["Pivot_1m_High"]
+
+
+def test_lc2_session_level_catalog_uses_engine_pivot_spelling():
+    assert "Pivot_1m_High" in SESSION_LEVEL_CATALOG
+    assert "Pivot_5m_High" in SESSION_LEVEL_CATALOG
+    assert "Pivot_30m_High" in SESSION_LEVEL_CATALOG
+    assert "Pivot_1min_High" not in SESSION_LEVEL_CATALOG
+    assert "Pivot_5min_High" not in SESSION_LEVEL_CATALOG
+    assert "Pivot_30min_High" not in SESSION_LEVEL_CATALOG
 
 
 def test_schema_version_rejected():
