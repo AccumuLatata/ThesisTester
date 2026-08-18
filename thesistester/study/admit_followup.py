@@ -52,9 +52,7 @@ def slugify_admit_bucket(value: str) -> str:
     """Bucket label → study.name slug (``:`` stripped)."""
     slug = str(value).strip().replace(":", "")
     if not slug or not RUN_NAME_RE.fullmatch(slug):
-        raise AdmitFollowupError(
-            f"Admit bucket {value!r} does not yield a valid study.name slug"
-        )
+        raise AdmitFollowupError(f"Admit bucket {value!r} does not yield a valid study.name slug")
     return slug
 
 
@@ -79,9 +77,7 @@ def select_admit_bucket(
     ``avg_r`` desc, label asc). SAF1 hard-codes ``entry_rth_segment``.
     """
     if group_col != ADMIT_TOD_GROUP:
-        raise AdmitFollowupError(
-            f"SAF1 Admit only supports {ADMIT_TOD_GROUP!r}; got {group_col!r}"
-        )
+        raise AdmitFollowupError(f"SAF1 Admit only supports {ADMIT_TOD_GROUP!r}; got {group_col!r}")
     if frame is None or frame.empty or "avg_r" not in frame.columns:
         raise AdmitFollowupError(
             "No time-of-day groups in this cell zip; cannot draft Admit follow-up"
@@ -260,17 +256,13 @@ def apply_admit_followup(
     stage = study.get("stage")
     cells = stage.get("cells") if isinstance(stage, Mapping) else None
     if not isinstance(cells, list) or len(cells) != 1:
-        raise AdmitFollowupError(
-            "Admit follow-up requires a one-cell explicit_cells draft"
-        )
+        raise AdmitFollowupError("Admit follow-up requires a one-cell explicit_cells draft")
 
     stamp_admit_windows(study, window)
     child_name = child_study_name(parent_study_name, str(bucket["value"]))
     child_output = f"results/studies/{child_name}"
     if Path(child_output).resolve() == root:
-        raise AdmitFollowupError(
-            "Admit child output_dir must not reuse the parent study directory"
-        )
+        raise AdmitFollowupError("Admit child output_dir must not reuse the parent study directory")
     study["name"] = child_name
     study["output_dir"] = child_output
     study["lineage"] = build_admit_lineage(

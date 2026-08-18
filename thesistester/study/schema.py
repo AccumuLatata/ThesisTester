@@ -761,8 +761,7 @@ def _validate_lineage(lineage: Any) -> None:
     rule = admit.get("rule")
     if rule not in _LINEAGE_ADMIT_RULES:
         raise StudySpecError(
-            f"study.lineage.admit.rule must be one of {sorted(_LINEAGE_ADMIT_RULES)}; "
-            f"got {rule!r}"
+            f"study.lineage.admit.rule must be one of {sorted(_LINEAGE_ADMIT_RULES)}; got {rule!r}"
         )
     min_trades = admit.get("min_trades")
     if isinstance(min_trades, bool) or not isinstance(min_trades, int) or min_trades < 1:
