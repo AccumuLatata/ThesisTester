@@ -2,9 +2,20 @@
 
 **Document type:** Research protocol + realization map (not an engine series)  
 **Date:** 2026-08-19  
-**Status:** Protocol published. Inventory verified against `main` (`56c9d59`) via `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`.  
+**Status:** Protocol published, then amended the same day against engine semantics, Study expand, and the locked desk contract (Notion *Process and roadmap*). Inventory still verified against `main` (`56c9d59`) via `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`.  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4 (this file is docs-only; no engine/golden touch)  
-**Related:** `docs/STUDY_RUNNER.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md`, `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md`, `docs/research-methodology.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
+**Related:** `docs/STUDY_RUNNER.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md`, `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md`, `docs/research-methodology.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`
+
+Normative amendments in this revision (do not silently revert):
+
+1. L1 coin-flip is applied **before** promote. `pwEQ` stays held.
+2. Required L1/L2 studies use `min_valid_confluences: 1` (all required partners still must fire).
+3. L2 all-low-N → **stop**. Do not open all-optional discovery on the same slice.
+4. L1b is **named coin-flips only** (`pwEQ`). Killed names stay off the map.
+5. Admit is `backtest.entry_window` (+ `grid.entry_window`), not setup-only `constants.entry_window`.
+6. L4 OTF is the Validation matrix, **not** a StudySpec `otf` factor.
+7. L0 names `exposure_policy`, flatten-at-close, and the ES/MES money map.
+8. Complementary means **different information**. Family letters are a catalog, not a license.
 
 ---
 
@@ -18,7 +29,7 @@ This matches discretionary practice:
 Where is the location I care about?
   → Is it in play (confluence / developing fair value / leftover auction)?
     → How do I enter (touch fade vs 3c wait)?
-      → What context admits the trade (OTF, RTH clock, side)?
+      → What context admits the trade (RTH clock, side; OTF only as a later Validation matrix)?
 ```
 
 The product already has the two seams this protocol needs:
@@ -26,9 +37,9 @@ The product already has the two seams this protocol needs:
 | Seam | What it answers | Must not confuse with |
 |---|---|---|
 | **Study Runner** (`core_level` × `partner_levels`) | Which *required* location + evidence sets earn R across a closed cartesian | Within-trade membership |
-| **Combo attribution** (Backtest expander) | Which *observed* subsets actually fired when `min_valid_confluences` is low | A new signal model |
+| **Combo attribution** (Backtest expander) | Which *observed* subsets actually fired when optional rules are present | A new signal model |
 
-The ideal program uses **both**. It does **not** run one giant cartesian of every token against every other token.
+The ideal program uses **both**. It does **not** run one giant cartesian of every token against every other token. StudySpec `from_partners` is all-or-nothing today — it does **not** emit “`dVWAP` required + X optional.” Do not pretend YAML already covers that discovery shape (§5.2, §9).
 
 ---
 
@@ -38,40 +49,51 @@ The ideal program uses **both**. It does **not** run one giant cartesian of ever
 
 A prior-day high, overnight high, or prior POC is a **location**: other traders can name it, rest liquidity against it, and defend or break it. A 21-EMA or a 1-minute pivot is a **moving confirmation**. Stacking moving marks as if they were locations invents a different thesis (trend-following / trailing fair value), not “level + confluence.”
 
-The locked desk contract (Notion *Process and roadmap*, 2026-08-19) already encodes this:
+The locked desk contract (Notion *Process and roadmap*, 2026-08-19) already encodes this. **This plan does not replace that page.** If a step here is not on that page, it is either a realization detail or it is forbidden until the desk page is amended on purpose.
+
+Desk locks this plan keeps:
 
 - Two products, never one cartesian: **scalp = `touch` @ `1min`**, **swing = `3c` @ `1min`**.
-- Zone width locked from a distance audit (10 scalp / 20 swing ticks on MNQ). Do not pick width by backtest R.
-- Required first partner: **`dVWAP`**.
+- Zone width locked from a distance audit (10 scalp / 20 swing ticks on MNQ). Do not pick width by backtest R. Do not cartesian 10 vs 20.
+- Required first partner: **`dVWAP`**. It is not also a kill-list core.
 - Mode: **`anchor_rules`**. `global_cluster` only after survivors, and only for a stacked pile of 2–3 marks.
-- Sequence: kill list → pairwise among survivors → post-hoc ToD → SL/TP grid → rush check (touch vs 3c).
+- Desk sequence: kill list → pairwise among survivors → post-hoc ToD → SL/TP grid → rush check.
 - Primary metric: **`expectancy_r`**. Never rank on `total_r`. ToD is never a StudySpec factor.
+- Killed scalp names stay **off the scalp map**. A green 30m slice does not revive them.
 
-This plan **keeps those locks** and completes the scientific coverage of “all *useful* combinations” without violating them.
+This plan adds realization rules (engine `min_valid`, Admit path, L2 power stop, money map) and **does not** insert new research steps in front of pairwise. L1b is scoped to desk-named coin-flips only. OTF is not a stage between pairwise and ToD.
 
-### 2.2 Engine semantics already match the mental model
+Swing L1 extras `wVWAP` / `mVWAP` as cores (still with required `dVWAP`) are a **desk-listed VWAP-stack thesis**, not complementary confirmation. Allowed only because the desk listed them as swing kill-list extras.
 
-`anchor_rules` (see `docs/ANCHOR_CONFLUENCE.md`):
+### 2.2 Engine semantics (StudySpec native shape)
+
+`anchor_rules` (engine: `thesistester/engine/anchor_confluence.py`):
 
 1. One **anchor** column must exist.
 2. Each partner is a rule (`tolerance_ticks`, `required` / `optional`).
-3. `min_valid_confluences` is the evidence threshold **in addition to** all required rules.
+3. A zone emits only when **every required rule is valid** and `valid_count >= min_valid_confluences`.
+4. `valid_count` includes **all** valid rules, required and optional. It is **not** “this many extras on top of the required set.”
+
+Study expand (`from_partners`) stamps the **same** `required` flag on every partner. Mixed required/optional rules exist in Setup Builder / the engine; they are **not** a StudySpec emission today.
 
 Study expand (`docs/STUDY_RUNNER.md` RS2):
 
 - `anchor_rules`: `anchor_level = core`, one rule per partner, `from_partners ∈ {required, optional}`.
 - `global_cluster`: `selected_levels = [core] + partners`, and **`min_confluences = max_confluences = N`**. A missing core zeros the whole cell (LC4 fail-closed at API).
-- Hard cap: **core + partners ≤ 5**. Partner ≠ core. Duplicate partner tokens fail closed.
+- Hard cap: **core + partners ≤ 5** (`len(partner_set) + 1 <= 5`). Partner ≠ core. Duplicate partner tokens fail closed.
+- Per cell: `1 <= min_valid_confluences <= len(partner_set)` or expand fails.
 
 So “test levels as the anchor against confluences” is already the StudySpec native shape: vary `core_level`, vary `partner_levels` as **sets**, keep product constants locked.
+
+Required L1/L2 studies in this protocol: `from_partners: required` and **`min_valid_confluences: 1`**. With every partner required, `min_valid: 1` and `min_valid: N` are equivalent **except** that `min_valid: N` cannot share a study with the 1-partner `{dVWAP}` baseline cell. Expand then raises `min_valid_confluences=N incompatible with 1 partner rule(s)`.
 
 ### 2.3 Why a full token cartesian is the *wrong* ideal (even with infinite compute)
 
 Compute is not the constraint. **Selection bias** is.
 
-Bailey & López de Prado (*The Probability of Backtest Overfitting*; Deflated Sharpe Ratio) show that the number of **trials you looked at** — not the ones you report — inflates Sharpe / expectancy. ThesisTester already treats ranked cells as descriptive (`multiple_testing: warn|error`; `docs/ASSUMPTIONS_AND_LIMITATIONS.md`). A 73-core × 72-partner × 2-mode × 5-trigger × 4-tf × 5-OTF × 2-side grid is ~2×10⁶ cells **before** 2- and 3-partner sets. That is not a complete research program; it is a machine for crowning noise.
+Bailey & López de Prado (*The Probability of Backtest Overfitting*; Deflated Sharpe Ratio) show that the number of **trials you looked at** — not the ones you report — inflates Sharpe / expectancy. ThesisTester already treats ranked cells as descriptive (`multiple_testing: warn|error`; `docs/ASSUMPTIONS_AND_LIMITATIONS.md`). A 73-core × 72-partner × 2-mode × 5-trigger × 4-tf × 5-OTF × 2-side grid is **2,102,400** cells before 2- and 3-partner sets. That is not a complete research program; it is a machine for crowning noise.
 
-Practitioner confluence literature (ORB + VWAP + volume-profile work) converges on the same operational bound: **2–3 complementary filters outperform 8-filter walls**, which starve the sample. Volume-profile geometry alone is often folklore; the value is **location + confirmation**, not stacking siblings from the same family.
+Practitioner confluence literature (ORB + VWAP + volume-profile work) converges on the same operational bound: **2–3 complementary filters outperform 8-filter walls**, which starve the sample. Volume-profile geometry alone is often folklore; the value is **location + confirmation**, not stacking siblings.
 
 “All useful combinations” therefore means: **every economically distinct hypothesis is tested once, in order, with a pre-registered kill/promote rule** — not that every syntactic product of `closed_level_token_set` is a cell.
 
@@ -172,16 +194,18 @@ These are **not** confluence tokens. They are how the same location thesis is *e
 | `confluence_mode` | `anchor_rules`, `global_cluster` | Anchor first; global only on 2–3 survivor stacks |
 | `trigger` | `touch`, `reject`, `break`, `reclaim`, `3c` | Product lock: scalp=`touch`, swing=`3c`. Others = later sensitivity |
 | `trigger_timeframe` | `base`, `1min`, `5min`, `15min` (not `30min`) | Product lock: `1min` |
-| `otf` | normalized OTF configs | Context filter **after** location survivors (`docs/research-methodology.md`) |
+| `otf` | normalized OTF configs | **Not a first-screen or L2 factor.** If used: classic Validation matrix on a promoted single setup (§6.5) |
 | `direction` | `long`, `short`, `both` | First screen: `both`. Side from trade `direction` / combo×direction, not a first cartesian |
 
-Constants that are **locks**, not axes: `tolerance_ticks`, SL/TP, `min_valid_confluences`, `from_partners`, costs, `intrabar_model`. Time-of-day is post-hoc (`entry_rth_segment`); constrain later via `constants.entry_window` (Admit), never as a factor.
+Constants that are **locks**, not axes: `tolerance_ticks`, SL/TP, `min_valid_confluences` (= 1 on required studies), `from_partners` (= `required` on L1/L2), costs, `intrabar_model`, `exposure_policy`, `flat_by_session_close`.
+
+Time-of-day is post-hoc (`entry_rth_segment`). **Never a factor.** Admit a later constrained re-sim only via `study promote --admit-tod auto` (or the same stamp: `constants.entry_window` **and** `constants.backtest.entry_window` **and** `grid.entry_window` when grid is present). Engine path is `backtest.entry_window`. Setup-only `constants.entry_window` does **not** constrain `simulate_trades`. Focus ≠ Admit.
 
 ---
 
-## 4. Economic taxonomy (how to think, not how to cartesian)
+## 4. Economic taxonomy (catalog + sibling list)
 
-Every default token sits in exactly one **family**. Combinations are useful only when families are **complementary** (different information), not when they are **siblings** (same information, different spelling).
+Every default token sits in exactly one **family**. That partition is a catalog (73/73, no overlap). It is **not** a sufficient rule for “complementary.”
 
 | Family | Tokens | Default role | Why |
 |---|---|---|---|
@@ -192,13 +216,27 @@ Every default token sits in exactly one **family**. Combinations are useful only
 | **V Developing VWAP** | `dVWAP` `dVWAP_RTH` `wVWAP` `mVWAP` `VWAP_rolling_30min` `VWAP_rolling_4h` `prev30mVWAP` | **Confirmation** (`dVWAP` required first). Swing-only cores: `wVWAP` `mVWAP` | In-play fair value. `dVWAP` is not also a kill-list core |
 | **C Developing profile** | `POC_rolling_30min` `APOC` `pAPOC` | **Confirmation** (rarely a core) | Intraday accepted price; noisy as a location |
 | **A Auction leftover** | four `*SinglePrint_30m_*` | **Anchor or late confirmation** | Unfinished auction; thin by construction |
-| **M Moving average** | default SMA/EMA set | **Confirmation on survivors only** | Moves. Illegal as first-screen cores |
-| **K Pivot** | eight `Pivot_*` | **Confirmation on survivors only** | Swing structure, not a session location |
+| **M Moving average** | default SMA/EMA set | **Confirmation on survivors only** (desk: **later** than first pairwise) | Moves. Illegal as first-screen cores |
+| **K Pivot** | eight `Pivot_*` | **Confirmation on survivors only** (same later pass as M) | Swing structure, not a session location |
 
-**Complementary** = different families (e.g. `ONH` + `dVWAP` + `pdVAL`).  
-**Sibling / illegal stack** = same family in one partner set (e.g. `SMA_50_1min` + `SMA_50_5min`; `pdVAH` + `pdHigh`; `dVWAP` + `dVWAP_RTH`). One representative per family per cell.
+**Complementary** = different *information* (e.g. `ONH` + `dVWAP` + `pdVAL`: overnight edge + session fair value + prior accepted-value edge).
 
-Suggested Setup defaults (`ONH` `ONL` Asia/London `OR_*` `RTH_Open` `pRTH_*` `pdHigh` `pdLow` `pdPOC` `VWAP_rolling_30min`) are a **chart convenience subset**, not the research kill list.
+**Economic siblings — illegal in one partner set** (even when families differ):
+
+| Sibling set | Why they are the same information |
+|---|---|
+| Same-session raw H/L + VA edge (`pdVAH`+`pdHigh`, `pdVAL`+`pdLow`, week/month analogues) | Range extreme vs value-area edge of the same auction |
+| Two MAs in one set | Fast/slow average of the same tape |
+| Two pivots in one set | Same swing structure, two spellings |
+| Developing VWAP cluster: `dVWAP` + `dVWAP_RTH` + `VWAP_rolling_*` + `prev30mVWAP` | Same in-play fair-value family |
+| Core duplicated as partner | Expand rejects this |
+
+**Named exceptions** (desk or later pass only; say so in the study description):
+
+- Swing L1 cores `wVWAP` / `mVWAP` with required `dVWAP` — VWAP-stack kill-list extra, not complementary confirmation.
+- Optional later cell `[dVWAP, wVWAP]` on an L1 survivor — HTF tightness filter (price near both VWAPs). Different thesis. **Not** in the first L2 menu.
+
+Suggested Setup defaults (`ONH` `ONL` `AsiaHigh` `AsiaLow` `LondonHigh` `LondonLow` `OR_High` `OR_Low` `RTH_Open` `pRTH_High` `pRTH_Low` `pdHigh` `pdLow` `pdPOC` `VWAP_rolling_30min`) are a **chart convenience subset** (`SUGGESTED_DEFAULT_LEVELS`). They are not the research kill list. That list has `pRTH_High`/`pRTH_Low` and **not** `pRTH_Open`.
 
 ---
 
@@ -208,17 +246,27 @@ Suggested Setup defaults (`ONH` `ONL` Asia/London `OR_*` `RTH_Open` `pRTH_*` `pd
 
 Question: *If I refuse to trade location L unless evidence set E is present, do I earn R?*
 
-Mechanism: `anchor_rules` + `from_partners: required` + `min_valid_confluences` matching the required count. Each cell is a **causal** thesis: the zone does not exist without those partners.
+Mechanism: `anchor_rules` + `from_partners: required` + **`min_valid_confluences: 1`**. Each cell is a **causal** thesis: every listed partner must be inside tolerance.
 
 This is the only honest way to rank “which confluence matters.” Optional partners + low `min_valid` mix theses inside one expectancy number.
 
+Do **not** set `min_valid` to the partner-set length. L2 requires the `{dVWAP}` baseline in the **same** study. `min_valid: 2` fails expand on that 1-partner cell.
+
 ### 5.2 Retrospective — observed evidence (attribution)
 
-Question: *When I allowed any 1-of-N optional supports, which subsets actually traded?*
+Question: *When extra supports were allowed to be optional, which subsets actually traded?*
 
-Mechanism: already shipped (`docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` Phases 1–6): exact combo, membership, parsed level-count, soft pairs, combo×direction, opt-in combo×3c variant.
+Mechanism: already shipped (`docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` Phases 1–6): exact combo, membership, parsed level-count, soft pairs, combo×direction, opt-in combo×3c variant. Membership / Pairs tabs remain **undirected** after Phase 6. 3c names may be tested-level-only.
 
-Use this **after** a survivor exists and you deliberately run `from_partners: optional` with `min_valid_confluences: 1` as a **discovery** pass. Then promote observed pairs into a **new required-partner study** on a later chronological slice. Do **not** auto-tighten Setup Builder from the same sample (explicit non-goal of combo attribution).
+Honest discovery while keeping the `dVWAP` lock needs **mixed** rules: `dVWAP` required, extras optional, `min_valid: 1`. Setup Builder can do that. **Study expand cannot** (`from_partners` is all-or-nothing).
+
+Therefore:
+
+- **Forbidden:** StudySpec `from_partners: optional` + `min_valid: 1` + `{dVWAP, X1, X2, X3}`. That admits ONH + X with **no** `dVWAP` and mixes theses.
+- **Allowed today:** required L2 cells (causal AND), then Backtest expander on those zips (exact combo is the AND that already fired).
+- **Allowed today, not a study factor:** one Setup Builder replay of the L1 survivor with `dVWAP` required and extras optional; read Pairs / exact combo×direction; promote only pairs that later win as **required** on a **later chronological slice**.
+- **Forbidden:** auto-tighten Setup Builder from the same sample (explicit non-goal of combo attribution).
+- **Forbidden:** opening the optional-discovery path because every required L2 cell was low-N on the same 2y slice (§6.3).
 
 Nested-set honesty: exact combo treats `A|B` and `A|B|C` as different; pairs exist specifically so a productive pair is not hidden by a third tag.
 
@@ -226,18 +274,20 @@ Nested-set honesty: exact combo treats `A|B` and `A|B|C` as different; pairs exi
 
 ## 6. Ideal protocol (complete useful coverage)
 
-Two locked products. One instrument first (MNQ). One confirmation (`dVWAP`) until a location survives. Then complementary families only. Context last. Robustness last.
+Two locked products. One instrument first (MNQ). One confirmation (`dVWAP`) until a location survives. Then complementary information only. Desk sequence. Robustness last.
 
 ```text
 L0  Locks (do not cartesian)
 L1  Location kill-list          core × {dVWAP}          required
-L1b Alternate-confirm retry     killed cores × 1 other family (optional completeness)
-L2  Pairwise                    survivors × complementary family (2–3 marks)
-L3  Triple                      only if two complementary pair Δs are material
-L4  Context                     OTF matrix, then direction read, then post-hoc ToD
-L5  Economics                   SL/TP grid (SL ≤ 80 MNQ ticks), costs on
-L6  Rush check                  same survivor, touch vs 3c (reentry leak)
-L7  Transfer                    ES/MES; second dataset; WFO / holdout
+L1b Named coin-flip only        desk-listed coin-flip × 1 other confirm
+L2  Pairwise                    survivors × complementary X (no M/K yet)
+L2m MA / pivot partners         later desk step, survivors only
+L3  Triple                      only if two different-information L2 extras each beat baseline
+L4  Context                     post-hoc ToD, then direction read; OTF = Validation matrix if at all
+L5  Economics                   SL/TP grid (MNQ SL ≤ 80 ticks / $40), costs on
+L6  Product compare             same survivor, touch/10 vs 3c/20 (separate studies)
+L6b Leak isolate                optional later: same width, touch vs 3c
+L7  Transfer                    ES/MES survivors only; re-audit dollars; then WFO / holdout
 ```
 
 Do not skip ahead because a cell is green. Do not put a killed scalp name back on the scalp map because a 30m ToD slice was green.
@@ -248,18 +298,26 @@ Do not skip ahead because a cell is green. Do not put a killed scalp name back o
 |---|---|---|
 | Trigger | `touch` @ `1min` | `3c` @ `1min` |
 | Zone / `tolerance_ticks` | 10 | 20 |
-| SL / TP (first screen) | 40 / 40 | 80 / 80 |
+| SL / TP (first screen) | 40 / 40 ($20 / 1R on MNQ) | 80 / 80 ($40 / 1R on MNQ) |
 | Partner | `dVWAP` required | `dVWAP` required |
 | Mode | `anchor_rules` | `anchor_rules` |
 | `from_partners` | `required` | `required` |
+| `min_valid_confluences` | `1` | `1` |
 | Direction | `both` | `both` |
+| `exposure_policy` | `single_position` | `single_position` |
+| `flat_by_session_close` | Copy the finished L1 run. New first screen: `true` (intra-day) and log it | same |
 | Instrument first | MNQ | MNQ |
 | Ingest | Quantower HE 15s, `source_timezone: UTC`, `ingestion_mode: 15s_primary_derive_1m`, `intrabar_model: subtimeframe_conservative` | same |
-| Money | $0.50/tick MNQ; commission/slippage **non-zero** before trusting ranks | same |
+| Point value | MNQ $0.50 / tick (`tick_size` 0.25 × `point_value` 2.0) | same |
+| Costs | `commission_per_side: 0.5` (currency / side, not per tick); `slippage_ticks: 1.0` | same |
 | Rank | `expectancy_r`; `min_trades: 30`; `multiple_testing: warn` | same |
 | Mix forbidden | touch with 3c, 10 with 20, both modes, long vs short, in one first study | same |
 
+L2+ must copy the finished L1 study’s flatten / exposure / costs / ingest / window. Changing flatten between L1 and L2 is a new sample definition.
+
 Grid / validation / walk_forward always `enabled: true|false`. Never bare `{}`. `--confirm` if `run_count >= confirm_above_runs`. Never auto-run a promote draft.
+
+Engine defaults if omitted: `exposure_policy: allow_all`, `flat_by_session_close: false`, `commission_per_side: 0.0`. Omitting those locks is not “desk default.”
 
 ### 6.1 L1 — Location kill-list
 
@@ -272,99 +330,111 @@ Grid / validation / walk_forward always `enabled: true|false`. Never bare `{}`. 
 - Single prints (4)
 - EQ: `pdEQ` `pwEQ` `pmEQ`
 - Opens: `dOpen` `pdOpen` `wOpen` `pwOpen` `mOpen` `pmOpen` `RTH_Open` `pRTH_Open`
-- Swing-only extras as cores: `wVWAP` `mVWAP`
+- Swing-only extras as cores: `wVWAP` `mVWAP` (VWAP-stack thesis; §2.1)
 
-**Stay off L1 unless explicitly extended:** MAs and pivots as cores; `pRTH_High`/`pRTH_Low`; `pONH`/`pONL`; Asia/London; OR; `prevSettlement`; raw `pd/pw/pm High/Low`; `APOC`/`pAPOC`; `dVWAP_RTH`; `dVWAP` as a core.
+**Stay off L1 unless the desk page explicitly extends it:** MAs and pivots as cores; `pRTH_High`/`pRTH_Low`; `pONH`/`pONL`; Asia/London; OR; `prevSettlement`; raw `pd/pw/pm High/Low`; `APOC`/`pAPOC`; `dVWAP_RTH`; `dVWAP` as a core.
 
-**Cell math:** one product × N cores × 1 partner set `{dVWAP}` × locked trigger/tf/mode = **N cells**. Scalp 24 + RTH add-on 2 is already the executed map. Swing is the same list plus `wVWAP`/`mVWAP`.
+**Cell math:** one product × N cores × 1 partner set `{dVWAP}` × locked trigger/tf/mode = **N cells**. Scalp 24 (`scalp_touch_10_anchor`) + RTH add-on 2 (`RTH_Open`, `pRTH_Open`) is the executed map. Swing is that 26 plus `wVWAP`/`mVWAP` (28).
 
-**Promote rule (pre-register, do not tune after seeing ranks):**
+**Decision rule (pre-register; apply in this order; do not retune after seeing ranks):**
 
-- Ranked if `trade_count >= 30` and `expectancy_r > 0` **and** profit factor ≥ 1.0.
-- Coin-flip band: `|expectancy_r| < 0.03` or PF ∈ [0.95, 1.05] → hold for L1b, do not pairwise yet.
-- Kill: negative expectancy at n≥30, or n too thin after a full 2y sample.
-- Descriptive only. A +0.07R survivor is a **license to pairwise**, not a live edge.
+1. **Coin-flip first.** If `n >= 30` and (`|expectancy_r| < 0.03` **or** PF ∈ [0.95, 1.05]) → **hold**. Do not pairwise. L1b only if the desk names that coin-flip. Test case: `pwEQ` (+0.011R, n=81, PF 1.023) is a hold, even though E>0 and PF≥1.0.
+2. **Promote to L2** only if `n >= 30` **and** `expectancy_r >= 0.03` **and** `PF > 1.05`. Test case: `ONH` (+0.074R, n=47, PF 1.162) promotes.
+3. **Kill** if `expectancy_r < 0` at `n >= 30`, or `n < 30` after the full 2y window.
+4. Descriptive only. A +0.07R survivor with max DD 4.45R and total R +3.475 over two years is a **license to pairwise**, not a live edge. Secondary metrics (PF, max DD, n, total R) stay on the Results row.
 
-### 6.2 L1b — Alternate-confirm retry (completeness pass)
+### 6.2 L1b — Named coin-flip only
 
-A location can be real and still die next to `dVWAP` (fair value already *is* the location; or VWAP is elsewhere all day). Completeness requires **one** retry per killed/coin-flip core against **one representative from a different confirmation family**, still `anchor_rules` / required / same product locks:
+**Not** a replay of killed cores. Killed names (`RTH_Open`, `pRTH_Open`, weekly VA, single prints, `dOpen`, …) stay off the scalp map.
 
-| Retry family | One representative | When |
-|---|---|---|
-| Prior day profile | `pdPOC` or nearer of `pdVAH`/`pdVAL` | Session-extreme cores |
-| Session leftover | nearer single-print | Profile / EQ cores |
-| HTF VWAP | `wVWAP` (scalp) / already a swing core | Opens / EQ |
-| Rolling VWAP | `VWAP_rolling_30min` | If `dVWAP` was redundant with the core |
-| One MA | `EMA_21_5min` **only** | Last retry, survivors-or-coin-flip only |
+Current desk coin-flip: **`pwEQ`**. One cell, same scalp locks, `from_partners: required`, `min_valid: 1`, **one** partner that is not `dVWAP` (different information; default `pdPOC`). If that cell also fails the §6.1 rule, `pwEQ` stays off the pairwise map.
 
-Still **one partner per cell**. Do not AND two retries. If L1b also kills the name, it is off that product’s map.
+Do not AND two retries. Do not invent L1b for a killed name because completeness feels better. Amending this scope requires amending the desk page.
 
-This is the “don’t miss a useful combo” clause. It is **O(cores × 1–2)**, not O(cores × 73).
+### 6.3 L2 — Pairwise among survivors (first combination test)
 
-### 6.3 L2 — Pairwise among survivors (the actual combination test)
+**Hypothesis:** given location L that already survived L1, does a *second, complementary* mark improve expectancy vs the `dVWAP`-only baseline **on the same sample definition** (same window, flatten, costs, ingest)?
 
-**Hypothesis:** given location L that already survived L1, does a *second, complementary* mark improve expectancy vs the `dVWAP`-only baseline **on the same sample definition**?
+This Δ is **in-sample and paired**. It is not OOS. Do not write “OOS-or-holdout” unless a chronological holdout was reserved *before* looking at L2 ranks.
 
-Partner sets (exactly one extra family; `dVWAP` stays):
+Partner sets (exactly one extra information source; `dVWAP` stays):
 
 ```text
 [dVWAP, X]
 ```
 
-where X is one representative from a family **≠ V and ≠ L’s family**.
+**First L2 menu for an ONH-class survivor** (desk pairwise; **no M/K** — those are L2m):
 
-**Default X menu for an ONH-class survivor** (complete useful menu, not a grab bag):
-
-| X | Family | Discretionary meaning |
+| X | Information | Skip when |
 |---|---|---|
-| `pdPOC` | P | Value accepted into the overnight edge |
-| `pdVAH` or `pdVAL` (the one nearer ONH/ONL) | P | VA edge, not both |
-| `pdEQ` | S3 | Prior equilibrium (skip if L is already an EQ) |
-| `wVWAP` | V-HTF | Weekly fair value (sibling of `dVWAP` only at HTF) |
-| `POC_rolling_30min` | C | Intraday POC |
-| nearer `pSinglePrint_30m_*` | A | Leftover auction |
-| `OR_High` / `OR_Low` (matching side) | S1 | Only after RTH exists; skip if L is OR |
-| `EMA_21_5min` | M | One MA, not the MA zoo |
-| `SMA_50_5min` | M | Second MA cell, not stacked with EMA in the same set |
-| `Pivot_30m_High` / `_Low` (matching side) | K | One HTF pivot |
+| `pdPOC` | Prior accepted value | — |
+| nearer of `pdVAH` / `pdVAL` | Prior VA edge (one only) | — |
+| `pdEQ` | Prior equilibrium | L is already an EQ |
+| `POC_rolling_30min` | Intraday accepted price | — |
+| nearer `pSinglePrint_30m_*` | Leftover auction | L is already a single-print |
+| `OR_High` / `OR_Low` (matching side) | Opening-range edge | L is OR; before RTH exists |
 
-**Illegal L2 sets:** two MAs; two pivots; `pdVAH`+`pdHigh`; `dVWAP`+`dVWAP_RTH`; `dVWAP`+`VWAP_rolling_30min` (same-family developing VWAP); core duplicated as partner.
+**Illegal in any L2 set:** two MAs; two pivots; `pdVAH`+`pdHigh` (economic siblings); any developing-VWAP cluster pair; core as partner.
 
-**Baseline cell required in the same study:** `{dVWAP}` alone, so Δ expectancy / Δ n / Δ PF is a paired comparison, not a cross-study glance.
+**Not in first L2:** `EMA_*`, `SMA_*`, `Pivot_*` (L2m). `wVWAP` (named V-HTF exception; later, described as tightness, not complementary).
 
-**Promote to L3:** extra mark raises OOS-or-holdout `expectancy_r` without collapsing n below 30, and the Δ is not explained only by “fewer trades.” Else keep the pair as optional-discovery only (L2-disc).
+**Baseline cell required in the same study:** `{dVWAP}` alone.
 
-**L2-disc (optional, after required L2):** same cores, `from_partners: optional`, `min_valid_confluences: 1`, partners = `{dVWAP, X1, X2, X3}` (≤4 partners). Read **Pairs** + exact combo×direction. Promote only pairs that also won as **required** on a later slice.
+**L2 power / low-N (pre-register):**
+
+`ONH + dVWAP` on 2024-07-31 → 2026-08-06 is **n = 47**. A required extra mark is an AND. At a 50% keep rate, n ≈ 24 → below `min_trades: 30`.
+
+- Rank a pair only if `n >= 30` and the pair beats `{dVWAP}` on `expectancy_r` **and** the Δ is not explained only by “fewer trades.”
+- If **every** pair is `n < 30`: **STOP**. Log “L2 under-powered on this window.” Do **not** open all-optional discovery on the same slice. Options: longer dataset, wait for swing survivors, or leave pairs as unranked notes (`n >= 15` descriptive, never promote).
+
+**Promote to L3:** two extras from **different information** (not two MAs, not POC+VAH of the same session) each beat `{dVWAP}` at `n >= 30`. No holdout language unless a holdout exists.
+
+### 6.3b L2m — MA / pivot partners (later desk step)
+
+Desk roadmap: “MA partners on survivors” is **after** pairwise, not inside it. One MA per cell (`EMA_21_5min`, then separately `SMA_50_5min`). One HTF pivot per cell (`Pivot_30m_High` / `_Low`, matching side). Same baseline `{dVWAP}`. Same low-N stop. Do not stack two MAs in one set. Do not run L2m because L2 was all low-N.
 
 ### 6.4 L3 — Triple (rare)
 
-Only when **two different** L2 extras each beat the `dVWAP` baseline. Then one cell:
+Only when two **different-information** L2 extras each beat `{dVWAP}` at `n >= 30`. Then one cell:
 
 ```text
 [dVWAP, X, Y]
 ```
 
-with X, Y complementary. Cap 3 marks (desk lock). Do not build 4- and 5-level ANDs. `max_confluences ≤ 5` is an engine cap, not a research target.
+Cap 3 marks (desk lock). Engine will accept two MAs; this protocol will not. Do not build 4- and 5-level ANDs. `max_confluences ≤ 5` is an engine cap, not a research target.
 
 ### 6.5 L4 — Context (not confluence)
 
-Apply **after** a location thesis exists.
+Apply **after** a location thesis exists. Desk order: pairwise → **ToD** → grid → rush. This plan does **not** put OTF in front of ToD.
 
-1. **OTF** — fixed 5-config matrix from `docs/research-methodology.md` (`no_otf`, 15m, 30m, 15+30, 5+15+30). Chronological train/OOS. Train selects; OOS evaluates. Fewer trades ≠ better.
+1. **ToD** — post-hoc NY `entry_rth_segment` / 30m on finished zips. `n >= 15` is readable / “solid” on the desk page; **`n < 30` never Admitted**. Focus ≠ Admit. Engine Admit = `study promote --admit-tod auto` (stamps setup + `backtest.entry_window` + `grid.entry_window`). Hand-editing only `constants.entry_window` is a no-op on fills.
 2. **Direction** — do not cartesian `long`/`short` on the first screen. Read combo×direction / Long-Short KPIs. If one side is the whole edge, a **follow-up** study may lock that side.
-3. **ToD** — post-hoc NY `entry_rth_segment` / 30m on finished zips. `n>=15` descriptive; **`n<30` never Admitted**. Focus ≠ Admit.
+3. **OTF (optional, not a study factor)** — classic Validation `run_otf_validation_matrix` on a **promoted single setup**, five configs from `docs/research-methodology.md` (`no_otf`, 15m, 30m, 15+30, 5+15+30). Chronological train/OOS. Train selects; OOS evaluates. Fewer trades ≠ better. Study `factors.otf` is a full-sample cartesian (`study.otf_delta.csv` is not that protocol). Do not 5-way-factor ONH (n=47).
 
 ### 6.6 L5 — Economics
 
-Per-cell SL/TP grid on survivors only. MNQ SL at or under 80 ticks ($40). Grid is **not** a factor axis (Inspect `best_grid_*` / `grid_results.parquet`). Costs stay on.
+Per-cell SL/TP grid on survivors only. **MNQ** SL at or under 80 ticks ($40). Grid is **not** a factor axis (Inspect `best_grid_*` / `grid_results.parquet`). Costs stay on. This $40 sentence is MNQ-only (§6.8).
 
-### 6.7 L6 — Rush check
+### 6.7 L6 — Product compare vs leak isolate
 
-Same survivor, two locked products (touch/10 vs 3c/20). Measures the known leak (re-entering the touch 2–3 times). Do not mix in one study.
+**L6 (desk rush check):** same survivor, two locked products, **separate studies**: scalp `touch` / 10 / 40/40 vs swing `3c` / 20 / 80/80. That is a **product comparison**. Do not attribute the Δ to “re-entering the touch 2–3 times” — width and trigger are both different.
+
+**L6b (optional, later):** same width and SL/TP, `touch` vs `3c`. That isolates the reentry leak. Do not mix L6 and L6b in one study.
 
 ### 6.8 L7 — Transfer / robustness
 
-Repeat L1–L6 on ES/MES **only for survivors**, not the full kill list. Then walk-forward (`enabled: true` on a **small** survivor study). Then a later chronological dataset. Failure to transfer kills the live claim, not the descriptive MNQ note.
+Repeat **L2+** on ES/MES **only for survivors**, not the full kill list. Then walk-forward (`enabled: true` on a **small** survivor study). Then a later chronological dataset. Failure to transfer kills the live claim, not the descriptive MNQ note.
+
+Tick size is 0.25 on MNQ/NQ/MES/ES, so 10/20 ticks is the same **price** distance. Dollar risk is not:
+
+| Instrument | $ / tick | 80-tick SL |
+|---|---:|---:|
+| MNQ | 0.50 | $40 |
+| MES | 1.25 | $100 |
+| NQ | 5.00 | $400 |
+| ES | 12.50 | $1,000 |
+
+Do **not** copy “SL ≤ 80 ticks ($40)” onto ES. Re-audit the dollar envelope (or convert a chosen dollar cap to ticks: $40 / $12.50 ≈ 3.2 ES ticks — usually too tight, which is why a new audit is required). Widths may stay 10/20 ticks if the distance audit is treated as price-distance; say so on the Results row.
 
 ---
 
@@ -376,12 +446,13 @@ Repeat L1–L6 on ES/MES **only for survivors**, not the full kill list. Then wa
 | Primary = `expectancy_r`; secondary = PF, max DD, n, total R as **context** | `total_r` crowns high-frequency noise |
 | `min_trades: 30` for ranking; hide-thin on attribution (`min_trades=10` UI default) | Low-n expectancy is not a result |
 | `multiple_testing: warn` on screens; `error` (no crowning) on large L2 menus | Study report already supports this |
-| Family-wise, not token-wise | 12 MA tokens are ~2 hypotheses (fast/slow), not 12 |
-| Chronological holdout: select on train / early years, evaluate on later years | No shuffle |
-| OTF protocol stays the OTF SoT | Do not invent a second OOS rule |
+| Information-wise, not token-wise | 12 MA tokens are ~2 hypotheses (fast/slow), not 12 |
+| Chronological holdout: select on train / early years, evaluate on later years | No shuffle. Do not claim OOS on a full-sample L2 |
+| OTF SoT is `docs/research-methodology.md` | Do not invent a second OOS rule via `factors.otf` |
 | Combo attribution is diagnostic | Observed-only; membership/pairs double-count; 3c names may be tested-level-only |
 | Profile math is typical-price MVP | Do not claim VAP precision |
 | Zero-cost ranks are invalid for promotion | Commission + slippage required |
+| All-optional StudySpec discovery is invalid here | Drops the `dVWAP` lock |
 
 SOTA gap (proposal §3): PBO / deflated Sharpe / CPCV are **not implemented**. Until they are, the operational substitute is: **small staged studies, pre-registered promote rules, holdout, and `multiple_testing: error` before any “best cell” language.**
 
@@ -389,7 +460,7 @@ SOTA gap (proposal §3): PBO / deflated Sharpe / CPCV are **not implemented**. U
 
 ## 8. How to realize it in ThesisTester today
 
-No new factor axis. No engine change. No pairwise-zone emission. Realization is **authoring discipline + the existing CLI**.
+No new factor axis. No engine change. No pairwise-zone emission. Realization is **authoring discipline + the existing CLI**. Mixed required/optional discovery is Setup Builder, not Study expand.
 
 ### 8.1 Surfaces
 
@@ -399,8 +470,10 @@ No new factor axis. No engine change. No pairwise-zone emission. Realization is 
 | Preview count | `python -m thesistester study expand SPEC --output-dir OUT` |
 | Run | `study run …` (`--confirm` if ≥ `confirm_above_runs`) |
 | Rank | `study report OUT` + Inspect briefing / quality panes |
-| ToD / grid | Inspect post-hoc (not factors). Admit via `study promote --admit-tod auto` **only** when n≥30 |
-| Observed combos | Classic Backtest expander on a promoted single-setup replay, or bundle `confluence_combo_*` |
+| ToD | Inspect post-hoc (not a factor) |
+| Admit | `study promote --admit-tod auto` **only** when n≥30 (stamps setup + `backtest.entry_window` + `grid.entry_window`) |
+| OTF | Validation → OTF matrix on a promoted single setup — **not** `factors.otf` |
+| Observed extras with `dVWAP` still required | Setup Builder mixed rules, then Backtest expander — **not** `from_partners: optional` |
 | Log | One Notion **Runs** row + one **Results** row per cell (desk contract) |
 
 ### 8.2 StudySpec shape (every L1/L2 study)
@@ -421,15 +494,16 @@ study:
   constants:
     direction: both
     tolerance_ticks: 10            # 20 on swing
-    min_valid_confluences: 1
+    min_valid_confluences: 1       # required studies; do not set to partner-set length
     trigger_params: {}
-    entry_window: null
+    entry_window: null             # Admit later via promote --admit-tod auto (also stamps backtest)
     backtest:
       stop_loss_ticks: 40          # 80 on swing
       take_profit_ticks: 40
       exposure_policy: single_position
-      commission_per_side: 0.5
+      commission_per_side: 0.5     # currency per side
       slippage_ticks: 1.0
+      flat_by_session_close: true  # copy finished L1 if that run differed
       intrabar_model: subtimeframe_conservative
     grid: {enabled: false}         # true only on L5 survivors
     validation: {enabled: false}
@@ -437,15 +511,15 @@ study:
   factors:
     core_level: [ONH]              # L1: the kill-list; L2: survivors only
     partner_levels:
-      - [dVWAP]                    # baseline cell — required
+      - [dVWAP]                    # baseline cell — required in the same L2 study
       - [dVWAP, pdPOC]
       - [dVWAP, pdVAL]
-      - [dVWAP, wVWAP]
-      - [dVWAP, EMA_21_5min]
+      - [dVWAP, pdEQ]
+      - [dVWAP, POC_rolling_30min]
     confluence_mode: [anchor_rules]
     trigger: [touch]               # swing: [3c]
     trigger_timeframe: [1min]
-    # otf / direction omitted until L4
+    # otf / direction omitted. OTF is not a study factor in this protocol.
   mode_rules:
     anchor_rules:
       selected_levels: []
@@ -457,10 +531,10 @@ study:
     secondary_metrics: [profit_factor, max_drawdown_r, trade_count, total_r]
     min_trades: 30
     group_by: [core_level, partner_levels]
-    multiple_testing: warn
+    multiple_testing: warn         # error if the L2 menu grows large
 ```
 
-L1 is the same file with `core_level: [/* kill list */]` and `partner_levels: [[dVWAP]]` only.
+L1 is the same file with the kill-list in `core_level` and `partner_levels: [[dVWAP]]` only. Copy flatten / exposure / costs from the finished L1 zip when authoring L2.
 
 ### 8.3 What not to copy from shipped examples
 
@@ -474,41 +548,46 @@ L1 is the same file with `core_level: [/* kill list */]` and `partner_levels: [[
 
 | Stage | Typical cells | Notes |
 |---|---:|---|
-| L1 scalp | 24–28 | Already run |
-| L1 swing | ~28 | In flight per desk roadmap |
-| L1b | ≤ 2 × killed cores | One retry family each |
-| L2 per survivor | 8–12 incl. baseline | Complementary menu above |
-| L3 | 0–3 | Rare |
-| L4 OTF | 5 × survivors | Existing OTF matrix |
-| L6 rush | 2 × survivors | Separate studies |
-| L7 ES transfer | L2 size | Survivors only |
+| L1 scalp | 24 | Done (`scalp_touch_10_anchor`) |
+| L1 RTH add-on | 2 | Done; both killed |
+| L1 swing | 28 | In flight |
+| L1b | 0–1 | `pwEQ` only unless the desk names another coin-flip |
+| L2 per survivor | 6–8 incl. baseline | First menu; no M/K |
+| L2m | 2–4 | Later; one MA or one pivot per cell |
+| L3 | 0–3 | Rare; different information |
+| L4 ToD | 0 study cells | Post-hoc on finished zips |
+| L4 OTF | 5 configs × 1 setup | Validation matrix, not study cells |
+| L6 | 2 × survivors | Separate product studies |
+| L6b | 2 × survivors | Same width; optional |
+| L7 ES transfer | L2 size | Survivors only; re-audit $ |
 
 A **complete** program for one instrument × two products is on the order of **low hundreds of cells**, staged, not millions.
 
 ### 8.5 Reading results
 
-1. Overview ranked by `expectancy_r` (n≥30).
+1. Overview ranked by `expectancy_r` (n≥30). Apply coin-flip **before** “E>0.”
 2. Group-by `core_level` then `partner_levels` — L1 asks “which location”; L2 asks “which extra mark vs `[dVWAP]`.”
-3. Inspect NY ToD on the **finished** zip. Do not Admit thin buckets.
-4. If L2-disc was run: Backtest **Pairs** (anchor-aware `ONH|X` only when mode is `anchor_rules`) and exact combo×direction.
-5. Log the kill/stay/coin-flip decision the same day.
+3. Inspect NY ToD on the **finished** zip. Do not Admit thin buckets. Admit only through `--admit-tod auto`.
+4. If every L2 pair is low-N: stop. Do not open optional StudySpec discovery.
+5. Log the kill / hold / stay decision the same day (Runs + Results).
 
 ---
 
 ## 9. Later product work (only if the loop should be first-class)
 
-These are **optional** future series. Do not start them to “finish” this protocol — YAML + CLI already realize it.
+These are **optional** future series. Do not start them to “finish” this protocol.
 
 | Idea | Why | Constraint |
 |---|---|---|
-| Family catalog helper (`S1`/`P`/`V`/…) | Stop sibling stacks at emit time | Research classification; must not fork `catalog.py` engine names |
-| Study Builder “complementary partners” widget | One representative per family | Fail closed; no new factor axis |
+| Mixed `from_partners` / per-rule required flags | Honest L2 discovery without dropping `dVWAP` | New StudySpec emission; fail closed; no new factor axis |
+| Family + sibling-list helper | Stop economic-sibling stacks at emit time | Research classification; must not fork `catalog.py` engine names |
+| Study Builder “complementary partners” widget | One extra information source | Fail closed; no new factor axis |
 | Stage recipes (L1/L2/L4) in Grok pack | Copy-ready coworker prompts | Same RS-D5 hard rules: no invent, no auto-run promote |
 | PBO / DSR / CPCV | Close the SOTA validation gap | Own golden-gated analytics series; default-off |
-| Directed membership / pairs | PR 6 left those tabs undirected | Analytics-only |
+| Directed membership / pairs | Phase 6 left those tabs undirected | Analytics-only |
 | Engine “one zone per valid rule” | Would multiply fills | Explicit non-goal of combo attribution; likely never default |
 
-Do **not**: invent tokens, add ToD as a factor, cartesian width, genetic search, or auto-recommend “drop this level” from attribution.
+Do **not**: invent tokens, add ToD as a factor, cartesian width, genetic search, auto-recommend “drop this level” from attribution, or treat `factors.otf` as the OTF methodology.
 
 ---
 
@@ -516,13 +595,14 @@ Do **not**: invent tokens, add ToD as a factor, cartesian width, genetic search,
 
 Ask before expanding any StudySpec:
 
-1. Which **product** (scalp vs swing)? Which **lock** stays identical?
-2. Which **stage** (L1–L7)? If the answer is “this 30m window” or “a new axis,” it is drift — do not run.
-3. Is every core a **location family** (S/P/A), not M/K?
-4. Is every partner set **one representative per family**, with `dVWAP` first?
-5. Is there a **baseline cell** for any pairwise claim?
-6. Are costs on? Is ingest 15s-primary? Is `--confirm` required?
-7. What is the **pre-registered** promote/kill rule?
+1. Which **product** (scalp vs swing)? Which **lock** stays identical (including flatten / exposure / costs)?
+2. Which **stage** (L1, L1b, L2, L2m, L3, L5–L7)? If the answer is “this 30m window,” “OTF as a factor,” or “a new axis,” it is drift — do not run.
+3. Is every core a **location** (S1/S2/S3/P/A) or a desk-listed swing V extra (`wVWAP`/`mVWAP`)? Not M/K.
+4. Is every partner set **`dVWAP` + at most one extra information source**, with no economic siblings?
+5. Is there a **baseline `{dVWAP}` cell** for any pairwise claim? Is `min_valid_confluences: 1`?
+6. Are costs on (`0.5` / `1.0`)? Is ingest 15s-primary? Is `--confirm` required?
+7. What is the **pre-registered** decision rule (§6.1 / L2 low-N stop)?
+8. If this is Admit: will `backtest.entry_window` be stamped, or only setup?
 
 ---
 
@@ -535,11 +615,18 @@ docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md, and examples/studies/agents/SYSTE
 Hard rules:
 - Work regression-safe. Do not invent factor axes, tokens, or triggers.
 - Do not mix scalp (touch @ 1min, 10 ticks, 40/40) with swing (3c @ 1min, 20 ticks, 80/80).
-- Mode is anchor_rules. Partner sets must include dVWAP. One representative per family.
-- ToD is never a factor. Do not auto-run a promote draft. --confirm if run_count is high.
-- Rank on expectancy_r. Descriptive ≠ edge. Log kill/stay with n and PF.
+- Mode is anchor_rules. from_partners is required. min_valid_confluences is 1.
+- Partner sets must include dVWAP. At most one extra information source. No economic siblings.
+- Do not set factors.otf. Do not use from_partners: optional (drops the dVWAP lock).
+- ToD is never a factor. Admit only via study promote --admit-tod auto (backtest.entry_window).
+- Copy flatten / exposure / costs from the finished L1 run onto L2.
+- Do not retry killed scalp names. L1b is pwEQ only unless the desk page names another coin-flip.
+- Coin-flip first (|E|<0.03 or PF in [0.95,1.05]), then promote (n>=30 and E>=0.03 and PF>1.05).
+- If every L2 pair is n<30: STOP. Do not open optional discovery on the same slice.
+- --confirm if run_count is high. Do not auto-run a promote draft.
+- Rank on expectancy_r. Descriptive ≠ edge. Log kill/hold/stay with n, PF, max DD.
 
-Task: author/expand/run only the next protocol stage the human names (L1, L1b, L2, …).
+Task: author/expand/run only the next protocol stage the human names (L1, L1b, L2, L2m, …).
 1. Expand and report run_count.
 2. Run (add --confirm when required).
 3. Report ranked / low-N / unresolved with honesty.
@@ -550,14 +637,23 @@ Task: author/expand/run only the next protocol stage the human names (L1, L1b, L
 
 ## 12. Status vs desk roadmap (2026-08-19)
 
+Source: Notion *Process and roadmap* + Results rows for `scalp_touch_10_anchor` / `scalp_rth_open_10_anchor`. Window 2024-07-31 → 2026-08-06, MNQ 15s HE, costs 0.5 / 1.0.
+
 | Protocol stage | Desk status | Implication |
 |---|---|---|
-| L0 locks + distance audit | Done | Widths frozen |
-| L1 scalp | Done — only **ONH** stays (+0.07R, n=47, PF 1.16, descriptive) | L2 scalp = ONH pairs |
-| L1 RTH add-on | Done — both killed | Do not retry as scalp cores |
-| Scalp ToD | Done — no solid green; do not Admit | |
-| L1 swing | Running | Wait; do not pairwise swing names yet |
-| L1b | Not started | Completeness for coin-flip / killed **locations** only |
-| L2+ | Waiting | ONH plus any swing survivors |
+| L0 locks + distance audit | Done | Widths frozen (10 / 20). Do not cartesian width. |
+| L1 scalp (`scalp_touch_10_anchor`, 24) | Done — **ONH** stays: +0.074R, n=47, PF 1.162, total R +3.475, max DD 4.45R, WR 57.4%. Descriptive. | License to **first** L2 only (no M/K). Expect low-N. |
+| L1 scalp coin-flip | **`pwEQ`**: +0.011R, n=81, PF 1.023, Ranked=NO, max DD 5.825R | Hold. Do not pairwise. L1b only if the desk keeps this as a named retry. |
+| L1 RTH add-on | Done — `RTH_Open` −0.09R n=407; `pRTH_Open` −0.27R n=191 | Off the scalp map. Do **not** retry as cores. |
+| Scalp ToD | Done — ONH has no solid n≥15 green 30m bucket. `RTH_Open` 13:00 +0.37R n=25 **not Admitted** | Do not revive killed names from a ToD slice. |
+| L1 swing (`swing_3c_20_anchor`, 28) | Running | Wait. Do not pairwise swing names yet. |
+| L1b | Not started | `pwEQ` × one other confirm **only**. Not a killed-core replay. |
+| L2 first pairwise | Waiting | `ONH` + `{dVWAP}` baseline + complementary X (P/C/A/OR/EQ). Pre-register the all-low-N stop. |
+| L2m MA / pivot | Later (desk) | Not inside first L2. |
+| L3+ | Waiting | Only after two different-information L2 extras clear n≥30. |
+| L4 ToD | Scalp done | Swing ToD after swing L1. Admit only n≥30 via `--admit-tod auto`. |
+| L4 OTF | Not a desk step | Optional Validation matrix on a promoted single setup. Not `factors.otf`. |
+| L5–L6 | Later | Survivors only. L6 = product compare; L6b = same-width leak isolate. |
+| L7 | Not started | Survivors only. Re-audit ES/MES dollars. |
 
-The next *useful* combination study on the current scalp map is **not** a new kill list. It is **L2: `ONH` + `dVWAP` + one complementary X**, with `{dVWAP}` as the baseline cell, same scalp locks.
+The next *useful* combination study on the current scalp map is **not** a new kill list and **not** L1b on killed names. It is **L2: `ONH` + `dVWAP` + one complementary X**, with `{dVWAP}` as the baseline cell, same scalp locks as the finished L1 run, `min_valid: 1`, no MA/pivot in the first pass, and a written stop if every pair is n<30.

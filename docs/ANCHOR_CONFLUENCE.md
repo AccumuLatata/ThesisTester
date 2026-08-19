@@ -28,7 +28,7 @@ This guide explains the implemented anchor-confluence workflow in ThesisTester a
 
 ## Minimum valid confluences
 
-`min_valid_confluences` is the minimum number of valid confluence rules required on a bar, in addition to all required rules being valid.
+`min_valid_confluences` is the minimum number of **valid** confluence rules on a bar (`valid_count` includes required rules). Every required rule must also be valid. The engine does **not** add `min_valid` on top of the required set. With all rules required, `min_valid: 1` is enough (Study expand also requires `min_valid <= len(rules)` per cell).
 
 ## Example setup
 

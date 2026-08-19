@@ -18,7 +18,7 @@ research snapshots live under [`research/`](research/README.md).
 | [ENGINEERING_ROADMAP.md](ENGINEERING_ROADMAP.md) | Milestone + assistant-contract status index |
 | [otf-filter.md](otf-filter.md) | OTF v1 behavioral contract |
 | [research-methodology.md](research-methodology.md) | OTF OOS evaluation protocol |
-| [LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md) | Level-as-anchor combination protocol (token inventory + staged studies) |
+| [LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md) | Level-as-anchor combination protocol (token inventory + staged studies; promote/Admit/L2 power locks) |
 | [ANCHOR_CONFLUENCE.md](ANCHOR_CONFLUENCE.md) | Anchor-confluence workflow guide |
 | [VOICE_SIDECAR_OPS.md](VOICE_SIDECAR_OPS.md) | Localhost realtime voice sidecar ops |
 | [SIMULATE_PERF.md](SIMULATE_PERF.md) · [CAI_BASELINE.md](CAI_BASELINE.md) | Informational performance baselines |
