@@ -45,7 +45,7 @@ outputs unchanged when that gate is disabled.
 | Catalog | Append to `SESSION_VWAP_COLUMNS` (auto-flows to Study static set + Assistant catalog) |
 | Suggested Setup defaults | **Do not** add `wVWAP` / `mVWAP` to `SUGGESTED_DEFAULT_LEVELS` |
 | Downstream | Generic level columns — Setup / confluence / signals / backtest consume without engine changes |
-| Goldens | No regeneration — legacy golden pipeline does not compute session VWAPs |
+| Goldens | No regeneration — `run_legacy_pipeline` never calls `compute_all_levels`; it injects prebuilt signals into `simulate_trades` |
 
 **Feasibility:** High. Math is the existing `dVWAP` loop with a different group key.
 Closest precedents: `dVWAP` (CME-session sibling of `dVWAP_RTH`) and `wOpen`/`mOpen`
@@ -98,12 +98,25 @@ week_key        = session_date_ts.dt.to_period("W-SUN")
 month_key       = session_date_ts.dt.to_period("M")
 ```
 
-Locked fixtures (already proven in `tests/test_session_levels.py`):
+Implementation constraint: `compute_session_vwap_levels` already computes
+`session_date` for the `dVWAP` groupby. Derive `week_key` / `month_key` from
+**that same Series**. Do not call `trading_session_date` a second time on a
+different path.
+
+Verified fixtures (America/New_York, ES `eth_start=18:00`; also proven in
+`tests/test_session_levels.py`):
+
+| Timestamp | `session_date` | `W-SUN` | `M` |
+|---|---|---|---|
+| `2026-06-07 17:59` | `2026-06-07` | `2026-06-01/07` | `2026-06` |
+| `2026-06-07 18:00` (Sunday ETH open) | `2026-06-08` | `2026-06-08/14` | `2026-06` |
+| `2026-06-30 17:59` | `2026-06-30` | `2026-06-29/07-05` | `2026-06` |
+| `2026-06-30 18:00` | `2026-07-01` | `2026-06-29/07-05` | `2026-07` |
 
 | Event | Timestamp (America/New_York) | Effect |
 |---|---|---|
-| Week roll | `2026-06-07 18:00` (Sunday ETH open) | New `wOpen`; `wVWAP` must reset here |
-| Month roll | `2026-06-30 18:00` (session date `2026-07-01`) | New `mOpen`; `mVWAP` must reset here |
+| Week roll | `2026-06-07 18:00` | New `wOpen`; `wVWAP` must reset here |
+| Month roll | `2026-06-30 18:00` | New `mOpen`; `mVWAP` must reset here |
 
 If `eth_start` is empty, `trading_session_date` already falls back to calendar
 date — use that same fallback (do not raise). This matches `dVWAP`.
@@ -143,17 +156,24 @@ wVWAP
 mVWAP
 ```
 
-in that order. `SESSION_VWAP_COLUMNS` becomes that four-tuple.
+in that order. `SESSION_VWAP_COLUMNS` becomes that four-tuple. That exact
+four-tuple is the **session-VWAP family frame**, not the full
+`compute_all_levels` output. `compute_all_levels(..., session_vwap_enabled=True)`
+is additive: the two new names appear **in** the joined frame alongside every
+other enabled family.
 
 When `session_vwap_enabled=False` (the `compute_all_levels` default): **none** of
 those columns are emitted. Existing disabled isolation tests stay valid after
-updating the “enabled column list” assertions from two names to four.
+updating the `compute_session_vwap_levels` “enabled column list” from two names
+to four.
 
 No new kwargs on `compute_all_levels`. No new `DEFAULT_LEVELS_SETTINGS` keys.
 No new `st.session_state` widget keys.
 
-`session_vwap_anchor` remains `"RTH"` and continues to gate **only** `dVWAP_RTH`.
-It does not affect `dVWAP`, `wVWAP`, or `mVWAP`.
+`session_vwap_anchor` remains validate-only (`SUPPORTED_VWAP_ANCHORS=("RTH",)`).
+It does not change grouping for `dVWAP`, `wVWAP`, or `mVWAP`. Do **not** start
+using it to RTH-mask the new columns. The RTH column continues to use
+`session=="RTH"`.
 
 ### 3.6 Why the same gate (not a new flag)
 
@@ -163,9 +183,11 @@ It does not affect `dVWAP`, `wVWAP`, or `mVWAP`.
 | Always-on like `wOpen` | Rejected — would emit columns from `compute_all_levels` with all gates off; breaks Stage 1 no-op |
 | Same `session_vwap_enabled` | **Locked** — exact precedent of adding `dVWAP` beside `dVWAP_RTH` |
 
-Product/API defaults already enable the family. After WMV1, a product-default
-levels frame gains two additive columns. Setups that do not select them produce
-identical signals and trades (generic column consumption).
+Headless / product frames via `DEFAULT_LEVELS_SETTINGS` already set
+`session_vwap_enabled=True`. Raw `compute_all_levels(...)` still defaults
+`session_vwap_enabled=False` and must stay default-off. After WMV1, a
+product-default levels frame gains two additive columns. Setups that do not
+select them produce identical signals and trades (generic column consumption).
 
 ---
 
@@ -208,9 +230,11 @@ Do **not** start gating `dVWAP*` / `wVWAP` / `mVWAP` inside
 `SESSION_VWAP_COLUMNS` updates the assistant token list. The existing slice
 test `catalog[dvwap : dvwap + 2]` must become `dvwap : dvwap + len(...)`.
 
-Thesis-compiler mention of `wvwap` / `mvwap` is **WMV2 only** (same
-`session_vwap_enabled` unresolved-assumption as `dVWAP`). Not required for
-Setup/Study availability.
+Thesis-compiler mention of `wvwap` / `mvwap` is **WMV2 only**. Detection today
+is `re.search(r"\bdvwap\b", prompt.lower())`, which does **not** match `wvwap`
+or `mvwap`. WMV2 must extend that same `if` and keep the existing unresolved
+string byte-identical (see WMV2 scope). Not required for Setup/Study
+availability.
 
 ---
 
@@ -228,7 +252,11 @@ SESSION_VWAP_COLUMNS = (COL_DVWAP_RTH, COL_DVWAP, COL_WVWAP, COL_MVWAP)
 
 Implementation constraint (regression-safe):
 
-- **Copy** the existing `dVWAP` groupby/`cumsum` loop for week and month.
+- **Copy** the existing **`dVWAP`** groupby/`cumsum` loop (full session) for
+  week and month. Do **not** copy the `dVWAP_RTH` RTH-mask loop.
+- Derive `week_key` / `month_key` from the already-computed `session_date`.
+- Update the module docstring and `compute_session_vwap_levels` return contract
+  (they currently say the enabled path emits both `dVWAP_RTH` and `dVWAP`).
 - **Do not** refactor the `dVWAP` / `dVWAP_RTH` loops “while we’re here.”
 - Comment the period-key two-liner as identical to `sessions.py` / `profile.py`.
 - Do **not** extract a shared `trading_week_key` helper in this series
@@ -238,19 +266,19 @@ Implementation constraint (regression-safe):
 
 | File | Change in WMV1? | Notes |
 |---|---|---|
-| `thesistester/levels/session_vwap.py` | Yes | Emit two columns; update tuple |
+| `thesistester/levels/session_vwap.py` | Yes | Module docstring, `SESSION_VWAP_COLUMNS`, emit loops, return contract |
 | `thesistester/levels/catalog.py` | No edit | Re-exports `SESSION_VWAP_COLUMNS` |
-| `thesistester/levels/all.py` | Docstring only | Mention `wVWAP` / `mVWAP` under the existing gate |
-| `thesistester/levels/defaults.py` | **No** | Gate already true |
+| `thesistester/levels/all.py` | Docstring only | Mention `wVWAP` / `mVWAP` under the existing gate. Join is already additive by new column names. |
+| `thesistester/levels/defaults.py` | **No** | Product default already `session_vwap_enabled=True` |
 | `thesistester/persistence/local_store.py` | Yes | `LEVEL_ENGINE_VERSION = 10` |
 | `thesistester/setup.py` | **No** | Eligibility is generic |
 | `thesistester/study/schema.py` | **No** | Static set follows catalog |
 | `thesistester/study/builder.py` | **No** | `builder_token_catalog` follows closed set |
-| `thesistester/assistant/workspace.py` | Slice-test only | Catalog tuple grows automatically |
+| `thesistester/assistant/workspace.py` | **No** | Production `SESSION_LEVEL_CATALOG` unpacks `SESSION_VWAP_LEVEL_NAMES`. Do not hand-edit that tuple. The slice test lives in `tests/test_assistant_workspace.py`. |
 | `thesistester/api.py` | **No** | Already passes `session_vwap_enabled` |
-| `pages/2_Levels.py` | WMV2 | Checkbox / help copy only |
+| `pages/2_Levels.py` | WMV2 | Checkbox / help copy only. Reuse `_SESSION_VWAP_ENABLED_KEY`. |
 | `pages/14_Research_Assistant.py` | WMV2 | Checkbox label only |
-| `thesistester/assistant/thesis_compiler.py` | WMV2 | Optional `wvwap`/`mvwap` hint |
+| `thesistester/assistant/thesis_compiler.py` | WMV2 | Required: add `\bwvwap\b` / `\bmvwap\b` to the existing `if`. Keep the unresolved string byte-identical. |
 
 ### 5.3 Downstream consumption
 
@@ -293,7 +321,7 @@ Maps to `ENGINEERING_PROPOSAL.md` §4:
 | Rule | Application here |
 |---|---|
 | 1. Additive-only | No new kwargs; no positional signature changes |
-| 2. Golden-masters | Legacy pipeline does not compute session VWAPs; goldens stay untouched |
+| 2. Golden-masters | `run_legacy_pipeline` never calls `compute_all_levels`; goldens stay untouched |
 | 3. Opt-in default-off | `compute_all_levels` keeps `session_vwap_enabled=False` |
 | 4. Schema / engine version | `LEVEL_ENGINE_VERSION = 10` |
 | 5. Future-shock PIT | Dedicated tests in `tests/test_wvwap_mvwap.py` |
@@ -354,15 +382,17 @@ Three PRs. Do not merge WMV2 before WMV1. Do not implement engine work in WMV0.
 |---|---|
 | **Title** | `WMV1: emit wVWAP/mVWAP under session_vwap_enabled` |
 | **Scope** | `thesistester/levels/session_vwap.py`; `thesistester/levels/all.py` (docstring); `thesistester/persistence/local_store.py` (`LEVEL_ENGINE_VERSION = 10`); `tests/test_wvwap_mvwap.py` (new); targeted edits to existing assertions that hard-code the two-column VWAP set; Setup + Study token tests; living docs in §10.1 |
-| **Likely test edits** | `tests/test_stage3_session_vwap.py` (enabled column list); `tests/test_dvwap_cme_session.py` (isolation + version `>= 10`); `tests/test_stage6_levels_ui_settings.py` (if it asserts exact VWAP columns); `tests/test_assistant_workspace.py` (catalog slice length); `tests/test_setup_config.py`; `tests/study/test_study_schema.py` |
+| **Likely test edits** | `tests/test_stage3_session_vwap.py` (enabled column list → exact four-tuple); `tests/test_dvwap_cme_session.py` (isolation stays green if additive; add `LEVEL_ENGINE_VERSION >= 10`); `tests/test_stage6_levels_ui_settings.py` (enable-case membership must include `wVWAP`/`mVWAP`; those tests do **not** pin an exact column tuple or checkbox copy); `tests/test_assistant_workspace.py` (`catalog[dvwap : dvwap + 2]` → `+ 4` or `+ len(SESSION_VWAP_LEVEL_NAMES)`); `tests/test_setup_config.py`; `tests/study/test_study_schema.py` |
 | **Behavior** | Gate off: still no VWAP columns. Gate on: four columns; `dVWAP*` values unchanged. `wVWAP`/`mVWAP` are setup-eligible and Study static tokens |
 | **Regression** | Overlapping-column equality; disabled no-op; legacy goldens untouched; no new settings keys |
-| **Acceptance** | §11.1–11.4 tests green; `pytest -q tests/test_wvwap_mvwap.py tests/test_stage3_session_vwap.py tests/test_dvwap_cme_session.py tests/test_setup_config.py tests/study/test_study_schema.py tests/test_assistant_workspace.py tests/test_golden_master.py` plus full `pytest -q` / ruff |
-| **Out of scope** | UI copy; thesis compiler; USER_GUIDE how-to; new flags; `SUGGESTED_DEFAULT_LEVELS`; period-key extraction; `pwVWAP` / RTH-only HTF |
+| **Acceptance** | §11.1–11.4 tests green; `pytest -q tests/test_wvwap_mvwap.py tests/test_stage3_session_vwap.py tests/test_dvwap_cme_session.py tests/test_stage6_levels_ui_settings.py tests/test_setup_config.py tests/study/test_study_schema.py tests/test_assistant_workspace.py tests/test_golden_master.py` plus full `pytest -q` / ruff |
+| **Out of scope** | UI copy; `docs/ARCHITECTURE.md` Levels-control table; thesis compiler; USER_GUIDE how-to; new flags; `SUGGESTED_DEFAULT_LEVELS`; period-key extraction; `pwVWAP` / RTH-only HTF |
 
 **WMV1 file-level checklist**
 
 1. Emit `wVWAP` / `mVWAP` in `compute_session_vwap_levels` when `enabled=True`.
+   Copy the `dVWAP` loop; derive week/month keys from the existing `session_date`;
+   update the module docstring / return contract.
 2. Set `SESSION_VWAP_COLUMNS` to the four-tuple (catalog/study/assistant follow).
 3. Bump `LEVEL_ENGINE_VERSION` to 10.
 4. Prove math, week/month reset alignment with `wOpen`/`mOpen`, ETH emission, zero-volume NaN, future-shock, and `dVWAP*` isolation.
@@ -377,11 +407,25 @@ Three PRs. Do not merge WMV2 before WMV1. Do not implement engine work in WMV0.
 | Field | Value |
 |---|---|
 | **Title** | `WMV2: document wVWAP/mVWAP on Levels/Assistant/Help` |
-| **Scope** | `pages/2_Levels.py` checkbox label + help; `pages/14_Research_Assistant.py` checkbox label; `thesistester/assistant/thesis_compiler.py` (`\bwvwap\b` / `\bmvwap\b` → same enable-family assumption as `dVWAP`); `docs/USER_GUIDE.md`; `docs/STUDY_RUNNER.md` (static-catalog sentence); `docs/ARCHITECTURE.md` Levels-control table row text; `README.md` advanced-levels bullet; `tests/test_thesis_compiler.py` (one additive case); any stage-6 copy assertion that quotes the old checkbox string |
+| **Scope** | `pages/2_Levels.py` checkbox label + help; `pages/14_Research_Assistant.py` checkbox label; `thesistester/assistant/thesis_compiler.py` (see locked copy below); `docs/USER_GUIDE.md`; `docs/STUDY_RUNNER.md` (honesty if living text still implies daily-only; current text is already generic); `docs/ARCHITECTURE.md` Levels-control table row text (**WMV2 owns this row**, not WMV1); `README.md` advanced-levels bullet; `tests/test_thesis_compiler.py` (one additive case). No stage-6 test currently pins the checkbox string. |
 | **Behavior** | Labels mention `wVWAP` + `mVWAP`. No compute change |
-| **Regression** | No engine/golden/`LEVEL_ENGINE_VERSION` touch. Existing `dVWAP` thesis-compiler behavior unchanged |
-| **Acceptance** | Checkbox strings include both new names; thesis prompt mentioning `wVWAP` without the family enabled adds the existing enable-session-VWAP assumption; Help/USER_GUIDE list the columns |
+| **Regression** | No engine/golden/`LEVEL_ENGINE_VERSION` touch. Existing `dVWAP` thesis-compiler cases still pass (`"dVWAP" in item`) |
+| **Acceptance** | Checkbox strings include both new names; a `wVWAP`/`mVWAP` prompt without the family enabled appends the existing unresolved string; Help/USER_GUIDE list the columns |
 | **Out of scope** | Engine math; new widgets; new session_state keys; suggested-default changes |
+
+Thesis-compiler lock (`thesistester/assistant/thesis_compiler.py`):
+
+- Detection today is `re.search(r"\bdvwap\b", prompt.lower())`. That does
+  **not** match `wvwap` or `mvwap` (`_` is a word character, so it also does
+  not match `dvwap_rth`).
+- WMV2 **must** add `\bwvwap\b` and `\bmvwap\b` to the **same** `if` that
+  appends the existing unresolved string. One combined regex is fine.
+- Keep the existing unresolved string **byte-identical**:
+  `"Enable developing session VWAPs for the dVWAP thesis."`
+  Existing `tests/test_thesis_compiler.py` asserts `"dVWAP" in item`. Do not
+  invent a second unresolved-string family. A wVWAP-only prompt will then
+  receive the dVWAP wording; that copy wart is locked unless a later PR
+  extends the string while still containing the substring `"dVWAP"`.
 
 WMV2 may be folded into WMV1 only if WMV1 is already green and the copy diff
 stays label-only. Prefer the split so engine review is not mixed with Help copy.
@@ -397,7 +441,6 @@ stays label-only. Prefer the split so engine review is not mixed with Help copy.
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | Extend §5b: `wVWAP`/`mVWAP` developing week/month; same typical-price caveat; `LEVEL_ENGINE_VERSION` 10 |
 | `docs/POINT_IN_TIME_GUARANTEES.md` | Module blurb + two audit rows + tests column |
 | `docs/METRICS_GLOSSARY.md` | Add `wVWAP` / `mVWAP` rows under the developing-VWAP table; gate text becomes “all four columns” |
-| `docs/ARCHITECTURE.md` | Levels-control table: `dVWAP_RTH + dVWAP + wVWAP + mVWAP` |
 | `docs/ENGINEERING_ROADMAP.md` | Mark WMV1 landed when merged |
 | This doc | Status → WMV1 implemented |
 
@@ -406,7 +449,8 @@ stays label-only. Prefer the split so engine review is not mixed with Help copy.
 | Doc | Update |
 |---|---|
 | `docs/USER_GUIDE.md` | Advanced opt-in list includes weekly/monthly developing VWAPs |
-| `docs/STUDY_RUNNER.md` | Static catalog sentence mentions `wVWAP` / `mVWAP` |
+| `docs/STUDY_RUNNER.md` | Static catalog sentence mentions `wVWAP` / `mVWAP` if living text still implies daily-only |
+| `docs/ARCHITECTURE.md` | Levels-control table quotes the Levels checkbox. **WMV2 owns this row.** |
 | `README.md` | Advanced levels bullet |
 | This doc | Status → series complete |
 
@@ -430,7 +474,7 @@ Hand-compute expected VWAP values; do not snapshot opaque frames.
 
 1. Disabled → empty frame, no `wVWAP`/`mVWAP`, no validation (naive timestamps accepted).
 2. `compute_all_levels(..., session_vwap_enabled=False)` adds none of the four VWAP columns.
-3. Enabled → columns are exactly `dVWAP_RTH`, `dVWAP`, `wVWAP`, `mVWAP`.
+3. `list(compute_session_vwap_levels(..., enabled=True).columns) == ["dVWAP_RTH", "dVWAP", "wVWAP", "mVWAP"]` (exact order). `compute_all_levels(..., session_vwap_enabled=True)` and `tests/test_stage6_levels_ui_settings.py` enable-case asserts are **membership**: `"wVWAP" in columns` and `"mVWAP" in columns`. Do not require the joined frame to contain only those four columns.
 4. Enabled → `dVWAP_RTH` and `dVWAP` series-equal to a fixture computed against
    current formulas (copy the existing CME-session expected vectors).
 5. Enabled → other families (`wOpen`, `pdPOC`, pivots off, etc.) value-identical
@@ -502,11 +546,12 @@ Add tests/test_wvwap_mvwap.py covering §11.1–11.4. Update hard-coded
 two-column VWAP assertions. Prove Setup validate + StudySpec tokens.
 
 Same-PR docs: ASSUMPTIONS §5b, POINT_IN_TIME_GUARANTEES, METRICS_GLOSSARY,
-ARCHITECTURE Levels table, roadmap WMV1 status.
+roadmap WMV1 status. Do not edit the ARCHITECTURE Levels-control table
+in WMV1 (WMV2 owns that checkbox-copy row).
 
 PR body must include a Regression safety paragraph: disabled no-op
-preserved; dVWAP* value-identical; goldens untouched; cache bump is
-vocabulary-only.
+preserved; dVWAP* value-identical; goldens untouched (run_legacy_pipeline
+never calls compute_all_levels); cache bump is vocabulary-only.
 ```
 
 ### 12.2 WMV2
@@ -515,13 +560,17 @@ vocabulary-only.
 Implement WMV2 from docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md.
 
 No engine/, no LEVEL_ENGINE_VERSION, no goldens. Update Levels + Assistant
-checkbox copy to name dVWAP_RTH + dVWAP + wVWAP + mVWAP. Add thesis_compiler
-wvwap/mvwap hints that reuse the existing session_vwap_enabled assumption
-(do not invent a new unresolved string family). Update USER_GUIDE,
-STUDY_RUNNER static-catalog sentence, README advanced-levels bullet.
+checkbox copy to name dVWAP_RTH + dVWAP + wVWAP + mVWAP. Update the
+ARCHITECTURE Levels-control table to quote that checkbox. Add
+\bwvwap\b / \bmvwap\b (or one combined regex) to the same thesis_compiler
+if that already handles \bdvwap\b. Keep the unresolved string
+byte-identical: "Enable developing session VWAPs for the dVWAP thesis."
+Do not invent a new unresolved string family. Update USER_GUIDE,
+STUDY_RUNNER if needed, README advanced-levels bullet.
 
-Keep Help paths unchanged. Add one thesis-compiler test. Mark this plan
-series complete.
+Keep Help paths unchanged. Add one thesis-compiler test (wVWAP or mVWAP
+prompt without the family enabled). Existing dVWAP cases must still pass.
+Mark this plan series complete.
 ```
 
 ---
@@ -547,8 +596,10 @@ series complete.
 - Adding `wVWAP`/`mVWAP` to `SUGGESTED_DEFAULT_LEVELS`
 - Gating session-VWAP tokens in `closed_level_token_set`
 - Shared period-key extraction from `sessions.py` / `profile.py`
+- Using vestigial `session_vwap_anchor` to change `wVWAP` / `mVWAP` grouping
 - Signal-engine, fill-model, golden, or Help-path changes
 - Thesis-compiler work in WMV1
+- Editing `docs/ARCHITECTURE.md` Levels-control table in WMV1
 
 ---
 
