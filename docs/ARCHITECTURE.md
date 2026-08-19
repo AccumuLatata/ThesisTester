@@ -1470,7 +1470,7 @@ existing profile settings. Controls inside it:
 | Control | Default | Notes |
 |---|---|---|
 | Enable confirmed pivots | `True` | `1min`, `5min`, `30min`, `4h`; left/right `2` |
-| Enable developing session VWAPs (dVWAP_RTH + dVWAP + wVWAP + mVWAP) | `True` | RTH column anchor fixed to RTH; `dVWAP` is full CME session; `wVWAP` / `mVWAP` are developing week/month (same `W-SUN` / `M` keys as `wOpen` / `mOpen`) |
+| Enable developing session VWAPs (dVWAP_RTH + dVWAP) | `True` | RTH column anchor fixed to RTH; `dVWAP` is full CME session |
 | Enable TPO 30m Single Prints | `True` | No additional config exposed |
 | Enable APOC / pAPOC | `True` | Independent of Single Prints |
 | Enable previous 30m VWAP (`prev30mVWAP`) | `True` | Session-open ETH+RTH brackets; validity periods default `1` |
