@@ -266,6 +266,8 @@ def test_compute_all_levels_emits_dvwap_when_enabled():
     )
     assert COL_DVWAP in out.columns
     assert COL_DVWAP_RTH in out.columns
+    assert "wVWAP" in out.columns
+    assert "mVWAP" in out.columns
     assert out[COL_DVWAP].notna().all()
 
 
@@ -303,6 +305,8 @@ def test_existing_columns_unchanged_when_session_vwap_enabled():
         )
     assert COL_DVWAP in out_on.columns
     assert COL_DVWAP_RTH in out_on.columns
+    assert "wVWAP" in out_on.columns
+    assert "mVWAP" in out_on.columns
 
 
 def test_nq_instrument_emits_dvwap():
@@ -314,4 +318,4 @@ def test_nq_instrument_emits_dvwap():
 
 def test_level_engine_version_bumped_for_additive_dvwap():
     """Additive dVWAP vocabulary must invalidate stale persisted level snapshots."""
-    assert LEVEL_ENGINE_VERSION >= 9
+    assert LEVEL_ENGINE_VERSION >= 10

@@ -15,6 +15,19 @@ Implements developing session VWAPs:
     is zero.  When the instrument has no ``eth_start``, session grouping falls
     back to calendar date (same helper as other session-date levels).
 
+``wVWAP``
+    Developing VWAP of the current CME trading week.  Week keys are
+    ``trading_session_date`` → ``W-SUN`` — the same construction as ``wOpen``
+    in ``sessions.py`` / ``profile.py``.  ETH and RTH bars both contribute
+    and both emit values.  Resets at each new trading week.  ``NaN`` when
+    cumulative week volume is zero.
+
+``mVWAP``
+    Developing VWAP of the current CME trading month.  Month keys are
+    ``trading_session_date`` → ``M`` — the same construction as ``mOpen``.
+    ETH and RTH bars both contribute and both emit values.  Resets at each
+    new trading month.  ``NaN`` when cumulative month volume is zero.
+
 Formula
 -------
     typical_price = (high + low + close) / 3
@@ -26,10 +39,13 @@ Formula
     For ``dVWAP``, ``cumsum`` resets at each CME trading-session date and
     includes every bar in that session.
 
+    For ``wVWAP`` / ``mVWAP``, ``cumsum`` resets at each trading week / month
+    and includes every bar in that period.
+
 Point-in-time guarantee
 -----------------------
-    At bar ``t``, only bars at or before ``t`` in the same session group are
-    used.  No future bar can change the value at ``t``.
+    At bar ``t``, only bars at or before ``t`` in the same session / week /
+    month group are used.  No future bar can change the value at ``t``.
 
 Disabled behavior (``enabled=False``)
 --------------------------------------
@@ -39,8 +55,8 @@ Disabled behavior (``enabled=False``)
 Unsupported anchor
 ------------------
     Raises ``ValueError``.  Only ``"RTH"`` is supported for the RTH column
-    gate; ``dVWAP`` (full CME session) is always emitted alongside
-    ``dVWAP_RTH`` when enabled.
+    gate; ``dVWAP``, ``wVWAP``, and ``mVWAP`` (full CME session / week /
+    month) are always emitted alongside ``dVWAP_RTH`` when enabled.
 """
 
 from __future__ import annotations
@@ -61,7 +77,9 @@ DEFAULT_VWAP_ANCHOR: str = "RTH"
 
 COL_DVWAP_RTH = "dVWAP_RTH"
 COL_DVWAP = "dVWAP"
-SESSION_VWAP_COLUMNS: tuple[str, ...] = (COL_DVWAP_RTH, COL_DVWAP)
+COL_WVWAP = "wVWAP"
+COL_MVWAP = "mVWAP"
+SESSION_VWAP_COLUMNS: tuple[str, ...] = (COL_DVWAP_RTH, COL_DVWAP, COL_WVWAP, COL_MVWAP)
 
 
 def compute_session_vwap_levels(
@@ -85,25 +103,26 @@ def compute_session_vwap_levels(
         (e.g. ``"ES"``).
     anchor:
         Session anchor for the RTH VWAP column.  Currently only ``"RTH"`` is
-        supported.  Full-session ``dVWAP`` does not use this parameter; it is
-        always CME-session anchored when emitted.
+        supported.  Full-session ``dVWAP``, ``wVWAP``, and ``mVWAP`` do not
+        use this parameter; they are always CME-session / week / month
+        anchored when emitted.
     enabled:
         Master gate.  When ``False`` (the default), returns an empty DataFrame
         immediately — no timestamp validation, no new columns.  When ``True``,
-        emits both ``dVWAP_RTH`` and ``dVWAP``.
+        emits ``dVWAP_RTH``, ``dVWAP``, ``wVWAP``, and ``mVWAP``.
 
     Returns
     -------
     pd.DataFrame
         - ``enabled=False``: empty DataFrame with the same index as *df*.
           Returns immediately without processing.
-        - ``enabled=True``: DataFrame with columns ``dVWAP_RTH`` and ``dVWAP``
-          aligned to the **internally sorted** timestamp timeline
-          (``sort_values("timestamp").reset_index(drop=True)``).  The returned
-          index is a fresh ``RangeIndex`` matching the sorted row order.  When
-          joining to other level DataFrames produced by ``compute_all_levels``,
-          alignment is guaranteed because all level functions operate on the
-          same sorted timeline.
+        - ``enabled=True``: DataFrame with columns ``dVWAP_RTH``, ``dVWAP``,
+          ``wVWAP``, and ``mVWAP`` aligned to the **internally sorted**
+          timestamp timeline (``sort_values("timestamp").reset_index(drop=True)``).
+          The returned index is a fresh ``RangeIndex`` matching the sorted row
+          order.  When joining to other level DataFrames produced by
+          ``compute_all_levels``, alignment is guaranteed because all level
+          functions operate on the same sorted timeline.
 
     Raises
     ------
@@ -143,6 +162,10 @@ def compute_session_vwap_levels(
     eth_start = getattr(inst, "eth_start", "") or ""
     local_ts = work["timestamp"].dt.tz_convert(exchange_tz)
     session_date = trading_session_date(local_ts, eth_start)
+    # Period keys identical to sessions.py / profile.py (wOpen / mOpen).
+    session_date_ts = pd.to_datetime(session_date)
+    week_key = session_date_ts.dt.to_period("W-SUN")
+    month_key = session_date_ts.dt.to_period("M")
 
     typical = (work["high"] + work["low"] + work["close"]) / 3.0
     pv = typical * work["volume"]
@@ -166,7 +189,23 @@ def compute_session_vwap_levels(
         cum_vol = volume.loc[idx].cumsum()
         dvwap.loc[idx] = cum_pv.where(cum_vol > 0).div(cum_vol.replace(0, np.nan))
 
+    # --- Build wVWAP (current trading week: ETH + RTH) ---
+    wvwap = pd.Series(np.nan, index=work.index, dtype="float64")
+
+    for _week, idx in work.groupby(week_key, sort=True).groups.items():
+        cum_pv = pv.loc[idx].cumsum()
+        cum_vol = volume.loc[idx].cumsum()
+        wvwap.loc[idx] = cum_pv.where(cum_vol > 0).div(cum_vol.replace(0, np.nan))
+
+    # --- Build mVWAP (current trading month: ETH + RTH) ---
+    mvwap = pd.Series(np.nan, index=work.index, dtype="float64")
+
+    for _month, idx in work.groupby(month_key, sort=True).groups.items():
+        cum_pv = pv.loc[idx].cumsum()
+        cum_vol = volume.loc[idx].cumsum()
+        mvwap.loc[idx] = cum_pv.where(cum_vol > 0).div(cum_vol.replace(0, np.nan))
+
     return pd.DataFrame(
-        {COL_DVWAP_RTH: dvwap_rth, COL_DVWAP: dvwap},
+        {COL_DVWAP_RTH: dvwap_rth, COL_DVWAP: dvwap, COL_WVWAP: wvwap, COL_MVWAP: mvwap},
         index=work.index,
     )

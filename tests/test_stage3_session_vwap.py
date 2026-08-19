@@ -147,6 +147,8 @@ def test_compute_all_levels_session_vwap_disabled_produces_no_dvwap_column():
     )
     assert "dVWAP_RTH" not in out.columns
     assert "dVWAP" not in out.columns
+    assert "wVWAP" not in out.columns
+    assert "mVWAP" not in out.columns
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +196,7 @@ def test_dvwap_rth_exact_values():
 def test_dvwap_output_column_names_are_dvwap_rth_and_dvwap():
     df = _rth_fixture()
     result = compute_session_vwap_levels(df, enabled=True)
-    assert list(result.columns) == ["dVWAP_RTH", "dVWAP"]
+    assert list(result.columns) == ["dVWAP_RTH", "dVWAP", "wVWAP", "mVWAP"]
 
 
 def test_dvwap_index_length_matches_input():
@@ -407,6 +409,8 @@ def test_no_dvwap_column_without_session_vwap_enabled():
     out = compute_all_levels(df, instrument="ES", opening_range_minutes=5)
     assert "dVWAP_RTH" not in out.columns
     assert "dVWAP" not in out.columns
+    assert "wVWAP" not in out.columns
+    assert "mVWAP" not in out.columns
 
 
 def test_dvwap_column_present_when_enabled():
@@ -420,6 +424,8 @@ def test_dvwap_column_present_when_enabled():
     )
     assert "dVWAP_RTH" in out.columns
     assert "dVWAP" in out.columns
+    assert "wVWAP" in out.columns
+    assert "mVWAP" in out.columns
 
 
 # ---------------------------------------------------------------------------
