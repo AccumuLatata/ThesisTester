@@ -53,6 +53,16 @@ in-process runner.
 This surface answers: *across many closed setups, which factor combinations look
 promising?* It is **not** confluence-combo attribution (within-trade membership).
 
+**Level-as-anchor combination protocol:**
+[`docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md).
+That document inventories the closed token set and prescribes staged
+`core_level` × complementary `partner_levels` studies (kill-list → pairwise →
+ToD). It does not add factor axes. Required studies use `min_valid_confluences: 1`
+and `from_partners: required`. Admit is `backtest.entry_window` (via
+`study promote --admit-tod auto`), not setup-only `constants.entry_window`.
+OTF is the Validation matrix, not `factors.otf`. Do not treat the teaching
+examples’ full cartesians as that protocol.
+
 ---
 
 ## RS1 — StudySpec schema (`schema_version: 1`)

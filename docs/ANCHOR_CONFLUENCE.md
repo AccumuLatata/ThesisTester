@@ -28,7 +28,7 @@ This guide explains the implemented anchor-confluence workflow in ThesisTester a
 
 ## Minimum valid confluences
 
-`min_valid_confluences` is the minimum number of valid confluence rules required on a bar, in addition to all required rules being valid.
+`min_valid_confluences` is the minimum number of **valid** confluence rules on a bar (`valid_count` includes required rules). Every required rule must also be valid. The engine does **not** add `min_valid` on top of the required set. With all rules required, `min_valid: 1` is enough (Study expand also requires `min_valid <= len(rules)` per cell).
 
 ## Example setup
 
@@ -59,4 +59,10 @@ Anchor-zone diagnostics on Signals include:
 ## Research cautions
 
 Per-rule tolerances add degrees of freedom. Excessive tuning can overfit historical data. Compare anchor-rule setups against a global-cluster baseline and prefer out-of-sample or walk-forward validation when optimizing hypotheses.
+
+For systematically testing **locations as anchors** against complementary
+confluences (NQ/ES intra-day), follow
+[`docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md)
+rather than a full token cartesian. Combo attribution
+(`docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md`) is the retrospective companion.
 
