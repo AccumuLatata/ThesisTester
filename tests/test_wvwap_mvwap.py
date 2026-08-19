@@ -322,6 +322,52 @@ def test_wvwap_resets_at_sunday_eth_open():
     assert v.iloc[2:].tolist() == pytest.approx(_expected_cum_vwap(week2), rel=1e-9)
 
 
+def test_period_keys_match_plan_verified_w_sun_fixtures():
+    """Lock plan §3.3 timestamps. Friday→Sunday-18:00 also passes under W-MON.
+
+    Monday 2026-06-01 and Sunday 2026-06-07 17:59 share W-SUN (2026-06-01/07)
+    but not W-MON. June 30 18:00 resets mVWAP only — same W-SUN week continues.
+    """
+    df = pd.DataFrame(
+        [
+            _rth(pd.Timestamp("2026-06-01 09:30", tz=TZ), 101.0, 99.0, 100.0, 10.0),
+            _eth(pd.Timestamp("2026-06-07 17:59", tz=TZ), 201.0, 199.0, 200.0, 20.0),
+            _eth(pd.Timestamp("2026-06-07 18:00", tz=TZ), 301.0, 299.0, 300.0, 5.0),
+            _rth(pd.Timestamp("2026-06-30 17:59", tz=TZ), 401.0, 399.0, 400.0, 10.0),
+            _eth(pd.Timestamp("2026-06-30 18:00", tz=TZ), 501.0, 499.0, 500.0, 15.0),
+        ]
+    )
+    tagged = tag_session(df, "ES")
+    sessions = compute_session_levels(tagged, instrument="ES")
+    result = compute_session_vwap_levels(df, instrument="ES", enabled=True)
+    w = result[COL_WVWAP]
+    m = result[COL_MVWAP]
+
+    monday_and_sun_1759 = _expected_cum_vwap(df.iloc[:2].to_dict("records"))
+    assert w.iloc[:2].tolist() == pytest.approx(monday_and_sun_1759, rel=1e-9)
+    assert w.iloc[1] != pytest.approx((201.0 + 199.0 + 200.0) / 3.0, rel=1e-9)
+
+    tp_week_roll = (301.0 + 299.0 + 300.0) / 3.0
+    assert w.iloc[2] == pytest.approx(tp_week_roll, rel=1e-9)
+    assert w.iloc[2] != pytest.approx(w.iloc[1], rel=1e-3)
+
+    tp_month_roll = (501.0 + 499.0 + 500.0) / 3.0
+    assert m.iloc[4] == pytest.approx(tp_month_roll, rel=1e-9)
+    assert m.iloc[4] != pytest.approx(m.iloc[3], rel=1e-3)
+    assert w.iloc[4] != pytest.approx(tp_month_roll, rel=1e-9)
+    assert w.iloc[3] != pytest.approx(w.iloc[4], rel=1e-9)
+
+    week_roll = sessions["timestamp"] >= pd.Timestamp("2026-06-07 18:00:00", tz=TZ)
+    month_roll = sessions["timestamp"] >= pd.Timestamp("2026-06-30 18:00:00", tz=TZ)
+    assert sessions.loc[~week_roll, "wOpen"].nunique() == 1
+    assert float(sessions.loc[~week_roll, "wOpen"].iloc[0]) != float(
+        sessions.loc[week_roll, "wOpen"].iloc[0]
+    )
+    assert float(sessions.loc[~month_roll, "mOpen"].iloc[-1]) != float(
+        sessions.loc[month_roll, "mOpen"].iloc[0]
+    )
+
+
 def test_mvwap_resets_at_month_session_open():
     df = _month_roll_fixture()
     result = compute_session_vwap_levels(df, instrument="ES", enabled=True)
