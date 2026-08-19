@@ -538,13 +538,15 @@ with st.expander("Advanced opt-in levels", expanded=True):
         pivot_left = 2
         pivot_right = 2
     session_vwap_enabled = st.checkbox(
-        "Enable developing session VWAPs (dVWAP_RTH + dVWAP)",
+        "Enable developing session VWAPs (dVWAP_RTH + dVWAP + wVWAP + mVWAP)",
         value=DEFAULT_LEVELS_SETTINGS["session_vwap_enabled"],
         key=_SESSION_VWAP_ENABLED_KEY,
         help=(
             "dVWAP_RTH: developing VWAP from NY/RTH open (NaN on ETH). "
             "dVWAP: developing VWAP from CME session open (eth_start) across "
-            "the full trading session (ETH + RTH)."
+            "the full trading session (ETH + RTH). "
+            "wVWAP / mVWAP: developing VWAP of the current trading week / month "
+            "(same W-SUN / M keys as wOpen / mOpen; ETH + RTH)."
         ),
     )
     single_prints_enabled = st.checkbox(

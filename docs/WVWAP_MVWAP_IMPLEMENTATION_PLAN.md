@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: `wVWAP` + `mVWAP`
 
-**Status:** WMV1 implemented (WMV2 not started)  
+**Status:** Series complete (WMV0–WMV2 implemented)  
 **Series id:** WMV  
 **Document type:** Focused level-family implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  

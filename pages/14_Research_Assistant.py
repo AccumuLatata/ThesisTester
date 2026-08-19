@@ -1429,7 +1429,7 @@ with st.expander(
     with st.expander("Structured level controls"):
         with st.form(f"assistant_levels_{thesis_id}_{_fingerprint(levels)}"):
             session_vwap_enabled = st.checkbox(
-                "Enable developing session VWAPs (dVWAP_RTH + dVWAP)",
+                "Enable developing session VWAPs (dVWAP_RTH + dVWAP + wVWAP + mVWAP)",
                 value=bool(levels.get("session_vwap_enabled", True)),
             )
             draft_opening_range = safe_int(levels.get("opening_range_minutes"), 30)
