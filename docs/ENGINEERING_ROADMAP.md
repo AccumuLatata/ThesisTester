@@ -24,7 +24,7 @@ Assistant-related contracts:
 | Audit honesty remediations | `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` (AH) | **AH0–AH6.** Flatten leak fixed; Study paths pinned; OTF-matrix train prefix-sliced; leftover bundle keys managed; `sl_first` honors 3c entry activation; `BASE_COLUMNS` rejected in setup validator. No composer collapse; no golden regen except AH5 hard-stop |
 | Study Admit Follow-up | `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF); operator `docs/STUDY_RUNNER.md` §SAF | **SAF1–SAF3 shipped** (CLI `--admit-tod auto` + `--tod-group` / `--allow-thin` + Inspect draft → Preview + catalog `parent`). SAF4 parked. Promote without flags stays RS5. No auto-run; no ToD factor axis |
 | Level Catalog Contract | `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md` (LC) | **LC4 landed.** Series complete. Catalog completeness/correctness for already-emitted levels. No new price series; no `LEVEL_ENGINE_VERSION`; no golden regen |
-| Developing week/month VWAP | `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV) | **WMV1 landed** (engine + Setup/Study tokens). WMV2 copy not started. Same `session_vwap_enabled` gate; `LEVEL_ENGINE_VERSION` 10; no golden regen |
+| Developing week/month VWAP | `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV) | **WMV2 landed.** Series complete. Developing `wVWAP` / `mVWAP` siblings of `dVWAP`; Setup/Study tokens; Help/UI copy. Same `session_vwap_enabled` gate; `LEVEL_ENGINE_VERSION` 10; no golden regen |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1373,7 +1373,7 @@ or bump `LEVEL_ENGINE_VERSION`.
 `LEVEL_ENGINE_VERSION` bump. Parked: developing H/L/VA, rolling VAH/VAL, IB,
 `15min` MAs, adding `1h` to default `vwap_windows`, pivot `1min` aliases.
 
-## Developing week/month VWAP (WMV0–WMV2) — WMV1 landed
+## Developing week/month VWAP (WMV0–WMV2) — series complete
 
 Add developing `wVWAP` / `mVWAP` as within-week / within-month siblings of
 `dVWAP`. Same `session_vwap_enabled` gate; same `W-SUN` / `M` keys as
@@ -1388,7 +1388,7 @@ edits.
 |---|---|
 | WMV0 | Plan lock + docs index ✅ |
 | WMV1 | Engine emit + `LEVEL_ENGINE_VERSION` 10 + Setup/Study token tests + living engine docs ✅ |
-| WMV2 | Levels/Assistant/Help copy + thesis-compiler hint |
+| WMV2 | Levels/Assistant/Help copy + thesis-compiler hint ✅ |
 
 **Regression posture:** additive columns only when the existing session-VWAP
 gate is on; `dVWAP*` value-identical; `compute_all_levels` default remains

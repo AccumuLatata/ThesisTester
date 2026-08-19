@@ -183,7 +183,7 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
 ## Level-upgrade status
 
 - The Levels page supports advanced level families: confirmed pivots, `dVWAP_RTH`,
-  TPO 30m Single Prints, APOC / pAPOC, and prev30mVWAP.
+  `dVWAP`, `wVWAP`, `mVWAP`, TPO 30m Single Prints, APOC / pAPOC, and prev30mVWAP.
 - Product defaults enable these advanced families (`thesistester/levels/defaults.py`);
   users can disable per family on the Levels page.
 - Baseline session/indicator level behavior remains available when advanced families

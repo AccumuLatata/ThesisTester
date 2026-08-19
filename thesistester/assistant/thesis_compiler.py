@@ -400,7 +400,7 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
             unresolved.append(question)
     # Clarifications consult only staged executable sections. Legacy flat keys
     # such as session_vwap_anchor / confluence_tolerance_ticks are ignored.
-    if re.search(r"\bdvwap\b", text):
+    if re.search(r"\b(?:d|w|m)vwap\b", text):
         levels = selected.get("levels")
         if not isinstance(levels, Mapping) or not levels.get("session_vwap_enabled"):
             unresolved.append("Enable developing session VWAPs for the dVWAP thesis.")
