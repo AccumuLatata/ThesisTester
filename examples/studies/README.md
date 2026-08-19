@@ -1,6 +1,8 @@
 # Research Study Runner examples
 
 Operator contract: [`docs/STUDY_RUNNER.md`](../../docs/STUDY_RUNNER.md)  
+Level-as-anchor combination protocol (not these teaching cartesians):
+[`docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`](../../docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md)  
 Plan: [`docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md)  
 Study Viewer (SV1–SV5 shipped: catalog + `study list` + quality panes + overview charts + cell peek + trader briefing / grid / NY ToD): [`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md)  
 External Grok routine pack (RS-D5): [`docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md`](../../docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md) · [`agents/`](agents/)
