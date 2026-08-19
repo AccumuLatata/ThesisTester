@@ -719,5 +719,5 @@ When OTF is enabled in walk-forward:
 - **Portfolio:** `pages/13_Portfolio.py`.
 - **Research Assistant:** `pages/14_Research_Assistant.py`, `thesistester/assistant/`.
 - **Docs index:** `docs/README.md` (living vs contract vs archive/research).
-- **Developing week/month VWAP (WMV):** `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV0 locked; do not emit `wVWAP`/`mVWAP` until WMV1).
+- **Developing week/month VWAP (WMV):** `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV1 landed; WMV2 is copy-only).
 - **Voice sidecar ops:** `docs/VOICE_SIDECAR_OPS.md`.

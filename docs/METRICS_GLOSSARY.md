@@ -480,14 +480,16 @@ Emitted by `python -m thesistester study report <study_dir>` into
 | **study briefing** | Deterministic Inspect headline: highest `primary_metric` cell + factor settings + best SL/TP + strongest NY `entry_rth_segment` (`avg_r`) on that cell's `trades.parquet`. Post-hoc; not a validated edge. |
 | **NY RTH segment (study ToD)** | Same buckets as Time Analysis (`pre_rth`, `rth_open_30m`, `rth_morning`, `rth_midday`, `rth_afternoon`, `rth_power_hour`, `post_rth`; America/New_York). Not a StudySpec factor. |
 
-## Developing session VWAPs (`dVWAP_RTH`, `dVWAP`)
+## Developing session VWAPs (`dVWAP_RTH`, `dVWAP`, `wVWAP`, `mVWAP`)
 
 | Name | Definition |
 |---|---|
 | `dVWAP_RTH` | Developing typical-price VWAP from RTH open (`tp=(H+L+C)/3`). Resets each RTH session. `NaN` on ETH bars and when cumulative RTH volume is zero. |
 | `dVWAP` | Developing typical-price VWAP over the entire CME trading session (`eth_start` → next `eth_start` via `trading_session_date`). ETH and RTH bars both contribute and emit. Resets at each CME session open. `NaN` when cumulative session volume is zero. |
-| `session_vwap_enabled` | Gate for both columns. Product/API defaults enable; low-level `compute_all_levels` defaults off. |
-| `session_vwap_anchor` | RTH-column gate only (`"RTH"`). Does not change `dVWAP` anchoring. |
+| `wVWAP` | Developing typical-price VWAP of the current CME trading week (`trading_session_date` → `W-SUN`, same key as `wOpen`). ETH and RTH bars both contribute and emit. Resets at each new trading week. `NaN` when cumulative week volume is zero. Not a prior-week freeze. |
+| `mVWAP` | Developing typical-price VWAP of the current CME trading month (`trading_session_date` → `M`, same key as `mOpen`). ETH and RTH bars both contribute and emit. Resets at each new trading month. `NaN` when cumulative month volume is zero. Not a prior-month freeze. |
+| `session_vwap_enabled` | Gate for all four columns. Product/API defaults enable; low-level `compute_all_levels` defaults off. |
+| `session_vwap_anchor` | RTH-column gate only (`"RTH"`). Does not change `dVWAP` / `wVWAP` / `mVWAP` anchoring. |
 
 Implementation: `thesistester/levels/session_vwap.py`.
 

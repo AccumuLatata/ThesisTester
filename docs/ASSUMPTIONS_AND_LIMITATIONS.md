@@ -266,17 +266,19 @@ This engine is for **research screening**, not proof of a durable edge.
 - Confirmed pivots are delayed by right-side confirmation and are not real-time swing predictions.
 - Confirmed pivots do not encode SFP, liquidity sweep, breaker, reclaim, or retest semantics.
 
-### 5b) Developing session VWAPs (`dVWAP_RTH`, `dVWAP`) are opt-in
+### 5b) Developing session VWAPs (`dVWAP_RTH`, `dVWAP`, `wVWAP`, `mVWAP`) are opt-in
 - The Levels page and headless API enable session VWAPs in their built-in configuration. Direct `compute_all_levels` calls retain `session_vwap_enabled=False` by default.
-- When enabled, both columns are emitted under the same gate:
+- When enabled, four columns are emitted under the same gate:
   - `dVWAP_RTH` — developing VWAP from RTH open; non-RTH bars always emit `NaN`.
   - `dVWAP` — developing VWAP over the entire CME trading session (`eth_start` → next `eth_start` via `trading_session_date`); ETH and RTH bars both contribute and both emit values.
-- `session_vwap_anchor` remains `"RTH"` for the RTH column gate only; full-session `dVWAP` does not use the anchor parameter.
+  - `wVWAP` — developing VWAP of the current CME trading week (`trading_session_date` → `W-SUN`, same key as `wOpen`); ETH and RTH bars both contribute and emit. This is a within-week developing level, not a prior-week freeze.
+  - `mVWAP` — developing VWAP of the current CME trading month (`trading_session_date` → `M`, same key as `mOpen`); ETH and RTH bars both contribute and emit. This is a within-month developing level, not a prior-month freeze.
+- `session_vwap_anchor` remains `"RTH"` for the RTH column gate only; full-session `dVWAP` / `wVWAP` / `mVWAP` do not use the anchor parameter.
 - Instruments without `eth_start` fall back to calendar-date session grouping (same helper as other session-date levels).
 - Zero cumulative volume in the active group emits `NaN` (safe divide-by-zero handling).
 - If the input DataFrame lacks a `session` column, RTH membership for `dVWAP_RTH` is derived from the instrument configuration and the timestamp timezone.
 - `session_vwap_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
-- `LEVEL_ENGINE_VERSION` bumped to 9 for the additive `dVWAP` vocabulary (cache invalidation when product defaults enable the family).
+- `LEVEL_ENGINE_VERSION` bumped to 10 for the additive `wVWAP` / `mVWAP` vocabulary (cache invalidation when product defaults enable the family).
 
 ### 5c) TPO 30m Single Prints are opt-in scalar levels
 - The Levels page and headless API enable Single Prints in their built-in configuration. Direct `compute_all_levels` calls retain `single_prints_enabled=False` by default.
@@ -453,6 +455,14 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   (`trading_session_date` / `eth_start`) using a causal cumulative sum. ETH and RTH
   bars both contribute and emit. Appending future bars cannot retroactively change
   any prior bar's value. Resets at each CME session open.
+- `wVWAP` accumulates all bars in the current trading week (`W-SUN` on
+  `trading_session_date`, same key as `wOpen`) using a causal cumulative sum.
+  ETH and RTH bars both contribute and emit. Appending future bars cannot
+  retroactively change any prior bar's value. Resets at each new trading week.
+- `mVWAP` accumulates all bars in the current trading month (`M` on
+  `trading_session_date`, same key as `mOpen`) using a causal cumulative sum.
+  ETH and RTH bars both contribute and emit. Appending future bars cannot
+  retroactively change any prior bar's value. Resets at each new trading month.
 - `dSinglePrint_30m_NearestAbove/Below` use only completed 30-minute RTH brackets at
   or before the current bar's timestamp. The current incomplete bracket is excluded.
   ETH bars do not contribute. Non-RTH bars always emit `NaN`. Appending future bars
@@ -514,9 +524,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - Confirmed pivots require enough left/right candles to become knowable and expose only
   the latest confirmed scalar levels. Historical pivot-instance columns and higher-order
   classifications (SFP, breaker, reclaim, retest) are not implemented yet.
-- `dVWAP_RTH` and `dVWAP` use bar-level typical price `(H+L+C)/3`. True intrabar
+- `dVWAP_RTH`, `dVWAP`, `wVWAP`, and `mVWAP` use bar-level typical price `(H+L+C)/3`. True intrabar
   VWAP would require tick data. Since signals are treated as bar-close confirmed,
-  this is documented intent, not a bug.
+  this is documented intent, not a bug. Do not confuse `wVWAP`/`mVWAP` with prior-period
+  references (`pwOpen`/`pmOpen` / hypothetical `pwVWAP`/`pmVWAP`).
 - Single Print columns (`dSinglePrint_30m_*`, `pSinglePrint_30m_*`) expose only scalar
   nearest-above/below summaries. A full list of all Single Print bins is not emitted.
   No volume-at-price or full market profile object is available.
