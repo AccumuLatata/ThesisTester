@@ -10,6 +10,8 @@ Study Runner CLI or optionally uses default-off RS6 `STUDY.*` tools.
 | [`ROUTINE_CONFIRM_BOUND.md`](ROUTINE_CONFIRM_BOUND.md) | RS6 two-step bound approval (extends minimal recipe) |
 | [`ROUTINE_SURVIVOR_DIAGNOSTICS.md`](ROUTINE_SURVIVOR_DIAGNOSTICS.md) | Human-edited draft → second pass → optional rollup |
 
+**Desk contract switch (Notion *Process and roadmap*):** [`docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`](../../../docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) — keep the old page’s logging/roadmap; absorb protocol locks; do not paste the full plan.
+
 **Full pack (normative):** [`docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md`](../../../docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md)  
 **Operator contract:** [`docs/STUDY_RUNNER.md`](../../../docs/STUDY_RUNNER.md)  
 **Stage example:** [`../pdPOC_ma_confluence_battery.yaml`](../pdPOC_ma_confluence_battery.yaml)
