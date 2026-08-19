@@ -416,10 +416,10 @@ This engine is for **research screening**, not proof of a durable edge.
 ### 5f) Stage 6 UI and Persistence — opt-in level controls (Levels page)
 
 - The Levels page (`pages/2_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
-- Inside the expander: checkboxes for confirmed pivots, developing session VWAPs (`dVWAP_RTH` + `dVWAP`), TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
+- Inside the expander: checkboxes for confirmed pivots, developing session VWAPs (`dVWAP_RTH` + `dVWAP` + `wVWAP` + `mVWAP`), TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
 - `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min`; 70% value area; and prior day/week/month profile aggregation of 4/8/10 ticks.
 - When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
-- `session_vwap_anchor` is fixed to `"RTH"` for the RTH column gate; full-session `dVWAP` is emitted alongside when the session-VWAP gate is enabled.
+- `session_vwap_anchor` is fixed to `"RTH"` for the RTH column gate; full-session `dVWAP` / `wVWAP` / `mVWAP` are emitted alongside when the session-VWAP gate is enabled.
 - No Single Print or APOC configuration controls are exposed beyond the enable checkbox.
 - APOC / pAPOC remain independent from Single Prints; APOC is not routed through `compute_tpo_levels`.
 - `_normalize_levels_settings` retains disabled defaults for missing Stage 6 keys so old saved snapshots remain compatible without changing their historical calculation contract.

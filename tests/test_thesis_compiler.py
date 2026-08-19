@@ -12,13 +12,18 @@ from thesistester.assistant import (
 )
 
 
-def test_compiler_marks_wvwap_prompt_with_existing_session_vwap_assumption():
-    draft = compile_thesis("Fade wVWAP in the New York session.")
-    assert any(
-        item == "Enable developing session VWAPs for the dVWAP thesis."
-        for item in draft.unresolved_assumptions
-    )
+@pytest.mark.parametrize("token", ["wVWAP", "mVWAP"])
+def test_compiler_marks_htf_vwap_prompt_with_existing_session_vwap_assumption(token):
+    unresolved = "Enable developing session VWAPs for the dVWAP thesis."
+    draft = compile_thesis(f"Fade {token} in the New York session.")
+    assert any(item == unresolved for item in draft.unresolved_assumptions)
     assert any("dVWAP" in item for item in draft.unresolved_assumptions)
+
+    enabled = compile_thesis(
+        f"Fade {token} in the New York session.",
+        choices={"levels": {"session_vwap_enabled": True}},
+    )
+    assert unresolved not in enabled.unresolved_assumptions
 
 
 def test_compiler_marks_ambiguous_trading_language_for_clarification():
