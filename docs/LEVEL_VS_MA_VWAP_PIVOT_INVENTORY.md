@@ -202,6 +202,27 @@ Pivots unchanged (8).
 
 There is **no** MA `15min` TF. Do not invent `SMA_50_15min`.
 
+### 2.3 How pivots attach (not floor pivots)
+
+Pivots are **partners**, same shape as an MA. They are not cores on this grid. They are not classic PP/R1/S1.
+
+```text
+core_level: ONH
+partner_levels: [Pivot_5m_High]
+tolerance_ticks: 10          # |Pivot_5m_High − ONH| ≤ 10 ticks
+```
+
+What the token is (`thesistester/levels/pivots.py`):
+
+- Latest **confirmed fractal** swing: high is a local max vs `left` bars and `right` bars (default **2 / 2**).
+- PIT: the value is published only after `right+1` bars of that TF (`align_timestamp = pivot_bar + 3 × TF`). Unconfirmed swings are not in the column.
+- Settings keys are `1min`/`5min`/`30min`/`4h`. Column spelling is `Pivot_1m_*` (not `Pivot_1min_*`).
+- Defaults already emit all 8 (`pivots_enabled: true`). If that gate is off, the tokens are illegal.
+
+A zone fires when the latest confirmed pivot **price** sits within 10 ticks of the **anchor price**. Example: ONH is 21450.00 and `Pivot_5m_High` is 21448.50 → 6 ticks → valid. The 5m swing is “at” the overnight high.
+
+Run **all 8** per anchor. `ONH`+`Pivot_5m_High` (same-side structure) and `ONH`+`Pivot_5m_Low` (opposite swing) are different theses; do not drop Low because High feels more natural. Do **not** put two pivots in one partner set (same swing structure, two TFs). Do not invent `Pivot_15m_*` or floor-pivot names.
+
 ---
 
 ## 3. Work-through order
