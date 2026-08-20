@@ -1397,7 +1397,7 @@ gate is on; `dVWAP*` value-identical; `compute_all_levels` default remains
 off; no golden regeneration; no new `st.session_state` keys. Parked:
 `pwVWAP` / `pmVWAP`, `wVWAP_RTH` / `mVWAP_RTH`, period-key extraction.
 
-## Anchor-only (`min_valid=0`) (AO0–AO1) — AO0 locked
+## Anchor-only (`min_valid=0`) (AO0–AO1) — AO1 implemented
 
 Allow `anchor_rules` with no partners so a named location can be traded
 alone. Opt-in: default `min_valid` stays 1; empty rules + that default

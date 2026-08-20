@@ -509,6 +509,14 @@ def test_expand_anchor_only_empty_partner_set():
     validate_run_spec(expansion.experiment["runs"][0])
 
 
+def test_expand_min_valid_two_incompatible_with_one_partner():
+    study = _anchor_only_study()
+    study["study"]["constants"]["min_valid_confluences"] = 2
+    study["study"]["factors"]["partner_levels"] = [["dVWAP"]]
+    with pytest.raises(StudySpecError, match="incompatible"):
+        expand_study(study)
+
+
 def test_expand_global_cluster_empty_partners_fails_closed():
     study = {
         "dataset": {"instrument": "ES"},

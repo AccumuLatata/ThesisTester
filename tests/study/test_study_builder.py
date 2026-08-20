@@ -381,6 +381,17 @@ def test_emit_rejects_empty_partner_set():
         emit_study_spec(draft)
 
 
+def test_emit_accepts_anchor_only_empty_partner_set():
+    draft = default_study_draft()
+    draft.confluence_mode = ["anchor_rules"]
+    draft.min_valid_confluences = 0
+    draft.partner_levels = [[]]
+    spec = emit_study_spec(draft)
+    assert spec["study"]["factors"]["partner_levels"] == [[]]
+    assert spec["study"]["constants"]["min_valid_confluences"] == 0
+    assert spec["study"]["factors"]["confluence_mode"] == ["anchor_rules"]
+
+
 def test_emit_never_writes_null_timeframe_keys():
     draft = default_study_draft()
     draft.levels = {
