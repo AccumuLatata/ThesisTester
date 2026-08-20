@@ -530,8 +530,8 @@ def _sync_editor_widget_state(
         min_valid_default, min_valid_fallback = _safe_int_fallback(
             min_valid_raw,
             default=1,
-            min_value=1,
-            max_value=max(1, len(selected_confluence_levels) if selected_confluence_levels else 1),
+            min_value=0,
+            max_value=max(len(selected_confluence_levels), 0),
         )
         if min_valid_fallback:
             warnings.append("Loaded minimum valid confluences is invalid; using a safe value.")
@@ -1003,7 +1003,7 @@ else:
         min_valid_default, min_valid_fallback = _safe_int_fallback(
             st.session_state.get(WIDGET_KEY_MIN_VALID_CONFLUENCES),
             default=1,
-            min_value=1,
+            min_value=0,
             max_value=len(selected_confluence_levels),
         )
         if min_valid_fallback:
@@ -1011,7 +1011,7 @@ else:
         min_valid_confluences = int(
             st.number_input(
                 "Minimum valid confluences",
-                min_value=1,
+                min_value=0,
                 max_value=len(selected_confluence_levels),
                 value=min_valid_default,
                 step=1,
@@ -1019,7 +1019,8 @@ else:
             )
         )
     else:
-        st.info("Select at least one confluence level.")
+        min_valid_confluences = 0
+        st.caption("Anchor only — no confluence required. Zone is the live anchor price.")
 
     selected_levels = (
         [anchor_level, *selected_confluence_levels]

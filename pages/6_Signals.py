@@ -463,7 +463,8 @@ def _no_zones_message(confluence_mode: str) -> str:
         return (
             "No confluence zones found with the current settings. "
             "For anchor setups, review the anchor level, confluence rules, "
-            "and per-rule tolerances."
+            "and per-rule tolerances. A missing finite anchor price also "
+            "yields no zones."
         )
     return (
         "No confluence zones found with the current settings. "
@@ -1104,14 +1105,15 @@ with st.sidebar:
                 min_valid_confluences = int(
                     st.number_input(
                         "Minimum valid confluences",
-                        min_value=1,
+                        min_value=0,
                         max_value=len(selected_confluence_levels),
                         value=1,
                         step=1,
                     )
                 )
             else:
-                st.info("Select at least one confluence level.")
+                min_valid_confluences = 0
+                st.caption("Anchor only — no confluence required. Zone is the live anchor price.")
             selected_levels = [anchor_level, *selected_confluence_levels]
 
         st.header("Signal settings")
@@ -1257,7 +1259,7 @@ if generate_btn:
             if not anchor_level:
                 st.error("Anchor mode requires an anchor level.")
                 st.stop()
-            if not confluence_rules:
+            if not confluence_rules and min_valid_confluences >= 1:
                 st.error("Anchor mode requires at least one confluence rule.")
                 st.stop()
             missing_columns = _missing_anchor_columns(levels_df, anchor_level, confluence_rules)
