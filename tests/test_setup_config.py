@@ -312,9 +312,7 @@ def test_anchor_rules_empty_rules_omitted_min_valid_invalid():
 
 
 def test_anchor_rules_empty_rules_bool_false_min_valid_invalid():
-    errors = validate_setup_config(
-        _anchor_config(confluence_rules=[], min_valid_confluences=False)
-    )
+    errors = validate_setup_config(_anchor_config(confluence_rules=[], min_valid_confluences=False))
     assert any("Minimum valid confluences must be an integer" in message for message in errors)
 
 
