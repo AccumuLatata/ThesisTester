@@ -18,6 +18,12 @@ Normative amendments in this revision (do not silently revert):
 7. L0 names `exposure_policy`, flatten-at-close, and the ES/MES money map.
 8. Complementary means **different information**. Family letters are a catalog, not a license.
 
+Product capability (not a desk-sequence change): exclusive `anchor_rules`
+StudySpecs may now emit location-only cells (`partner_levels: [[]]` +
+explicit `min_valid_confluences: 0`). See
+`docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md`. L1/L2 locks stay
+`from_partners: required` and `min_valid_confluences: 1` with `{dVWAP}`.
+
 ---
 
 ## 1. Objective

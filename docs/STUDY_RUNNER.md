@@ -109,7 +109,7 @@ block (`primary_metric: expectancy_r`, `multiple_testing: warn`, …). Default
 | Axis | Values |
 |---|---|
 | `core_level` | non-empty list of closed level tokens |
-| `partner_levels` | non-empty list of non-empty partner-sets (lists) |
+| `partner_levels` | non-empty list of partner-sets (lists). A set may be `[]` only when `confluence_mode` is exclusively `anchor_rules` **and** `constants.min_valid_confluences` is an explicit `0` |
 | `confluence_mode` | `global_cluster`, `anchor_rules` |
 | `trigger` | `touch`, `reject`, `break`, `reclaim`, `3c` |
 | `trigger_timeframe` | `base`, `1min`, `5min`, `15min` (**not** `30min`) |

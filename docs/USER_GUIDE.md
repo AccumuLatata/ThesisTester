@@ -165,7 +165,7 @@ setup, save setup, thesis link
 
 | Control | Meaning | Common pitfall |
 |---|---|---|
-| `Confluence mode` | `Global cluster` or `Anchor-based rules` | Anchor mode needs a valid anchor level |
+| `Confluence mode` | `Global cluster` or `Anchor-based rules` | Anchor mode needs a valid anchor level. Leave confluence levels empty and set minimum valid to 0 to trade the anchor alone |
 | `Selected level columns` / anchor + confluence levels | Which levels can cluster | Unavailable levels block clean saves |
 | `Tolerance ticks` / per-level tolerances | How close levels must be | Too wide → noisy zones |
 | `Minimum` / `Maximum confluences` | Cluster size bounds | Max < min yields nothing useful |

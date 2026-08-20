@@ -2,7 +2,7 @@
 
 **Document type:** Focused, regression-safe implementation contract  
 **Date:** 2026-08-20  
-**Status:** AO0 plan locked — not implemented  
+**Status:** AO1 implemented  
 **Series:** **AO** (Anchor-Only). **AO0** = this plan lock. **AO1** = the one implementation PR in §4.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related:** `docs/ANCHOR_CONFLUENCE.md`, `docs/STUDY_RUNNER.md`, `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/AGENT_GUIDE.md`
