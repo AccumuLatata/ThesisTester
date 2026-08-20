@@ -624,6 +624,104 @@ def test_duplicate_partner_tokens_rejected():
         validate_study_spec(normalize_study_spec(raw))
 
 
+def test_empty_partner_set_valid_for_exclusive_anchor_min_valid_zero():
+    raw = _minimal_study()
+    raw["study"]["constants"]["min_valid_confluences"] = 0
+    raw["study"]["factors"]["partner_levels"] = [[]]
+    raw["study"]["factors"]["confluence_mode"] = ["anchor_rules"]
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["partner_levels"] == [[]]
+
+
+def test_empty_partner_set_invalid_when_min_valid_is_one():
+    raw = _minimal_study()
+    raw["study"]["constants"]["min_valid_confluences"] = 1
+    raw["study"]["factors"]["partner_levels"] = [[]]
+    raw["study"]["factors"]["confluence_mode"] = ["anchor_rules"]
+    with pytest.raises(StudySpecError, match="must be a non-empty list"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_empty_partner_set_invalid_when_min_valid_omitted():
+    raw = _minimal_study()
+    raw["study"]["constants"].pop("min_valid_confluences")
+    raw["study"]["factors"]["partner_levels"] = [[]]
+    raw["study"]["factors"]["confluence_mode"] = ["anchor_rules"]
+    with pytest.raises(StudySpecError, match="must be a non-empty list"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_empty_partner_set_invalid_when_global_cluster_present():
+    raw = _minimal_study()
+    raw["study"]["constants"]["min_valid_confluences"] = 0
+    raw["study"]["factors"]["partner_levels"] = [[]]
+    raw["study"]["factors"]["confluence_mode"] = ["global_cluster", "anchor_rules"]
+    with pytest.raises(StudySpecError, match="must be a non-empty list"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_empty_partner_set_invalid_when_min_valid_is_truncated_float():
+    raw = _minimal_study()
+    raw["study"]["constants"]["min_valid_confluences"] = 0.9
+    raw["study"]["factors"]["partner_levels"] = [[]]
+    raw["study"]["factors"]["confluence_mode"] = ["anchor_rules"]
+    with pytest.raises(StudySpecError, match="must be a non-empty list"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def _anchor_only_minimal_study():
+    raw = _minimal_study()
+    raw["study"]["constants"]["min_valid_confluences"] = 0
+    raw["study"]["factors"]["partner_levels"] = [[]]
+    raw["study"]["factors"]["confluence_mode"] = ["anchor_rules"]
+    return raw
+
+
+def test_stage_explicit_cells_allow_empty_partner_set_in_domain():
+    raw = _anchor_only_minimal_study()
+    raw["study"]["stage"] = {
+        "mode": "explicit_cells",
+        "cells": [
+            {
+                "core_level": "pdPOC",
+                "partner_levels": [],
+                "confluence_mode": "anchor_rules",
+                "trigger": "touch",
+                "trigger_timeframe": "base",
+                "otf": {"enabled": False},
+            }
+        ],
+    }
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["stage"]["cells"][0]["partner_levels"] == []
+
+
+def test_stage_filter_include_allows_empty_partner_set_in_domain():
+    raw = _anchor_only_minimal_study()
+    raw["study"]["stage"] = {"mode": "filter", "include": {"partner_levels": [[]]}}
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["stage"]["include"]["partner_levels"] == [[]]
+
+
+def test_stage_explicit_cells_empty_partner_set_still_must_be_in_domain():
+    raw = _minimal_study()
+    raw["study"]["stage"] = {
+        "mode": "explicit_cells",
+        "cells": [
+            {
+                "core_level": "pdPOC",
+                "partner_levels": [],
+                "confluence_mode": "global_cluster",
+                "trigger": "touch",
+                "trigger_timeframe": "base",
+                "otf": {"enabled": False},
+            }
+        ],
+    }
+    with pytest.raises(StudySpecError, match="not one of factors.partner_levels"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
 def test_schema_version_rejects_bool_and_float():
     raw = _minimal_study()
     raw["schema_version"] = True

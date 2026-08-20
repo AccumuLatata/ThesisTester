@@ -259,6 +259,10 @@ def _build_setup_for_cell(
     otf_filter = _canonical_otf(cell["otf"] if "otf" in cell else {"enabled": False})
 
     if mode == "global_cluster":
+        if not partners:
+            raise StudySpecError(
+                f"global_cluster partner_levels for {run_name} must be a non-empty partner-set"
+            )
         selected_levels = [core, *partners]
         if len(selected_levels) > 5:
             raise StudySpecError(
@@ -296,7 +300,12 @@ def _build_setup_for_cell(
             }
             for partner in partners
         ]
-        if min_valid < 1 or min_valid > len(confluence_rules):
+        if min_valid < 0 or min_valid > len(confluence_rules):
+            raise StudySpecError(
+                f"min_valid_confluences={min_valid} incompatible with "
+                f"{len(confluence_rules)} partner rule(s)"
+            )
+        if min_valid >= 1 and len(confluence_rules) == 0:
             raise StudySpecError(
                 f"min_valid_confluences={min_valid} incompatible with "
                 f"{len(confluence_rules)} partner rule(s)"

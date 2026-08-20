@@ -476,18 +476,29 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             )
 
         confluence_rules = config.get("confluence_rules", [])
-        if not isinstance(confluence_rules, list) or not confluence_rules:
+        if not isinstance(confluence_rules, list):
             errors.append("Confluence rules must be a non-empty list.")
             confluence_rules = []
 
-        try:
-            min_valid_confluences = int(config.get("min_valid_confluences", 0))
-            if min_valid_confluences < 1:
-                errors.append("Minimum valid confluences must be >= 1.")
+        if "min_valid_confluences" not in config or config.get("min_valid_confluences") is None:
+            min_valid_confluences = 1
+        else:
+            raw_min_valid = config.get("min_valid_confluences")
+            if isinstance(raw_min_valid, bool):
                 min_valid_confluences = None
-        except (TypeError, ValueError):
-            min_valid_confluences = None
-            errors.append("Minimum valid confluences must be an integer.")
+                errors.append("Minimum valid confluences must be an integer.")
+            else:
+                try:
+                    min_valid_confluences = int(raw_min_valid)
+                    if min_valid_confluences < 0:
+                        errors.append("Minimum valid confluences must be >= 0.")
+                        min_valid_confluences = None
+                except (TypeError, ValueError):
+                    min_valid_confluences = None
+                    errors.append("Minimum valid confluences must be an integer.")
+
+        if not confluence_rules and min_valid_confluences != 0:
+            errors.append("Confluence rules must be a non-empty list.")
 
         if min_valid_confluences is not None and min_valid_confluences > len(confluence_rules):
             errors.append("Minimum valid confluences must be <= number of confluence rules.")

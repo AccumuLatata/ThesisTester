@@ -19,7 +19,7 @@ research snapshots live under [`research/`](research/README.md).
 | [otf-filter.md](otf-filter.md) | OTF v1 behavioral contract |
 | [research-methodology.md](research-methodology.md) | OTF OOS evaluation protocol |
 | [LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md) | Level-as-anchor combination protocol (token inventory + staged studies; promote/Admit/L2 power locks) |
-| [ANCHOR_ONLY_IMPLEMENTATION_PLAN.md](ANCHOR_ONLY_IMPLEMENTATION_PLAN.md) | AO — opt-in `anchor_rules` with no partners (`min_valid_confluences: 0`); **AO0 plan locked**; AO1 not implemented |
+| [ANCHOR_ONLY_IMPLEMENTATION_PLAN.md](ANCHOR_ONLY_IMPLEMENTATION_PLAN.md) | AO — opt-in `anchor_rules` with no partners (`min_valid_confluences: 0`); **AO1 implemented** |
 | [LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md](LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) | Handoff: rewrite Notion desk contract without losing logging/roadmap |
 | [ANCHOR_CONFLUENCE.md](ANCHOR_CONFLUENCE.md) | Anchor-confluence workflow guide |
 | [VOICE_SIDECAR_OPS.md](VOICE_SIDECAR_OPS.md) | Localhost realtime voice sidecar ops |

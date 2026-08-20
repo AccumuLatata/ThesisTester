@@ -1621,7 +1621,8 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.walk_forward = walk_forward
     draft.min_confluences = int(st.session_state.get(WIDGET_KEY_MIN_CONFLUENCES) or 2)
     draft.max_confluences = int(st.session_state.get(WIDGET_KEY_MAX_CONFLUENCES) or 2)
-    draft.min_valid_confluences = int(st.session_state.get(WIDGET_KEY_MIN_VALID_CONFLUENCES) or 1)
+    raw_min_valid = st.session_state.get(WIDGET_KEY_MIN_VALID_CONFLUENCES)
+    draft.min_valid_confluences = 1 if raw_min_valid is None else int(raw_min_valid)
     draft.from_partners = str(st.session_state.get(WIDGET_KEY_FROM_PARTNERS) or "required")
     domains = declared_factor_domains(draft)
     factor_keys = set(domains)
@@ -2101,7 +2102,7 @@ def _render_build() -> None:
         adv[0].number_input("min_confluences", min_value=1, step=1, key=WIDGET_KEY_MIN_CONFLUENCES)
         adv[1].number_input("max_confluences", min_value=1, step=1, key=WIDGET_KEY_MAX_CONFLUENCES)
         adv[2].number_input(
-            "min_valid_confluences", min_value=1, step=1, key=WIDGET_KEY_MIN_VALID_CONFLUENCES
+            "min_valid_confluences", min_value=0, step=1, key=WIDGET_KEY_MIN_VALID_CONFLUENCES
         )
         st.selectbox(
             "from_partners", options=list(_FROM_PARTNERS_OPTIONS), key=WIDGET_KEY_FROM_PARTNERS

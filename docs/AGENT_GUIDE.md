@@ -270,6 +270,10 @@ runs:
       enabled: false
 ```
 
+Anchor-only (opt-in): `confluence_mode: anchor_rules`, `confluence_rules: []`,
+`min_valid_confluences: 0`. Default `min_valid` stays 1. See
+`docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md`.
+
 Agent safety requirements:
 
 - Treat YAML and API arguments as research specifications, not permission to
@@ -720,5 +724,5 @@ When OTF is enabled in walk-forward:
 - **Research Assistant:** `pages/14_Research_Assistant.py`, `thesistester/assistant/`.
 - **Docs index:** `docs/README.md` (living vs contract vs archive/research).
 - **Developing week/month VWAP (WMV):** `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV0–WMV2 complete).
-- **Anchor-only (AO):** `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO0 locked; do not emit empty-rules zones until AO1).
+- **Anchor-only (AO):** `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO1 implemented; empty rules + `min_valid=0` only).
 - **Voice sidecar ops:** `docs/VOICE_SIDECAR_OPS.md`.
