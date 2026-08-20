@@ -1,9 +1,9 @@
 # Anchor-Only (`min_valid_confluences: 0`) — Implementation Plan
 
-**Document type:** Focused, regression-safe implementation contract (one PR)  
+**Document type:** Focused, regression-safe implementation contract  
 **Date:** 2026-08-20  
-**Status:** Plan published — not implemented  
-**Series:** **AO** (Anchor-Only)  
+**Status:** AO0 plan locked — not implemented  
+**Series:** **AO** (Anchor-Only). **AO0** = this plan lock. **AO1** = the one implementation PR in §4.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related:** `docs/ANCHOR_CONFLUENCE.md`, `docs/STUDY_RUNNER.md`, `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/AGENT_GUIDE.md`
 
@@ -103,8 +103,10 @@ zone_high = max(included_prices)
 ```
 
 Anchor-only therefore emits a **degenerate interval** `[P, P]` at the live
-anchor price. `valid_confluence_count = 0`. `rule_results = "[]"`.
-`level_names = "<anchor>"`. `level_count = 1`.
+anchor price. `valid_confluence_count = 0`. `rule_results = "[]"`
+(`json.dumps([])`). `level_names` is the **anchor token** (the existing
+`"|".join([anchor_level])` of a one-name list — e.g. `"ONH"`, not a
+literal `"<anchor>"` and not a trailing `|`). `level_count = 1`.
 
 Triggers already use zone overlap (`signals.py`: bar range vs
 `zone_low`/`zone_high`). Touch of a point zone means “bar high/low contains
@@ -194,9 +196,9 @@ do. No new signal path.
 
 ---
 
-## 4. Implementation (one PR)
+## 4. Implementation (AO1 — one PR)
 
-Suggested title: `AO: allow anchor-only zones (min_valid=0, regression-safe)`.
+Suggested title: `AO1: allow anchor-only zones (min_valid=0, regression-safe)`.
 
 ### 4.1 Detector — `thesistester/engine/anchor_confluence.py`
 
@@ -206,7 +208,7 @@ Replace the two gates:
 
 ```text
 # TODAY
-if not confluence_rules: return empty
+if not isinstance(confluence_rules, list) or not confluence_rules: return empty
 min_valid = max(int(min_valid_confluences), 1)
 
 # AFTER
@@ -214,13 +216,18 @@ if not isinstance(confluence_rules, list): return empty
 min_valid = int(min_valid_confluences)
 if min_valid < 0: raise ValueError("min_valid_confluences must be >= 0")
 if not confluence_rules and min_valid >= 1: return empty   # legacy
-# empty rules + min_valid == 0: fall through; for-loop is a no-op;
+# KEEP the existing missing / blank / unknown-column anchor_level
+# early-return HERE (before the bar loop). empty+0 + missing anchor
+# must still return the empty schema — do not fall into the loop.
+# empty rules + min_valid == 0 + finite anchor: for-loop is a no-op;
 # required_valid stays True; valid_count == 0; emit point zone
 ```
 
 Do not restructure the bar loop. Do not add a tolerance halo. Do not
 change `ANCHOR_ZONE_COLUMNS`. Missing / blank / unknown `anchor_level`
-still returns the empty schema (existing tests).
+still returns the empty schema (existing tests). Today that check runs
+**after** the empty-rules return; keep it, just do not skip it on the
+new empty+0 path.
 
 `tick_size <= 0` still raises.
 
@@ -228,18 +235,28 @@ still returns the empty schema (existing tests).
 
 `anchor_rules` branch only (`global_cluster` untouched):
 
-- `confluence_rules` may be `[]` **iff** `min_valid_confluences == 0`.
+- Resolve `min_valid` **before** the empty-rules check.
+- Omitted / null `min_valid_confluences` resolves to **1** (same default as
+  `build_setup_config`, `generate_signals`, and the detector). Today the
+  validator uses `config.get("min_valid_confluences", 0)` and then errors
+  on `< 1`. After the floor becomes `>= 0`, keeping that `0` default would
+  make empty+**omitted** look like empty+0 and silently enable the new
+  path. **Forbidden.**
+- `confluence_rules` may be `[]` **iff** the **resolved** `min_valid == 0`.
   Otherwise keep: “Confluence rules must be a non-empty list.”
-- Floor: `min_valid_confluences >= 0` (was `>= 1`). Still an integer.
+- Floor: resolved `min_valid_confluences >= 0` (was `>= 1`). Still an integer.
 - Ceiling: `min_valid <= len(rules)` still (0 ≤ 0 holds).
 - Anchor-level / diagnostic / base-column / duplicate / self-as-partner
   checks unchanged.
 - `build_setup_config` default `min_valid_confluences=1` unchanged.
+- `generate_signals` already uses `.get("min_valid_confluences", 1)` — keep
+  that default **1**.
 
 `test_anchor_rules_empty_confluence_rules_invalid` stays: default
 `_anchor_config(confluence_rules=[])` still has `min_valid=1` → invalid.
 
-Add: empty rules + `min_valid=0` → `[]` errors. Add: `min_valid=-1` →
+Add: empty rules + `min_valid=0` → `[]` errors. Add: empty rules +
+**omitted** `min_valid` → invalid (legacy). Add: `min_valid=-1` →
 error. Add: non-empty rules + `min_valid=0` → valid.
 
 ### 4.3 Headless experiment setup schema — `thesistester/api.py`
@@ -248,9 +265,12 @@ One line: `_validate_range(setup, "min_valid_confluences", …, minimum=0)`
 (was `minimum=1`).
 
 Do **not** change `_validate_range` for `min_confluences` / `max_confluences`.
-Do **not** rewrite `generate_signals`. Empty `confluence_rules` already
-pass through to the detector; LC4 `_require_level_columns` on
-`[anchor] + rule levels` still works when the rule list is empty.
+Do **not** rewrite `generate_signals` composition. Today empty
+`confluence_rules` **never** reach the detector: `generate_signals` calls
+`validate_setup_config` first. After §4.2 they pass through. LC4
+`_require_level_columns` on `[anchor] + rule levels` still works when the
+rule list is empty (referenced is just the anchor). `_validate_range`
+skips omitted keys; the omitted-as-1 rule lives in the setup validator.
 
 ### 4.4 Study schema — `thesistester/study/schema.py`
 
@@ -310,14 +330,19 @@ tolerance_ticks: <constants> # unused for zone width; keep for identity
 Anchor branch:
 
 - Confluence-level multiselect may be empty.
-- When empty: show `min_valid` locked to `0` (or a number input with
-  `min_value=0`, `max_value=0`, value `0`) and a one-line caption:
-  “Anchor only — no confluence required. Zone is the live anchor price.”
+- When empty: **assign** `min_valid_confluences = 0` (today the else
+  branch only shows info and leaves the module default `1`, so save
+  still fails the validator). Show `min_valid` locked to `0` (or a
+  number input with `min_value=0`, `max_value=0`, value `0`) and a
+  one-line caption: “Anchor only — no confluence required. Zone is the
+  live anchor price.”
 - Remove the blocker-only info “Select at least one confluence level.”
   (replace with the caption above).
 - When one or more confluence levels are selected: keep today’s widget;
   allow `min_value=0` (optional count floor off) up to `len(rules)`.
-  Default remains 1.
+  Default remains 1. Also change the existing
+  `_safe_int_fallback(..., min_value=1)` clamp to `min_value=0` or a
+  loaded `min_valid=0` setup will be forced back to 1.
 
 Save still goes through `validate_setup_config`. No new `session_state` keys
 unless a widget key already exists (`WIDGET_KEY_MIN_VALID_CONFLUENCES`).
@@ -327,7 +352,9 @@ Do not add a second mode enum.
 
 Remove the hard-stop that refuses empty `confluence_rules` **when**
 `min_valid_confluences == 0` and an `anchor_level` is set. Keep the
-hard-stop when `min_valid >= 1` (legacy).
+hard-stop when `min_valid >= 1` (legacy). This hard-stop is **not**
+validator-driven (`pages/6_Signals.py` generate path); changing only
+`validate_setup_config` leaves Generate dead.
 
 `_saved_setup_generation_blockers` is already validator-driven: empty rules
 + `min_valid=1` stays a blocker; empty + `0` does not.
@@ -335,8 +362,10 @@ hard-stop when `min_valid >= 1` (legacy).
 `_no_zones_message` (anchor): add that a missing finite anchor price, not
 only missing partners, can yield no zones.
 
-Manual Signals editor (if it mirrors Setup Builder) must allow empty rules
-the same way. Do not special-case global.
+Manual Signals editor mirrors Setup Builder (`min_value=1` today; empty
+branch leaves `min_valid=1` and shows “Select at least one confluence
+level.”). Allow empty rules the same way: assign `min_valid=0` when the
+multiselect is empty. Do not special-case global.
 
 ### 4.8 Study Builder — `pages/15_Studies.py` + `thesistester/study/builder.py`
 
@@ -463,9 +492,9 @@ this detector only — do not reopen the levels engine).
 
 Keep `test_anchor_rules_empty_confluence_rules_invalid`.
 
-Add empty+0 valid; empty+0 then `generate_signals` smoke (or API test);
-`min_valid=-1` invalid; non-empty+0 valid; global `min_confluences=0`
-still invalid.
+Add empty+0 valid; empty+**omitted** `min_valid` invalid; empty+0 then
+`generate_signals` smoke (or API test); `min_valid=-1` invalid;
+non-empty+0 valid; global `min_confluences=0` still invalid.
 
 ### 6.3 API (`tests/test_api.py` or LC4 neighbor)
 
@@ -520,10 +549,15 @@ CI: full `pytest -q` + ruff. No `GOLDEN_REGEN`.
 | `docs/STUDY_RUNNER.md` | Partner-set `[]` legal only for exclusive `anchor_rules` + `min_valid=0` |
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | Location-only is a different thesis than L1; zone-width caveat; not proof of edge |
 | `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` | **Capability footnote only.** Do not change L1/L2 locks (`min_valid: 1`, `{dVWAP}`). One short “product now allows L0 `[[]]`” pointer. Do not insert L0 into the desk sequence in this PR |
-| `docs/AGENT_GUIDE.md` | One setup snippet with `min_valid: 0` / empty rules |
+| `docs/AGENT_GUIDE.md` | One setup snippet with `min_valid: 0` / empty rules (plan index already landed in AO0) |
 | `docs/USER_GUIDE.md` | One how-to sentence: Setup Builder can save an anchor with no confluence levels when minimum valid is 0 |
-| `docs/ENGINEERING_ROADMAP.md` | AO row: implemented after the PR lands |
-| This file | Status → implemented |
+| `docs/ENGINEERING_ROADMAP.md` | AO1 status → implemented |
+| This file | Status → AO1 implemented |
+
+`thesistester/study/report.py` `format_partner_levels([])` is `""`. Do
+**not** edit report.py. Location-only cells show a blank partner column;
+identify them via emitted `confluence_rules: []` / `min_valid=0`.
+`_slug_token([])` already returns `"empty"` — run names stay unique.
 
 Do **not** edit `docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md` (Notion handoff).
 Do **not** dump this plan onto Notion.
@@ -609,13 +643,15 @@ No golden fixtures are regenerated.
 - New factor axis, new trigger, new combo-attribution model
 - Changing `LEVEL_ENGINE_VERSION` or level math
 - Auto-running or promoting any study
+- Treating omitted `min_valid_confluences` as 0 in `validate_setup_config`
+- Editing `study/report.py` to pretty-print empty partner sets
 
 ---
 
 ## 12. Copy-ready implementation prompt
 
 ```text
-You are implementing docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md (AO) on
+You are implementing docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md AO1 on
 ThesisTester. Work regression-safe. Do not widen scope.
 
 Intent: allow anchor_rules with no confluence partners so a location can
@@ -626,13 +662,21 @@ Hard freeze:
   signals_3c.py, levels modules, study execute/report/promote, analytics,
   or tests/fixtures/golden/**
 - Do not apply tolerance_ticks as a band around the anchor. Point zone
-  [P,P] only.
+  [P,P] only. level_names is the anchor token (join of a one-name list).
 - Do not allow Study partner-set [] unless confluence_mode is exclusively
-  anchor_rules AND constants.min_valid_confluences == 0.
+  anchor_rules AND constants.min_valid_confluences is an explicit 0
+  (omit is not 0).
 - Do not change default min_valid (1) or default_study_draft().
+- validate_setup_config must resolve omitted min_valid as 1, not 0.
+  Empty+omitted stays invalid.
+- Keep the detector missing-anchor early-return before the bar loop.
+- Setup Builder / Signals empty-partner branch must assign min_valid=0
+  (today it leaves 1). Change _safe_int_fallback min_value 1 → 0 when
+  partners are selected. Remove the Signals Generate hard-stop only when
+  min_valid==0.
 - Empty rules + min_valid>=1 must keep returning an empty zone frame
   (test_empty_rules_returns_empty_schema).
 - Do not amend the desk L1/L2 locks (min_valid: 1, {dVWAP}).
 
-Implement §4.1–§4.8, tests §6, docs §7. One PR. Follow §9 checklist.
+Implement §4.1–§4.8, tests §6, docs §7. One PR (AO1). Follow §9 checklist.
 ```

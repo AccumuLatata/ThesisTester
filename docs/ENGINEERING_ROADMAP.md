@@ -26,7 +26,7 @@ Assistant-related contracts:
 | Level Catalog Contract | `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md` (LC) | **LC4 landed.** Series complete. Catalog completeness/correctness for already-emitted levels. No new price series; no `LEVEL_ENGINE_VERSION`; no golden regen |
 | Developing week/month VWAP | `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV) | **WMV2 landed.** Series complete. Developing `wVWAP` / `mVWAP` siblings of `dVWAP`; Setup/Study tokens; Help/UI copy. Same `session_vwap_enabled` gate; `LEVEL_ENGINE_VERSION` 10; no golden regen |
 | Level-as-anchor combination protocol | `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` | Research protocol (docs-only). Closed token inventory + staged `core_level` × complementary partners; L1 coin-flip-first / L2 low-N stop / Admit=`backtest.entry_window`. No new factor axes / engine / goldens |
-| Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **Plan published — not implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
+| Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO0 plan locked.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. AO1 is the implementation PR. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1396,6 +1396,27 @@ edits.
 gate is on; `dVWAP*` value-identical; `compute_all_levels` default remains
 off; no golden regeneration; no new `st.session_state` keys. Parked:
 `pwVWAP` / `pmVWAP`, `wVWAP_RTH` / `mVWAP_RTH`, period-key extraction.
+
+## Anchor-only (`min_valid=0`) (AO0–AO1) — AO0 locked
+
+Allow `anchor_rules` with no partners so a named location can be traded
+alone. Opt-in: default `min_valid` stays 1; empty rules + that default
+still emit no zones. Point zone `[P, P]` at the live anchor; do not apply
+`tolerance_ticks` as a halo. Study `[[]]` is legal only for exclusive
+`anchor_rules` + explicit `min_valid: 0`. Global cluster / fills /
+pipeline composition stay frozen.
+
+**Canonical spec:** `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| AO0 | Plan lock + docs index (this PR) |
+| AO1 | Detector empty-rules / `min_valid` floor + setup/API/study gates + Setup/Signals/Study Builder + tests + living docs |
+
+**Regression posture:** defaults unchanged; `test_empty_rules_returns_empty_schema`
+stays; omitted `min_valid` resolves to 1; no golden regen; no
+`LEVEL_ENGINE_VERSION`; no desk L1/L2 rewrite. Parked: anchor ± N-tick
+band, `pwVWAP`/`pmVWAP`, Study emit of 1-level `global_cluster`.
 
 ## Studies Inspect ledger progress (additive)
 
