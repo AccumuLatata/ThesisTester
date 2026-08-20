@@ -404,6 +404,12 @@ This engine is for **research screening**, not proof of a durable edge.
   `anchor_rules` with a known `anchor_level` (`anchor|support` keys). Otherwise
   pairs are generic unordered canonical `A|B` keys. Anchor is never guessed from
   token order.
+- **Location-only `anchor_rules`** (`confluence_rules: []`,
+  `min_valid_confluences: 0`) is a different thesis than L1 `{dVWAP}`. The
+  zone is a point at the live anchor price, typically **narrower** than an
+  L1 zone (L1 width ∈ `[0, tolerance]` ticks). Δ vs L1 mixes “value of a
+  second mark” with that width change. Rank `expectancy_r`, not `total_r`.
+  n will be larger. Not proof of edge. Default `min_valid` remains 1.
 - Level-count view uses the **parsed distinct token count** from `level_names`,
   not stored zone `level_count` (important for `3c`, where names may be the
   tested level only). Empty parsed counts surface as `(unknown)`, not raw `0`;

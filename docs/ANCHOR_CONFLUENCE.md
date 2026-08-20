@@ -13,9 +13,9 @@ This guide explains the implemented anchor-confluence workflow in ThesisTester a
 
 1. In Setup Builder, choose **Anchor-based rules**.
 2. Select one **anchor level**.
-3. Add one or more **confluence levels**.
-4. Set each rule's `tolerance_ticks` and `required` flag.
-5. Set `min_valid_confluences`.
+3. Add confluence levels, **or leave them empty** for an anchor-only setup.
+4. Set each rule's `tolerance_ticks` and `required` flag (when rules exist).
+5. Set `min_valid_confluences` (use `0` with no rules).
 6. Save the setup.
 7. In Signals, choose **Use active setup** or **Use saved setup from library**
    to route to `detect_anchor_confluence_zones()`.
@@ -29,6 +29,8 @@ This guide explains the implemented anchor-confluence workflow in ThesisTester a
 ## Minimum valid confluences
 
 `min_valid_confluences` is the minimum number of **valid** confluence rules on a bar (`valid_count` includes required rules). Every required rule must also be valid. The engine does **not** add `min_valid` on top of the required set. With all rules required, `min_valid: 1` is enough (Study expand also requires `min_valid <= len(rules)` per cell).
+
+**Anchor-only (opt-in):** empty `confluence_rules` plus explicit `min_valid_confluences: 0` emits a point zone `[P, P]` at the live anchor price on every bar where that price is finite. `valid_confluence_count` is 0. `tolerance_ticks` is unused for zone width (it is partner-to-anchor distance, not an entry halo). Default `min_valid` remains 1; empty rules with that default still emit no zones. See `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md`.
 
 ## Example setup
 

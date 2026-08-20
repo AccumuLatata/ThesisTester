@@ -61,7 +61,15 @@ def detect_anchor_confluence_zones(
     if tick_size <= 0:
         raise ValueError("tick_size must be > 0")
 
-    if not isinstance(confluence_rules, list) or not confluence_rules:
+    if not isinstance(confluence_rules, list):
+        return _empty_anchor_zones_df()
+
+    if isinstance(min_valid_confluences, bool):
+        raise ValueError("min_valid_confluences must be an integer >= 0")
+    min_valid = int(min_valid_confluences)
+    if min_valid < 0:
+        raise ValueError("min_valid_confluences must be >= 0")
+    if not confluence_rules and min_valid >= 1:
         return _empty_anchor_zones_df()
 
     if (
@@ -71,7 +79,6 @@ def detect_anchor_confluence_zones(
     ):
         return _empty_anchor_zones_df()
 
-    min_valid = max(int(min_valid_confluences), 1)
     tick = float(tick_size)
 
     df_reset = df.reset_index(drop=True)

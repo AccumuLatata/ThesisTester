@@ -646,7 +646,7 @@ def format_stage_value(axis: str, value: Any) -> str:
     """Stable picker / table label for a factor value."""
     if axis == "partner_levels":
         if isinstance(value, list):
-            return "+".join(str(token) for token in value)
+            return "+".join(str(token) for token in value) if value else "[]"
         return str(value)
     if axis == "otf":
         if isinstance(value, Mapping):
@@ -764,6 +764,16 @@ def draft_warnings(draft: StudyDraft) -> tuple[str, ...]:
         overlap = cores.intersection(str(token) for token in partner_set)
         if overlap:
             warnings.append(f"partner_levels[{index}] intersects core_level: {sorted(overlap)}")
+    if any(len(partner_set) == 0 for partner_set in draft.partner_levels):
+        modes = [str(mode) for mode in draft.confluence_mode]
+        try:
+            min_valid = int(draft.min_valid_confluences)
+        except (TypeError, ValueError):
+            min_valid = 1
+        if "global_cluster" in modes or min_valid != 0:
+            warnings.append(
+                "Empty partner set [] requires exclusive anchor_rules and min_valid_confluences=0."
+            )
     mode = _resolved_ingestion_mode(draft.ingestion_mode)
     backtest = draft.backtest if isinstance(draft.backtest, Mapping) else {}
     backtest_model = backtest.get("intrabar_model")

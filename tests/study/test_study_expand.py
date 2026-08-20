@@ -11,6 +11,7 @@ import yaml
 from thesistester.api import validate_run_spec
 from thesistester.cli import _RUN_NAME_RE
 from thesistester.study.expand import (
+    _build_setup_for_cell,
     expand_study,
     expand_study_to_directory,
     write_expansion_artifacts,
@@ -448,3 +449,90 @@ def test_run_name_respects_max_length():
     )
     assert len(name) <= _MAX_RUN_NAME_LEN
     assert _RUN_NAME_RE.fullmatch(name)
+
+
+def _anchor_only_study():
+    return {
+        "schema_version": STUDY_SCHEMA_VERSION,
+        "study": {
+            "name": "scalp_touch_10_anchor_only",
+            "dataset": {"path": "data/es_1m.csv", "instrument": "ES"},
+            "constants": {
+                "direction": "both",
+                "tolerance_ticks": 10,
+                "min_valid_confluences": 0,
+                "naked_only": False,
+                "naked_requirement": "any",
+                "trigger_params": {},
+                "backtest": {
+                    "stop_loss_ticks": 40,
+                    "take_profit_ticks": 40,
+                    "exposure_policy": "single_position",
+                },
+                "grid": {"enabled": False},
+                "validation": {"enabled": False},
+                "walk_forward": {"enabled": False},
+            },
+            "factors": {
+                "core_level": ["ONH"],
+                "partner_levels": [[]],
+                "confluence_mode": ["anchor_rules"],
+                "trigger": ["touch"],
+                "trigger_timeframe": ["1min"],
+            },
+            "mode_rules": {
+                "anchor_rules": {
+                    "selected_levels": [],
+                    "anchor_level": "${core_level}",
+                    "confluence_rules": {"from_partners": "required"},
+                }
+            },
+            "report": {
+                "primary_metric": "expectancy_r",
+                "secondary_metrics": ["profit_factor", "trade_count"],
+                "min_trades": 30,
+                "multiple_testing": "warn",
+            },
+        },
+    }
+
+
+def test_expand_anchor_only_empty_partner_set():
+    expansion = expand_study(_anchor_only_study())
+    assert expansion.run_count == 1
+    setup = expansion.experiment["runs"][0]["setup"]
+    assert setup["confluence_mode"] == "anchor_rules"
+    assert setup["anchor_level"] == "ONH"
+    assert setup["confluence_rules"] == []
+    assert setup["min_valid_confluences"] == 0
+    assert setup["selected_levels"] == []
+    validate_run_spec(expansion.experiment["runs"][0])
+
+
+def test_expand_min_valid_two_incompatible_with_one_partner():
+    study = _anchor_only_study()
+    study["study"]["constants"]["min_valid_confluences"] = 2
+    study["study"]["factors"]["partner_levels"] = [["dVWAP"]]
+    with pytest.raises(StudySpecError, match="incompatible"):
+        expand_study(study)
+
+
+def test_expand_global_cluster_empty_partners_fails_closed():
+    study = {
+        "dataset": {"instrument": "ES"},
+        "description": "",
+        "constants": {"min_valid_confluences": 0, "tolerance_ticks": 10},
+        "mode_rules": {},
+    }
+    with pytest.raises(StudySpecError, match="global_cluster"):
+        _build_setup_for_cell(
+            study=study,
+            run_name="global_empty",
+            cell={
+                "core_level": "ONH",
+                "partner_levels": [],
+                "confluence_mode": "global_cluster",
+                "trigger": "touch",
+                "trigger_timeframe": "1min",
+            },
+        )

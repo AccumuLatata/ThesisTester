@@ -661,3 +661,45 @@ def test_walk_forward_matrix_forwards_otf_history_policy(tmp_path, monkeypatch):
     assert captured.get("otf_history_policy") == "causal_prefix"
     assert result["wfa_matrix_config"]["otf_history_policy"] == "causal_prefix"
     assert result["walk_forward_summary"]["otf_history_policy"] == "causal_prefix"
+
+
+def test_anchor_only_setup_generate_signals_emits_point_zone():
+    setup = build_setup(
+        {
+            "name": "ONH_anchor_only",
+            "description": "AO1",
+            "instrument": "ES",
+            "selected_levels": [],
+            "tolerance_ticks": 10,
+            "min_confluences": 1,
+            "max_confluences": 1,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "trigger": "touch",
+            "trigger_timeframe": "1min",
+            "direction": "both",
+            "confluence_mode": "anchor_rules",
+            "anchor_level": "ONH",
+            "confluence_rules": [],
+            "min_valid_confluences": 0,
+        }
+    )
+    levels = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-05 09:30", periods=1, freq="1min"),
+            "open": [100.0],
+            "high": [101.0],
+            "low": [99.0],
+            "close": [100.5],
+            "volume": [1000],
+            "ONH": [100.5],
+        }
+    )
+    result = generate_signals(levels, setup)
+    zones = result["confluence_zones"]
+    assert len(zones) == 1
+    assert zones.iloc[0]["level_names"] == "ONH"
+    assert zones.iloc[0]["valid_confluence_count"] == 0
+    assert zones.iloc[0]["zone_low"] == zones.iloc[0]["zone_high"] == 100.5
+    backtest = run_backtest(levels, result["signals"], instrument="ES")
+    assert "trades" in backtest

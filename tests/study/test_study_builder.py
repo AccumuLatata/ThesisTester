@@ -46,6 +46,7 @@ from thesistester.study.builder import (
     draft_warnings,
     emit_study_spec,
     emit_study_yaml,
+    format_stage_value,
     hydrate_study_draft,
     hydrate_study_yaml,
     infer_tf_mode,
@@ -381,6 +382,17 @@ def test_emit_rejects_empty_partner_set():
         emit_study_spec(draft)
 
 
+def test_emit_accepts_anchor_only_empty_partner_set():
+    draft = default_study_draft()
+    draft.confluence_mode = ["anchor_rules"]
+    draft.min_valid_confluences = 0
+    draft.partner_levels = [[]]
+    spec = emit_study_spec(draft)
+    assert spec["study"]["factors"]["partner_levels"] == [[]]
+    assert spec["study"]["constants"]["min_valid_confluences"] == 0
+    assert spec["study"]["factors"]["confluence_mode"] == ["anchor_rules"]
+
+
 def test_emit_never_writes_null_timeframe_keys():
     draft = default_study_draft()
     draft.levels = {
@@ -446,6 +458,29 @@ def test_draft_warnings_core_partner_overlap():
     # Emit still validates; expand (not emit) rejects core-in-partners.
     spec = emit_study_spec(draft)
     assert spec["study"]["factors"]["partner_levels"][0] == ["pdPOC", "SMA_50_1min"]
+
+
+def test_draft_warnings_empty_partner_without_anchor_only_locks():
+    draft = default_study_draft()
+    draft.partner_levels = [[]]
+    draft.confluence_mode = ["global_cluster", "anchor_rules"]
+    draft.min_valid_confluences = 1
+    warnings = draft_warnings(draft)
+    assert any("Empty partner set" in item for item in warnings)
+
+
+def test_draft_warnings_empty_partner_anchor_only_ok():
+    draft = default_study_draft()
+    draft.partner_levels = [[]]
+    draft.confluence_mode = ["anchor_rules"]
+    draft.min_valid_confluences = 0
+    warnings = draft_warnings(draft)
+    assert not any("Empty partner set" in item for item in warnings)
+
+
+def test_format_stage_value_empty_partner_set_is_visible():
+    assert format_stage_value("partner_levels", []) == "[]"
+    assert format_stage_value("partner_levels", ["dVWAP"]) == "dVWAP"
 
 
 def test_hydrate_yaml_rejects_empty_and_non_mapping():
