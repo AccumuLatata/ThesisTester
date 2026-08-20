@@ -426,7 +426,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     _validate_constants(constants)
 
     factors = _require_mapping(study.get("factors"), section="study.factors")
-    _validate_factors(factors, closed_tokens=closed_tokens)
+    _validate_factors(factors, closed_tokens=closed_tokens, constants=constants)
 
     mode_rules = study.get("mode_rules")
     if "confluence_mode" in factors and mode_rules is None:
@@ -499,10 +499,27 @@ def _validate_constants(constants: Mapping[str, Any]) -> None:
             raise StudySpecError(f"study.constants.{section}.enabled must be a boolean")
 
 
+def _anchor_only_empty_partners_allowed(
+    factors: Mapping[str, Any], constants: Mapping[str, Any]
+) -> bool:
+    modes = factors.get("confluence_mode")
+    if not isinstance(modes, list) or not modes:
+        return False
+    if any(mode != "anchor_rules" for mode in modes):
+        return False
+    if "min_valid_confluences" not in constants:
+        return False
+    raw = constants.get("min_valid_confluences")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return False
+    return int(raw) == 0
+
+
 def _validate_factors(
     factors: Mapping[str, Any],
     *,
     closed_tokens: frozenset[str],
+    constants: Mapping[str, Any],
 ) -> None:
     unknown = sorted(set(factors) - _SUPPORTED_FACTOR_AXES)
     if unknown:
@@ -528,9 +545,14 @@ def _validate_factors(
     partners = factors.get("partner_levels")
     if not isinstance(partners, list) or not partners:
         raise StudySpecError("factors.partner_levels must be a non-empty list of partner-sets")
+    empty_partners_allowed = _anchor_only_empty_partners_allowed(factors, constants)
     for index, partner_set in enumerate(partners):
-        if not isinstance(partner_set, list) or not partner_set:
+        if not isinstance(partner_set, list):
             raise StudySpecError(f"factors.partner_levels[{index}] must be a non-empty list")
+        if not partner_set:
+            if not empty_partners_allowed:
+                raise StudySpecError(f"factors.partner_levels[{index}] must be a non-empty list")
+            continue
         if len(partner_set) + 1 > 5:
             # core + partners length cap for global_cluster study emission rule
             raise StudySpecError(
