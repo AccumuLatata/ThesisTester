@@ -49,7 +49,7 @@ Yes: **anchor** = `core_level`. **Confluence** = one partner inside **10 ticks o
 | Slippage | **`1.0` tick per side** | Engine has no separate “spread” field. 1 tick in + 1 tick out = **$1.00** RT. Models a 1-tick spread |
 | Round-trip friction | **$2.00 = 0.05R** | At 80-tick risk. Zero-cost screens lie |
 | Exposure | `single_position` | One trade at a time |
-| Flatten at close | **`true`** | New day-trade program. Program A L1 was `false` — those E numbers are not this lock |
+| Flatten at close | **`true`**, `session_close_time: "16:00"`, `session_timezone: America/New_York` | Required when flatten is on. Program A L1 was `false` — those E numbers are not this lock |
 | Intrabar | `subtimeframe_conservative` | 15s HE |
 | Ingest | Quantower HE, UTC, `15s_primary_derive_1m` | Same as finished desk L1 files |
 | OTF | off | Validation matrix later, not `factors.otf` |

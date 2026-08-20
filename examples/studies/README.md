@@ -6,6 +6,8 @@ Level-as-anchor desk funnel (Program A; not these teaching cartesians; required
 [`docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`](../../docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md)  
 Holistic combination concept (Program B):
 [`docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md`](../../docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md)  
+Program B bot packet (26 YAMLs / 1,151 cells):
+[`program_b/`](program_b/) · [`docs/PROGRAM_B_OPERATOR_RUNBOOK.md`](../../docs/PROGRAM_B_OPERATOR_RUNBOOK.md)  
 Plan: [`docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md)  
 Study Viewer (SV1–SV5 shipped: catalog + `study list` + quality panes + overview charts + cell peek + trader briefing / grid / NY ToD): [`docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`](../../docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md)  
 External Grok routine pack (RS-D5): [`docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md`](../../docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md) · [`agents/`](agents/)

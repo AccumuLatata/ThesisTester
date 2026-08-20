@@ -20,6 +20,7 @@ research snapshots live under [`research/`](research/README.md).
 | [research-methodology.md](research-methodology.md) | OTF OOS evaluation protocol |
 | [LEVEL_COMBINATION_RESEARCH_CONCEPT.md](LEVEL_COMBINATION_RESEARCH_CONCEPT.md) | Program B: level × MA / rolling VWAP / pivot (`dVWAP` not a required partner) |
 | [LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md](LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md) | Complete 50-anchor × 22-confirm list and wave order |
+| [PROGRAM_B_OPERATOR_RUNBOOK.md](PROGRAM_B_OPERATOR_RUNBOOK.md) | Bot-facing Program B run list + CLI (YAMLs in `examples/studies/program_b/`) |
 | [LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md) | Program A: desk product funnel (token inventory + staged studies; promote/Admit/L2 power locks; executed) |
 | [ANCHOR_ONLY_IMPLEMENTATION_PLAN.md](ANCHOR_ONLY_IMPLEMENTATION_PLAN.md) | AO — opt-in `anchor_rules` with no partners (`min_valid_confluences: 0`); **AO1 implemented** |
 | [LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md](LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) | Handoff: rewrite Notion desk contract without losing logging/roadmap |

@@ -5,7 +5,8 @@
 **Status:** Concept published. Not executed. Does **not** amend the locked Notion *Process and roadmap* page.  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4 (docs-only; no engine/golden touch)  
 **Related:** `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` (Program A — executed product funnel), `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` (complete token list + work-through), `docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/research-methodology.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`  
-**Notion contract (short):** [Level combination research (Program B)](https://app.notion.com/p/3c2c7b8aa40d81c9a687ee6ec2129b42) — sibling of the locked desk page; does not amend it.
+**Notion contract (short):** [Level combination research (Program B)](https://app.notion.com/p/3c2c7b8aa40d81c9a687ee6ec2129b42) — sibling of the locked desk page; does not amend it.  
+**Bot runbook + YAMLs:** `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` · `examples/studies/program_b/`
 
 **Current lock (2026-08-20):** `dVWAP` is **not** a required partner. **Wave 0:** all 50 locations **alone** (`partner_levels: [[]]`, `min_valid_confluences: 0`, AO1 point zone). Then the same 50 against **MAs, rolling VWAPs, and pivots**. First product: MNQ `touch` @ `1min`, pair confluence **10** ticks, SL/TP **80/80** ($40 / $40), costs **`commission_per_side: 0.5`** + **`slippage_ticks: 1.0`**, flatten **true**. Full table: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` §0.1–§0.2. Compute / run count are not constraints.
 
