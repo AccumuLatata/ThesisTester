@@ -17,6 +17,7 @@ Compute and run count are not constraints. Completeness and structure are.
 | Side | What | Count |
 |---|---|---:|
 | **Anchors** | Named locations you test | **50** (49 static + `prev30mVWAP`) |
+| **Wave 0 — solo** | Each anchor, **no** partner | **50** |
 | **Confirms (default)** | What you test them against | **22** (12 MA + 2 rolling VWAP + 8 pivot) |
 | **One-partner cells / product** | `core=L`, `partners=[X]` | **1,100** |
 | **Confirms (widget-maximal)** | Same families, full editor catalog | **48** (36 MA + 4 rolling VWAP + 8 pivot) |
@@ -24,9 +25,9 @@ Compute and run count are not constraints. Completeness and structure are.
 
 Default closed set is 73 = 50 anchors + 22 confirms + `POC_rolling_30min` (not in the requested confirm set; optional extra, §4).
 
-Partner ≠ core. `from_partners: required`. `min_valid_confluences: 1`. `anchor_rules`. No `dVWAP` in `partner_levels`.
+Partner ≠ core. Pair studies: `from_partners: required`, `min_valid_confluences: 1`, `anchor_rules`. No `dVWAP` in `partner_levels`.
 
-StudySpec still requires a partner set. Solo-location cells are Setup Builder / engine, not this grid.
+**Wave 0 (solo)** is a **separate** study: `partner_levels: [[]]`, `min_valid_confluences: 0`, `confluence_mode: [anchor_rules]` only (AO1). Do not put `[]` in the same StudySpec as the 22 confirms (`min_valid: 1` cannot emit empty sets).
 
 ---
 
@@ -39,7 +40,7 @@ Yes: **anchor** = `core_level`. **Confluence** = one partner inside **10 ticks o
 | Instrument | MNQ first | Same tape as the desk. MES later, money map explicit |
 | Mode | `anchor_rules` | Location is the decision; partner is evidence |
 | `from_partners` | `required` | Causal AND. Optional StudySpec drops the lock |
-| `min_valid_confluences` | `1` | Required set already must fire |
+| `min_valid_confluences` | **`0` on Wave 0 only**; `1` on pair waves | AO1: empty partners legal iff exclusive `anchor_rules` and explicit `0` |
 | `tolerance_ticks` | **10** | Confluence width. Distance audit (nearest stack p25/p50/p75 = 0/0/2). Not the stop |
 | Trigger | `touch` @ `1min` | First product. `3c` is a later separate study |
 | Direction | `both` | Side is a readout, not a first cartesian |
@@ -58,9 +59,35 @@ Do not omit costs (engine default 0/0 is gross-era). Do not cartesian 40 vs 80, 
 
 ---
 
+## 0.2 Wave 0 — levels alone (50 cells)
+
+Question: which of the 50 named locations have **positive expectancy when traded with no confluence**?
+
+```yaml
+factors:
+  core_level: [<all 50 anchors>]
+  partner_levels:
+    - []
+  confluence_mode: [anchor_rules]
+  trigger: [touch]
+  trigger_timeframe: [1min]
+constants:
+  min_valid_confluences: 0    # explicit; omit → 1 → no zones
+```
+
+AO1 (`docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md`, shipped on `main`): empty rules + `min_valid: 0` emit a **point zone** `[P, P]` at the live anchor price on every bar where that price is finite. `touch` means the bar’s high/low contains `P`. `tolerance_ticks: 10` is **unused** here (it is partner-to-anchor distance, not an entry halo). This is not “ONH ± 10 ticks.” That halo does not exist.
+
+Same product locks as §0.1 otherwise (MNQ, 80/80, costs 0.5 / 1.0, flatten true).
+
+Run Wave 0 **first**, as its own study (50 cells). Then the 1,100 pair cells. A pair’s ΔE vs its solo cell mixes “value of the confirm” with **zone-shape change** (point vs partner bounding box). Report both; do not treat ΔE as a pure confluence effect.
+
+Readout (same honesty as pairs): n, `expectancy_r`, PF. Interpret at n≥30. Coin-flip hold if `|E|<0.03` or PF ∈ [0.95, 1.05]. “Positive expectancy” for this question = n≥30 and E≥0.03 and PF>1.05. Descriptive, not Admit.
+
+---
+
 ## 1. Anchors — complete list (50)
 
-Every default token that is **not** an MA, **not** a rolling VWAP, **not** a pivot. Work through **by wave**. Do not skip a wave because an earlier name bled.
+Every default token that is **not** an MA, **not** a rolling VWAP, **not** a pivot. Work through **by wave**. Wave 0 uses this same list with no partners. Do not skip a later wave because an earlier name bled.
 
 ### Wave 1 — Session extremes (12)
 
@@ -231,12 +258,18 @@ Finish a wave before the next. Inside a wave, finish one confirm **family** acro
 
 ```text
 pick ONE product lock (do not mix touch/10 with 3c/20)
+
+Wave 0  (own study, min_valid: 0)
+  for L in all 50 anchors:
+    core=L, partner_levels=[]          # point zone at L
+
+Waves 1–8  (own studies, min_valid: 1)
   for wave in 1..8:
     for family in (MA, rolling VWAP, pivot):
       for L in wave:
         for X in family:
-          study cell: core_level=L, partner_levels=[X]
-          required, min_valid=1, anchor_rules
+          core=L, partners=[X]
+          required, anchor_rules
           NO dVWAP partner
 ```
 

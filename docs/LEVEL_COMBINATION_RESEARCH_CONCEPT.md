@@ -7,7 +7,7 @@
 **Related:** `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` (Program A — executed product funnel), `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` (complete token list + work-through), `docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/research-methodology.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`  
 **Notion contract (short):** [Level combination research (Program B)](https://app.notion.com/p/3c2c7b8aa40d81c9a687ee6ec2129b42) — sibling of the locked desk page; does not amend it.
 
-**Current lock (2026-08-20):** `dVWAP` is **not** a required partner. Test **all 50 location tokens** against **MAs, rolling VWAPs, and pivots**. First product: MNQ `touch` @ `1min`, confluence **10** ticks, SL/TP **80/80** ($40 / $40), costs **`commission_per_side: 0.5`** + **`slippage_ticks: 1.0`** (1 tick per side; no separate spread field), flatten **true**. Full table: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` §0.1. Compute / run count are not constraints.
+**Current lock (2026-08-20):** `dVWAP` is **not** a required partner. **Wave 0:** all 50 locations **alone** (`partner_levels: [[]]`, `min_valid_confluences: 0`, AO1 point zone). Then the same 50 against **MAs, rolling VWAPs, and pivots**. First product: MNQ `touch` @ `1min`, pair confluence **10** ticks, SL/TP **80/80** ($40 / $40), costs **`commission_per_side: 0.5`** + **`slippage_ticks: 1.0`**, flatten **true**. Full table: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` §0.1–§0.2. Compute / run count are not constraints.
 
 Program A answered a different question and is finished. This file is the concept that was asked for.
 
@@ -47,7 +47,7 @@ Program A tested claim (1)/(3) under a single location model (`dVWAP` required, 
 
 ## 2. Completeness without a 73×72 bag
 
-The intended grid is **every location × the three confirm families** (50 × 22 = 1,100 per product). That is the complete list. Compute is not a reason to shrink it.
+The intended grid is **every location alone** (Wave 0: 50) **then** every location × the three confirm families (50 × 22 = 1,100 per product). Compute is not a reason to shrink it.
 
 What is still the wrong “holistic”: every token vs every other token, including MA×MA, pivot×pivot, and `dVWAP` welded onto every cell (73 × 72 × trigger × width). Ranked cells stay descriptive (`docs/ASSUMPTIONS_AND_LIMITATIONS.md`). One extra per cell; stacks later.
 
@@ -55,11 +55,11 @@ What is still the wrong “holistic”: every token vs every other token, includ
 
 ## 3. Design principles
 
-1. **Complete location list, structured by wave — not a 24-name kill list and not a 73×72 bag.** Every named location that is not an MA, rolling VWAP, or pivot is an anchor (50 tokens). Work through by wave. Do not drop a name because an earlier family bled.
-2. **Combination is the experiment.** A core that fails with MAs still gets rolling VWAP and pivots.
+1. **Complete location list, structured by wave — not a 24-name kill list and not a 73×72 bag.** Every named location that is not an MA, rolling VWAP, or pivot is an anchor (50 tokens). Wave 0 is that list **alone**. Then work through pair waves. Do not drop a name because solo E < 0 or an earlier family bled.
+2. **Solo is the baseline; combination is the experiment.** A core that is dead alone stays in the pair design. A core that fails with MAs still gets rolling VWAP and pivots.
 3. **`dVWAP` is not mandatory.** It is wave-5 **core** only. `ONH`+`dVWAP` is Program A, not this grid.
 4. **Confirms are three families:** MA, rolling VWAP, pivot. One extra per cell on the first grid. Two-confirm stacks later, only on identified cells.
-5. **Compute is not a constraint.** 50 × 22 = 1,100 default cells per product is the intended first grid. Widget-maximal (48 confirms → 2,400) is a second pass. Structure the work; do not thin the list to save runs.
+5. **Compute is not a constraint.** Wave 0 is 50 solo cells. Then 50 × 22 = 1,100 pair cells per product. Widget-maximal (48 confirms → 2,400) is a second pass. Structure the work; do not thin the list to save runs.
 6. **Triggers, ToD, SL/TP, instrument are factors, not more levels.** One product at a time. Do not cartesian 10 vs 20 in one study.
 7. **Research readout ≠ product Admit.** Report n / E[R] / PF per cell. Coin-flip / promote / Admit stay the later product filter (n≥30, `|E|<0.03` or PF ∈ [0.95, 1.05] → hold, Admit = `backtest.entry_window`). Ranked cells stay descriptive (`docs/ASSUMPTIONS_AND_LIMITATIONS.md`).
 
@@ -167,7 +167,8 @@ Combo attribution (already shipped) is **retrospective** on optional/mixed setup
 
 ```text
 B0  Lock this file + LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md
-B1  Default grid          50 × 22, touch @ 1min, zone 10, SL/TP 80/80 ($40)
+B0s Solo map              50 cores, partner [], min_valid: 0 (AO1 point zone)
+B1  Default pair grid     50 × 22, touch @ 1min, confluence 10, SL/TP 80/80 ($40)
 B2  Second product        same 1,100, other trigger/width — separate study
 B3  Widget pass           extra MA lengths + VWAP_rolling_15min/1h on interesting waves
 B4  Two-confirm stacks    only on identified cells
@@ -195,7 +196,7 @@ B7  Instrument transfer   MES last
 
 ## 11. What “complete” means
 
-Every one of the **50** anchors has been run against every one of the **22** default confirms, under at least one product lock, with n / E[R] / PF collected. Widget 48 and a second product are completeness of the *menu*, not a license to skip the 1,100.
+Every one of the **50** anchors has a **solo** cell (Wave 0, n / E[R] / PF) **and** has been run against every one of the **22** default confirms, under at least one product lock. Widget 48 and a second product are completeness of the *menu*, not a license to skip Wave 0 or the 1,100.
 
 It does **not** require `dVWAP` as a partner, level+level pairs, or parked tokens.
 
