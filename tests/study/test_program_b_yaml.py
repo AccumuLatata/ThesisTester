@@ -78,12 +78,16 @@ def test_program_b_validator_rejects_dvwap_partner_and_optional_from_partners(tm
     spec["study"]["factors"]["partner_levels"] = [["dVWAP"]]
     drifted = tmp_path / "smoke_dvwap.yaml"
     drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
-    failures = validate.validate_study_file(drifted, {"file": drifted.name, "cells": 1, "min_valid": 1})
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 1, "min_valid": 1}
+    )
     assert any("dVWAP must not appear in partner_levels" in item for item in failures)
 
     spec["study"]["factors"]["partner_levels"] = [["SMA_50_5min"]]
     spec["study"]["mode_rules"]["anchor_rules"]["confluence_rules"]["from_partners"] = "optional"
     optional = tmp_path / "smoke_optional.yaml"
     optional.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
-    failures = validate.validate_study_file(optional, {"file": optional.name, "cells": 1, "min_valid": 1})
+    failures = validate.validate_study_file(
+        optional, {"file": optional.name, "cells": 1, "min_valid": 1}
+    )
     assert any("from_partners" in item for item in failures)

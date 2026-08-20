@@ -179,7 +179,10 @@ def validate_study_file(
                 f"{path.name}: setup min_valid={setup['min_valid_confluences']} expected={min_valid}"
             )
             break
-        if setup.get("trigger") != LOCKED_TRIGGER or setup.get("trigger_timeframe") != LOCKED_TRIGGER_TF:
+        if (
+            setup.get("trigger") != LOCKED_TRIGGER
+            or setup.get("trigger_timeframe") != LOCKED_TRIGGER_TF
+        ):
             failures.append(f"{path.name}: expanded trigger drifted")
             break
         if setup.get("instrument") != LOCKED_INSTRUMENT:
