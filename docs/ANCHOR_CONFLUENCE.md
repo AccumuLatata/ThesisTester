@@ -61,8 +61,11 @@ Anchor-zone diagnostics on Signals include:
 Per-rule tolerances add degrees of freedom. Excessive tuning can overfit historical data. Compare anchor-rule setups against a global-cluster baseline and prefer out-of-sample or walk-forward validation when optimizing hypotheses.
 
 For systematically testing **locations as anchors** against complementary
-confluences (NQ/ES intra-day), follow
+confluences (NQ/ES intra-day), the concept is
+[`docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md`](LEVEL_COMBINATION_RESEARCH_CONCEPT.md)
+(Program B: level class × confluence class; B1 location-only vs B2 `dVWAP` lock).
+The executed desk funnel is
 [`docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md)
-rather than a full token cartesian. Combo attribution
+(Program A). Neither is a full token cartesian. Combo attribution
 (`docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md`) is the retrospective companion.
 
