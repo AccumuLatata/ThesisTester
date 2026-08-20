@@ -772,8 +772,7 @@ def draft_warnings(draft: StudyDraft) -> tuple[str, ...]:
             min_valid = 1
         if "global_cluster" in modes or min_valid != 0:
             warnings.append(
-                "Empty partner set [] requires exclusive anchor_rules and "
-                "min_valid_confluences=0."
+                "Empty partner set [] requires exclusive anchor_rules and min_valid_confluences=0."
             )
     mode = _resolved_ingestion_mode(draft.ingestion_mode)
     backtest = draft.backtest if isinstance(draft.backtest, Mapping) else {}
