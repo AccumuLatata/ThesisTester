@@ -65,7 +65,11 @@ All 26 YAMLs already stamp these. If a YAML disagrees with this table, **stop** 
 PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py
 ```
 
-Expect: `ok 26 studies / 1151 cells`. If this fails, do not run.
+Expect: `ok 26 studies / 1151 cells`. The script expand-checks every file **and**
+the lock table (MNQ, exclusive `anchor_rules`, `from_partners: required`,
+Wave 0 `[[]]` + `min_valid: 0`, no `dVWAP` partner, 80/80, costs, flatten
+`16:00` `America/New_York`). A file that fails a lock is **not** printed as
+`ok`. If this fails, do not run.
 
 4. Start from the repo root. `workers: 1` first (Windows-safe).
 

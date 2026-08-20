@@ -105,14 +105,20 @@ Two MAs in one set = negative control only. `dVWAP`+`VWAP_rolling_*` as partners
 
 ```text
 pick ONE product lock
-  for wave in 1..8:                    # all 50 locations
+
+Wave 0  (own study, min_valid: 0)      # 50 cores, AO1 point zone
+  for L in all 50 anchors:
+    core=L, partner_levels=[]
+
+Waves 1–8  (own studies, min_valid: 1)
+  for wave in 1..8:                    # same 50 locations
     for family in (MA, rVWAP, pivot):  # all 22 default confirms
       for L in wave:
         for X in family:
           core=L, partners=[X]
 ```
 
-50 × 22 = **1,100** cells per product. Second product is a separate study. Widget 50 × 48 = 2,400 after the default 22.
+Wave 0 is **50** solo cells. Then 50 × 22 = **1,100** pair cells per product. Operator packet: `examples/studies/program_b/` (smoke + Wave 0 + 24 family YAMLs = 1,151). Second product is a separate study. Widget 50 × 48 = 2,400 after the default 22.
 
 Do not stop a wave because cells are thin. n<30 = unidentified for *that pair*, not a license to skip the rest of the name.
 
@@ -145,7 +151,8 @@ Per cell, n≥30 to *interpret*. n<30 = unidentified, not “killed class.”
 |---|---|
 | `n`, `expectancy_r`, PF, CI | Descriptive screen. Primary rank key is `expectancy_r`, never `total_r` |
 | **ΔE vs other confirms on the same L** | Did this family change E vs the other two families at the same location? |
-| **ΔE vs partner-alone** | Is this the partner’s edge with a location sticker? (Setup replay; StudySpec has no core-only cell) |
+| **ΔE vs Wave 0 (same core)** | Did the partner change E vs the AO1 point-zone solo cell? Shipped as `progB_w0_solo.yaml` |
+| **ΔE vs partner-alone** | Is this the partner’s edge with a location sticker? (Setup replay; MA / pivot / rVWAP are confirms, not cores) |
 | **Thinning** `n(combo)/n(core)` | Confirmation that only starves |
 | **Year split** | Stability, not a new factor |
 | Coin-flip / promote / Admit | **Product filter after** the map exists. Same numeric locks as Program A |
@@ -203,17 +210,17 @@ It does **not** require `dVWAP` as a partner, level+level pairs, or parked token
 
 ---
 
-## 12. Realization on ThesisTester (when this is built)
+## 12. Realization on ThesisTester
 
-Primitives already exist. Missing pieces are **program**, not engine:
+Primitives and the operator packet exist. Remaining work is **running** the grid, not inventing tokens or a location-only path.
 
 | Need | Today | Gap |
 |---|---|---|
 | `core_level` × `partner_levels` | StudySpec / Study Runner | None for the 50×22 grid |
-| Location-only (no partner) | Partner set required on StudySpec | Setup Builder / engine replay if you want a no-confirm baseline |
+| Location-only (no partner) | AO1 + `progB_w0_solo.yaml` (`[[]]` + `min_valid: 0` → point zone `[P,P]`) | None. Do not replay Setup Builder for the solo baseline |
 | Interaction report | Cells have E, n, PF | No first-class ΔE table. Spreadsheet / research report is enough |
-| Matrix | Hand YAML | Generate from the inventory. Do not hand-author 1,100 studies |
-| Product Admit | `study promote --admit-tod auto` | Unchanged |
+| Matrix | `examples/studies/program_b/` + `generate_program_b_yaml.py` | Do not hand-edit token lists. Regenerator + `validate_program_b_yaml.py` |
+| Product Admit | `study promote --admit-tod auto` | Unchanged. Do not auto-promote from this grid |
 | Desk contract | Notion *Process and roadmap* | **Leave it locked.** Program B gets its own page if it runs |
 
 No new factor axes. No golden regen. No engine series. Cap remains core + partners ≤ 5.
@@ -236,6 +243,6 @@ Those facts bound one Program A corner. They do not thin this 50×22 grid.
 
 The original ask was Program B. The executed work was Program A.
 
-Next research step, if any, is **not** “another ONH leftover pair,” **not** “put `RTH_Open` back on the scalp map,” and **not** a required-`dVWAP` replay. It is: run wave 1 of `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` (`ONH`…`pRTH_Low` × 22 confirms).
+Next research step, if any, is **not** “another ONH leftover pair,” **not** “put `RTH_Open` back on the scalp map,” and **not** a required-`dVWAP` replay. It is: run the operator packet in `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` — smoke, then Wave 0 (`progB_w0_solo.yaml`), then waves 1–8 of `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md`.
 
 The Program A desk page stays locked / wait. This grid is a different contract.
