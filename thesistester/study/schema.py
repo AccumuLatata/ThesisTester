@@ -512,7 +512,7 @@ def _anchor_only_empty_partners_allowed(
     raw = constants.get("min_valid_confluences")
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
         return False
-    return int(raw) == 0
+    return float(raw) == 0.0
 
 
 def _validate_factors(
@@ -771,8 +771,8 @@ def _factor_axis_allows_value(
     """Require ``value`` to be a member of ``factors[axis]`` (OTF via normalize)."""
     domain = factors[axis]
     if axis == "partner_levels":
-        if not isinstance(value, list) or not value:
-            raise StudySpecError(f"{path} must be a non-empty list")
+        if not isinstance(value, list):
+            raise StudySpecError(f"{path} must be a list")
         if not any(list(value) == list(partner_set) for partner_set in domain):
             raise StudySpecError(f"{path} value {value!r} is not one of factors.partner_levels")
         return

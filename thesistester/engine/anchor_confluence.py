@@ -64,6 +64,8 @@ def detect_anchor_confluence_zones(
     if not isinstance(confluence_rules, list):
         return _empty_anchor_zones_df()
 
+    if isinstance(min_valid_confluences, bool):
+        raise ValueError("min_valid_confluences must be an integer >= 0")
     min_valid = int(min_valid_confluences)
     if min_valid < 0:
         raise ValueError("min_valid_confluences must be >= 0")

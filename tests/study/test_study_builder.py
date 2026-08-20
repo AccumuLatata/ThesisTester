@@ -46,6 +46,7 @@ from thesistester.study.builder import (
     draft_warnings,
     emit_study_spec,
     emit_study_yaml,
+    format_stage_value,
     hydrate_study_draft,
     hydrate_study_yaml,
     infer_tf_mode,
@@ -475,6 +476,11 @@ def test_draft_warnings_empty_partner_anchor_only_ok():
     draft.min_valid_confluences = 0
     warnings = draft_warnings(draft)
     assert not any("Empty partner set" in item for item in warnings)
+
+
+def test_format_stage_value_empty_partner_set_is_visible():
+    assert format_stage_value("partner_levels", []) == "[]"
+    assert format_stage_value("partner_levels", ["dVWAP"]) == "dVWAP"
 
 
 def test_hydrate_yaml_rejects_empty_and_non_mapping():

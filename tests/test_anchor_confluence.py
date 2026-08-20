@@ -442,6 +442,21 @@ def test_empty_rules_min_valid_two_returns_empty():
     assert result.empty
 
 
+def test_bool_min_valid_raises():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "pdHigh": 4500.0,
+            }
+        ]
+    )
+    with pytest.raises(ValueError, match="min_valid_confluences must be an integer"):
+        detect_anchor_confluence_zones(
+            df, "pdHigh", [], tick_size=TICK, min_valid_confluences=False
+        )
+
+
 def test_negative_min_valid_raises():
     df = _df(
         [

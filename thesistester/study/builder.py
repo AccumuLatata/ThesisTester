@@ -646,7 +646,7 @@ def format_stage_value(axis: str, value: Any) -> str:
     """Stable picker / table label for a factor value."""
     if axis == "partner_levels":
         if isinstance(value, list):
-            return "+".join(str(token) for token in value)
+            return "+".join(str(token) for token in value) if value else "[]"
         return str(value)
     if axis == "otf":
         if isinstance(value, Mapping):
