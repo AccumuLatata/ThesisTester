@@ -7,7 +7,7 @@
 **Related:** `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` (Program A — executed product funnel), `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` (complete token list + work-through), `docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/research-methodology.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`  
 **Notion contract (short):** [Level combination research (Program B)](https://app.notion.com/p/3c2c7b8aa40d81c9a687ee6ec2129b42) — sibling of the locked desk page; does not amend it.
 
-**Current lock (2026-08-20):** `dVWAP` is **not** a required partner. Test **all 50 location tokens** against **MAs, rolling VWAPs, and pivots**. Complete list and wave order: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md`. Compute / run count are not constraints.
+**Current lock (2026-08-20):** `dVWAP` is **not** a required partner. Test **all 50 location tokens** against **MAs, rolling VWAPs, and pivots**. First product: MNQ `touch` @ `1min`, zone 10, SL/TP **80/80** ($40 / $40). Complete list and wave order: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md`. Compute / run count are not constraints.
 
 Program A answered a different question and is finished. This file is the concept that was asked for.
 
@@ -125,7 +125,7 @@ A later two-confirm stack (`L` + one MA + one rolling VWAP) is only for identifi
 |---|---|---|
 | **T Trigger** | One product at a time | Same cell, `touch` vs `3c`, **same width** (Program A L6b shape) — estimates waiting vs touch per *class*, not only for ONH |
 | **W Width** | 10 scalp / 20 swing as two products | Width × class only after a class is identified. Do not pick width by in-sample R |
-| **S SL/TP** | 1:1 lock (40/40 or 80/80) | Grid on identified cells only. Lock stays unless the desk page is amended |
+| **S SL/TP** | **80 / 80** ($40 / $40 on MNQ, 1R). Zone stays 10. | 40/40 later sensitivity only. Do not cartesian 40 vs 80 on the first grid |
 | **I Instrument** | MNQ first | MES transfer last, same ticks, money map explicit |
 | **Time** | Full RTH (or the copied flatten policy) | Post-hoc 30m NY. Never a StudySpec factor. Admit only via `study promote --admit-tod auto` |
 | **OTF** | Off | Validation matrix on a promoted single setup (`docs/research-methodology.md`), not `factors.otf` |
@@ -166,7 +166,7 @@ Combo attribution (already shipped) is **retrospective** on optional/mixed setup
 
 ```text
 B0  Lock this file + LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md
-B1  Default grid          50 locations × 22 (MA / rolling VWAP / pivot), one product
+B1  Default grid          50 × 22, touch @ 1min, zone 10, SL/TP 80/80 ($40)
 B2  Second product        same 1,100, other trigger/width — separate study
 B3  Widget pass           extra MA lengths + VWAP_rolling_15min/1h on interesting waves
 B4  Two-confirm stacks    only on identified cells

@@ -191,7 +191,11 @@ pick ONE product lock (do not mix touch/10 with 3c/20)
           NO dVWAP partner
 ```
 
-Suggested first product lock (desk constants except the `dVWAP` partner): MNQ, `touch` @ `1min`, 10 ticks, 40/40, costs 0.5/1.0, flatten copied from finished L1. Second product: `3c` @ `1min`, 20 ticks, 80/80 — **after** the default 1,100, or in parallel as a separate study. Do not cartesian 10 vs 20 inside one study.
+**First product lock (2026-08-20):** MNQ, `touch` @ `1min`, zone **10** ticks (distance audit), SL/TP **80 / 80** ($40 / $40, 1R). Costs 0.5 / 1.0. Flatten copied from finished L1. No `dVWAP` partner.
+
+Why 80 not 40: MNQ ~30k vs ~18k a few years ago. Tick dollar value is unchanged ($0.50), but 40 ticks is a smaller fraction of typical range. $40 was already the desk full-risk cap (80 ticks). Zone stays 10 — that is “at the level,” not the stop.
+
+Do **not** cartesian 40 vs 80, or 10 vs 20, in one study. 40/40 is a later sensitivity on identified cells only. Second product (`3c` @ 20, same 80/80) after the default 1,100, or as a separate study.
 
 One extra only on the first grid. Two-confirm stacks (`ONH` + `SMA_50_5min` + `VWAP_rolling_30min`) are a later pass on cells that are identified (`n≥30` and not a coin-flip). Cap core+partners ≤ 5.
 
