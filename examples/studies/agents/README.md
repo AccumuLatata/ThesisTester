@@ -10,7 +10,7 @@ Study Runner CLI or optionally uses default-off RS6 `STUDY.*` tools.
 | [`ROUTINE_CONFIRM_BOUND.md`](ROUTINE_CONFIRM_BOUND.md) | RS6 two-step bound approval (extends minimal recipe) |
 | [`ROUTINE_SURVIVOR_DIAGNOSTICS.md`](ROUTINE_SURVIVOR_DIAGNOSTICS.md) | Human-edited draft → second pass → optional rollup |
 
-**Desk contract switch (Notion *Process and roadmap*):** [`docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`](../../../docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) — keep the old page’s logging/roadmap; absorb protocol locks; do not paste the full plan.
+**Desk contract switch (Notion *Process and roadmap*):** [`docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`](../../../docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) — keep the old page’s logging/roadmap; absorb protocol locks; do not paste the full plan. Program B bot packet: [`docs/PROGRAM_B_OPERATOR_RUNBOOK.md`](../../../docs/PROGRAM_B_OPERATOR_RUNBOOK.md) · [`../program_b/`](../program_b/).
 
 **Full pack (normative):** [`docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md`](../../../docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md)  
 **Operator contract:** [`docs/STUDY_RUNNER.md`](../../../docs/STUDY_RUNNER.md)  

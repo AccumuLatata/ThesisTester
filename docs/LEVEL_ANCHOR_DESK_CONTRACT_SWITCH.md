@@ -19,6 +19,8 @@ The old Notion page is the **daily contract** (locks, sequence, never-do, loggin
 
 The new repo plan is the **realization protocol** (token inventory, expand/`min_valid`, Admit path, L2 power stop, L6 vs L6b).
 
+The holistic variety-of-levels concept is a **different program** (`docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md`, Program B). Do **not** dump Program B onto this desk page. If that concept is adopted, it gets its own Notion contract.
+
 **Success:** Notion stays a short page you can scan at 20:00 Vienna. It absorbs the new *locks*. It links the repo plan for YAML / expand / Admit. It does **not** become a paste of the 600-line protocol.
 
 If you dump the full protocol onto Notion and delete logging / Runs+Results / “how we decide the next run,” the switch has failed.
