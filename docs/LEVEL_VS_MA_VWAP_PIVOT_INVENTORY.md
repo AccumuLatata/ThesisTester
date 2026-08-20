@@ -24,9 +24,37 @@ Compute and run count are not constraints. Completeness and structure are.
 
 Default closed set is 73 = 50 anchors + 22 confirms + `POC_rolling_30min` (not in the requested confirm set; optional extra, §4).
 
-Partner ≠ core. `from_partners: required`. `min_valid_confluences: 1`. `anchor_rules`. No `dVWAP` in `partner_levels` unless you are *not* using this lock (you are not).
+Partner ≠ core. `from_partners: required`. `min_valid_confluences: 1`. `anchor_rules`. No `dVWAP` in `partner_levels`.
 
 StudySpec still requires a partner set. Solo-location cells are Setup Builder / engine, not this grid.
+
+---
+
+## 0.1 Locked constants (do not cartesian)
+
+Yes: **anchor** = `core_level`. **Confluence** = one partner inside **10 ticks of the anchor** (`anchor_rules`: distance is partner-price vs anchor-price). Trigger is `touch` of that zone.
+
+| Lock | Value | Why |
+|---|---|---|
+| Instrument | MNQ first | Same tape as the desk. MES later, money map explicit |
+| Mode | `anchor_rules` | Location is the decision; partner is evidence |
+| `from_partners` | `required` | Causal AND. Optional StudySpec drops the lock |
+| `min_valid_confluences` | `1` | Required set already must fire |
+| `tolerance_ticks` | **10** | Confluence width. Distance audit (nearest stack p25/p50/p75 = 0/0/2). Not the stop |
+| Trigger | `touch` @ `1min` | First product. `3c` is a later separate study |
+| Direction | `both` | Side is a readout, not a first cartesian |
+| SL / TP | **80 / 80** | $40 / $40 = 1R. MNQ $0.50/tick |
+| Commission | **`0.5` per side** | Currency, not ticks. Round-trip **$1.00** |
+| Slippage | **`1.0` tick per side** | Engine has no separate “spread” field. 1 tick in + 1 tick out = **$1.00** RT. Models a 1-tick spread |
+| Round-trip friction | **$2.00 = 0.05R** | At 80-tick risk. Zero-cost screens lie |
+| Exposure | `single_position` | One trade at a time |
+| Flatten at close | **`true`** | New day-trade program. Program A L1 was `false` — those E numbers are not this lock |
+| Intrabar | `subtimeframe_conservative` | 15s HE |
+| Ingest | Quantower HE, UTC, `15s_primary_derive_1m` | Same as finished desk L1 files |
+| OTF | off | Validation matrix later, not `factors.otf` |
+| ToD | post-hoc only | Never a StudySpec factor |
+
+Do not omit costs (engine default 0/0 is gross-era). Do not cartesian 40 vs 80, 10 vs 20, or cost-on vs cost-off.
 
 ---
 
@@ -191,11 +219,11 @@ pick ONE product lock (do not mix touch/10 with 3c/20)
           NO dVWAP partner
 ```
 
-**First product lock (2026-08-20):** MNQ, `touch` @ `1min`, zone **10** ticks (distance audit), SL/TP **80 / 80** ($40 / $40, 1R). Costs 0.5 / 1.0. Flatten copied from finished L1. No `dVWAP` partner.
+**First product lock:** §0.1. MNQ, `touch` @ `1min`, confluence **10** ticks, SL/TP **80 / 80**, costs **0.5 / 1.0**, flatten **true**. No `dVWAP` partner.
 
-Why 80 not 40: MNQ ~30k vs ~18k a few years ago. Tick dollar value is unchanged ($0.50), but 40 ticks is a smaller fraction of typical range. $40 was already the desk full-risk cap (80 ticks). Zone stays 10 — that is “at the level,” not the stop.
+Why 80 not 40: MNQ ~30k vs ~18k. Tick dollar value is unchanged ($0.50); 40 ticks is a smaller fraction of typical range. $40 is the desk full-risk cap. Zone stays 10 — “partner within 10 ticks of the anchor,” not the stop.
 
-Do **not** cartesian 40 vs 80, or 10 vs 20, in one study. 40/40 is a later sensitivity on identified cells only. Second product (`3c` @ 20, same 80/80) after the default 1,100, or as a separate study.
+Do **not** cartesian 40 vs 80, 10 vs 20, or cost-on vs cost-off. 40/40 is a later sensitivity on identified cells only. Second product (`3c` @ 20, same 80/80 and same costs) after the default 1,100, or as a separate study.
 
 One extra only on the first grid. Two-confirm stacks (`ONH` + `SMA_50_5min` + `VWAP_rolling_30min`) are a later pass on cells that are identified (`n≥30` and not a coin-flip). Cap core+partners ≤ 5.
 

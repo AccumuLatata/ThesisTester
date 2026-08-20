@@ -7,7 +7,7 @@
 **Related:** `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` (Program A — executed product funnel), `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` (complete token list + work-through), `docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/research-methodology.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`  
 **Notion contract (short):** [Level combination research (Program B)](https://app.notion.com/p/3c2c7b8aa40d81c9a687ee6ec2129b42) — sibling of the locked desk page; does not amend it.
 
-**Current lock (2026-08-20):** `dVWAP` is **not** a required partner. Test **all 50 location tokens** against **MAs, rolling VWAPs, and pivots**. First product: MNQ `touch` @ `1min`, zone 10, SL/TP **80/80** ($40 / $40). Complete list and wave order: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md`. Compute / run count are not constraints.
+**Current lock (2026-08-20):** `dVWAP` is **not** a required partner. Test **all 50 location tokens** against **MAs, rolling VWAPs, and pivots**. First product: MNQ `touch` @ `1min`, confluence **10** ticks, SL/TP **80/80** ($40 / $40), costs **`commission_per_side: 0.5`** + **`slippage_ticks: 1.0`** (1 tick per side; no separate spread field), flatten **true**. Full table: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` §0.1. Compute / run count are not constraints.
 
 Program A answered a different question and is finished. This file is the concept that was asked for.
 
@@ -124,14 +124,15 @@ A later two-confirm stack (`L` + one MA + one rolling VWAP) is only for identifi
 | Factor | Hold while mapping L × C | Cross later |
 |---|---|---|
 | **T Trigger** | One product at a time | Same cell, `touch` vs `3c`, **same width** (Program A L6b shape) — estimates waiting vs touch per *class*, not only for ONH |
-| **W Width** | 10 scalp / 20 swing as two products | Width × class only after a class is identified. Do not pick width by in-sample R |
-| **S SL/TP** | **80 / 80** ($40 / $40 on MNQ, 1R). Zone stays 10. | 40/40 later sensitivity only. Do not cartesian 40 vs 80 on the first grid |
-| **I Instrument** | MNQ first | MES transfer last, same ticks, money map explicit |
-| **Time** | Full RTH (or the copied flatten policy) | Post-hoc 30m NY. Never a StudySpec factor. Admit only via `study promote --admit-tod auto` |
+| **W Width** | Confluence **10** ticks (`tolerance_ticks`) | Do not pick width by in-sample R. 20 is a later product |
+| **S SL/TP** | **80 / 80** ($40 / $40 on MNQ, 1R) | 40/40 later sensitivity only. Do not cartesian 40 vs 80 |
+| **Costs** | `commission_per_side: 0.5`, `slippage_ticks: 1.0` | $2 RT = 0.05R. Do not run a zero-cost twin |
+| **I Instrument** | MNQ first | MES transfer last, money map explicit |
+| **Time** | `flat_by_session_close: true` | Post-hoc 30m NY. Never a StudySpec factor. Admit only via `study promote --admit-tod auto` |
 | **OTF** | Off | Validation matrix on a promoted single setup (`docs/research-methodology.md`), not `factors.otf` |
 | **Side** | `both` | Direction read after a cell is identified, not a first-screen cartesian |
 
-Flatten, costs, ingest, `intrabar_model`, `exposure_policy` copy the finished Program A L1 slice when Program B is realized, and **log them**. They are not research axes.
+Ingest / `intrabar_model` / `exposure_policy` are locks in `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` §0.1. They are not research axes.
 
 ---
 
