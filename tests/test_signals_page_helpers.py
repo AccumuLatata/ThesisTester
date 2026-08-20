@@ -500,7 +500,8 @@ def test_no_zones_message_anchor_mode():
     assert _no_zones_message("anchor_rules") == (
         "No confluence zones found with the current settings. "
         "For anchor setups, review the anchor level, confluence rules, "
-        "and per-rule tolerances."
+        "and per-rule tolerances. A missing finite anchor price also "
+        "yields no zones."
     )
 
 
