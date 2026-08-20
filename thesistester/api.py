@@ -672,7 +672,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     _validate_range(setup, "tolerance_ticks", section="setup", minimum=0)
     _validate_range(setup, "min_confluences", section="setup", minimum=1)
     _validate_range(setup, "max_confluences", section="setup", minimum=1, maximum=5)
-    _validate_range(setup, "min_valid_confluences", section="setup", minimum=1)
+    _validate_range(setup, "min_valid_confluences", section="setup", minimum=0)
     _validate_list_fields(
         setup,
         {"selected_levels"},
