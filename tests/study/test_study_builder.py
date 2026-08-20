@@ -448,6 +448,24 @@ def test_draft_warnings_core_partner_overlap():
     assert spec["study"]["factors"]["partner_levels"][0] == ["pdPOC", "SMA_50_1min"]
 
 
+def test_draft_warnings_empty_partner_without_anchor_only_locks():
+    draft = default_study_draft()
+    draft.partner_levels = [[]]
+    draft.confluence_mode = ["global_cluster", "anchor_rules"]
+    draft.min_valid_confluences = 1
+    warnings = draft_warnings(draft)
+    assert any("Empty partner set" in item for item in warnings)
+
+
+def test_draft_warnings_empty_partner_anchor_only_ok():
+    draft = default_study_draft()
+    draft.partner_levels = [[]]
+    draft.confluence_mode = ["anchor_rules"]
+    draft.min_valid_confluences = 0
+    warnings = draft_warnings(draft)
+    assert not any("Empty partner set" in item for item in warnings)
+
+
 def test_hydrate_yaml_rejects_empty_and_non_mapping():
     with pytest.raises(StudySpecError, match="empty"):
         hydrate_study_yaml("  \n")

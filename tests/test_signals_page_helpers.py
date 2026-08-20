@@ -580,6 +580,24 @@ def test_generation_blockers_anchor_empty_confluence_rules():
     assert any("confluence rule" in b.lower() for b in blockers)
 
 
+def test_generation_blockers_anchor_empty_rules_min_valid_zero_ok():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "ONH",
+        "confluence_rules": [],
+        "min_valid_confluences": 0,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert not any("confluence rule" in b.lower() for b in blockers)
+
+
 def test_generation_blockers_min_valid_confluences_exceeds_rules():
     config = {
         "name": "Anchor Setup",

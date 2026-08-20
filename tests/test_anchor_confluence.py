@@ -369,3 +369,173 @@ def test_anchor_is_first_and_rule_order_is_preserved_for_valid_entries():
     result = detect_anchor_confluence_zones(df, "anchor", rules, tick_size=TICK)
     assert len(result) == 1
     assert result.iloc[0]["level_names"] == "anchor|rule_b|rule_a"
+
+
+def test_empty_rules_min_valid_zero_emits_point_zone():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "pdHigh": 4500.0,
+            }
+        ]
+    )
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", [], tick_size=TICK, min_valid_confluences=0
+    )
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["zone_low"] == 4500.0
+    assert row["zone_high"] == 4500.0
+    assert row["zone_mid"] == 4500.0
+    assert row["valid_confluence_count"] == 0
+    assert bool(row["required_valid"]) is True
+    assert row["level_names"] == "pdHigh"
+    assert row["level_count"] == 1
+    assert json.loads(row["rule_results"]) == []
+
+
+def test_empty_rules_min_valid_zero_nan_anchor_skips_bar():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "pdHigh": np.nan,
+            }
+        ]
+    )
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", [], tick_size=TICK, min_valid_confluences=0
+    )
+    assert result.empty
+    assert list(result.columns) == ANCHOR_ZONE_COLUMNS
+
+
+def test_empty_rules_min_valid_zero_missing_anchor_column_empty_schema():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "VWAP_rolling_1h": 4500.0,
+            }
+        ]
+    )
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", [], tick_size=TICK, min_valid_confluences=0
+    )
+    assert result.empty
+    assert list(result.columns) == ANCHOR_ZONE_COLUMNS
+
+
+def test_empty_rules_min_valid_two_returns_empty():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "pdHigh": 4500.0,
+            }
+        ]
+    )
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", [], tick_size=TICK, min_valid_confluences=2
+    )
+    assert result.empty
+
+
+def test_negative_min_valid_raises():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "pdHigh": 4500.0,
+                "rule_a": 4500.0,
+            }
+        ]
+    )
+    rules = [{"level": "rule_a", "tolerance_ticks": 1, "required": True}]
+    with pytest.raises(ValueError, match="min_valid_confluences must be >= 0"):
+        detect_anchor_confluence_zones(
+            df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=-1
+        )
+
+
+def test_optional_all_invalid_min_valid_zero_still_emits():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "pdHigh": 100.0,
+                "rule_a": 110.0,
+            }
+        ]
+    )
+    rules = [{"level": "rule_a", "tolerance_ticks": 1, "required": False}]
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=0
+    )
+    assert len(result) == 1
+    assert result.iloc[0]["level_names"] == "pdHigh"
+    assert result.iloc[0]["valid_confluence_count"] == 0
+
+
+def test_required_invalid_min_valid_zero_still_blocks():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "pdHigh": 100.0,
+                "rule_a": 110.0,
+            }
+        ]
+    )
+    rules = [{"level": "rule_a", "tolerance_ticks": 1, "required": True}]
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=0
+    )
+    assert result.empty
+
+
+def test_required_valid_min_valid_zero_matches_min_valid_one():
+    df = _df(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "pdHigh": 4500.0,
+                "VWAP_rolling_1h": 4500.0,
+            }
+        ]
+    )
+    rules = [{"level": "VWAP_rolling_1h", "tolerance_ticks": 0, "required": True}]
+    zero = detect_anchor_confluence_zones(
+        df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=0
+    )
+    one = detect_anchor_confluence_zones(
+        df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=1
+    )
+    assert len(zero) == 1
+    assert len(one) == 1
+    cols = ["zone_low", "zone_high", "zone_mid", "level_names", "valid_confluence_count"]
+    assert zero[cols].equals(one[cols])
+
+
+def test_anchor_only_point_in_time_append_does_not_change_past():
+    first = {
+        "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+        "pdHigh": 4500.0,
+    }
+    future = {
+        "timestamp": pd.Timestamp("2026-06-02 09:31:00", tz=TZ),
+        "pdHigh": 4501.0,
+    }
+    before = detect_anchor_confluence_zones(
+        _df([first]), "pdHigh", [], tick_size=TICK, min_valid_confluences=0
+    )
+    after = detect_anchor_confluence_zones(
+        _df([first, future]), "pdHigh", [], tick_size=TICK, min_valid_confluences=0
+    )
+    assert len(before) == 1
+    assert len(after) == 2
+    past = after.iloc[[0]].reset_index(drop=True)
+    assert past["zone_low"].iloc[0] == before["zone_low"].iloc[0]
+    assert past["anchor_price"].iloc[0] == before["anchor_price"].iloc[0]
+    assert past["level_names"].iloc[0] == before["level_names"].iloc[0]

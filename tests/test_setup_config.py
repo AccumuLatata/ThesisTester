@@ -300,6 +300,31 @@ def test_anchor_rules_empty_confluence_rules_invalid():
     assert any("Confluence rules" in message for message in errors)
 
 
+def test_anchor_rules_empty_rules_min_valid_zero_valid():
+    assert validate_setup_config(_anchor_config(confluence_rules=[], min_valid_confluences=0)) == []
+
+
+def test_anchor_rules_empty_rules_omitted_min_valid_invalid():
+    config = _anchor_config(confluence_rules=[])
+    config.pop("min_valid_confluences")
+    errors = validate_setup_config(config)
+    assert any("Confluence rules" in message for message in errors)
+
+
+def test_anchor_rules_min_valid_negative_invalid():
+    errors = validate_setup_config(_anchor_config(min_valid_confluences=-1))
+    assert any("Minimum valid confluences must be >= 0" in message for message in errors)
+
+
+def test_anchor_rules_non_empty_min_valid_zero_valid():
+    assert validate_setup_config(_anchor_config(min_valid_confluences=0)) == []
+
+
+def test_global_cluster_min_confluences_zero_still_invalid():
+    errors = validate_setup_config(_base_config(min_confluences=0))
+    assert any("Minimum confluences must be >= 1" in message for message in errors)
+
+
 def test_anchor_rules_negative_rule_tolerance_invalid():
     errors = validate_setup_config(
         _anchor_config(

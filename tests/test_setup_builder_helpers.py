@@ -7,6 +7,8 @@ import types
 
 import pandas as pd
 
+from thesistester.setup import validate_setup_config
+
 
 def _make_streamlit_stub() -> types.ModuleType:
     st = types.ModuleType("streamlit")
@@ -466,6 +468,33 @@ def test_setup_builder_page_has_no_stale_pre_pr5_otf_copy():
         assert snippet not in text, f"Stale OTF copy still present: {snippet!r}"
     assert "OTF filter configuration" in text
     assert "candidate population" in text
+
+
+def test_anchor_only_editor_config_validates():
+    candidate = setup_builder._build_current_editor_config(
+        editor_seed={},
+        instrument="ES",
+        current_dataset_id="dataset-a",
+        selected_levels=["ONH"],
+        tolerance_ticks=10.0,
+        min_confluences=1,
+        max_confluences=1,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="touch",
+        trigger_timeframe="1min",
+        direction="both",
+        confluence_mode="anchor_rules",
+        anchor_level="ONH",
+        confluence_rules=[],
+        min_valid_confluences=0,
+        trigger_params={},
+        otf_filter={"enabled": False, "timeframes": []},
+        entry_window={"enabled": False},
+        setup_name="ONH_anchor_only",
+        description="",
+    )
+    assert validate_setup_config(candidate) == []
 
 
 def test_backtest_and_grid_pages_describe_live_otf_admission():
