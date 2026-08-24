@@ -153,9 +153,9 @@ def map_shifted_prior_profile(
     if fam.empty:
         empty = pd.DataFrame(
             {
-                f"{family}VAH": pd.Series(pd.NA, index=period_key.index, dtype="float64"),
-                f"{family}VAL": pd.Series(pd.NA, index=period_key.index, dtype="float64"),
-                f"{family}POC": pd.Series(pd.NA, index=period_key.index, dtype="float64"),
+                f"{family}VAH": pd.Series(index=period_key.index, dtype="float64"),
+                f"{family}VAL": pd.Series(index=period_key.index, dtype="float64"),
+                f"{family}POC": pd.Series(index=period_key.index, dtype="float64"),
             }
         )
         return empty
