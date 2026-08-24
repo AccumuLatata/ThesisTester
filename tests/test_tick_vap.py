@@ -89,8 +89,8 @@ def _two_session_table(**kwargs) -> PriorProfileTable:
 def test_hand_computed_one_tick_two_session_table_and_shift():
     table = _two_session_table()
     pd_rows = table.family_rows("pd").sort_values("period_key")
-    assert list(pd_rows["period_key"]) == ["2026-06-02", "2026-06-03"]
-    assert pd_rows["va_source"].eq(VA_SOURCE_TICK_LAST).all()
+    assert list(pd_rows["period_key"]) == [SESSION_A, SESSION_B]
+    assert pd_rows["va_source"].astype(str).eq(VA_SOURCE_TICK_LAST).all()
     assert pd_rows["aggregation_ticks"].tolist() == [1, 1]
     np.testing.assert_allclose(pd_rows["VAH"].to_numpy(), [100.25, 101.25])
     np.testing.assert_allclose(pd_rows["VAL"].to_numpy(), [100.00, 101.00])
@@ -151,7 +151,7 @@ def test_week_table_equals_merged_day_histograms_not_a_second_tick_pass():
     assert pw["sum_volume"].iloc[0] == pytest.approx(62.0)
 
     pm = table.family_rows("pm")
-    assert list(pm["period_key"]) == ["2026-06"]
+    assert list(pm["period_key"]) == [pd.Period("2026-06", freq="M")]
     np.testing.assert_allclose(pm["POC"].iloc[0], poc)
 
 
@@ -174,9 +174,11 @@ def test_period_keys_match_compute_profile_levels_calendar():
     day_key_ts = pd.to_datetime(day_key)
     week_key = day_key_ts.dt.to_period("W-SUN")
     month_key = day_key_ts.dt.to_period("M")
-    assert set(table.family_rows("pd")["period_key"]) == {str(key) for key in day_key}
-    assert set(table.family_rows("pw")["period_key"]) == {str(key) for key in week_key}
-    assert set(table.family_rows("pm")["period_key"]) == {str(key) for key in month_key}
+    assert set(table.family_rows("pd")["period_key"]) == set(day_key)
+    assert set(table.family_rows("pw")["period_key"]) == set(week_key)
+    assert set(table.family_rows("pm")["period_key"]) == set(month_key)
+    assert table.family_rows("pw")["period_key"].dtype == "period[W-SUN]"
+    assert table.family_rows("pm")["period_key"].dtype == "period[M]"
 
 
 def test_parquet_round_trip_preserves_locked_columns(tmp_path):
@@ -193,7 +195,7 @@ def test_empty_chunk_emits_no_period_row():
         [_empty_chunk(SESSION_A), _chunk(SESSION_B, PRINTS_B)],
         instrument="ES",
     )
-    assert list(table.family_rows("pd")["period_key"]) == ["2026-06-03"]
+    assert list(table.family_rows("pd")["period_key"]) == [SESSION_B]
     empty_only = build_prior_profile_table([_empty_chunk(SESSION_A)], instrument="ES")
     assert empty_only.frame.empty
     assert list(empty_only.frame.columns) == list(PRIOR_PROFILE_TABLE_COLUMNS)
@@ -224,3 +226,100 @@ def test_tick_vap_module_does_not_import_streamlit_or_open_15s():
     assert "15s" not in source
     assert "load_ohlcv" not in source
     assert "_compute_profile(" in source
+
+
+def test_period_keys_join_compute_profile_levels_dtypes_after_parquet(tmp_path):
+    session_c = date(2026, 6, 9)
+    session_d = date(2026, 7, 2)
+    prints_c = [
+        ("2026-06-09 13:30:00", 102.00, 8.0),
+        ("2026-06-09 13:31:00", 102.25, 9.0),
+    ]
+    prints_d = [
+        ("2026-07-02 13:30:00", 103.00, 8.0),
+        ("2026-07-02 13:31:00", 103.25, 9.0),
+    ]
+    table = build_prior_profile_table(
+        [
+            _chunk(SESSION_A, PRINTS_A),
+            _chunk(session_c, prints_c),
+            _chunk(session_d, prints_d),
+        ],
+        instrument="ES",
+    )
+    path = tmp_path / "prior_profile.parquet"
+    table.to_parquet(path)
+    raw = pd.read_parquet(path)
+    persist_keys = set(raw["period_key"].astype(str))
+    assert "2026-06-01/2026-06-07" in persist_keys
+    assert "2026-06" in persist_keys
+    assert not any(isinstance(value, pd.Period) for value in raw["period_key"])
+    loaded = PriorProfileTable.from_parquet(path)
+
+    bars = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                ["2026-06-02 09:30:00", "2026-06-09 09:30:00", "2026-07-02 09:30:00"]
+            ).tz_localize(TZ),
+            "open": [100.0, 102.0, 103.0],
+            "high": [100.0, 102.0, 103.0],
+            "low": [100.0, 102.0, 103.0],
+            "close": [100.0, 102.0, 103.0],
+            "volume": [1.0, 1.0, 1.0],
+        }
+    )
+    local_ts = bars["timestamp"].dt.tz_convert(TZ)
+    day_key = trading_session_date(local_ts, "18:00")
+    day_key_ts = pd.to_datetime(day_key)
+    week_key = day_key_ts.dt.to_period("W-SUN")
+    month_key = day_key_ts.dt.to_period("M")
+
+    pd_rows = loaded.family_rows("pd").sort_values("period_key")
+    assert list(pd_rows["period_key"]) == [SESSION_A, session_c, session_d]
+    assert loaded.family_rows("pw")["period_key"].dtype == "period[W-SUN]"
+    assert loaded.family_rows("pm")["period_key"].dtype == "period[M]"
+
+    mapped_d = map_shifted_prior_profile(day_key, loaded, family="pd")
+    assert pd.isna(mapped_d["pdPOC"].iloc[0])
+    np.testing.assert_allclose(mapped_d["pdPOC"].iloc[1], 100.25)
+    np.testing.assert_allclose(mapped_d["pdPOC"].iloc[2], 102.25)
+
+    mapped_w = map_shifted_prior_profile(week_key, loaded, family="pw")
+    assert pd.isna(mapped_w["pwPOC"].iloc[0])
+    np.testing.assert_allclose(mapped_w["pwPOC"].iloc[1], 100.25)
+    np.testing.assert_allclose(mapped_w["pwPOC"].iloc[2], 102.25)
+
+    mapped_m = map_shifted_prior_profile(month_key, loaded, family="pm")
+    assert pd.isna(mapped_m["pmPOC"].iloc[0])
+    assert pd.isna(mapped_m["pmPOC"].iloc[1])
+    np.testing.assert_allclose(mapped_m["pmPOC"].iloc[2], 100.25)
+
+    naive_week = pd.Period("2026-06-01/2026-06-07")
+    assert naive_week.freqstr != "W-SUN"
+    restored_week = loaded.family_rows("pw")["period_key"].iloc[0]
+    assert restored_week.freqstr == "W-SUN"
+
+
+def test_timestamp_session_date_still_joins_trading_session_date():
+    table = build_prior_profile_table(
+        [_chunk(pd.Timestamp("2026-06-02"), PRINTS_A), _chunk(SESSION_B, PRINTS_B)],
+        instrument="ES",
+    )
+    assert list(table.family_rows("pd")["period_key"]) == [SESSION_A, SESSION_B]
+    mapped = map_shifted_prior_profile(
+        pd.Series([SESSION_A, SESSION_B]),
+        table,
+        family="pd",
+    )
+    np.testing.assert_allclose(mapped["pdPOC"].iloc[1], 100.25)
+
+
+def test_empty_table_parquet_round_trip(tmp_path):
+    table = build_prior_profile_table([_empty_chunk(SESSION_A)], instrument="ES")
+    path = tmp_path / "empty_prior_profile.parquet"
+    table.to_parquet(path)
+    loaded = PriorProfileTable.from_parquet(path)
+    assert loaded.frame.empty
+    assert list(loaded.frame.columns) == list(PRIOR_PROFILE_TABLE_COLUMNS)
+    mapped = map_shifted_prior_profile(pd.Series([SESSION_A]), loaded, family="pd")
+    assert pd.isna(mapped["pdVAH"].iloc[0])

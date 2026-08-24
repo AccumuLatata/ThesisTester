@@ -233,7 +233,7 @@ A small, typed table — kilobytes, not gigabytes:
 | Column | Meaning |
 |---|---|
 | `family` | `pd` / `pw` / `pm` |
-| `period_key` | Join key **identical** to `compute_profile_levels`: day = `trading_session_date(...)` values (session-date strings); week = `to_period("W-SUN")`; month = `to_period("M")`. Parquet must round-trip to objects that `period_key.map(...)` accepts — persist `str(key)` of those pandas objects and reconstruct the same dtype in TV3. Do **not** invent a second calendar or a “week-start date” alias |
+| `period_key` | Join key **identical** to `compute_profile_levels`: day = `trading_session_date(...)` values (`datetime.date`); week = `to_period("W-SUN")`; month = `to_period("M")`. Parquet persists `str(key)` of those pandas objects and TV2 reconstructs the same dtype on load so `period_key.map(...)` joins. Week/month restore must pass explicit `freq` (`W-SUN` / `M`) — pandas 3.x parses `YYYY-MM-DD/YYYY-MM-DD` as minutes without it. Do **not** invent a second calendar or a “week-start date” alias |
 | `VAH` `VAL` `POC` | Floats from `_compute_profile` |
 | `n_ticks` `sum_volume` | Provenance |
 | `period_start` `period_end` | First/last tick used (tz-aware) |

@@ -3,6 +3,8 @@
 Builds a tiny ``PriorProfileTable`` from TV1 session chunks. Allocation is
 Last × Volume; the 70% expander is ``profile._compute_profile`` (not copied).
 Period keys match ``compute_profile_levels`` (session date → ``W-SUN`` / ``M``).
+Parquet persists ``str(key)``; load reconstructs ``datetime.date`` / ``Period[W-SUN]``
+/ ``Period[M]`` so ``period_key.map(...)`` joins those dtypes.
 
 This module does **not** change ``compute_profile_levels`` emission. Typical
 ``pdVA*`` / ``pw*`` / ``pm*`` stay on the 1m path until TV3.
@@ -12,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Final
 
@@ -58,8 +60,11 @@ class PriorProfileTable:
             raise ValueError(f"PriorProfileTable missing columns: {missing}")
 
     def to_parquet(self, path: str | Path) -> None:
+        """Persist ``str(key)`` of the native period-key objects (parquet cannot store Period)."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.frame.to_parquet(path, index=False)
+        persist = self.frame.copy()
+        persist["period_key"] = persist["period_key"].map(_period_key_text)
+        persist.to_parquet(path, index=False)
 
     @classmethod
     def from_parquet(cls, path: str | Path) -> PriorProfileTable:
@@ -69,7 +74,10 @@ class PriorProfileTable:
     def family_rows(self, family: str) -> pd.DataFrame:
         if family not in PRIOR_PROFILE_FAMILIES:
             raise ValueError(f"Unknown prior-profile family: {family}")
-        return self.frame.loc[self.frame["family"].eq(family)].copy()
+        out = self.frame.loc[self.frame["family"].astype(str).eq(family)].copy()
+        if not out.empty:
+            out["period_key"] = _period_keys_for_join(out["period_key"], family).to_numpy()
+        return out
 
 
 def build_prior_profile_table(
@@ -151,37 +159,95 @@ def map_shifted_prior_profile(
             }
         )
         return empty
-    ordered = fam.sort_values("period_key").set_index("period_key")[["VAH", "VAL", "POC"]]
+    keys = _period_keys_for_join(period_key, family)
+    ordered = fam.copy()
+    ordered["period_key"] = _period_keys_for_join(ordered["period_key"], family).to_numpy()
+    ordered = ordered.sort_values("period_key").set_index("period_key")[["VAH", "VAL", "POC"]]
+    ordered.index = _typed_period_index(ordered.index, family)
     shifted = ordered.shift(1)
-    lookup = period_key.map(_format_period_key)
     return pd.DataFrame(
         {
-            f"{family}VAH": lookup.map(shifted["VAH"]),
-            f"{family}VAL": lookup.map(shifted["VAL"]),
-            f"{family}POC": lookup.map(shifted["POC"]),
+            f"{family}VAH": keys.map(shifted["VAH"]),
+            f"{family}VAL": keys.map(shifted["VAL"]),
+            f"{family}POC": keys.map(shifted["POC"]),
         },
         index=period_key.index,
         dtype="float64",
     )
 
 
-def _period_keys_from_session_date(session_date: date) -> tuple[str, str, str]:
-    """Same construction as ``compute_profile_levels`` after ``trading_session_date``."""
-    day_key = session_date
-    day_key_ts = pd.to_datetime(day_key)
-    week_key = day_key_ts.to_period("W-SUN")
-    month_key = day_key_ts.to_period("M")
-    return str(day_key), str(week_key), str(month_key)
+def _as_session_date(value: object) -> date:
+    """Coerce TV1 ``session_date`` / join keys to ``datetime.date``.
+
+    ``pd.Timestamp`` is a ``datetime.date`` subclass, so ``str(timestamp)`` is
+    ``YYYY-MM-DD 00:00:00`` and will not join ``trading_session_date`` keys.
+    """
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if "T" in text or " " in text:
+            return pd.Timestamp(text).date()
+        return date.fromisoformat(text)
+    return pd.Timestamp(value).date()
 
 
-def _format_period_key(value: object) -> str:
+def _period_key_text(value: object) -> str:
+    """Persist form: ``str(key)`` of the ``compute_profile_levels`` objects."""
     if isinstance(value, pd.Period):
         return str(value)
-    if isinstance(value, date) and not isinstance(value, pd.Timestamp):
-        return value.isoformat()
     if isinstance(value, str):
         return value
-    return str(pd.Timestamp(value).date())
+    return _as_session_date(value).isoformat()
+
+
+def _restore_period_key(family: str, value: object) -> date | pd.Period:
+    """Rebuild the dtype ``compute_profile_levels`` uses for ``period_key.map``."""
+    family = str(family)
+    if family == "pd":
+        return _as_session_date(value)
+    text = _period_key_text(value)
+    if family == "pw":
+        # pandas 3.x parses ``YYYY-MM-DD/YYYY-MM-DD`` as minutes without freq.
+        return pd.Period(text, freq="W-SUN")
+    if family == "pm":
+        return pd.Period(text, freq="M")
+    raise ValueError(f"Unknown prior-profile family: {family}")
+
+
+def _period_keys_for_join(values: pd.Series, family: str) -> pd.Series:
+    """Typed keys that ``period_key.map(...)`` accepts after parquet."""
+    if values.empty:
+        if family == "pw":
+            return pd.Series(pd.PeriodIndex([], freq="W-SUN"), index=values.index)
+        if family == "pm":
+            return pd.Series(pd.PeriodIndex([], freq="M"), index=values.index)
+        return pd.Series(dtype=object, index=values.index)
+    restored = [_restore_period_key(family, value) for value in values]
+    if family == "pw":
+        return pd.Series(pd.PeriodIndex(restored, freq="W-SUN"), index=values.index)
+    if family == "pm":
+        return pd.Series(pd.PeriodIndex(restored, freq="M"), index=values.index)
+    return pd.Series(restored, index=values.index, dtype=object)
+
+
+def _typed_period_index(index: pd.Index, family: str) -> pd.Index:
+    if family == "pw":
+        return pd.PeriodIndex(index, freq="W-SUN")
+    if family == "pm":
+        return pd.PeriodIndex(index, freq="M")
+    return pd.Index([_as_session_date(value) for value in index], dtype=object)
+
+
+def _period_keys_from_session_date(session_date: date) -> tuple[str, str, str]:
+    """Same construction as ``compute_profile_levels`` after ``trading_session_date``."""
+    session_date = _as_session_date(session_date)
+    day_key_ts = pd.to_datetime(session_date)
+    week_key = day_key_ts.to_period("W-SUN")
+    month_key = day_key_ts.to_period("M")
+    return session_date.isoformat(), str(week_key), str(month_key)
 
 
 @dataclass(frozen=True)
@@ -210,7 +276,9 @@ def _session_histogram(chunk: TickChunk, *, tick_size: float) -> _SessionHistogr
         return None
     work["bin"] = _bucket_prices(work["price"], tick_size)
     histogram = work.groupby("bin", sort=True)["volume"].sum()
-    day_key, week_key, month_key = _period_keys_from_session_date(chunk.session_date)
+    day_key, week_key, month_key = _period_keys_from_session_date(
+        _as_session_date(chunk.session_date)
+    )
     start = pd.Timestamp(work["timestamp"].min())
     end = pd.Timestamp(work["timestamp"].max())
     if start.tzinfo is None:
@@ -223,7 +291,7 @@ def _session_histogram(chunk: TickChunk, *, tick_size: float) -> _SessionHistogr
         end = end.tz_convert("UTC")
     # Tick rows are discarded after this return; only the histogram is kept.
     return _SessionHistogram(
-        session_date=chunk.session_date,
+        session_date=_as_session_date(chunk.session_date),
         day_key=day_key,
         week_key=week_key,
         month_key=month_key,
@@ -282,6 +350,8 @@ def _family_rows(
 def _normalize_table_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         empty = pd.DataFrame(columns=list(PRIOR_PROFILE_TABLE_COLUMNS))
+        empty["family"] = empty["family"].astype("string")
+        empty["period_key"] = pd.Series(dtype=object)
         empty["VAH"] = empty["VAH"].astype("float64")
         empty["VAL"] = empty["VAL"].astype("float64")
         empty["POC"] = empty["POC"].astype("float64")
@@ -289,13 +359,19 @@ def _normalize_table_frame(frame: pd.DataFrame) -> pd.DataFrame:
         empty["sum_volume"] = empty["sum_volume"].astype("float64")
         empty["aggregation_ticks"] = empty["aggregation_ticks"].astype("int64")
         empty["value_area_pct"] = empty["value_area_pct"].astype("float64")
+        empty["va_source"] = empty["va_source"].astype("string")
         empty["period_start"] = pd.Series(dtype="datetime64[ns, UTC]")
         empty["period_end"] = pd.Series(dtype="datetime64[ns, UTC]")
         return empty
     out = frame.loc[:, list(PRIOR_PROFILE_TABLE_COLUMNS)].copy()
     out["family"] = out["family"].astype("string")
-    out["period_key"] = out["period_key"].astype("string")
     out["va_source"] = out["va_source"].astype("string")
+    if not out["va_source"].astype(str).eq(VA_SOURCE_TICK_LAST).all():
+        raise ValueError("PriorProfileTable va_source must be tick_last")
+    out["period_key"] = [
+        _restore_period_key(str(family), key)
+        for family, key in zip(out["family"], out["period_key"], strict=True)
+    ]
     for column in ("VAH", "VAL", "POC", "sum_volume", "value_area_pct"):
         out[column] = pd.to_numeric(out[column], errors="coerce").astype("float64")
     out["n_ticks"] = pd.to_numeric(out["n_ticks"], errors="coerce").astype("int64")
