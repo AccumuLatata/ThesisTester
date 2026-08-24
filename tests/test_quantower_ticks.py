@@ -6,7 +6,6 @@ from datetime import date
 from pathlib import Path
 import inspect
 
-import pandas as pd
 import pytest
 
 from thesistester.data.quantower_ticks import (
