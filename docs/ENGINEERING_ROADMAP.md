@@ -27,6 +27,7 @@ Assistant-related contracts:
 | Developing week/month VWAP | `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV) | **WMV2 landed.** Series complete. Developing `wVWAP` / `mVWAP` siblings of `dVWAP`; Setup/Study tokens; Help/UI copy. Same `session_vwap_enabled` gate; `LEVEL_ENGINE_VERSION` 10; no golden regen |
 | Level-as-anchor combination protocol | `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` | Research protocol (docs-only). Closed token inventory + staged `core_level` × complementary partners; L1 coin-flip-first / L2 low-N stop / Admit=`backtest.entry_window`. No new factor axes / engine / goldens |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
+| Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV0 locked.** TV1–TV4 pending. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; fail-closed without ticks; `LEVEL_ENGINE_VERSION` 11 in TV3; no golden regen |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1417,6 +1418,33 @@ pipeline composition stay frozen.
 stays; omitted `min_valid` resolves to 1; no golden regen; no
 `LEVEL_ENGINE_VERSION`; no desk L1/L2 rewrite. Parked: anchor ± N-tick
 band, `pwVWAP`/`pmVWAP`, Study emit of 1-level `global_cluster`.
+
+## Tick VAP (TV0–TV4) — TV0 locked
+
+Prior-profile `pdVAH` / `pdVAL` / `pdPOC` (and `pw*` / `pm*` VA) become
+Quantower tick Last×Volume VAP. 15s stays the OHLC / study clock. Ticks
+are ingest-only for those nine columns. No ticks → columns absent →
+named-VA generate refuses / cells `failed`. Product day aggregation
+becomes 1-tick in TV3 so POC is the same grid Accumu fades. Do not
+retick `dVWAP`, OR, ONH, touch, 3c, or R12. Do not keep 1m typical under
+the same token names.
+
+**Canonical spec:** `docs/TICK_VAP_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| TV0 | Plan lock + docs index (this PR) |
+| TV1 | Quantower tick-last loader + monthly combine + session-chunk (no emission change) |
+| TV2 | `PriorProfileTable` from ticks; reuse `_compute_profile`; parquet persist (no cutover) |
+| TV3 | Identity cutover: tick VAP as `pd*`/`pw*`/`pm*`; omit without ticks; fail-closed; day bin 4→1; `LEVEL_ENGINE_VERSION` 11 |
+| TV4 | Data / Study Builder `tick_paths` + Help honesty |
+
+**Regression posture:** loader/table additive in TV1–TV2; TV3 is a versioned
+VA identity change (goldens untouched — `run_legacy_pipeline` never calls
+`compute_all_levels`); `dVWAP*` / session marks / rolling POC / APOC
+value-identical; farm studies that do not name VA tokens stay 15s-only.
+Parked: `typical_mvp` same-name alias, developing `dVAH`, APOC/rolling-POC
+VAP, tick VWAP, bid/ask VAP.
 
 ## Studies Inspect ledger progress (additive)
 

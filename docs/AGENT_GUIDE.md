@@ -725,4 +725,5 @@ When OTF is enabled in walk-forward:
 - **Docs index:** `docs/README.md` (living vs contract vs archive/research).
 - **Developing week/month VWAP (WMV):** `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV0–WMV2 complete).
 - **Anchor-only (AO):** `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO1 implemented; empty rules + `min_valid=0` only).
+- **Tick VAP (TV):** `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV0 plan lock; TV1–TV4 pending). Tick-last ingest for prior VA only; do not retick VWAP / OR / 3c.
 - **Voice sidecar ops:** `docs/VOICE_SIDECAR_OPS.md`.
