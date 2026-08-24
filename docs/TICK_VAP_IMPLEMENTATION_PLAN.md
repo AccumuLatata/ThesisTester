@@ -342,7 +342,7 @@ Maps to `ENGINEERING_PROPOSAL.md` §4:
 | 5. Future-shock PIT | §6 tests on the tick table |
 | 6. `session_state` stability | No new required keys. Optional tick-path widget keys only in TV4, recorded in `ARCHITECTURE.md` there |
 | 7. Determinism | Pure pandas/numpy; file order canonicalized by first-row time; no randomness |
-| 8. Same-PR docs | §10 list per PR |
+| 8. Same-PR docs | §9 list per PR |
 | 9. CI green | Full pytest + ruff. Session-20 file is **not** a CI fixture |
 | 10. Honesty | Typical ≠ tick VAP; APOC/rolling POC still typical; residual ~2–3 pts documented |
 
@@ -393,7 +393,7 @@ Five PRs. Do not merge TV*+1 before TV*. Do not implement engine cutover in TV0�
 | **Scope** | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md`; index lines in `docs/README.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/AGENT_GUIDE.md` |
 | **Behavior** | Documentation only. No `.py` changes |
 | **Regression** | Docs-only; no goldens; no `LEVEL_ENGINE_VERSION` |
-| **Acceptance** | Plan contains locked object (§3), fail-closed ladder (§3.7), architecture (§4), PIT (§6), fully scoped TV1–TV4 (§8), test plan (§11), copy-ready prompts (§12) |
+| **Acceptance** | Plan contains locked object (§3), fail-closed ladder (§3.7), architecture (§4), PIT (§6), fully scoped TV1–TV4 (§8), test plan (§10), copy-ready prompts (§11) |
 | **Out of scope** | Any engine / ingest / UI / test implementation |
 
 ### TV1 — Tick loader + monthly combine
@@ -404,7 +404,7 @@ Five PRs. Do not merge TV*+1 before TV*. Do not implement engine cutover in TV0�
 | **Scope** | New `thesistester/data/quantower_ticks.py`; `tests/test_quantower_ticks.py`; tiny synthetic `;` fixtures under `tests/fixtures/ticks/`; optional one-line export from `thesistester/data/__init__.py` if that package already re-exports loaders |
 | **Behavior** | Parse Tick–Tick–Last; combine many files in first-row time order; iterate CME session chunks from **row** timestamps; record filename-vs-row mismatch as warning metadata; never call `_aggregate_capture_rows` / `load_ohlcv` |
 | **Regression** | No `profile.py` / `all.py` / `api.py` / study / golden / `LEVEL_ENGINE_VERSION` touch |
-| **Acceptance** | §11.1 tests green; full `pytest -q` / ruff |
+| **Acceptance** | §10.1 tests green; full `pytest -q` / ruff |
 | **Out of scope** | VAP math; `compute_profile_levels`; Data page; StudySpec keys; product defaults |
 
 **TV1 file-level checklist**
@@ -425,7 +425,7 @@ Five PRs. Do not merge TV*+1 before TV*. Do not implement engine cutover in TV0�
 | **Scope** | New `thesistester/levels/tick_vap.py`; persist/load helpers (same module or `thesistester/persistence/` only if an existing artifact helper is the natural home — prefer the new module); `tests/test_tick_vap.py`; reuse `_compute_profile` from `profile.py` (**do not copy** the expander) |
 | **Behavior** | From TV1 chunks, accumulate Last×Volume histograms per day/week/month key; run `_compute_profile`; return `PriorProfileTable`. Persist parquet. `compute_all_levels` **still emits typical VA** (cutover is TV3) |
 | **Regression** | Expander bit-identical on existing typical price/volume vectors (`tests/test_phase3_levels.py` vectors fed through `_compute_profile` directly). No `LEVEL_ENGINE_VERSION`. No `all.py` emission change |
-| **Acceptance** | §11.2 tests green; expander isolation; week/month merge-from-day-histograms proven |
+| **Acceptance** | §10.2 tests green; expander isolation; week/month merge-from-day-histograms proven |
 | **Out of scope** | Fail-closed omit; StudySpec; product day-bin 4→1; Data page |
 
 **TV2 file-level checklist**
@@ -442,11 +442,11 @@ Five PRs. Do not merge TV*+1 before TV*. Do not implement engine cutover in TV0�
 | Field | Value |
 |---|---|
 | **Title** | `TV3: emit tick VAP as pd/pw/pm VA and fail closed without ticks` |
-| **Scope** | `thesistester/levels/profile.py`; `thesistester/levels/all.py`; `thesistester/levels/defaults.py` (day agg 4→1 only); `thesistester/persistence/local_store.py` (`LEVEL_ENGINE_VERSION = 11` + tick source in levels identity); `thesistester/api.py` (`_DATASET_KEYS`, `compute_levels` / `run_experiment` wiring, layer-1 refuse); `thesistester/study/schema.py` (layer-1); `thesistester/study/launch.py` + `expand.py` (list path pin); `thesistester/study/execute.py` (pre-pass table + cell `failed`); rewrite typical-pinning tests listed below; living engine docs in §10.1 |
+| **Scope** | `thesistester/levels/profile.py`; `thesistester/levels/all.py`; `thesistester/levels/defaults.py` (day agg 4→1 only); `thesistester/persistence/local_store.py` (`LEVEL_ENGINE_VERSION = 11` + tick source in levels identity); `thesistester/api.py` (`_DATASET_KEYS`, `compute_levels` / `run_experiment` wiring, layer-1 refuse); `thesistester/study/schema.py` (layer-1); `thesistester/study/launch.py` + `expand.py` (list path pin); `thesistester/study/execute.py` (pre-pass table + cell `failed`); rewrite typical-pinning tests listed below; living engine docs in §9.2 |
 | **Likely test edits** | `tests/test_phase3_levels.py` (prior-VA tests need a table or assert omit); `tests/test_r3_point_in_time.py` (prior-VA future-shock); `tests/test_session_levels.py` if it pins `pdVA*`; `tests/test_stage1_level_plumbing.py` (membership of always-on columns); `tests/study/test_study_schema.py` (named VA without ticks); new `tests/test_tick_vap_cutover.py` |
 | **Behavior** | No table → nine columns absent; rolling POC remains. Table present → nine columns are tick VAP. Named VA without `tick_paths` refuses. Product day bin 1. Version 11 |
 | **Regression** | §7.1 isolation; goldens untouched; farm 15s-only non-VA studies still generate |
-| **Acceptance** | §11.3–11.4 green; `pytest -q` of the listed files plus `tests/test_golden_master.py` plus full `pytest -q` / ruff |
+| **Acceptance** | §10.3–10.4 green; `pytest -q` of the listed files plus `tests/test_golden_master.py` plus full `pytest -q` / ruff |
 | **Out of scope** | Data-page / Study Builder widgets; USER_GUIDE how-to; thesis compiler; `typical_mvp`; week/month bin changes; APOC rewrite |
 
 **TV3 file-level checklist**
@@ -462,7 +462,7 @@ Five PRs. Do not merge TV*+1 before TV*. Do not implement engine cutover in TV0�
 9. `run_study` pre-pass builds the table once; workers get the parquet path; cell exceptions from LC4 become `failed`.
 10. Launch refuses missing tick files when the key is present.
 11. Rewrite tests that assumed always-on typical `pdVAH`. Do **not** preserve those expected numbers under the old names.
-12. Same-PR docs in §10.1. One-line LC plan amendment: contract #3 superseded by TV for prior-profile allocation.
+12. Same-PR docs in §9.2. One-line LC plan amendment: contract #3 superseded by TV for prior-profile allocation.
 13. Optional: `tests/test_tick_vap_session20.py` **skips** unless `THESISTESTER_QT_TICK_FIXTURE` points at the `b9bd9777` file. Expected 1-tick band: within a few points of 29453.25 / 29266.75 / 29366.75. 4-tick must stay near 29455 / 29264 / 29354, **not** 29474 / 29275. `dVWAP` @ 10:00 NY remains ~29484.34.
 
 ### TV4 — Authoring UX + Help honesty
