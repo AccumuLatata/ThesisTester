@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-24  
-**Status:** TV0 (this PR) — plan lock. No engine code changed.  
+**Status:** TV1 landed. TV2 (this PR) — prior-profile table library. Typical VA emission unchanged.  
 **Series code:** **TV** (Tick volume-at-price)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 
