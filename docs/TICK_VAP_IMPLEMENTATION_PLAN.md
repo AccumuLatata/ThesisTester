@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-24  
-**Status:** TV0 (this PR) — plan lock. No engine code changed.  
+**Status:** TV1 landed. TV2 (this PR) — prior-profile table library. Typical VA emission unchanged.  
 **Series code:** **TV** (Tick volume-at-price)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 
@@ -233,7 +233,7 @@ A small, typed table — kilobytes, not gigabytes:
 | Column | Meaning |
 |---|---|
 | `family` | `pd` / `pw` / `pm` |
-| `period_key` | Join key **identical** to `compute_profile_levels`: day = `trading_session_date(...)` values (session-date strings); week = `to_period("W-SUN")`; month = `to_period("M")`. Parquet must round-trip to objects that `period_key.map(...)` accepts — persist `str(key)` of those pandas objects and reconstruct the same dtype in TV3. Do **not** invent a second calendar or a “week-start date” alias |
+| `period_key` | Join key **identical** to `compute_profile_levels`: day = `trading_session_date(...)` values (`datetime.date`); week = `to_period("W-SUN")`; month = `to_period("M")`. Parquet persists `str(key)` of those pandas objects and TV2 reconstructs the same dtype on load so `period_key.map(...)` joins. Week/month restore must pass explicit `freq` (`W-SUN` / `M`) — pandas 3.x parses `YYYY-MM-DD/YYYY-MM-DD` as minutes without it. Do **not** invent a second calendar or a “week-start date” alias |
 | `VAH` `VAL` `POC` | Floats from `_compute_profile` |
 | `n_ticks` `sum_volume` | Provenance |
 | `period_start` `period_end` | First/last tick used (tz-aware) |
