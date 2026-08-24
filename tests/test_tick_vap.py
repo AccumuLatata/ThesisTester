@@ -41,6 +41,8 @@ def _chunk(session: date, prints: list[tuple[str, float, float]]) -> TickChunk:
         warnings=(),
         first_row_utc=pd.Timestamp(stamps.min()),
         last_row_utc=pd.Timestamp(stamps.max()),
+        filename_window_start=None,
+        filename_window_end=None,
     )
 
 
@@ -55,6 +57,8 @@ def _empty_chunk(session: date) -> TickChunk:
         warnings=(),
         first_row_utc=dummy,
         last_row_utc=dummy,
+        filename_window_start=None,
+        filename_window_end=None,
     )
 
 
@@ -155,9 +159,9 @@ def test_period_keys_match_compute_profile_levels_calendar():
     table = _two_session_table()
     bars = pd.DataFrame(
         {
-            "timestamp": pd.to_datetime(
-                ["2026-06-02 09:30:00", "2026-06-03 09:30:00"]
-            ).tz_localize(TZ),
+            "timestamp": pd.to_datetime(["2026-06-02 09:30:00", "2026-06-03 09:30:00"]).tz_localize(
+                TZ
+            ),
             "open": [100.0, 101.0],
             "high": [100.0, 101.0],
             "low": [100.0, 101.0],

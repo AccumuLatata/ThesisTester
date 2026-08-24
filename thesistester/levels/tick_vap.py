@@ -51,7 +51,9 @@ class PriorProfileTable:
     frame: pd.DataFrame
 
     def __post_init__(self) -> None:
-        missing = [column for column in PRIOR_PROFILE_TABLE_COLUMNS if column not in self.frame.columns]
+        missing = [
+            column for column in PRIOR_PROFILE_TABLE_COLUMNS if column not in self.frame.columns
+        ]
         if missing:
             raise ValueError(f"PriorProfileTable missing columns: {missing}")
 
