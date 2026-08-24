@@ -6,8 +6,9 @@ into bars and must not be used as a substitute for the canonical bar loader.
 
 Stamps are UTC on disk. Session membership uses the instrument ``eth_start``
 in ``exchange_tz`` (row timestamps, never the filename window). Filename
-labels are compared to first/last rows and recorded as warning metadata
-when they disagree.
+labels are advisory: a mismatch is recorded only when the row time range
+falls outside the labeled window (sub-second prints inside the window are
+not a disagreement). Files are ordered by earliest parseable timestamp.
 """
 
 from __future__ import annotations
@@ -40,11 +41,13 @@ _TICK_COLUMN_ALIASES: Final[dict[str, str]] = {
 _REQUIRED_TICK_COLUMNS: Final[tuple[str, ...]] = ("timestamp", "price", "volume")
 
 # Quantower export names embed ``M_D_YYYY hmmss AM-M_D_YYYY hmmss PM``.
+# Windows-safe names use ``100000``; some labels / docs use ``10:00:00``.
+_FILENAME_HMS = r"(?:\d{1,2}:\d{2}:\d{2}|\d{5,6})"
 _FILENAME_WINDOW_RE = re.compile(
     r"(?P<m1>\d{1,2})_(?P<d1>\d{1,2})_(?P<y1>\d{4})\s+"
-    r"(?P<hms1>\d{5,6})\s*(?P<ap1>AM|PM)-"
+    rf"(?P<hms1>{_FILENAME_HMS})\s*(?P<ap1>AM|PM)-"
     r"(?P<m2>\d{1,2})_(?P<d2>\d{1,2})_(?P<y2>\d{4})\s+"
-    r"(?P<hms2>\d{5,6})\s*(?P<ap2>AM|PM)",
+    rf"(?P<hms2>{_FILENAME_HMS})\s*(?P<ap2>AM|PM)",
     flags=re.IGNORECASE,
 )
 
@@ -95,7 +98,7 @@ def iter_tick_files(
 ) -> Iterator[TickChunk]:
     """Yield CME session chunks from one or many Tick–Tick–Last CSVs.
 
-    Files are combined in **first-row timestamp** order, not path order.
+    Files are combined in **earliest timestamp** order, not path order.
     Only one source file is fully materialized at a time; completed sessions
     are yielded before the next file is read.
     """
@@ -114,7 +117,6 @@ def iter_tick_files(
 
     for index, meta in enumerate(metas):
         parsed = _parse_tick_file(meta.path, instrument=instrument, source_tz=source_tz)
-        file_warnings = list(parsed.warnings)
         for session_key, part in parsed.ticks.groupby(parsed.ticks["_session_date"], sort=True):
             session = (
                 session_key if isinstance(session_key, date) else pd.Timestamp(session_key).date()
@@ -126,8 +128,7 @@ def iter_tick_files(
             open_mismatch[session] = bool(
                 open_mismatch.get(session, False) or parsed.filename_window_mismatch
             )
-            open_warnings.setdefault(session, []).extend(file_warnings)
-            file_warnings = []
+            open_warnings.setdefault(session, []).extend(parsed.warnings)
             if open_fn_start.get(session) is None:
                 open_fn_start[session] = parsed.filename_window_start
             open_fn_end[session] = parsed.filename_window_end
@@ -159,22 +160,25 @@ def parse_quantower_tick_filename_window(
     match = _FILENAME_WINDOW_RE.search(Path(filename).name)
     if match is None:
         return None
-    start = _filename_stamp(
-        match.group("y1"),
-        match.group("m1"),
-        match.group("d1"),
-        match.group("hms1"),
-        match.group("ap1"),
-        source_tz=source_tz,
-    )
-    end = _filename_stamp(
-        match.group("y2"),
-        match.group("m2"),
-        match.group("d2"),
-        match.group("hms2"),
-        match.group("ap2"),
-        source_tz=source_tz,
-    )
+    try:
+        start = _filename_stamp(
+            match.group("y1"),
+            match.group("m1"),
+            match.group("d1"),
+            match.group("hms1"),
+            match.group("ap1"),
+            source_tz=source_tz,
+        )
+        end = _filename_stamp(
+            match.group("y2"),
+            match.group("m2"),
+            match.group("d2"),
+            match.group("hms2"),
+            match.group("ap2"),
+            source_tz=source_tz,
+        )
+    except ValueError:
+        return None
     return start, end
 
 
@@ -224,16 +228,46 @@ def _reject_duplicate_files(metas: Sequence[_FileMeta]) -> None:
         by_hash[meta.content_sha256] = meta.path
 
 
-def _read_tick_csv(path: Path, *, nrows: int | None = None) -> pd.DataFrame:
+def _aliased_column_name(column: object) -> str:
+    normalized = normalize_column_name(column)
+    return _TICK_COLUMN_ALIASES.get(normalized, normalized)
+
+
+def _is_timestamp_header(column: object) -> bool:
+    return _aliased_column_name(column) == "timestamp"
+
+
+def _unused_empty_column(name: object, series: pd.Series) -> bool:
+    text = str(name).replace("\ufeff", "").replace("\xa0", " ").strip()
+    unnamed = text == "" or text.lower().startswith("unnamed:")
+    return unnamed and series.isna().all()
+
+
+def _read_tick_csv(
+    path: Path,
+    *,
+    nrows: int | None = None,
+    usecols=None,
+) -> pd.DataFrame:
     try:
-        raw = pd.read_csv(path, sep=";", nrows=nrows, dtype=str, encoding="utf-8-sig")
+        raw = pd.read_csv(
+            path,
+            sep=";",
+            nrows=nrows,
+            usecols=usecols,
+            dtype=str,
+            encoding="utf-8-sig",
+        )
     except EmptyDataError as exc:
         raise TickIngestError(f"Tick file is empty: {path}") from exc
-    raw = raw.dropna(axis=1, how="all")
-    if raw.empty:
+    keep = [column for column in raw.columns if not _unused_empty_column(column, raw[column])]
+    raw = raw.loc[:, keep]
+    if raw.shape[1] == 0:
         raise TickIngestError(f"Tick file is empty: {path}")
-    columns = [normalize_column_name(column) for column in raw.columns]
-    raw.columns = [_TICK_COLUMN_ALIASES.get(column, column) for column in columns]
+    if raw.empty and nrows != 0:
+        raise TickIngestError(f"Tick file is empty: {path}")
+    columns = [_aliased_column_name(column) for column in raw.columns]
+    raw.columns = columns
     duplicates = sorted(name for name, count in Counter(raw.columns).items() if count > 1)
     if duplicates:
         raise TickIngestError(
@@ -256,14 +290,32 @@ def _localize_utc(values: pd.Series, *, source_tz: str, path: Path) -> pd.Series
     if parsed.isna().any():
         raise TickIngestError(f"Unparseable values in tick timestamp column: {path}")
     if parsed.dt.tz is None:
-        parsed = parsed.dt.tz_localize(source_tz)
+        try:
+            parsed = parsed.dt.tz_localize(source_tz)
+        except Exception as exc:
+            text = str(exc).lower()
+            class_name = exc.__class__.__name__.lower()
+            if "nonexistent" in class_name or "nonexistent" in text:
+                raise TickIngestError(
+                    f"Nonexistent local timestamps detected for source timezone {source_tz} in {path}."
+                ) from exc
+            if "ambiguous" in class_name or "ambiguous" in text:
+                raise TickIngestError(
+                    f"Ambiguous local timestamps detected for source timezone {source_tz} in {path}."
+                ) from exc
+            raise
     return parsed.dt.tz_convert("UTC")
 
 
 def _peek_tick_file(path: Path, *, source_tz: str) -> _FileMeta:
-    raw = _read_tick_csv(path, nrows=1)
-    _require_tick_columns(raw, path)
-    first = _localize_utc(raw["timestamp"], source_tz=source_tz, path=path).iloc[0]
+    header = _read_tick_csv(path, nrows=0)
+    _require_tick_columns(header, path)
+    stamps = _localize_utc(
+        _read_tick_csv(path, usecols=_is_timestamp_header)["timestamp"],
+        source_tz=source_tz,
+        path=path,
+    )
+    first = stamps.min()
     window = parse_quantower_tick_filename_window(path.name, source_tz=source_tz)
     window_start = window_end = None
     if window is not None:
@@ -288,7 +340,7 @@ def _parse_tick_file(path: Path, *, instrument: str, source_tz: str) -> _ParsedT
     valid = prices.notna() & volumes.notna() & (volumes > 0)
     work = pd.DataFrame(
         {
-            "timestamp": stamps.loc[valid].to_numpy(),
+            "timestamp": stamps.loc[valid].reset_index(drop=True),
             "price": prices.loc[valid].to_numpy(dtype="float64"),
             "volume": volumes.loc[valid].to_numpy(dtype="float64"),
         }
@@ -304,11 +356,11 @@ def _parse_tick_file(path: Path, *, instrument: str, source_tz: str) -> _ParsedT
     warnings: list[str] = []
     mismatch = False
     window_start = window_end = None
-    first = pd.Timestamp(stamps.iloc[0])
-    last = pd.Timestamp(stamps.iloc[-1])
+    first = pd.Timestamp(stamps.min())
+    last = pd.Timestamp(stamps.max())
     if window is not None:
         window_start, window_end = window
-        if first != window_start or last != window_end:
+        if first < window_start or last > window_end:
             mismatch = True
             warnings.append(
                 "filename window does not match first/last row timestamps "
@@ -350,10 +402,14 @@ def _filename_stamp(
     *,
     source_tz: str,
 ) -> pd.Timestamp:
-    padded = hms.zfill(6)
-    hour = int(padded[:2])
-    minute = int(padded[2:4])
-    second = int(padded[4:6])
+    if ":" in hms:
+        hour_text, minute_text, second_text = hms.split(":")
+        hour, minute, second = int(hour_text), int(minute_text), int(second_text)
+    else:
+        padded = hms.zfill(6)
+        hour = int(padded[:2])
+        minute = int(padded[2:4])
+        second = int(padded[4:6])
     meridiem = ampm.upper()
     if hour == 12:
         hour = 0 if meridiem == "AM" else 12

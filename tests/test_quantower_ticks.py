@@ -73,7 +73,7 @@ def test_filename_window_mismatch_rows_still_load():
     assert chunks[0].first_row_utc.isoformat() == "2026-08-19T20:00:00+00:00"
     assert chunks[1].last_row_utc.isoformat() == "2026-08-20T20:00:00+00:00"
     mismatch_text = "filename window does not match"
-    assert any(mismatch_text in warning for chunk in chunks for warning in chunk.warnings)
+    assert all(any(mismatch_text in warning for warning in chunk.warnings) for chunk in chunks)
     assert chunks[0].session_date == date(2026, 8, 19)
     assert chunks[1].session_date == date(2026, 8, 20)
 
@@ -134,3 +134,114 @@ def test_loader_does_not_import_pages_streamlit_or_call_ohlcv_aggregation():
     assert "import streamlit" not in source
     assert "from pages" not in source
     assert "import pages" not in source
+
+
+def test_colon_filename_window_parses_like_compact_hms():
+    compact = parse_quantower_tick_filename_window(
+        "MNQ, Tick - Tick - Last, 8_19_2026 100000 PM-8_20_2026 100000 PM.csv"
+    )
+    colon = parse_quantower_tick_filename_window(
+        "MNQ, Tick - Tick - Last, 8_19_2026 10:00:00 PM-8_20_2026 10:00:00 PM.csv"
+    )
+    assert compact is not None and colon is not None
+    assert compact[0] == colon[0]
+    assert compact[1] == colon[1]
+    assert colon[0].isoformat() == "2026-08-19T22:00:00+00:00"
+
+
+def test_filename_window_allows_subsecond_prints_inside_label(tmp_path):
+    path = tmp_path / "MNQ Tick - Tick - Last, 8_19_2026 100000 PM-8_20_2026 100000 PM.csv"
+    path.write_text(
+        "Aggressor flag;Price;Volume;Time left;\n"
+        ";100.0;1;2026-08-19 22:00:00.014;\n"
+        ";101.0;1;2026-08-20 21:59:59.800;\n"
+    )
+    chunks = _chunks(path)
+    assert [chunk.session_date for chunk in chunks] == [date(2026, 8, 20)]
+    assert not chunks[0].filename_window_mismatch
+    assert chunks[0].warnings == ()
+
+
+def test_malformed_filename_window_does_not_abort_ingest(tmp_path):
+    path = tmp_path / "x 13_32_2026 250000 PM-13_32_2026 250000 AM.csv"
+    path.write_text("Aggressor flag;Price;Volume;Time left;\n;1.0;1;2026-08-20 13:30:00.000;\n")
+    assert parse_quantower_tick_filename_window(path.name) is None
+    chunks = _chunks(path)
+    assert len(chunks) == 1
+    assert chunks[0].filename_window_start is None
+    assert not chunks[0].filename_window_mismatch
+
+
+def test_empty_first_row_volume_does_not_drop_volume_column(tmp_path):
+    path = tmp_path / "empty_first_volume.csv"
+    path.write_text(
+        "Aggressor flag;Price;Volume;Time left;\n"
+        ";100.0;;2026-08-20 13:30:00.000;\n"
+        ";101.0;2;2026-08-20 13:31:00.000;\n"
+    )
+    chunks = _chunks(path)
+    assert len(chunks) == 1
+    assert chunks[0].ticks["price"].tolist() == [101.0]
+    assert chunks[0].ticks["volume"].tolist() == [2.0]
+
+
+def test_session_split_across_monthly_files_is_merged(tmp_path):
+    earlier = tmp_path / "month_a.csv"
+    later = tmp_path / "month_b.csv"
+    earlier.write_text(
+        "Aggressor flag;Price;Volume;Time left;\n;100.0;1;2026-08-31 23:59:00.000;\n"
+    )
+    later.write_text("Aggressor flag;Price;Volume;Time left;\n;200.0;2;2026-09-01 00:00:00.000;\n")
+    chunks = _chunks([later, earlier])
+    assert len(chunks) == 1
+    assert chunks[0].session_date == date(2026, 9, 1)
+    assert chunks[0].ticks["price"].tolist() == [100.0, 200.0]
+    assert len(chunks[0].source_paths) == 2
+
+
+def test_unsorted_later_file_does_not_split_earlier_session(tmp_path):
+    first = tmp_path / "sorted_early.csv"
+    second = tmp_path / "physical_first_is_late.csv"
+    first.write_text("Aggressor flag;Price;Volume;Time left;\n;1.0;1;2026-08-19 21:00:00.000;\n")
+    second.write_text(
+        "Aggressor flag;Price;Volume;Time left;\n"
+        ";9.0;1;2026-08-20 15:00:00.000;\n"
+        ";2.0;1;2026-08-19 21:10:00.000;\n"
+    )
+    chunks = _chunks([first, second])
+    by_session = {chunk.session_date: chunk for chunk in chunks}
+    assert set(by_session) == {date(2026, 8, 19), date(2026, 8, 20)}
+    assert by_session[date(2026, 8, 19)].ticks["price"].tolist() == [1.0, 2.0]
+    assert by_session[date(2026, 8, 20)].ticks["price"].tolist() == [9.0]
+
+
+def test_winter_session_cuts_at_1800_eastern_not_2200_utc(tmp_path):
+    path = tmp_path / "winter_cut.csv"
+    path.write_text(
+        "Aggressor flag;Price;Volume;Time left;\n"
+        ";10.0;1;2026-01-15 22:59:00.000;\n"
+        ";11.0;2;2026-01-15 23:00:00.000;\n"
+    )
+    chunks = _chunks(path)
+    assert [chunk.session_date for chunk in chunks] == [date(2026, 1, 15), date(2026, 1, 16)]
+    assert chunks[0].ticks["timestamp"].iloc[0].isoformat() == "2026-01-15T22:59:00+00:00"
+    assert chunks[1].ticks["timestamp"].iloc[0].isoformat() == "2026-01-15T23:00:00+00:00"
+
+
+def test_same_print_rows_are_kept(tmp_path):
+    path = tmp_path / "same_print.csv"
+    path.write_text(
+        "Aggressor flag;Price;Volume;Time left;\n"
+        ";100.0;1;2026-08-20 13:30:00.000;\n"
+        ";100.0;1;2026-08-20 13:30:00.000;\n"
+    )
+    chunks = _chunks(path)
+    assert chunks[0].ticks["price"].tolist() == [100.0, 100.0]
+    assert chunks[0].ticks["volume"].tolist() == [1.0, 1.0]
+
+
+def test_ambiguous_source_tz_raises_tick_ingest_error(tmp_path):
+    path = tmp_path / "ambiguous_fold.csv"
+    path.write_text("Aggressor flag;Price;Volume;Time left;\n;1.0;1;2026-11-01 01:30:00.000;\n")
+    with pytest.raises(TickIngestError, match="Ambiguous local timestamps"):
+        _chunks(path, source_tz=NY)
