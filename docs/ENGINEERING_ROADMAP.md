@@ -1443,6 +1443,10 @@ the same token names.
 VA identity change (goldens untouched — `run_legacy_pipeline` never calls
 `compute_all_levels`); `dVWAP*` / session marks / rolling POC / APOC
 value-identical; farm studies that do not name VA tokens stay 15s-only.
+TV3 must migrate stand-in `pdPOC` study fixtures and add `tick_paths` on
+`examples/studies/pdPOC_ma_confluence_battery.yaml` (that example *is*
+named-VA). Product day key is `prior_day_profile_aggregation_ticks`;
+`compute_all_levels` kwargs stay `prior_*_aggregation_ticks`.
 Parked: `typical_mvp` same-name alias, developing `dVAH`, APOC/rolling-POC
 VAP, tick VWAP, bid/ask VAP.
 

@@ -43,7 +43,7 @@ Series complete when:
 | 15s path | Unchanged: `ingestion_mode: 15s_primary_derive_1m` remains the OHLC product path |
 | Default without ticks | **Omit** the nine VA columns. Do **not** emit 1m-typical under those names |
 | Parked typical proxy | `va_source: typical_mvp` only if it ships later as **different column names** (`pdVAH_typical` …). Not this series |
-| Day bin (product) | `prior_day_profile_aggregation_ticks`: **4 → 1** in TV3 (Quantower row-size match; 4-tick tick-VAP still misses session-20 POC by 12.75) |
+| Day bin (product) | Product key `prior_day_profile_aggregation_ticks`: **4 → 1** in TV3 (Quantower row-size match; 4-tick tick-VAP still misses session-20 POC by 12.75). `compute_all_levels` / `compute_profile_levels` kwargs stay `prior_*_aggregation_ticks` (no `_profile_`); API already maps the product key → kwarg |
 | Week / month bins | Stay **8 / 10** until a QT weekly/monthly fixture exists. Same object type; **not** QT-locked |
 | Engine version | `LEVEL_ENGINE_VERSION` **10 → 11** in TV3 |
 | Study schema | Stays `1`. Additive `dataset.tick_paths` |
@@ -144,7 +144,7 @@ Synthetic CI fixtures may be a minimal `;` CSV with those four headers. Do **not
 
 ### 3.7 Fail-closed ladder (normative — do not water down)
 
-All four layers are required. LC4 is layer 3 and already exists; TV3 adds 1, 2, and 4 and must not weaken 3.
+All four layers are required. Layer 3 (LC4) and layer 4 (`execute_study_cell` already returns `status=failed` on any `run_experiment` exception, including the LC4 `ValueError`) **already exist**. TV3 adds layers 1 and 2, must not weaken 3 or 4, and must add a regression test that the LC4 raise is recorded as `failed` (not a new fail path).
 
 | Layer | When | Required outcome |
 |---|---|---|
@@ -170,14 +170,16 @@ Forbidden:
 
 ### 3.9 Aggregation (normative)
 
-| Setting | `compute_all_levels` kwarg default | Product `DEFAULT_LEVELS_SETTINGS` today | Product after TV3 |
-|---|---:|---:|---:|
-| `prior_day_profile_aggregation_ticks` | 1 | **4** | **1** |
-| `prior_week_profile_aggregation_ticks` | 1 | 8 | 8 |
-| `prior_month_profile_aggregation_ticks` | 1 | 10 | 10 |
-| `value_area_pct` | 0.70 | 0.70 | 0.70 |
+Two names. Do not conflate them (same dual-ownership as WMV product vs `compute_all_levels` kwargs).
 
-`compute_all_levels` keyword defaults stay 1/1/1. Only the **product** day default changes (4 → 1), in the same identity PR as the allocation change. Do not change week/month product defaults without a QT fixture.
+| Product / API / `DEFAULT_LEVELS_SETTINGS` key | `compute_all_levels` / `compute_profile_levels` kwarg | Kwarg default | Product today | Product after TV3 |
+|---|---|---:|---:|---:|
+| `prior_day_profile_aggregation_ticks` | `prior_day_aggregation_ticks` | 1 | **4** | **1** |
+| `prior_week_profile_aggregation_ticks` | `prior_week_aggregation_ticks` | 1 | 8 | 8 |
+| `prior_month_profile_aggregation_ticks` | `prior_month_aggregation_ticks` | 1 | 10 | 10 |
+| `value_area_pct` | `value_area_pct` | 0.70 | 0.70 | 0.70 |
+
+`api.py` already maps `prior_*_profile_aggregation_ticks` → `prior_*_aggregation_ticks`. TV3 changes only the **product** day default (4 → 1). Do **not** rename the kwargs. Do not change week/month product defaults without a QT fixture.
 
 ### 3.10 §4 exception (identity cutover)
 
@@ -231,7 +233,7 @@ A small, typed table — kilobytes, not gigabytes:
 | Column | Meaning |
 |---|---|
 | `family` | `pd` / `pw` / `pm` |
-| `period_key` | Session date string / `W-SUN` / `M` matching `profile.py` keys |
+| `period_key` | Join key **identical** to `compute_profile_levels`: day = `trading_session_date(...)` values (session-date strings); week = `to_period("W-SUN")`; month = `to_period("M")`. Parquet must round-trip to objects that `period_key.map(...)` accepts — persist `str(key)` of those pandas objects and reconstruct the same dtype in TV3. Do **not** invent a second calendar or a “week-start date” alias |
 | `VAH` `VAL` `POC` | Floats from `_compute_profile` |
 | `n_ticks` `sum_volume` | Provenance |
 | `period_start` `period_end` | First/last tick used (tz-aware) |
@@ -261,7 +263,7 @@ Optional research sidecar (not required for workers): per-session histograms. If
 |---|---|
 | `dataset_id` | Still the 15s/1m OHLCV identity (do not fold ticks into the 1m dataset hash) |
 | Tick source id | SHA-256 over **sorted** tick file content hashes + profile id `quantower_tick_last` + session-cut policy id |
-| Levels settings hash | Must include tick source id (or “no ticks”), aggregation ticks, `value_area_pct`, `va_source=tick_last` |
+| Levels settings hash | Must include tick source id (or explicit `"none"`), aggregation ticks, `value_area_pct`, `va_source=tick_last`. `compute_levels_settings_hash` hashes the **settings dict only** — those fields must be keys **inside** that dict. A side-channel hash is a cache-collision defect |
 | `LEVEL_ENGINE_VERSION` | **11** — invalidates persisted typical-price VA snapshots |
 | Study identity hash | Changes when `tick_paths` is added (expected) |
 
@@ -271,10 +273,10 @@ Same 1m file without ticks vs with ticks must produce **different** levels ident
 
 `run_study` / `run_experiment` must not let 12 workers parse ticks.
 
-Locked sequence when `tick_paths` is present:
+Locked sequence:
 
-1. Layer-1 refuse if VA tokens are named and paths are missing.
-2. Build or reuse `PriorProfileTable` **once** (parent process or first `compute_levels` write).
+1. Layer-1 refuse if VA tokens are named and `tick_paths` is missing/empty (**before** workers / before expansion artifacts).
+2. When `tick_paths` is present: build or reuse `PriorProfileTable` **once** (parent process or first `compute_levels` write).
 3. Persist next to the study ledger (`study.prior_profile.parquet`) and/or the levels artifact.
 4. Each cell receives `dataset.prior_profile_table_path` (or equivalent) and **must not** reopen `tick_paths`.
 
@@ -304,7 +306,7 @@ Tokens stay in `PRIOR_PROFILE_LEVEL_NAMES` / `STUDY_STATIC_LEVEL_NAMES`. Do **no
 | Surface | After TV3 |
 |---|---|
 | `closed_level_token_set` | Still contains the nine names |
-| `SUGGESTED_DEFAULT_LEVELS` | **Unchanged** (still must not silently start selecting `pdVAH`) |
+| `SUGGESTED_DEFAULT_LEVELS` | **Unchanged.** Today it already contains `pdPOC` (not `pdVAH` — `tests/test_setup_config.py` locks that). After omit, the existing `preferred = [c for c in SUGGESTED if c in columns]` intersection **drops** `pdPOC` on a 15s-only frame. That is correct, not a TV3 bug. Do **not** add `pdVAH` / `pdVAL`. TV4 honesty must say suggested `pdPOC` appears only when the column exists |
 | StudySpec `core_level: [pdVAH]` without `tick_paths` | `StudySpecError` (`VA requires ticks`) |
 | Same spec **with** existing tick files | Validates; generate proceeds |
 | `validate_setup_config` | Still frame-blind (LC lock). Column existence stays in `api._require_level_columns` |
@@ -312,6 +314,16 @@ Tokens stay in `PRIOR_PROFILE_LEVEL_NAMES` / `STUDY_STATIC_LEVEL_NAMES`. Do **no
 | Classic Setup that still lists `pdVAH` | LC4 `generate_signals` raise; do not emit empty-ok |
 
 `schema_version` stays `1`.
+
+**Named-VA consumers already on this tree (TV3 must not surprise-break CI):**
+
+| Surface | Today | TV3 lock |
+|---|---|---|
+| Study-unit fixtures | Dozens of tests use `core_level: [pdPOC]` / `pdVAH` as a *stand-in* legal token (`tests/study/test_study_schema.py`, `test_study_expand.py`, `test_study_builder.py`, `test_study_promote.py`, `test_study_execute.py`, `test_study_report.py`, `test_study_tools.py`, `test_study_launch.py`, `test_ah2_study_path_pin.py`, `tests/test_wvwap_mvwap.py`) | Layer-1 at `validate_study_spec` **will fail these**. Migrate stand-in cores to a non-VA static token (`ONH` unless the test is about prior-profile). Keep dedicated named-VA-without-ticks tests that expect `VA requires ticks` |
+| Teaching example | `examples/studies/pdPOC_ma_confluence_battery.yaml` + agent routines (`ROUTINE_STAGE_FIRST.md`) | This **is** a named-VA study. Add `dataset.tick_paths` (list of strings). Validate/expand succeed when the key is a non-empty list; launch still refuses missing files (same posture as `dataset.path`). Do **not** silently change the core to `ONH` |
+| `SUGGESTED_DEFAULT_LEVELS` | Contains `pdPOC` | Unchanged; intersection drops it when the column is absent |
+
+`thesistester/data/__init__.py` re-exports derive/rolls helpers, **not** loaders. TV1 must **not** add a drive-by `load_ohlcv` / tick-loader export.
 
 ---
 
@@ -356,7 +368,7 @@ Maps to `ENGINEERING_PROPOSAL.md` §4:
 | `APOC` / `pAPOC` | **Value-identical** (still 1m typical) |
 | Signal / 3c / OTF / `simulate_trades` / R12 | **Untouched** |
 | `_compute_profile` expander | **Value-identical** on the existing typical fixtures when fed the same price/volume vectors |
-| `SUGGESTED_DEFAULT_LEVELS` | **Unchanged** |
+| `SUGGESTED_DEFAULT_LEVELS` | **Unchanged** (already contains `pdPOC`; do not add `pdVAH`) |
 | Study schema version | Stays `1` |
 | Goldens | No regen |
 | Farm studies that do not name VA tokens | Still generate on 15s-only |
@@ -368,11 +380,13 @@ Maps to `ENGINEERING_PROPOSAL.md` §4:
 3. Product `prior_day_profile_aggregation_ticks` 4 → 1.
 4. `LEVEL_ENGINE_VERSION` 10 → 11.
 5. StudySpec / `run_experiment` refuse named VA without `tick_paths`.
+6. Stand-in `pdPOC` study fixtures migrate to a non-VA core; `pdPOC_ma_confluence_battery.yaml` gains `tick_paths`.
 
 **Forbidden:**
 
 - Typical fallback under the same names.
 - Tick stream on the simulation clock.
+- Renaming `compute_all_levels` / `compute_profile_levels` kwargs to the product `*_profile_*` keys.
 - `load_ohlcv` / `tick_capture` as the VAP path.
 - Golden / `simulate_trades` / R12 / 3c edits.
 - Help-path moves. Drive-by assistant/CAI/RUX edits.
@@ -401,7 +415,7 @@ Five PRs. Do not merge TV*+1 before TV*. Do not implement engine cutover in TV0�
 | Field | Value |
 |---|---|
 | **Title** | `TV1: add Quantower tick-last loader` |
-| **Scope** | New `thesistester/data/quantower_ticks.py`; `tests/test_quantower_ticks.py`; tiny synthetic `;` fixtures under `tests/fixtures/ticks/`; optional one-line export from `thesistester/data/__init__.py` if that package already re-exports loaders |
+| **Scope** | New `thesistester/data/quantower_ticks.py`; `tests/test_quantower_ticks.py`; tiny synthetic `;` fixtures under `tests/fixtures/ticks/`. Do **not** add an export to `thesistester/data/__init__.py` (that package does not re-export loaders) |
 | **Behavior** | Parse Tick–Tick–Last; combine many files in first-row time order; iterate CME session chunks from **row** timestamps; record filename-vs-row mismatch as warning metadata; never call `_aggregate_capture_rows` / `load_ohlcv` |
 | **Regression** | No `profile.py` / `all.py` / `api.py` / study / golden / `LEVEL_ENGINE_VERSION` touch |
 | **Acceptance** | §10.1 tests green; full `pytest -q` / ruff |
@@ -442,8 +456,8 @@ Five PRs. Do not merge TV*+1 before TV*. Do not implement engine cutover in TV0�
 | Field | Value |
 |---|---|
 | **Title** | `TV3: emit tick VAP as pd/pw/pm VA and fail closed without ticks` |
-| **Scope** | `thesistester/levels/profile.py`; `thesistester/levels/all.py`; `thesistester/levels/defaults.py` (day agg 4→1 only); `thesistester/persistence/local_store.py` (`LEVEL_ENGINE_VERSION = 11` + tick source in levels identity); `thesistester/api.py` (`_DATASET_KEYS`, `compute_levels` / `run_experiment` wiring, layer-1 refuse); `thesistester/study/schema.py` (layer-1); `thesistester/study/launch.py` + `expand.py` (list path pin); `thesistester/study/execute.py` (pre-pass table + cell `failed`); rewrite typical-pinning tests listed below; living engine docs in §9.2 |
-| **Likely test edits** | `tests/test_phase3_levels.py` (prior-VA tests need a table or assert omit); `tests/test_r3_point_in_time.py` (prior-VA future-shock); `tests/test_session_levels.py` if it pins `pdVA*`; `tests/test_stage1_level_plumbing.py` (membership of always-on columns); `tests/study/test_study_schema.py` (named VA without ticks); new `tests/test_tick_vap_cutover.py` |
+| **Scope** | `thesistester/levels/profile.py`; `thesistester/levels/all.py`; `thesistester/levels/defaults.py` (product day key `prior_day_profile_aggregation_ticks` 4→1 only; do not rename `prior_day_aggregation_ticks` kwargs); `thesistester/persistence/local_store.py` (`LEVEL_ENGINE_VERSION = 11` + tick source **key** in the settings dict hashed by `compute_levels_settings_hash`); `thesistester/api.py` (`_DATASET_KEYS`, `compute_levels` / `run_experiment` wiring, layer-1 refuse); `thesistester/study/schema.py` (layer-1); `thesistester/study/launch.py` + `expand.py` (list path pin); `thesistester/study/execute.py` (**pre-pass table only** — cell `failed` already exists); rewrite typical-pinning + stand-in-`pdPOC` tests listed below; `examples/studies/pdPOC_ma_confluence_battery.yaml` `tick_paths`; living engine docs in §9.2 |
+| **Likely test edits** | `tests/test_phase3_levels.py` (prior-VA tests need a table or assert omit); `tests/test_r3_point_in_time.py` (prior-VA future-shock); `tests/test_session_levels.py` if it pins `pdVA*`; `tests/test_stage1_level_plumbing.py` (membership of always-on columns); study-unit fixtures that use `pdPOC`/`pdVAH` as a stand-in core (migrate to `ONH` except dedicated refuse tests) — see §5 table; `examples/studies/pdPOC_ma_confluence_battery.yaml` (`tick_paths`); new `tests/test_tick_vap_cutover.py` |
 | **Behavior** | No table → nine columns absent; rolling POC remains. Table present → nine columns are tick VAP. Named VA without `tick_paths` refuses. Product day bin 1. Version 11 |
 | **Regression** | §7.1 isolation; goldens untouched; farm 15s-only non-VA studies still generate |
 | **Acceptance** | §10.3–10.4 green; `pytest -q` of the listed files plus `tests/test_golden_master.py` plus full `pytest -q` / ruff |
@@ -457,9 +471,9 @@ Five PRs. Do not merge TV*+1 before TV*. Do not implement engine cutover in TV0�
 4. Product `prior_day_profile_aggregation_ticks` 4 → 1. Comment why (session-20 POC).
 5. `LEVEL_ENGINE_VERSION = 11`. Levels identity includes tick source id or explicit “none”.
 6. `dataset.tick_paths` + optional `tick_format_profile` on API dataset. Unknown profile → fail closed.
-7. Study validate: if any factor token ∈ `PRIOR_PROFILE_LEVEL_NAMES` and tick paths empty → `StudySpecError` containing `VA requires ticks`.
+7. Study validate: if any factor token ∈ `PRIOR_PROFILE_LEVEL_NAMES` and tick paths empty → `StudySpecError` containing `VA requires ticks`. Migrate stand-in `pdPOC` fixtures to `ONH` (§5). Add `tick_paths` on `pdPOC_ma_confluence_battery.yaml`.
 8. `run_experiment` / `compute_levels`: same refuse when the setup/selected levels name VA and no table/paths.
-9. `run_study` pre-pass builds the table once; workers get the parquet path; cell exceptions from LC4 become `failed`.
+9. `run_study` pre-pass builds the table once; workers get the parquet path. Do **not** rewrite `execute_study_cell`’s existing Exception → `failed` path; add a test that LC4’s `Setup references unavailable level columns:` is recorded as `failed`.
 10. Launch refuses missing tick files when the key is present.
 11. Rewrite tests that assumed always-on typical `pdVAH`. Do **not** preserve those expected numbers under the old names.
 12. Same-PR docs in §9.2. One-line LC plan amendment: contract #3 superseded by TV for prior-profile allocation.
@@ -555,10 +569,10 @@ Hand-compute expected VAH/VAL/POC. Do not snapshot opaque frames. Do not commit 
 17. Future-shock: append a later tick session → earlier `pd*` unchanged.
 18. Product default day aggregation is 1; `DEFAULT_LEVELS_SETTINGS` week/month remain 8/10.
 19. `LEVEL_ENGINE_VERSION == 11`.
-20. Named `pdVAH` StudySpec without `tick_paths` raises `VA requires ticks`.
-21. Same spec with a temp tick file validates.
-22. `generate_signals` with `selected_levels=["pdVAH"]` on a no-table frame raises the LC4 `unavailable level columns` error.
-23. Study cell executor records `failed`, not `ok`, when that raise occurs.
+20. Named `pdVAH` StudySpec without `tick_paths` raises `VA requires ticks`. Stand-in study fixtures that are not about prior-profile use `ONH` and still validate without ticks.
+21. Same named-VA spec with a temp tick file validates. `pdPOC_ma_confluence_battery.yaml` expands once `tick_paths` is a non-empty list.
+22. `generate_signals` with `selected_levels=["pdVAH"]` on a no-table frame raises the LC4 `Setup references unavailable level columns:` error.
+23. Study cell executor records `failed`, not `ok`, when that raise occurs (`execute_study_cell` already does this — assert it).
 24. 15s-only StudySpec whose factors are `ONH` / `dVWAP` still validates and does not require ticks.
 25. Goldens: `tests/test_golden_master.py` unchanged.
 
@@ -641,12 +655,16 @@ raises StudySpecError containing "VA requires ticks". run_study
 builds PriorProfileTable once; workers never reopen tick CSV; LC4
 missing-column raises become cell status=failed, not ok.
 
-DEFAULT_LEVELS_SETTINGS prior_day_profile_aggregation_ticks 4 → 1.
-Week/month stay 8/10. LEVEL_ENGINE_VERSION 10 → 11. Levels identity
-includes tick source id or explicit none.
+DEFAULT_LEVELS_SETTINGS prior_day_profile_aggregation_ticks 4 → 1
+(product key). Do not rename compute_all_levels kwargs
+(prior_day_aggregation_ticks). Week/month stay 8/10.
+LEVEL_ENGINE_VERSION 10 → 11. Tick source id or explicit none must
+be a key inside the settings dict hashed by compute_levels_settings_hash.
 
 Rewrite tests/test_phase3_levels.py and tests/test_r3_point_in_time.py
-prior-VA cases. Add tests/test_tick_vap_cutover.py for §10.3.
+prior-VA cases. Migrate stand-in pdPOC study fixtures to ONH (§5).
+Add tick_paths on examples/studies/pdPOC_ma_confluence_battery.yaml.
+Add tests/test_tick_vap_cutover.py for §10.3.
 Optional skip-if-no-env session-20 hook. No golden regen. No Data
 page widgets. No APOC rewrite. No tick VWAP.
 
@@ -747,8 +765,9 @@ Mandatory for TV3 (engine):
 - [ ] Omit-without-table + tick-table join + `shift(1)`
 - [ ] Future-shock PIT
 - [ ] `dVWAP*` / session marks / rolling POC / APOC isolation
-- [ ] Layer-1 refuse + LC4 + cell `failed`
-- [ ] Day bin 1; version 11
+- [ ] Layer-1 refuse + LC4 + cell `failed` (assert existing execute path)
+- [ ] Stand-in `pdPOC` study fixtures migrated; teaching example has `tick_paths`
+- [ ] Day bin 1 (product key); kwargs still `prior_*_aggregation_ticks`; version 11
 - [ ] Legacy golden-masters preserved
 - [ ] Docs updated in the same PR
 - [ ] PR body has a Regression safety paragraph
