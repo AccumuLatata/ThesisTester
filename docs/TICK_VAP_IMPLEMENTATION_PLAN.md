@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-24  
-**Status:** TV1–TV3 landed. TV4 pending (Data page / Study Builder widgets + Help honesty).  
+**Status:** Series complete (TV0–TV4). TV4 landed Data page / Study Builder `tick_paths` + Help honesty.  
 **Series code:** **TV** (Tick volume-at-price)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 
@@ -10,7 +10,7 @@
 
 **Does not reopen:** R9–R22 milestone text; AH / RS execute semantics; SIA ingest defaults; SW clocks; WMV `dVWAP*` math; AO detector; LC catalog token *names*; kill-list / fresh-round StudySpec; Help-corpus *path* moves; `simulate_trades` / R12 / 3c / touch.
 
-**Amends:** LC locked contract #3 (prior-profile allocation) — TV3 added the one-line pointer on the LC plan. This file is the living SoT for `pd*` / `pw*` / `pm*` VA allocation. Living honesty docs (`ASSUMPTIONS_AND_LIMITATIONS.md`, `POINT_IN_TIME_GUARANTEES.md`, `METRICS_GLOSSARY.md`) were updated in TV3; Help/UI copy remains TV4.
+**Amends:** LC locked contract #3 (prior-profile allocation) — TV3 added the one-line pointer on the LC plan. This file is the living SoT for `pd*` / `pw*` / `pm*` VA allocation. Living honesty docs (`ASSUMPTIONS_AND_LIMITATIONS.md`, `POINT_IN_TIME_GUARANTEES.md`, `METRICS_GLOSSARY.md`) were updated in TV3; Help/UI copy landed in TV4.
 
 **Related living docs (amend only the sentence that is newly true, in the PR that makes it true):**  
 `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/POINT_IN_TIME_GUARANTEES.md`, `docs/METRICS_GLOSSARY.md`, `docs/STUDY_RUNNER.md`, `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/AGENT_GUIDE.md`.
@@ -523,7 +523,7 @@ TV4 may not fold into TV3. Engine-identity review stays separate from Streamlit/
 | `docs/USER_GUIDE.md` | How to attach Quantower tick exports; VA requires ticks; 15s still the bar clock |
 | `docs/STUDY_RUNNER.md` | `dataset.tick_paths`; generate refuse text |
 | `docs/ARCHITECTURE.md` | Data / Study Builder keys only if TV4 adds them |
-| This doc | Status → series complete |
+| This doc | Status → series complete ✅ |
 
 Do **not** reopen archived `docs/archive/LEVEL_UPGRADE_IMPLEMENTATION_PLAN.md` beyond a pointer if a reviewer asks. Living contract is this file.
 
@@ -775,9 +775,9 @@ Mandatory for TV3 (engine):
 
 Mandatory for TV4 (copy / authoring):
 
-- [ ] tick_paths emit/load; 15s-only draft still valid
-- [ ] Help/USER_GUIDE honesty
-- [ ] No engine or golden touch
+- [x] tick_paths emit/load; 15s-only draft still valid
+- [x] Help/USER_GUIDE honesty
+- [x] No engine or golden touch
 
 ---
 

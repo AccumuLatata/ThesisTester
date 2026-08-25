@@ -7,6 +7,7 @@ module directly. ``emit_study_spec`` is the only path into
 
 SIA1: ``default_study_draft()`` emits the recommended 15s-primary RunSpec.
 ``StudyDraft`` field defaults stay legacy-safe (``primary`` / ``sl_first``).
+TV4: first-class ``tick_paths``; emit the key only when the operator set them.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ WIDGET_KEY_INSTRUMENT = "_study_builder_instrument"
 WIDGET_KEY_SOURCE_TIMEZONE = "_study_builder_source_timezone"
 WIDGET_KEY_FORMAT_PROFILE = "_study_builder_format_profile"
 WIDGET_KEY_INGESTION_MODE = "_study_builder_ingestion_mode"
+WIDGET_KEY_TICK_PATHS = "_study_builder_tick_paths"
 DEFAULT_FORMAT_PROFILE = "canonical"
 INGESTION_MODE_PRIMARY = "primary"
 DEFAULT_NEW_DRAFT_DATASET_PATH = "data/mnq_15s.csv"
@@ -192,6 +194,7 @@ _DATASET_KNOWN = (
     "format_profile",
     "subtimeframe_path",
     "ingestion_mode",
+    "tick_paths",
 )
 _LEVELS_NULL_FORBIDDEN = ("sma_timeframes", "ema_timeframes")
 _BATTERY_KEYS = ("grid", "validation", "walk_forward")
@@ -282,6 +285,7 @@ class StudyDraft:
     format_profile: str = DEFAULT_FORMAT_PROFILE
     ingestion_mode: str = INGESTION_MODE_PRIMARY
     subtimeframe_path: str | None = None
+    tick_paths: list[str] = field(default_factory=list)
     dataset_extra: dict[str, Any] = field(default_factory=dict)
     levels: dict[str, Any] = field(default_factory=_default_levels)
     core_level: list[str] = field(default_factory=lambda: ["pdPOC"])
@@ -345,6 +349,8 @@ def default_study_draft() -> StudyDraft:
     factory applies path / Quantower / ``15s_primary_derive_1m`` /
     ``subtimeframe_conservative``, plus the operator HE identity (MNQ, UTC)
     and usual costs. Cartesian stays 2 cells; ``workers`` stays 1.
+    Tick paths stay empty: the farm remains 15s-only unless the operator
+    attaches Quantower Tick–Tick–Last files.
     """
     backtest = _default_backtest()
     backtest["intrabar_model"] = "subtimeframe_conservative"
@@ -367,6 +373,43 @@ def default_study_draft() -> StudyDraft:
 def _pop_extra_ingestion_mode(extra: dict[str, Any]) -> Any:
     """Promote a pre-SIA ``dataset_extra.ingestion_mode`` and drop the duplicate."""
     return extra.pop("ingestion_mode", None)
+
+
+def normalize_tick_paths(value: Any) -> list[str]:
+    """Coerce extra / widget / YAML tick paths to a de-duplicated string list."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        tokens: list[str] = []
+        for line in value.replace(",", "\n").splitlines():
+            token = line.strip()
+            if token:
+                tokens.append(token)
+        return list(dict.fromkeys(tokens))
+    if isinstance(value, (list, tuple)):
+        tokens = []
+        for item in value:
+            token = str(item).strip()
+            if token:
+                tokens.append(token)
+        return list(dict.fromkeys(tokens))
+    token = str(value).strip()
+    return [token] if token else []
+
+
+def format_tick_paths_widget(paths: Any) -> str:
+    """One path per line for the Studies Build tick-path textarea."""
+    return "\n".join(normalize_tick_paths(paths))
+
+
+def parse_tick_paths_widget(raw: Any) -> list[str]:
+    """Parse the Studies Build tick-path textarea (newlines or commas)."""
+    return normalize_tick_paths(raw)
+
+
+def _pop_extra_tick_paths(extra: dict[str, Any]) -> Any:
+    """Promote a pre-TV4 ``dataset_extra.tick_paths`` and drop the duplicate."""
+    return extra.pop("tick_paths", None)
 
 
 def _blank_ingestion_mode(value: Any) -> bool:
@@ -460,6 +503,11 @@ def draft_from_mapping(payload: Mapping[str, Any] | None) -> StudyDraft:
         )
     else:
         merged["ingestion_mode"] = _resolved_ingestion_mode(merged.get("ingestion_mode"))
+    extra_ticks = _pop_extra_tick_paths(extra)
+    first_class_ticks = (
+        normalize_tick_paths(merged.get("tick_paths")) if "tick_paths" in payload else []
+    )
+    merged["tick_paths"] = first_class_ticks or normalize_tick_paths(extra_ticks)
     return StudyDraft(**merged)
 
 
@@ -862,8 +910,13 @@ def _emit_dataset(draft: StudyDraft) -> dict[str, Any]:
     else:
         if draft.subtimeframe_path:
             dataset["subtimeframe_path"] = draft.subtimeframe_path
+    tick_paths = normalize_tick_paths(draft.tick_paths)
+    if not tick_paths:
+        tick_paths = normalize_tick_paths(draft.dataset_extra.get("tick_paths"))
+    if tick_paths:
+        dataset["tick_paths"] = tick_paths
     for key, value in draft.dataset_extra.items():
-        if key in _DATASET_KNOWN:
+        if key in _DATASET_KNOWN or key == "tick_paths":
             continue
         dataset[key] = copy.deepcopy(value)
     return dataset
@@ -1055,6 +1108,9 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
     if _blank_ingestion_mode(raw_ingestion_mode):
         raw_ingestion_mode = _pop_extra_ingestion_mode(dataset_extra)
     ingestion_mode = _resolved_ingestion_mode(raw_ingestion_mode)
+    tick_paths = normalize_tick_paths(dataset.get("tick_paths"))
+    if not tick_paths:
+        tick_paths = normalize_tick_paths(_pop_extra_tick_paths(dataset_extra))
 
     otf_raw = factors.get("otf")
     otf: list[dict[str, Any]] | None
@@ -1122,6 +1178,7 @@ def hydrate_study_draft(spec: Mapping[str, Any]) -> StudyDraft:
         format_profile=normalize_builder_format_profile(format_profile),
         ingestion_mode=ingestion_mode,
         subtimeframe_path=(str(subtimeframe_path) if isinstance(subtimeframe_path, str) else None),
+        tick_paths=tick_paths,
         dataset_extra=dataset_extra,
         levels=copy.deepcopy(levels_map),
         core_level=[str(token) for token in (factors.get("core_level") or [])],
@@ -1279,6 +1336,7 @@ __all__ = [
     "WIDGET_KEY_STAGE_MODE",
     "WIDGET_KEY_STOP_LOSS",
     "WIDGET_KEY_TAKE_PROFIT",
+    "WIDGET_KEY_TICK_PATHS",
     "WIDGET_KEY_TOLERANCE_TICKS",
     "WIDGET_KEY_TRIGGER",
     "WIDGET_KEY_TRIGGER_TIMEFRAME",
@@ -1306,6 +1364,7 @@ __all__ = [
     "explicit_cell_row_label",
     "format_csv_values",
     "format_stage_value",
+    "format_tick_paths_widget",
     "hydrate_study_draft",
     "hydrate_study_yaml",
     "infer_stage_mode_label",
@@ -1313,11 +1372,13 @@ __all__ = [
     "levels_advanced_enabled",
     "ma_length_options",
     "normalize_builder_format_profile",
+    "normalize_tick_paths",
     "otf_for_selected_presets",
     "otf_from_preset_ids",
     "otf_preset_ids",
     "parse_csv_ints",
     "parse_csv_tokens",
+    "parse_tick_paths_widget",
     "preferred_group_by",
     "require_enabled_grid_ticks",
     "resolve_stage_label",

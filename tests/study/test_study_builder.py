@@ -30,6 +30,7 @@ from thesistester.study.builder import (
     TF_MODE_NO_MA,
     TF_MODE_PRODUCT_DEFAULT,
     WIDGET_KEY_INGESTION_MODE,
+    WIDGET_KEY_TICK_PATHS,
     apply_grid_tick_widgets,
     apply_levels_tf_mode,
     builder_token_catalog,
@@ -110,6 +111,48 @@ def test_default_draft_emits_15s_primary_contract():
     assert expansion.run_count == 2
     for run in expansion.experiment["runs"]:
         validate_run_spec(run)
+
+
+def test_emit_operator_selected_tick_paths_writes_string_list():
+    draft = default_study_draft()
+    draft.tick_paths = ["data/es_ticks.csv", "data/nq_ticks.csv"]
+    spec = emit_study_spec(draft)
+    assert spec["study"]["dataset"]["tick_paths"] == [
+        "data/es_ticks.csv",
+        "data/nq_ticks.csv",
+    ]
+    hydrated = hydrate_study_draft(spec)
+    assert hydrated.tick_paths == ["data/es_ticks.csv", "data/nq_ticks.csv"]
+    assert emit_study_spec(hydrated)["study"]["dataset"]["tick_paths"] == [
+        "data/es_ticks.csv",
+        "data/nq_ticks.csv",
+    ]
+
+
+def test_new_draft_omits_tick_paths_and_stays_15s_primary():
+    draft = default_study_draft()
+    assert draft.tick_paths == []
+    spec = emit_study_spec(draft)
+    dataset = spec["study"]["dataset"]
+    assert "tick_paths" not in dataset
+    assert dataset["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert dataset["path"] == DEFAULT_NEW_DRAFT_DATASET_PATH
+    assert dataset["format_profile"] == DEFAULT_NEW_DRAFT_FORMAT_PROFILE
+    validate_study_spec(normalize_study_spec(spec))
+    expansion = expand_study(spec)
+    assert expansion.run_count == 2
+
+
+def test_draft_from_mapping_promotes_leftover_extra_tick_paths():
+    payload = asdict(StudyDraft())
+    payload.pop("tick_paths", None)
+    payload["dataset_extra"] = {"tick_paths": ["data/es_ticks.csv"], "keep": 1}
+    restored = draft_from_mapping(payload)
+    assert restored.tick_paths == ["data/es_ticks.csv"]
+    assert "tick_paths" not in restored.dataset_extra
+    assert restored.dataset_extra["keep"] == 1
+    spec = emit_study_spec(restored)
+    assert spec["study"]["dataset"]["tick_paths"] == ["data/es_ticks.csv"]
 
 
 def test_study_draft_field_defaults_stay_legacy_safe():
@@ -679,6 +722,22 @@ def test_ingestion_mode_widget_key_is_studies_scoped():
 
     assert WIDGET_KEY_INGESTION_MODE == "_study_builder_ingestion_mode"
     assert "WIDGET_KEY_INGESTION_MODE" in builder.__all__
+
+
+def test_tick_paths_widget_is_studies_scoped():
+    import thesistester.study.builder as builder
+
+    assert WIDGET_KEY_TICK_PATHS == "_study_builder_tick_paths"
+    assert "WIDGET_KEY_TICK_PATHS" in builder.__all__
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    dataset = page.split('st.markdown("### Dataset")')[1].split('st.markdown("### Levels')[0]
+    assert "WIDGET_KEY_TICK_PATHS" in dataset
+    assert "Tick paths (optional)" in dataset
+    assert "Does not replace the 15s bar CSV" in dataset
+    sync_body = page.split("def _sync_builder_widgets")[1].split("\ndef ")[0]
+    collect_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
+    assert "WIDGET_KEY_TICK_PATHS" in sync_body
+    assert "WIDGET_KEY_TICK_PATHS" in collect_body
 
 
 def test_pages_studies_ingest_radio_source_contract():

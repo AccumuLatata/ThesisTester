@@ -251,7 +251,9 @@ This engine is for **research screening**, not proof of a durable edge.
   `Pivot_30m_*` / `Pivot_4h_*`. Hand-edited YAML that uses `Pivot_1min_*` fails
   closed at validate; there is no compatibility alias.
 - Setup `SUGGESTED_DEFAULT_LEVELS` is a subset of
-  `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`. `VWAP_rolling_1h` is opt-in
+  `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`. Suggested `pdPOC` appears
+  only when the column exists (15s-only / no-tick frames drop it). Do not add
+  `pdVAH` / `pdVAL`. `VWAP_rolling_1h` is opt-in
   via `vwap_windows`; product defaults remain `30min` / `4h`. Assistant
   confluence options use that closed set (DEFAULT merge, plus live / selected);
   widget-only MA timeframes (`15min` / `1h` / `4h`) are not implied tokens and
@@ -514,7 +516,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - Prior day/week/month VAH/VAL/POC (`pdVAH`/`pdVAL`/`pdPOC`, `pw*`, `pm*`) are
   tick Last×Volume VAP when `dataset.tick_paths` (or a persisted prior-profile
   table) is provided, and **absent** otherwise. They are not 1m typical under
-  these names. Named-VA studies refuse without ticks (`VA requires ticks`).
+  these names.   Named-VA studies refuse without ticks (`VA requires ticks`).
+  Attach Quantower Tick–Tick–Last files on Data (path helper) or Studies
+  Build (`dataset.tick_paths`); classic Calculate does not read Data-page
+  attach. 15s remains the bar clock. New drafts omit the key.
   APOC and rolling POC remain 1m typical `(H+L+C)/3`. Product day aggregation
   is 1 tick (`prior_day_profile_aggregation_ticks`); week/month stay 8/10.
   `LEVEL_ENGINE_VERSION` is 11. Residual vs Quantower on the session-20 MNQ

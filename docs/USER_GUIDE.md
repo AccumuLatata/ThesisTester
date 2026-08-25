@@ -61,8 +61,8 @@ instrument, builds dataset identity, and records futures roll assumptions.
 
 **Related terms.** import, upload, CSV, Quantower, NinjaTrader, Sierra,
 Databento, timezone, instrument, sample data, format profile, ingestion mode,
-15-second primary, roll metadata, saved datasets, dataset identity,
-message size, MessageSizeError
+15-second primary, tick-last, tick_paths, prior VA, roll metadata, saved
+datasets, dataset identity, message size, MessageSizeError
 
 **Key settings.**
 
@@ -71,6 +71,7 @@ message size, MessageSizeError
 | `Instrument` | Contract metadata (tick size, point value) | Wrong instrument → wrong R and costs |
 | `Source` | `Sample data` or `Upload CSV` | Sample auto-loads only on an empty session; it does not replace imported or already-loaded data when you navigate back |
 | `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; a few OHLC-identical 15s duplicate opens are resolved (lowest volume) before derive. Use R12 `subtimeframe_conservative` unless Build empty bars is on |
+| `Quantower tick-last (optional)` | One-or-many Tick–Tick–Last CSVs for prior VA | Not an ingestion mode and not a 15s replacement. Paths must sit under cwd or the local store (same as Studies launch). No ticks → no `pdVA*` columns |
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
 | Futures roll controls | `Roll method`, contract/adjustment/rule fields | Validate before trusting continuous history |
@@ -83,9 +84,13 @@ message size, MessageSizeError
 2. Choose **Instrument** and **Source**.
 3. For uploads: set **Ingestion mode**, **CSV format profile**, **Source
    timestamp timezone**, upload the CSV; optionally preview resampled TFs.
-4. Review validation metrics (rows, inferred interval, RTH/ETH, issues).
-5. Set **Futures roll assumptions** → **Validate roll metadata**.
-6. Name the dataset → **Save dataset locally** when you want reuse.
+4. Optionally expand **Quantower tick-last (optional, prior VA only)** and
+   attach one or many Tick–Tick–Last files (or paste paths). This sits
+   beside the 15s bar clock. Paste those paths into Studies Build when
+   factors name `pdVA*` / `pw*` / `pm*` tokens.
+5. Review validation metrics (rows, inferred interval, RTH/ETH, issues).
+6. Set **Futures roll assumptions** → **Validate roll metadata**.
+7. Name the dataset → **Save dataset locally** when you want reuse.
 
 Navigating back to Data keeps the current session dataset (research-bundle
 import, prior upload, or saved dataset). Sample data is applied only when the
@@ -98,6 +103,9 @@ levels and downstream results when the dataset identity changes.
 - Not a live data feed or broker connection.
 - Native one-minute primary duplicates are never silently auto-deduped (volume/VWAP honesty). On 15s-primary derive, OHLC-identical 15s source duplicates are resolved before 1m derivation (lowest volume kept; audit in provenance). OHLC conflicts still fail.
 - Lower-timeframe dual-upload is optional/legacy and for replay diagnostics.
+- Tick-last attach is optional and for prior VA only. No ticks → no `pdVA*`
+  / `pw*` / `pm*` columns (those names are Quantower-style tick Last×Volume
+  VAP). APOC and rolling POC remain 1m typical. 15s stays the bar clock.
 - Format profiles are explicit; wrong profile → bad bars, not a soft warning-only
   success.
 - `MessageSizeError` is Streamlit's frontend websocket limit (repo default
@@ -128,7 +136,7 @@ saved snapshots, regenerate
 | `Opening range duration (minutes)` | OR window length | — |
 | `SMA lengths` / `EMA lengths` + timeframes | Indicator levels on chosen TFs | Comma-separated lengths must parse |
 | `Rolling VWAP windows` / `Rolling POC windows` | Intraday rolling anchors | Large data + rolling POC can be slow |
-| `Value area (%)` + prior D/W/M VA aggregation ticks | Profile VA/POC binning | Aggregation ticks ≠ instrument tick size |
+| `Value area (%)` + prior D/W/M VA aggregation ticks | Profile VA/POC binning | Aggregation ticks ≠ instrument tick size. Classic Calculate omits `pdVA*` / `pw*` / `pm*` (no tick table). Data-page attach does not feed that button — paste paths into Studies `dataset.tick_paths` |
 | **Advanced opt-in levels** | Pivots, dVWAP_RTH, dVWAP (CME session), wVWAP, mVWAP (developing week/month), TPO single prints, APOC, prev30mVWAP | Built-in defaults enable all families; uncheck a box to omit |
 | **Calculate levels** / **Recalculate levels** | Build or refresh level artifacts | Stale after data/settings change |
 
@@ -143,7 +151,10 @@ saved snapshots, regenerate
 
 **What it is not.** Chart range does not change saved level artifacts. Failed
 recalculations keep the previous successful levels. Levels are research inputs,
-not trade signals by themselves.
+not trade signals by themselves. Prior `pdVA*` / `pw*` / `pm*` are tick VAP
+when `dataset.tick_paths` (or a prior-profile table) is provided, and
+**absent** otherwise — they are not 1m typical under those names. Classic
+Calculate does not read Data-page attach. APOC and rolling POC remain typical.
 
 **Related pages.** Data (prerequisite); Setup Builder / Signals (consumers).
 
@@ -196,6 +207,8 @@ setup, save setup, thesis link
   audit).
 - Cross-dataset loads may warn; unavailable level refs need explicit
   **Save with unavailable levels removed**.
+- Suggested Setup defaults include `pdPOC` only when that column exists
+  (15s-only / no-tick frames drop it). `pdVAH` / `pdVAL` are not suggested.
 
 **Related pages.** Levels; Signals; Backtest / Grid / Validation (OTF consumers).
 
@@ -943,31 +956,28 @@ overview ranking, OTF delta, Research Study Runner
 | `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs. `--admit-tod auto` drafts a one-cell Admit child; `--tod-group` / `--allow-thin` require that flag. Omit `--admit-tod` for RS5 survivors |
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
 | `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
+| `dataset.tick_paths` | Optional Tick–Tick–Last list for prior VA | Named VA without this refuses (`VA requires ticks`). New drafts omit it |
 
 **How to use.**
 
 1. Author or copy a StudySpec. New Build drafts and
    `examples/studies/pRTH_open_ma.yaml` use MNQ + UTC + History Exporter
-   15s-primary (paste the same 15s Quantower CSV used on Data).
+   15s-primary (paste the same 15s Quantower CSV used on Data). Omit
+   `dataset.tick_paths` unless factors name VA tokens.
    `pdPOC_ma_confluence_battery.yaml` is the stage-first 40-cell ES teaching
-   path (full 800 is phase-2). Omitted mode on a 15s file is a different
-   experiment. `dopen_ma_3c_mnq.yaml` is legacy 1m.
+   path (full 800 is phase-2) and lists `tick_paths`. Omitted mode on a 15s
+   file is a different experiment. `dopen_ma_3c_mnq.yaml` is legacy 1m.
 2. `python -m thesistester study expand study.yaml --output-dir out/study1`
 3. `python -m thesistester study run study.yaml --output-dir out/study1 --confirm`
 4. `python -m thesistester study report out/study1`
 5. Optionally `python -m thesistester study rollup out/study1` for a compose-only
    diagnostic table (`study.rollup.csv` / `.md`).
 6. Optionally `python -m thesistester study promote out/study1 --output drafts/draft.yaml --top-n 10`
-   (refuses overwrite without `--force`), then edit the draft before any further `study run`.
-   Phase-2 full cartesian (example: 800) means restoring/opening axes on the unpromoted
-   StudySpec — not dropping `stage` from a narrowed promote draft.
-   To lock the briefing NY RTH bucket and re-sim one ranked cell:
-   `study promote out/study1 --output drafts/admit.yaml --top-n 1 --admit-tod auto`
-   (or `--admit-run-name NAME`), or Inspect **Draft Admit follow-up** onto
-   Preview. Child `output_dir` is new; this does **not** `study run`.
-   Thin buckets refuse unless `--allow-thin` (`lineage.admit.thin`).
-   `avg_r` tie and missing zip still refuse. Hour/30min:
-   `--tod-group entry_hour_bucket` (CLI-only; requires `--admit-tod`).
+   (refuses overwrite without `--force`). Phase-2 800 means widening `stage` on
+   the unpromoted Spec — not dropping `stage` from a promote draft. Admit:
+   `study promote ... --top-n 1 --admit-tod auto` or Inspect **Draft Admit
+   follow-up**. This does not `study run`. Thin buckets refuse unless
+   `--allow-thin`. Hour/30min `--tod-group` is CLI-only.
 7. Inspect artifacts in the **Studies viewer (read-only)** page, or preview a
    canonical StudySpec YAML there for cell count / `--confirm`. After a
    successful preview, **Run via CLI** (or **Bind confirm** then **Confirm and
@@ -1017,6 +1027,7 @@ study list, StudyDraft
 | Run via CLI / Confirm | Spawn existing CLI argv | Not in-process; watch Inspect → Refresh |
 | Build StudySpec | Widgets → YAML; Apply to Preview | Not a runner |
 | Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s path |
+| Tick paths (optional) | Quantower Tick–Tick–Last list for prior VA | Emit writes the key only when set. Named VA without ticks → `VA requires ticks`. Does not replace the 15s path |
 | Start from example | pRTH (32 cells) or pdPOC | Replace `dataset.path` |
 | Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |
 | Draft Admit follow-up | Child Admit YAML → Preview | Greyed out = no ranked NY segment. Red error (thin/zip/extra-root) leaves Preview unchanged |

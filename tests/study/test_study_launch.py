@@ -225,6 +225,42 @@ def test_spawn_writes_launch_yaml_not_spec_and_pins_dataset(tmp_path: Path):
     assert (plan.output_dir / LAUNCH_JSON_NAME).is_file()
 
 
+def test_spawn_pins_relative_tick_paths_like_dataset_path(tmp_path: Path):
+    bars = _write_bars(tmp_path)
+    ticks = (tmp_path / "data" / "es_ticks.csv").resolve()
+    plan = _plan(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_popen(argv, **kwargs):
+        captured["argv"] = argv
+        return _FakeProc(77)
+
+    spawn_launch(plan, popen=fake_popen)
+    payload = yaml.safe_load((plan.output_dir / LAUNCH_YAML_NAME).read_text(encoding="utf-8"))
+    pinned_path = Path(payload["study"]["dataset"]["path"])
+    pinned_ticks = [Path(item) for item in payload["study"]["dataset"]["tick_paths"]]
+    assert pinned_path.is_absolute()
+    assert pinned_path == bars.resolve()
+    assert pinned_ticks == [ticks]
+    assert all(item.is_absolute() for item in pinned_ticks)
+
+
+def test_spawn_refuses_missing_tick_file(tmp_path: Path):
+    spec = yaml.safe_load(_example_yaml())
+    spec["study"]["dataset"]["tick_paths"] = ["data/tv4_missing_ticks.csv"]
+    missing_yaml = yaml.safe_dump(spec, sort_keys=False)
+    _write_bars(tmp_path)
+    with pytest.raises(StudyLaunchError, match="tick_paths"):
+        build_launch_plan(
+            missing_yaml,
+            cached_yaml=missing_yaml,
+            expanded=True,
+            run_count=40,
+            output_dir_raw=str(tmp_path / "out"),
+            roots=(tmp_path,),
+        )
+
+
 def test_second_spawn_refused_while_pid_alive(tmp_path: Path):
     plan = _plan(tmp_path)
     live_pid = os.getpid()
