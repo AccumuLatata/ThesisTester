@@ -246,10 +246,19 @@ def test_spawn_pins_relative_tick_paths_like_dataset_path(tmp_path: Path):
 
 
 def test_spawn_refuses_missing_tick_file(tmp_path: Path):
+    spec = yaml.safe_load(_example_yaml())
+    spec["study"]["dataset"]["tick_paths"] = ["data/tv4_missing_ticks.csv"]
+    missing_yaml = yaml.safe_dump(spec, sort_keys=False)
     _write_bars(tmp_path)
-    (tmp_path / "data" / "es_ticks.csv").unlink()
     with pytest.raises(StudyLaunchError, match="tick_paths"):
-        _plan(tmp_path)
+        build_launch_plan(
+            missing_yaml,
+            cached_yaml=missing_yaml,
+            expanded=True,
+            run_count=40,
+            output_dir_raw=str(tmp_path / "out"),
+            roots=(tmp_path,),
+        )
 
 
 def test_second_spawn_refused_while_pid_alive(tmp_path: Path):

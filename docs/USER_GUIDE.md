@@ -953,33 +953,28 @@ overview ranking, OTF delta, Research Study Runner
 | `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs. `--admit-tod auto` drafts a one-cell Admit child; `--tod-group` / `--allow-thin` require that flag. Omit `--admit-tod` for RS5 survivors |
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
 | `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
-| `dataset.tick_paths` | Optional Quantower Tick–Tick–Last list for prior VA | Named `pdVA*` / `pw*` / `pm*` refuse generate without this (`VA requires ticks`). New drafts omit the key. Launch pins and refuses missing files like `dataset.path` |
+| `dataset.tick_paths` | Optional Tick–Tick–Last list for prior VA | Named VA without this refuses (`VA requires ticks`). New drafts omit it |
 
 **How to use.**
 
 1. Author or copy a StudySpec. New Build drafts and
    `examples/studies/pRTH_open_ma.yaml` use MNQ + UTC + History Exporter
-   15s-primary (paste the same 15s Quantower CSV used on Data). Ticks are
-   optional: omit `dataset.tick_paths` unless factors name VA tokens.
+   15s-primary (paste the same 15s Quantower CSV used on Data). Omit
+   `dataset.tick_paths` unless factors name VA tokens.
    `pdPOC_ma_confluence_battery.yaml` is the stage-first 40-cell ES teaching
-   path (full 800 is phase-2) and already lists `tick_paths`. Omitted mode
-   on a 15s file is a different experiment. `dopen_ma_3c_mnq.yaml` is legacy 1m.
+   path (full 800 is phase-2) and lists `tick_paths`. Omitted mode on a 15s
+   file is a different experiment. `dopen_ma_3c_mnq.yaml` is legacy 1m.
 2. `python -m thesistester study expand study.yaml --output-dir out/study1`
 3. `python -m thesistester study run study.yaml --output-dir out/study1 --confirm`
 4. `python -m thesistester study report out/study1`
 5. Optionally `python -m thesistester study rollup out/study1` for a compose-only
    diagnostic table (`study.rollup.csv` / `.md`).
 6. Optionally `python -m thesistester study promote out/study1 --output drafts/draft.yaml --top-n 10`
-   (refuses overwrite without `--force`), then edit the draft before any further `study run`.
-   Phase-2 full cartesian (example: 800) means restoring/opening axes on the unpromoted
-   StudySpec — not dropping `stage` from a narrowed promote draft.
-   To lock the briefing NY RTH bucket and re-sim one ranked cell:
-   `study promote out/study1 --output drafts/admit.yaml --top-n 1 --admit-tod auto`
-   (or `--admit-run-name NAME`), or Inspect **Draft Admit follow-up** onto
-   Preview. Child `output_dir` is new; this does **not** `study run`.
-   Thin buckets refuse unless `--allow-thin` (`lineage.admit.thin`).
-   `avg_r` tie and missing zip still refuse. Hour/30min:
-   `--tod-group entry_hour_bucket` (CLI-only; requires `--admit-tod`).
+   (refuses overwrite without `--force`). Phase-2 800 means widening `stage` on
+   the unpromoted Spec — not dropping `stage` from a promote draft. Admit:
+   `study promote ... --top-n 1 --admit-tod auto` or Inspect **Draft Admit
+   follow-up**. This does not `study run`. Thin buckets refuse unless
+   `--allow-thin`. Hour/30min `--tod-group` is CLI-only.
 7. Inspect artifacts in the **Studies viewer (read-only)** page, or preview a
    canonical StudySpec YAML there for cell count / `--confirm`. After a
    successful preview, **Run via CLI** (or **Bind confirm** then **Confirm and

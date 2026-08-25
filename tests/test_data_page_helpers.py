@@ -571,9 +571,7 @@ def test_clear_dataset_dependent_state_clears_tick_paths(monkeypatch):
 
 
 def test_validate_attached_tick_paths_uses_quantower_ticks(tmp_path):
-    fixture = (
-        pathlib.Path(__file__).parent / "fixtures" / "ticks" / "rth_open_stub.csv"
-    )
+    fixture = pathlib.Path(__file__).parent / "fixtures" / "ticks" / "rth_open_stub.csv"
     dest = tmp_path / "es_ticks.csv"
     dest.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
     data_page = _import_data_page_module({})
@@ -742,7 +740,7 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "_invalidate_primary_csv_uploader()" in page_text
     assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in page_text
     assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
-    page_body = page_text.split('st.title(')[-1]
+    page_body = page_text.split("st.title(")[-1]
     assert "_render_tick_attach(" in page_body
     assert page_body.index("_render_tick_attach(") > page_body.index(
         "_hide_legacy_subtimeframe_uploader(ingestion_mode)"

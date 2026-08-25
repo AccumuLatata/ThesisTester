@@ -728,8 +728,7 @@ def _validate_attached_tick_paths(
         rows += len(chunk.ticks)
         if chunk.filename_window_mismatch:
             warnings.append(
-                "Filename window does not cover row timestamps: "
-                + ", ".join(chunk.source_paths)
+                "Filename window does not cover row timestamps: " + ", ".join(chunk.source_paths)
             )
         warnings.extend(chunk.warnings)
     return sessions, rows, list(dict.fromkeys(warnings))
