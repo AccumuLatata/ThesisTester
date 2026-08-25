@@ -334,6 +334,11 @@ def test_compute_levels_table_only_identity_is_not_none():
             "ema_timeframes": [],
             "vwap_windows": [],
             "poc_windows": [],
+            "pivots_enabled": False,
+            "session_vwap_enabled": False,
+            "single_prints_enabled": False,
+            "apoc_enabled": False,
+            "prev30m_vwap_enabled": False,
         },
         prior_profile_table=_table(df),
     )
