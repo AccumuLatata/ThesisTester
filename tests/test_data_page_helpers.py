@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import pathlib
 import sys
@@ -550,6 +551,7 @@ def test_clear_dataset_dependent_state_clears_tick_paths(monkeypatch):
         "tick_paths": ["data/es_ticks.csv"],
         "tick_row_count": 4,
         "tick_session_count": 1,
+        "tick_attach_warnings": ["stale"],
         "_tick_upload_signature": "sig",
         "levels": "x",
     }
@@ -565,6 +567,7 @@ def test_clear_dataset_dependent_state_clears_tick_paths(monkeypatch):
         data_page.TICK_ROW_COUNT_KEY,
         data_page.TICK_SESSION_COUNT_KEY,
         data_page.TICK_UPLOAD_SIGNATURE_KEY,
+        data_page.TICK_WARNINGS_KEY,
         "levels",
     ):
         assert key not in session_state
@@ -582,11 +585,69 @@ def test_validate_attached_tick_paths_uses_quantower_ticks(tmp_path):
     assert sessions == 1
     assert rows >= 1
     assert warnings == []
+    payload = dest.read_bytes()
     persisted = data_page._persist_tick_uploads(
-        [_Uploaded(dest.name, dest.read_bytes())],
+        [_Uploaded(dest.name, payload)],
         tmp_path / "uploads",
     )
-    assert persisted == [str((tmp_path / "uploads" / dest.name).resolve())]
+    digest = hashlib.sha256(payload).hexdigest()[:12]
+    assert persisted == [str((tmp_path / "uploads" / f"{digest}_{dest.name}").resolve())]
+
+
+def test_persist_tick_uploads_keeps_same_basename_distinct(tmp_path):
+    data_page = _import_data_page_module({})
+    first = data_page._persist_tick_uploads(
+        [_Uploaded("same.csv", b"jan-ticks")],
+        tmp_path,
+    )
+    second = data_page._persist_tick_uploads(
+        [_Uploaded("same.csv", b"feb-ticks")],
+        tmp_path,
+    )
+    assert len(first) == 1 and len(second) == 1
+    assert first[0] != second[0]
+    assert pathlib.Path(first[0]).read_bytes() == b"jan-ticks"
+    assert pathlib.Path(second[0]).read_bytes() == b"feb-ticks"
+
+
+def test_dedupe_attached_tick_paths_drops_identical_content(tmp_path):
+    data_page = _import_data_page_module({})
+    left = tmp_path / "a.csv"
+    right = tmp_path / "b.csv"
+    left.write_bytes(b"same-bytes")
+    right.write_bytes(b"same-bytes")
+    unique, warnings = data_page._dedupe_attached_tick_paths([str(left), str(right)])
+    assert unique == [str(left.resolve())]
+    assert any("exact-duplicate" in item for item in warnings)
+
+
+def test_resolve_existing_tick_path_checks_store_root(tmp_path, monkeypatch):
+    data_page = _import_data_page_module({})
+    dest = tmp_path / "nested" / "ticks.csv"
+    dest.parent.mkdir()
+    dest.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
+    monkeypatch.setattr(data_page, "get_store_root", lambda: tmp_path)
+    assert data_page._resolve_existing_tick_path("nested/ticks.csv") == dest.resolve()
+    assert data_page._resolve_existing_tick_path("missing/ticks.csv") is None
+
+
+def test_install_tick_paths_persists_warnings_across_clear():
+    data_page = _import_data_page_module({})
+    session_state: dict = {}
+    data_page._install_tick_paths(
+        session_state,
+        ["data/es_ticks.csv"],
+        row_count=4,
+        session_count=1,
+        signature="sig",
+        warnings=["Filename window does not cover row timestamps: x.csv"],
+    )
+    assert session_state[data_page.TICK_WARNINGS_KEY] == [
+        "Filename window does not cover row timestamps: x.csv"
+    ]
+    data_page._clear_tick_session_state(session_state)
+    assert data_page.TICK_WARNINGS_KEY not in session_state
+    assert data_page.TICK_PATHS_KEY not in session_state
 
 
 class _Uploaded:
@@ -746,6 +807,9 @@ def test_data_page_exposes_15s_primary_mode_labels():
         "_hide_legacy_subtimeframe_uploader(ingestion_mode)"
     )
     assert "Quantower tick-last (optional, prior VA only)" in page_text
+    assert "{digest}_{name}" in page_text or 'f"{digest}_{name}"' in page_text
+    assert "TICK_WARNINGS_KEY" in page_text
+    assert "Data-page attach does not feed classic Calculate" in page_text
 
 
 def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch):
@@ -1045,6 +1109,7 @@ def test_consume_data_page_source_invalidation_increments_uploader_nonce():
         data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY: 4,
         data_page.TICK_UPLOADER_NONCE_KEY: 1,
         data_page.TICK_PATHS_KEY: ["data/es_ticks.csv"],
+        data_page.TICK_WARNINGS_KEY: ["stale warning"],
         data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY: "canonical:stale",
         data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY: "canonical:stale",
         data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY: "canonical:stale",
@@ -1056,6 +1121,7 @@ def test_consume_data_page_source_invalidation_increments_uploader_nonce():
     assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
     assert session_state[data_page.TICK_UPLOADER_NONCE_KEY] == 2
     assert data_page.TICK_PATHS_KEY not in session_state
+    assert data_page.TICK_WARNINGS_KEY not in session_state
     assert data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY not in session_state
     assert data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY not in session_state
     assert data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY not in session_state

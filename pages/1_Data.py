@@ -100,6 +100,7 @@ TICK_UPLOADER_NONCE_KEY = "_tick_uploader_nonce"
 TICK_UPLOAD_SIGNATURE_KEY = "_tick_upload_signature"
 TICK_ROW_COUNT_KEY = "tick_row_count"
 TICK_SESSION_COUNT_KEY = "tick_session_count"
+TICK_WARNINGS_KEY = "tick_attach_warnings"
 TICK_PATHS_TEXT_KEY = "_tick_paths_text"
 LOAD_SAMPLE_REQUESTED_KEY = "_load_sample_data_requested"
 SUBTIMEFRAME_FALLBACK_BARS_KEY = "subtimeframe_fallback_parent_bars"
@@ -330,6 +331,7 @@ def _consume_data_page_source_invalidation(session_state=None) -> bool:
         TICK_UPLOAD_SIGNATURE_KEY,
         TICK_ROW_COUNT_KEY,
         TICK_SESSION_COUNT_KEY,
+        TICK_WARNINGS_KEY,
     ):
         state.pop(key, None)
     return True
@@ -665,6 +667,7 @@ def _clear_dataset_dependent_state() -> None:
         TICK_UPLOAD_SIGNATURE_KEY,
         TICK_ROW_COUNT_KEY,
         TICK_SESSION_COUNT_KEY,
+        TICK_WARNINGS_KEY,
     ]:
         st.session_state.pop(key, None)
 
@@ -697,16 +700,78 @@ def _tick_upload_dir() -> Path:
     return dest
 
 
+def _sha256_file(path: Path) -> str:
+    """Hash file bytes in 1 MiB blocks. Do not load the whole file."""
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(block)
+    return hasher.hexdigest()
+
+
+def _resolve_existing_tick_path(raw: str) -> Path | None:
+    """Resolve a typed tick path against cwd first, then the local store root.
+
+    Launch pin searches viewer roots the same way; Data-page attach must not
+    refuse a store-relative path that Studies would later find.
+    """
+    token = str(raw).strip()
+    if not token:
+        return None
+    path = Path(token).expanduser()
+    if path.is_file():
+        return path.resolve()
+    if path.is_absolute():
+        return None
+    store_candidate = (get_store_root() / path).resolve()
+    if store_candidate.is_file():
+        return store_candidate
+    return None
+
+
+def _dedupe_attached_tick_paths(paths: list[str]) -> tuple[list[str], list[str]]:
+    """Drop duplicate resolved paths and exact-duplicate file content.
+
+    Upload + typed path of the same bytes would otherwise fail TV1
+    ``_reject_duplicate_files``. Keep the first path; warn on content dupes.
+    """
+    unique: list[str] = []
+    seen_resolved: set[Path] = set()
+    seen_hash: dict[str, str] = {}
+    warnings: list[str] = []
+    for raw in paths:
+        full = Path(raw).expanduser().resolve()
+        if full in seen_resolved:
+            continue
+        digest = _sha256_file(full)
+        prior = seen_hash.get(digest)
+        if prior is not None:
+            warnings.append(f"Ignored exact-duplicate tick file {full} (same bytes as {prior}).")
+            continue
+        seen_resolved.add(full)
+        seen_hash[digest] = str(full)
+        unique.append(str(full))
+    return unique, warnings
+
+
 def _persist_tick_uploads(files, dest_dir: Path) -> list[str]:
-    """Write Streamlit uploads to disk so Studies Build can cite durable paths."""
+    """Write Streamlit uploads to disk so Studies Build can cite durable paths.
+
+    Dest names are ``{sha256[:12]}_{basename}`` so two uploads that share a
+    basename do not overwrite each other.
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
     paths: list[str] = []
     for uploaded in files or []:
+        payload = uploaded.getvalue()
         name = Path(str(getattr(uploaded, "name", "ticks.csv") or "ticks.csv")).name
-        dest = dest_dir / name
-        dest.write_bytes(uploaded.getvalue())
+        if not name or name in {".", ".."}:
+            name = "ticks.csv"
+        digest = hashlib.sha256(payload).hexdigest()[:12]
+        dest = dest_dir / f"{digest}_{name}"
+        dest.write_bytes(payload)
         paths.append(str(dest.resolve()))
-    return paths
+    return list(dict.fromkeys(paths))
 
 
 def _validate_attached_tick_paths(
@@ -741,6 +806,7 @@ def _install_tick_paths(
     row_count: int | None = None,
     session_count: int | None = None,
     signature: str | None = None,
+    warnings: list[str] | None = None,
 ) -> None:
     """Record validated tick paths. Does not mutate primary ``data``."""
     session_state[TICK_PATHS_KEY] = list(paths)
@@ -750,6 +816,10 @@ def _install_tick_paths(
         session_state[TICK_SESSION_COUNT_KEY] = int(session_count)
     if signature is not None:
         session_state[TICK_UPLOAD_SIGNATURE_KEY] = signature
+    if warnings is not None:
+        session_state[TICK_WARNINGS_KEY] = list(warnings)
+    else:
+        session_state.pop(TICK_WARNINGS_KEY, None)
 
 
 def _clear_tick_session_state(session_state=None) -> None:
@@ -760,6 +830,7 @@ def _clear_tick_session_state(session_state=None) -> None:
         TICK_UPLOAD_SIGNATURE_KEY,
         TICK_ROW_COUNT_KEY,
         TICK_SESSION_COUNT_KEY,
+        TICK_WARNINGS_KEY,
     ):
         state.pop(key, None)
 
@@ -795,13 +866,20 @@ def _render_tick_attach(*, instrument: str) -> None:
             persisted: list[str] = []
             if uploaded_files:
                 persisted = _persist_tick_uploads(uploaded_files, _tick_upload_dir())
-            combined = list(dict.fromkeys([*persisted, *typed]))
-            if not combined:
-                st.error("Choose at least one Tick–Tick–Last file or path.")
+            resolved: list[str] = list(persisted)
+            missing: list[str] = []
+            for token in typed:
+                found = _resolve_existing_tick_path(token)
+                if found is None:
+                    missing.append(token)
+                else:
+                    resolved.append(str(found))
+            if missing:
+                st.error("Tick file is not an existing file: " + ", ".join(missing))
             else:
-                missing = [path for path in combined if not Path(path).is_file()]
-                if missing:
-                    st.error("Tick file is not an existing file: " + ", ".join(missing))
+                combined, dedupe_warnings = _dedupe_attached_tick_paths(resolved)
+                if not combined:
+                    st.error("Choose at least one Tick–Tick–Last file or path.")
                 else:
                     try:
                         sessions, rows, warnings = _validate_attached_tick_paths(
@@ -817,13 +895,8 @@ def _render_tick_attach(*, instrument: str) -> None:
                             row_count=rows,
                             session_count=sessions,
                             signature="|".join(combined),
+                            warnings=[*dedupe_warnings, *warnings],
                         )
-                        st.success(
-                            f"Attached {len(combined)} tick file(s): "
-                            f"{sessions:,} session(s), {rows:,} prints."
-                        )
-                        for warning in warnings:
-                            st.warning(warning)
                         st.rerun()
         installed = st.session_state.get(TICK_PATHS_KEY)
         if isinstance(installed, list) and installed:
@@ -835,10 +908,15 @@ def _render_tick_attach(*, instrument: str) -> None:
             st.info(
                 f"Tick-last attached: {len(installed)} file(s){detail}. "
                 "Paste these paths into Studies Build when factors name VA "
-                "tokens. 15s remains the bar clock."
+                "tokens. Data-page attach does not feed classic Calculate "
+                "levels. 15s remains the bar clock."
             )
             for path in installed:
                 st.write(f"- `{path}`")
+            stored_warnings = st.session_state.get(TICK_WARNINGS_KEY)
+            if isinstance(stored_warnings, list):
+                for warning in stored_warnings:
+                    st.warning(warning)
             if st.button("Clear tick attach"):
                 _clear_tick_session_state()
                 st.session_state[TICK_UPLOADER_NONCE_KEY] = (
