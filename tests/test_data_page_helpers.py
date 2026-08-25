@@ -1219,9 +1219,7 @@ def test_tv4_honesty_docs_lock_suggested_pdpoc_and_readme_object():
     root = pathlib.Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
     user_guide = (root / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
-    assumptions = (root / "docs" / "ASSUMPTIONS_AND_LIMITATIONS.md").read_text(
-        encoding="utf-8"
-    )
+    assumptions = (root / "docs" / "ASSUMPTIONS_AND_LIMITATIONS.md").read_text(encoding="utf-8")
     study_runner = (root / "docs" / "STUDY_RUNNER.md").read_text(encoding="utf-8")
     assert "tick-bucketed ES/NQ volume bins" not in readme
     assert "tick Last×Volume VAP" in readme
