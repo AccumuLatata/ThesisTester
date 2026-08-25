@@ -218,6 +218,15 @@ def test_compute_profile_levels_omits_pdva_without_table():
     assert "POC_rolling_30min" in out.columns
 
 
+def test_quantower_ticks_import_does_not_cycle_through_all_levels():
+    """Loader-first import must not require levels.all → tick_vap at runtime."""
+    import thesistester.data.quantower_ticks as qt
+    from thesistester.levels import compute_all_levels
+
+    assert qt.TICK_FORMAT_PROFILE == "quantower_tick_last"
+    assert callable(compute_all_levels)
+
+
 def test_tick_vap_module_does_not_import_streamlit_or_open_15s():
     import thesistester.levels.tick_vap as module
 
