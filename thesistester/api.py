@@ -68,6 +68,8 @@ from thesistester.levels.tick_vap import (
     TICK_SOURCE_NONE,
     attach_tick_identity,
     build_prior_profile_table_from_paths,
+    compute_table_path_source_id,
+    compute_table_source_id,
     compute_tick_source_id,
     dataset_has_tick_inputs,
     resolve_tick_format_profile,
@@ -1482,12 +1484,19 @@ def _resolve_prior_profile_table(
 ) -> tuple[PriorProfileTable | None, str]:
     """Load a prebuilt table, else build from tick paths. Never both."""
     if prior_profile_table is not None:
-        return prior_profile_table, tick_source_id or TICK_SOURCE_NONE
+        return prior_profile_table, tick_source_id or compute_table_source_id(prior_profile_table)
     if prior_profile_table_path:
-        return (
-            PriorProfileTable.from_parquet(prior_profile_table_path),
-            tick_source_id or TICK_SOURCE_NONE,
-        )
+        table = PriorProfileTable.from_parquet(prior_profile_table_path)
+        if tick_source_id:
+            source_id = tick_source_id
+        else:
+            parquet = Path(prior_profile_table_path)
+            source_id = (
+                compute_table_path_source_id(parquet)
+                if parquet.is_file()
+                else compute_table_source_id(table)
+            )
+        return table, source_id
     if tick_paths:
         profile = resolve_tick_format_profile(tick_format_profile)
         table = build_prior_profile_table_from_paths(
@@ -1813,11 +1822,16 @@ def run_noise_test(
     subtimeframe_data: pd.DataFrame | None = None,
     parent_interval: pd.Timedelta | str | None = None,
     sub_interval: pd.Timedelta | str | None = None,
+    prior_profile_table: PriorProfileTable | None = None,
+    prior_profile_table_path: str | Path | None = None,
+    tick_source_id: str | None = None,
 ) -> dict[str, Any]:
     """Run R16 replicas through the canonical levels-to-backtest composition.
 
     Parent OHLC bars are perturbed. Lower-timeframe R12 data remains pinned so
     the test does not fabricate an unsupported sub-bar reconstruction.
+    Tick VA (when named) is joined from the same prior-profile table — replicas
+    must not omit the nine columns and trip LC4.
     """
     setup = build_setup(setup_config)
     settings = dict(noise_config or {})
@@ -1831,6 +1845,9 @@ def run_noise_test(
             perturbed,
             instrument=instrument,
             config=replica_levels_config,
+            prior_profile_table=prior_profile_table,
+            prior_profile_table_path=prior_profile_table_path,
+            tick_source_id=tick_source_id,
         )
         signals = generate_signals(levels["levels"], setup, instrument=instrument)
         backtest = run_backtest(
@@ -2177,6 +2194,9 @@ def run_validation(
     subtimeframe_data: pd.DataFrame | None = None,
     parent_interval: pd.Timedelta | str | None = None,
     sub_interval: pd.Timedelta | str | None = None,
+    prior_profile_table: PriorProfileTable | None = None,
+    prior_profile_table_path: str | Path | None = None,
+    tick_source_id: str | None = None,
 ) -> ValidationResult:
     """Run deterministic validation plus optional R10/R11 diagnostics."""
     raw = dict(config or {})
@@ -2259,6 +2279,9 @@ def run_validation(
             subtimeframe_data=subtimeframe_data,
             parent_interval=parent_interval,
             sub_interval=sub_interval,
+            prior_profile_table=prior_profile_table,
+            prior_profile_table_path=prior_profile_table_path,
+            tick_source_id=tick_source_id,
         )
         result.update({"noise_summary": summary, "noise_config": summary["config"]})
     if sensitivity_config is not None and not isinstance(sensitivity_config, Mapping):
@@ -2788,6 +2811,23 @@ def run_experiment(
         resolved_tick_paths = _resolve_dataset_tick_paths(
             dataset_config, base_directory=base_directory
         )
+    tick_format_profile = (
+        str(dataset_config["tick_format_profile"])
+        if dataset_config.get("tick_format_profile") is not None
+        else None
+    )
+    explicit_tick_source_id = (
+        str(dataset_config["tick_source_id"]) if dataset_config.get("tick_source_id") else None
+    )
+    table, resolved_tick_source_id = _resolve_prior_profile_table(
+        instrument=instrument,
+        settings=normalize_levels_config(run.get("levels"), instrument=instrument),
+        tick_paths=resolved_tick_paths,
+        tick_format_profile=tick_format_profile,
+        prior_profile_table=None,
+        prior_profile_table_path=table_path,
+        tick_source_id=explicit_tick_source_id,
+    )
     level_result = compute_levels(
         data,
         instrument=instrument,
@@ -2795,16 +2835,8 @@ def run_experiment(
         cache_policy=policy,
         data_identity=data_identity,
         store_root=store_root,
-        tick_paths=resolved_tick_paths,
-        tick_format_profile=(
-            str(dataset_config["tick_format_profile"])
-            if dataset_config.get("tick_format_profile") is not None
-            else None
-        ),
-        prior_profile_table_path=table_path,
-        tick_source_id=(
-            str(dataset_config["tick_source_id"]) if dataset_config.get("tick_source_id") else None
-        ),
+        prior_profile_table=table,
+        tick_source_id=resolved_tick_source_id,
     )
     levels_status = str(level_result.get("cache_status", "bypassed"))
     levels_stage: dict[str, Any] = {
@@ -3033,6 +3065,8 @@ def run_experiment(
                 subtimeframe_data=subtimeframe_data,
                 parent_interval=declared_parent_interval,
                 sub_interval=declared_sub_interval,
+                prior_profile_table=table,
+                tick_source_id=resolved_tick_source_id,
             )
         )
     return state

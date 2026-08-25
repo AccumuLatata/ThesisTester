@@ -447,7 +447,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   distinct from full-session `pdHigh`/`pdLow`.
 - Prior profile levels (pdVAH/pdVAL/pdPOC, pwVAH/pwVAL/pwPOC, pmVAH/pmVAL/pmPOC)
   are tick Last×Volume VAP joined via `map_shifted_prior_profile` (`shift(1)`
-  on the prior-profile table). They are **absent** when no tick table is
+  on the 1m frame's unique period keys; scalars come from the tick table).
+  A prior period with no ticks is `NaN` — the join does not fill from an
+  earlier present table row. They are **absent** when no tick table is
   supplied. The same shift guarantee holds: future ticks cannot change an
   earlier bar's prior VA.
 - Rolling POC uses a strict `timestamps <= now` window. No future data enters.

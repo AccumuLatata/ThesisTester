@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from thesistester.api import generate_signals
+from thesistester.api import compute_levels, generate_signals, run_backtest, run_noise_test
 from thesistester.config import INSTRUMENTS
 from thesistester.data.quantower_ticks import TickChunk
 from thesistester.data.sessions import tag_session
@@ -30,6 +30,7 @@ from thesistester.levels.tick_vap import (
     TICK_SOURCE_NONE,
     attach_tick_identity,
     build_prior_profile_table,
+    compute_table_source_id,
 )
 from thesistester.persistence.local_store import LEVEL_ENGINE_VERSION, compute_levels_settings_hash
 from thesistester.research_identity import normalize_levels_config
@@ -290,6 +291,98 @@ def test_tick_source_id_is_inside_settings_hash():
     assert none["va_source"] == "tick_last"
     assert compute_levels_settings_hash(none) != compute_levels_settings_hash(base)
     assert compute_levels_settings_hash(none) != compute_levels_settings_hash(other)
+
+
+def test_table_without_tick_paths_does_not_hash_as_none():
+    table = _table(_two_session_df())
+    table_id = compute_table_source_id(table)
+    assert table_id != TICK_SOURCE_NONE
+    base = normalize_levels_config({}, instrument="ES")
+    none = attach_tick_identity(base, tick_source_id=TICK_SOURCE_NONE)
+    present = attach_tick_identity(base, tick_source_id=table_id)
+    assert compute_levels_settings_hash(none) != compute_levels_settings_hash(present)
+
+
+def test_partial_tick_coverage_does_not_fill_from_earlier_session():
+    """2y-style 1m + a tick gap: session after the gap must be NaN, not D1 VA."""
+    d1 = _bars("2026-06-01 09:30:00", [100.00, 100.25], [10.0, 30.0], freq="1h")
+    d2 = _bars("2026-06-02 09:30:00", [101.00, 101.25], [8.0, 9.0], freq="1h")
+    d3 = _bars("2026-06-03 09:30:00", [102.00, 102.25], [7.0, 8.0], freq="1h")
+    frame = pd.concat([d1, d2, d3], ignore_index=True)
+    table = _table(pd.concat([d1, d3], ignore_index=True))
+    out = compute_profile_levels(
+        frame, instrument="ES", rolling_windows=["30min"], prior_profile_table=table
+    )
+    day2 = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
+    day3 = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-03").date()]
+    np.testing.assert_allclose(day2["pdPOC"].to_numpy(), [100.25, 100.25])
+    assert day3["pdPOC"].isna().all()
+    assert day3["pdVAH"].isna().all()
+    assert day3["pdVAL"].isna().all()
+
+
+def test_compute_levels_table_only_identity_is_not_none():
+    df = _two_session_df()
+    result = compute_levels(df, instrument="ES", prior_profile_table=_table(df))
+    assert result["levels_settings"]["tick_source_id"] != TICK_SOURCE_NONE
+    assert "pdPOC" in result["levels"].columns
+
+
+def test_run_noise_test_forwards_prior_profile_table(monkeypatch):
+    seen: list[object] = []
+    real = compute_levels
+
+    def _capture(data, **kwargs):
+        seen.append(kwargs.get("prior_profile_table"))
+        return real(data, **kwargs)
+
+    monkeypatch.setattr("thesistester.api.compute_levels", _capture)
+    df = tag_session(
+        _bars("2026-06-02 09:30:00", [100.0, 101.0, 102.0, 103.0, 104.0], [1.0] * 5),
+        "ES",
+    )
+    table = _table(df)
+    baseline = compute_levels(df, instrument="ES", prior_profile_table=table)
+    setup = build_setup_config(
+        name="tv3_noise",
+        description="test",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=1,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="touch",
+        direction="both",
+        trigger_params={},
+    )
+    signals = generate_signals(baseline["levels"], setup, instrument="ES")
+    backtest = run_backtest(
+        baseline["levels"],
+        signals["signals"],
+        instrument="ES",
+        config={"stop_loss_ticks": 2, "take_profit_ticks": 3},
+        setup_config=setup,
+        signal_settings=signals["signal_settings"],
+    )
+    run_noise_test(
+        df,
+        backtest["trades"],
+        instrument="ES",
+        setup_config=setup,
+        backtest_config={"stop_loss_ticks": 2, "take_profit_ticks": 3},
+        noise_config={
+            "n_replicas": 1,
+            "noise_fraction": 0.05,
+            "scale_basis": "atr",
+            "atr_period": 3,
+            "random_state": 1,
+        },
+        prior_profile_table=table,
+    )
+    assert seen
+    assert all(item is table for item in seen)
 
 
 def test_named_pdvah_studyspec_without_ticks_refuses():

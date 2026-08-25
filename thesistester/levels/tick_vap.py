@@ -238,31 +238,89 @@ def attach_tick_identity(
     return attached
 
 
+def compute_table_source_id(table: PriorProfileTable) -> str:
+    """Content identity for a table when tick files are not on the call.
+
+    Must not return ``none`` — a present table and a missing table are
+    different research objects (cache-collision if they share ``none``).
+    """
+    hasher = sha256()
+    hasher.update(b"prior_profile_table\0")
+    if table.frame.empty:
+        hasher.update(b"empty")
+        return hasher.hexdigest()
+    persist = table.frame.loc[
+        :,
+        [
+            "family",
+            "period_key",
+            "VAH",
+            "VAL",
+            "POC",
+            "aggregation_ticks",
+            "value_area_pct",
+            "va_source",
+        ],
+    ].copy()
+    persist["period_key"] = persist["period_key"].map(_period_key_text)
+    persist = persist.sort_values(["family", "period_key"]).reset_index(drop=True)
+    hasher.update(persist.to_csv(index=False).encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def compute_table_path_source_id(path: str | Path) -> str:
+    """SHA-256 of a persisted prior-profile parquet (fallback tick identity)."""
+    from thesistester.persistence.execution_artifacts import source_content_hash
+
+    return source_content_hash(path)
+
+
 def map_shifted_prior_profile(
     period_key: pd.Series,
     table: PriorProfileTable,
     *,
     family: str,
 ) -> pd.DataFrame:
-    """Map each period key to the **prior** period's VAH/VAL/POC (``shift(1)``)."""
+    """Map each 1m period key to the **prior 1m period's** table scalars.
+
+    Join semantics match pre-TV3 ``_map_prior_profile_levels``: unique period
+    keys come from the 1m frame (sorted), then ``shift(1)``. Scalars are
+    looked up on the tick table; a prior period with no ticks is ``NaN``.
+    Shifting the table's present rows would fill a gap from an earlier
+    session — forbidden by TV §3.8.
+    """
     if family not in PRIOR_PROFILE_FAMILIES:
         raise ValueError(f"Unknown prior-profile family: {family}")
+    keys = _period_keys_for_join(period_key, family)
+    empty = pd.DataFrame(
+        {
+            f"{family}VAH": pd.Series(index=period_key.index, dtype="float64"),
+            f"{family}VAL": pd.Series(index=period_key.index, dtype="float64"),
+            f"{family}POC": pd.Series(index=period_key.index, dtype="float64"),
+        }
+    )
+    if keys.empty:
+        return empty
+    periods = _typed_period_index(pd.Index(keys.unique()).sort_values(), family)
     fam = table.family_rows(family)
     if fam.empty:
-        empty = pd.DataFrame(
+        aligned = pd.DataFrame(
             {
-                f"{family}VAH": pd.Series(index=period_key.index, dtype="float64"),
-                f"{family}VAL": pd.Series(index=period_key.index, dtype="float64"),
-                f"{family}POC": pd.Series(index=period_key.index, dtype="float64"),
+                "VAH": pd.Series(float("nan"), index=periods, dtype="float64"),
+                "VAL": pd.Series(float("nan"), index=periods, dtype="float64"),
+                "POC": pd.Series(float("nan"), index=periods, dtype="float64"),
             }
         )
-        return empty
-    keys = _period_keys_for_join(period_key, family)
-    ordered = fam.copy()
-    ordered["period_key"] = _period_keys_for_join(ordered["period_key"], family).to_numpy()
-    ordered = ordered.sort_values("period_key").set_index("period_key")[["VAH", "VAL", "POC"]]
-    ordered.index = _typed_period_index(ordered.index, family)
-    shifted = ordered.shift(1)
+    else:
+        ordered = fam.copy()
+        ordered["period_key"] = _period_keys_for_join(ordered["period_key"], family).to_numpy()
+        ordered = ordered.sort_values("period_key").drop_duplicates(
+            subset=["period_key"], keep="last"
+        )
+        lookup = ordered.set_index("period_key")[["VAH", "VAL", "POC"]]
+        lookup.index = _typed_period_index(lookup.index, family)
+        aligned = lookup.reindex(periods)
+    shifted = aligned.shift(1)
     return pd.DataFrame(
         {
             f"{family}VAH": keys.map(shifted["VAH"]),

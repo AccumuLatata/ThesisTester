@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -19,6 +20,7 @@ from thesistester.levels.tick_vap import (
     LEVELS_TICK_IDENTITY_KEYS,
     TICK_SOURCE_NONE,
     attach_tick_identity,
+    compute_table_path_source_id,
     compute_tick_source_id,
     resolve_tick_format_profile,
 )
@@ -94,6 +96,11 @@ def _tick_source_id_from_dataset(dataset: Mapping[str, Any] | None) -> str:
     if isinstance(paths, list) and any(str(item).strip() for item in paths):
         profile = resolve_tick_format_profile(dataset.get("tick_format_profile"))
         return compute_tick_source_id(paths, format_profile=profile)
+    table_path = dataset.get("prior_profile_table_path")
+    if isinstance(table_path, (str, Path)) and str(table_path).strip():
+        resolved = Path(table_path)
+        if resolved.is_file():
+            return compute_table_path_source_id(resolved)
     return TICK_SOURCE_NONE
 
 
