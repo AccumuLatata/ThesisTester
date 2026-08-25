@@ -40,7 +40,7 @@ An LC PR that “simplifies” any of these is out of scope and must be rejected
 
 1. **Engine column strings for existing families stay as emitted today.** Do **not** rename `Pivot_1m_High` → `Pivot_1min_High`. Do **not** rename `dSinglePrint_30m_*`. Catalogs move to the engine, not the other way around.
 2. **`compute_all_levels` keyword defaults stay additive / mostly-off** for Stage 1–8 gates (`pivots_enabled=False`, …). Product defaults live in `DEFAULT_LEVELS_SETTINGS`. Do **not** flip those API defaults in this series.
-3. **Profile math stays the bar typical-price MVP** `(H+L+C)/3` into one tick bin, 70% VA, `shift(1)` prior period. No VAP rewrite.
+3. **Profile math stays the bar typical-price MVP** `(H+L+C)/3` into one tick bin, 70% VA, `shift(1)` prior period. No VAP rewrite. **TV amendment:** prior-profile allocation (`pd*` / `pw*` / `pm*` VA) is superseded by `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` — those nine columns are tick Last×Volume when ticks are provided and **absent** otherwise. Typical MVP remains for rolling POC / APOC only.
 4. **`detect_confluence_zones` library contract stays permissive** (missing columns skipped; all-missing → empty frame). LC4 fail-closes at the **API / generate_signals** boundary only — same pattern as today’s anchor-rules missing-column `ValueError`.
 5. **`validate_setup_config` still cannot see a levels frame.** It keeps rejecting `BASE_COLUMNS` and hit diagnostics (AH6). Column-existence checks stay in `api.py` when a frame is present.
 6. **Hit flags stay non-levels:** `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` remain in `NON_LEVEL_OUTPUT_COLUMNS`.

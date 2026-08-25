@@ -63,7 +63,7 @@ def _minimal_study(**overrides):
             "walk_forward": {"enabled": False},
         },
         "factors": {
-            "core_level": ["pdPOC"],
+            "core_level": ["ONH"],
             "partner_levels": [["SMA_50_1min"], ["EMA_21_5min"]],
             "confluence_mode": ["global_cluster", "anchor_rules"],
             "trigger": ["touch"],
@@ -147,9 +147,18 @@ def test_static_catalog_excludes_suggested_rolling_vwap():
 
 
 @pytest.mark.parametrize("core_level", ["pdVAH", "pwPOC", "pmVAL"])
-def test_lc1_prior_profile_twins_are_core_level_tokens(core_level):
+def test_named_va_core_without_tick_paths_refuses(core_level):
     raw = _minimal_study()
     raw["study"]["factors"]["core_level"] = [core_level]
+    with pytest.raises(StudySpecError, match="VA requires ticks"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+@pytest.mark.parametrize("core_level", ["pdVAH", "pwPOC", "pmVAL"])
+def test_named_va_core_with_tick_paths_validates(core_level):
+    raw = _minimal_study()
+    raw["study"]["factors"]["core_level"] = [core_level]
+    raw["study"]["dataset"]["tick_paths"] = ["data/es_ticks.csv"]
     validated = validate_study_spec(normalize_study_spec(raw))
     assert validated["study"]["factors"]["core_level"] == [core_level]
 
@@ -194,7 +203,7 @@ def test_load_study_spec_from_yaml(tmp_path: Path):
     path = tmp_path / "study.yaml"
     path.write_text(yaml.safe_dump(_minimal_study()), encoding="utf-8")
     loaded = load_study_spec(path)
-    assert loaded["study"]["factors"]["core_level"] == ["pdPOC"]
+    assert loaded["study"]["factors"]["core_level"] == ["ONH"]
 
 
 def test_unknown_top_level_key_fails_closed():
@@ -364,7 +373,7 @@ def test_stage_explicit_cells_requires_all_factor_keys():
         "mode": "explicit_cells",
         "cells": [
             {
-                "core_level": "pdPOC",
+                "core_level": "ONH",
                 "partner_levels": ["SMA_50_1min"],
                 # missing remaining axes
             }
@@ -374,7 +383,7 @@ def test_stage_explicit_cells_requires_all_factor_keys():
         validate_study_spec(normalize_study_spec(raw))
 
     cell = {
-        "core_level": "pdPOC",
+        "core_level": "ONH",
         "partner_levels": ["SMA_50_1min"],
         "confluence_mode": "global_cluster",
         "trigger": "touch",
@@ -683,7 +692,7 @@ def test_stage_explicit_cells_allow_empty_partner_set_in_domain():
         "mode": "explicit_cells",
         "cells": [
             {
-                "core_level": "pdPOC",
+                "core_level": "ONH",
                 "partner_levels": [],
                 "confluence_mode": "anchor_rules",
                 "trigger": "touch",
@@ -709,7 +718,7 @@ def test_stage_explicit_cells_empty_partner_set_still_must_be_in_domain():
         "mode": "explicit_cells",
         "cells": [
             {
-                "core_level": "pdPOC",
+                "core_level": "ONH",
                 "partner_levels": [],
                 "confluence_mode": "global_cluster",
                 "trigger": "touch",
@@ -785,7 +794,7 @@ def test_stage_include_values_must_be_in_factor_domain():
 def test_stage_explicit_cells_reject_out_of_domain_values():
     raw = _minimal_study()
     cell = {
-        "core_level": "pdPOC",
+        "core_level": "ONH",
         "partner_levels": ["SMA_50_1min"],
         "confluence_mode": "global_cluster",
         "trigger": "teleport",

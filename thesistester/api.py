@@ -59,8 +59,19 @@ from thesistester.engine import (
     validate_exit_management_config,
 )
 from thesistester.levels.all import compute_all_levels
+from thesistester.levels.catalog import named_prior_profile_tokens
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.sessions import compute_session_levels
+from thesistester.levels.tick_vap import (
+    LEVELS_TICK_IDENTITY_KEYS,
+    PriorProfileTable,
+    TICK_SOURCE_NONE,
+    attach_tick_identity,
+    build_prior_profile_table_from_paths,
+    compute_tick_source_id,
+    dataset_has_tick_inputs,
+    resolve_tick_format_profile,
+)
 from thesistester.persistence.execution_artifacts import (
     ArtifactMiss,
     DataArtifact,
@@ -284,6 +295,10 @@ _DATASET_KEYS = {
     # CAI-4 additive classic-export / artifact provenance (optional).
     "data_artifact_key",
     "data_identity",
+    "tick_paths",
+    "tick_format_profile",
+    "prior_profile_table_path",
+    "tick_source_id",
 }
 _SUPPORTED_INGESTION_MODES = frozenset({"primary", INGESTION_MODE_15S_PRIMARY_DERIVE_1M})
 _DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
@@ -515,6 +530,23 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     if "data_identity" in dataset and dataset["data_identity"] is not None:
         if not isinstance(dataset["data_identity"], Mapping):
             raise ValueError("dataset.data_identity must be a mapping or null")
+    if "tick_paths" in dataset and dataset["tick_paths"] is not None:
+        raw_ticks = dataset["tick_paths"]
+        if not isinstance(raw_ticks, list):
+            raise ValueError("dataset.tick_paths must be a list of path strings")
+        if any(not isinstance(item, (str, Path)) or not str(item).strip() for item in raw_ticks):
+            raise ValueError("dataset.tick_paths must be a list of path strings")
+    if "tick_format_profile" in dataset and dataset["tick_format_profile"] is not None:
+        try:
+            resolve_tick_format_profile(dataset["tick_format_profile"])
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+    if "prior_profile_table_path" in dataset and dataset["prior_profile_table_path"] is not None:
+        if not isinstance(dataset["prior_profile_table_path"], (str, Path)):
+            raise ValueError("dataset.prior_profile_table_path must be a path string")
+    if "tick_source_id" in dataset and dataset["tick_source_id"] is not None:
+        if not isinstance(dataset["tick_source_id"], str) or not dataset["tick_source_id"]:
+            raise ValueError("dataset.tick_source_id must be a non-empty string or null")
     for key in (
         "instrument",
         "source_timezone",
@@ -1387,6 +1419,92 @@ def load_dataset(
     return tag_session(data, instrument)
 
 
+def _named_prior_profile_from_setup(setup: Mapping[str, Any] | None) -> list[str]:
+    """Collect prior-profile VA tokens named by a setup (selected / anchor / rules)."""
+    if not setup:
+        return []
+    names: list[object] = []
+    names.extend(setup.get("selected_levels") or [])
+    anchor = setup.get("anchor_level")
+    if anchor:
+        names.append(anchor)
+    for rule in setup.get("confluence_rules") or []:
+        if isinstance(rule, Mapping) and rule.get("level"):
+            names.append(rule.get("level"))
+    return named_prior_profile_tokens(names)
+
+
+def _require_ticks_for_named_va(
+    dataset: Mapping[str, Any],
+    setup: Mapping[str, Any] | None,
+) -> None:
+    """Layer-1: named VA without tick files or a prior-profile table refuses."""
+    tokens = _named_prior_profile_from_setup(setup)
+    if not tokens:
+        return
+    if dataset_has_tick_inputs(dict(dataset)):
+        return
+    raise ValueError(
+        "VA requires ticks: dataset.tick_paths is missing or empty "
+        f"(named {tokens})"
+    )
+
+
+def _resolve_dataset_tick_paths(
+    dataset: Mapping[str, Any],
+    *,
+    base_directory: str | Path,
+) -> list[Path] | None:
+    raw = dataset.get("tick_paths")
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("dataset.tick_paths must be a list of path strings")
+    resolved: list[Path] = []
+    for item in raw:
+        path = Path(item)
+        if not path.is_absolute():
+            path = Path(base_directory) / path
+        resolved.append(path)
+    return resolved or None
+
+
+def _resolve_prior_profile_table(
+    *,
+    instrument: str,
+    settings: Mapping[str, Any],
+    tick_paths: list[Path] | None,
+    tick_format_profile: str | None,
+    prior_profile_table: PriorProfileTable | None,
+    prior_profile_table_path: str | Path | None,
+    tick_source_id: str | None,
+) -> tuple[PriorProfileTable | None, str]:
+    """Load a prebuilt table, else build from tick paths. Never both."""
+    if prior_profile_table is not None:
+        return prior_profile_table, tick_source_id or TICK_SOURCE_NONE
+    if prior_profile_table_path:
+        return (
+            PriorProfileTable.from_parquet(prior_profile_table_path),
+            tick_source_id or TICK_SOURCE_NONE,
+        )
+    if tick_paths:
+        profile = resolve_tick_format_profile(tick_format_profile)
+        table = build_prior_profile_table_from_paths(
+            tick_paths,
+            instrument=instrument,
+            value_area_pct=float(settings["value_area_pct"]),
+            prior_day_aggregation_ticks=int(settings["prior_day_profile_aggregation_ticks"]),
+            prior_week_aggregation_ticks=int(settings["prior_week_profile_aggregation_ticks"]),
+            prior_month_aggregation_ticks=int(settings["prior_month_profile_aggregation_ticks"]),
+            format_profile=profile,
+        )
+        source_id = tick_source_id or compute_tick_source_id(
+            tick_paths, format_profile=profile
+        )
+        return table, source_id
+    return None, tick_source_id or TICK_SOURCE_NONE
+
+
 def compute_levels(
     data: pd.DataFrame,
     *,
@@ -1395,6 +1513,11 @@ def compute_levels(
     cache_policy: str = "off",
     data_identity: DataIdentity | Mapping[str, Any] | None = None,
     store_root: str | Path | None = None,
+    tick_paths: list[str | Path] | None = None,
+    tick_format_profile: str | None = None,
+    prior_profile_table: PriorProfileTable | None = None,
+    prior_profile_table_path: str | Path | None = None,
+    tick_source_id: str | None = None,
 ) -> LevelsResult:
     """Compute UI-equivalent levels without reading or writing session state.
 
@@ -1404,6 +1527,16 @@ def compute_levels(
     """
     _instrument(instrument)
     settings = normalize_levels_config(config, instrument=instrument)
+    table, resolved_tick_source_id = _resolve_prior_profile_table(
+        instrument=instrument,
+        settings=settings,
+        tick_paths=[Path(path) for path in tick_paths] if tick_paths else None,
+        tick_format_profile=tick_format_profile,
+        prior_profile_table=prior_profile_table,
+        prior_profile_table_path=prior_profile_table_path,
+        tick_source_id=tick_source_id,
+    )
+    settings = attach_tick_identity(settings, tick_source_id=resolved_tick_source_id)
     policy = normalize_cache_policy(cache_policy)
     cache_status = "bypassed"
     cache_detail: str | None = None
@@ -1430,9 +1563,14 @@ def compute_levels(
     kwargs = {
         _LEVEL_ARGUMENT_MAP.get(key, key): value
         for key, value in settings.items()
-        if key != "instrument"
+        if key != "instrument" and key not in LEVELS_TICK_IDENTITY_KEYS
     }
-    levels = compute_all_levels(data, instrument=instrument, **kwargs)
+    levels = compute_all_levels(
+        data,
+        instrument=instrument,
+        prior_profile_table=table,
+        **kwargs,
+    )
     session_levels = compute_session_levels(
         data,
         instrument=instrument,
@@ -2587,6 +2725,7 @@ def run_experiment(
     dataset_config = dict(run.get("dataset") or {})
     if "path" not in dataset_config:
         raise ValueError("Experiment dataset.path is required")
+    _require_ticks_for_named_va(dataset_config, dict(run.get("setup") or {}))
     instrument = str(dataset_config.get("instrument", "ES"))
     inst = _instrument(instrument)
     dataset_path = Path(dataset_config["path"])
@@ -2644,6 +2783,12 @@ def run_experiment(
     )
     dataset_id = data_identity.dataset_id()
 
+    table_path = dataset_config.get("prior_profile_table_path")
+    resolved_tick_paths = None
+    if not table_path:
+        resolved_tick_paths = _resolve_dataset_tick_paths(
+            dataset_config, base_directory=base_directory
+        )
     level_result = compute_levels(
         data,
         instrument=instrument,
@@ -2651,6 +2796,18 @@ def run_experiment(
         cache_policy=policy,
         data_identity=data_identity,
         store_root=store_root,
+        tick_paths=resolved_tick_paths,
+        tick_format_profile=(
+            str(dataset_config["tick_format_profile"])
+            if dataset_config.get("tick_format_profile") is not None
+            else None
+        ),
+        prior_profile_table_path=table_path,
+        tick_source_id=(
+            str(dataset_config["tick_source_id"])
+            if dataset_config.get("tick_source_id")
+            else None
+        ),
     )
     levels_status = str(level_result.get("cache_status", "bypassed"))
     levels_stage: dict[str, Any] = {

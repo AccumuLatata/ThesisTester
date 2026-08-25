@@ -19,7 +19,10 @@ DEFAULT_LEVELS_SETTINGS: dict[str, Any] = {
     "vwap_windows": ["30min", "4h"],
     "poc_windows": ["30min"],
     "value_area_pct": 0.70,
-    "prior_day_profile_aggregation_ticks": 4,
+    # Session-20 MNQ: 4-tick tick-VAP still misses Quantower POC by a full
+    # zone (12.75). Product day grid is 1-tick. Week/month stay 8/10 until a
+    # QT HTF fixture exists. Kwargs remain prior_*_aggregation_ticks.
+    "prior_day_profile_aggregation_ticks": 1,
     "prior_week_profile_aggregation_ticks": 8,
     "prior_month_profile_aggregation_ticks": 10,
     "pivots_enabled": True,

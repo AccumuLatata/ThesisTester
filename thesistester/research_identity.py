@@ -15,6 +15,13 @@ from typing import Any, Mapping
 import pandas as pd
 
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.tick_vap import (
+    LEVELS_TICK_IDENTITY_KEYS,
+    TICK_SOURCE_NONE,
+    attach_tick_identity,
+    compute_tick_source_id,
+    resolve_tick_format_profile,
+)
 from thesistester.persistence.local_store import (
     LEVEL_ENGINE_VERSION,
     PERSISTENCE_SCHEMA_VERSION,
@@ -61,6 +68,10 @@ def normalize_levels_config(
     # instrument as bound metadata. Instrument is always taken from the
     # explicit parameter, so ignore any inbound copy before unknown-key checks.
     raw.pop("instrument", None)
+    # Tick identity is injected after normalize; inbound copies must not fail
+    # the product-key allowlist (classic page / artifact round-trip).
+    for key in LEVELS_TICK_IDENTITY_KEYS:
+        raw.pop(key, None)
     unknown = sorted(set(raw) - set(DEFAULT_LEVELS_SETTINGS))
     if unknown:
         raise ValueError(f"Unknown levels configuration keys: {unknown}")
@@ -70,6 +81,20 @@ def normalize_levels_config(
         value = settings[key]
         settings[key] = sorted(list(value))
     return settings
+
+
+def _tick_source_id_from_dataset(dataset: Mapping[str, Any] | None) -> str:
+    """Resolve tick source id from dataset keys (explicit id, else hashed paths)."""
+    if not dataset:
+        return TICK_SOURCE_NONE
+    explicit = dataset.get("tick_source_id")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit
+    paths = dataset.get("tick_paths")
+    if isinstance(paths, list) and any(str(item).strip() for item in paths):
+        profile = resolve_tick_format_profile(dataset.get("tick_format_profile"))
+        return compute_tick_source_id(paths, format_profile=profile)
+    return TICK_SOURCE_NONE
 
 
 def compute_run_spec_hash(spec: Mapping[str, Any]) -> str:
@@ -339,9 +364,18 @@ class LevelsIdentity:
         config: Mapping[str, Any] | None,
         *,
         instrument: str | None = None,
+        tick_source_id: str | None = None,
     ) -> LevelsIdentity:
         resolved_instrument = instrument or data_identity.instrument
-        normalized = normalize_levels_config(config, instrument=resolved_instrument)
+        inbound = None
+        if isinstance(config, Mapping):
+            raw_id = config.get("tick_source_id")
+            if isinstance(raw_id, str) and raw_id.strip():
+                inbound = raw_id
+        normalized = attach_tick_identity(
+            normalize_levels_config(config, instrument=resolved_instrument),
+            tick_source_id=tick_source_id or inbound or TICK_SOURCE_NONE,
+        )
         return cls.from_normalized(data_identity, normalized)
 
     @classmethod
@@ -351,7 +385,12 @@ class LevelsIdentity:
         spec: Mapping[str, Any],
     ) -> LevelsIdentity:
         run = _require_mapping(spec, label="run spec")
-        return cls.from_config(data_identity, run.get("levels"))
+        dataset = run.get("dataset") if isinstance(run.get("dataset"), Mapping) else {}
+        return cls.from_config(
+            data_identity,
+            run.get("levels"),
+            tick_source_id=_tick_source_id_from_dataset(dataset),
+        )
 
     @classmethod
     def from_page_state(cls, state: Mapping[str, Any]) -> LevelsIdentity:

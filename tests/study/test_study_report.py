@@ -88,7 +88,7 @@ def _write_report_fixture(
                 "walk_forward": {"enabled": False},
             },
             "factors": {
-                "core_level": ["pdPOC"],
+                "core_level": ["ONH"],
                 "partner_levels": [["SMA_50_1min"], ["EMA_21_5min"]],
                 "confluence_mode": ["global_cluster"],
                 "trigger": ["touch"],

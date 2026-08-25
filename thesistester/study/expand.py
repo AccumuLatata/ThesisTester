@@ -70,6 +70,20 @@ def pin_dataset_paths_against_parent(
         candidate = (parent / path).resolve()
         if candidate.is_file():
             out[key] = str(candidate)
+    raw_ticks = out.get("tick_paths")
+    if isinstance(raw_ticks, list):
+        pinned_ticks: list[str] = []
+        for item in raw_ticks:
+            if not isinstance(item, (str, Path)):
+                pinned_ticks.append(item)
+                continue
+            path = Path(item)
+            if path.is_absolute():
+                pinned_ticks.append(str(path.resolve()))
+                continue
+            candidate = (parent / path).resolve()
+            pinned_ticks.append(str(candidate) if candidate.is_file() else str(item))
+        out["tick_paths"] = pinned_ticks
     return out
 
 

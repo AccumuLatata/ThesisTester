@@ -76,7 +76,7 @@ def _one_cell_spec(
                 "walk_forward": {"enabled": False},
             },
             "factors": {
-                "core_level": ["pdPOC"],
+                "core_level": ["ONH"],
                 "partner_levels": [["SMA_50_1min"]],
                 "confluence_mode": ["global_cluster"],
                 "trigger": ["touch"],

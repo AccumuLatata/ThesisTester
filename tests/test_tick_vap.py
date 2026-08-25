@@ -201,7 +201,7 @@ def test_empty_chunk_emits_no_period_row():
     assert list(empty_only.frame.columns) == list(PRIOR_PROFILE_TABLE_COLUMNS)
 
 
-def test_compute_profile_levels_still_emits_typical_pdva_without_table():
+def test_compute_profile_levels_omits_pdva_without_table():
     df = pd.DataFrame(
         {
             "timestamp": pd.date_range("2026-06-01 09:30:00", periods=3, freq="1h", tz=TZ),
@@ -213,8 +213,9 @@ def test_compute_profile_levels_still_emits_typical_pdva_without_table():
         }
     )
     out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
-    assert "pdVAH" in out.columns
-    assert "pdPOC" in out.columns
+    assert "pdVAH" not in out.columns
+    assert "pdPOC" not in out.columns
+    assert "POC_rolling_30min" in out.columns
 
 
 def test_tick_vap_module_does_not_import_streamlit_or_open_15s():

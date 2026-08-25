@@ -203,7 +203,7 @@ def _minimal_study(**overrides):
             "walk_forward": {"enabled": False},
         },
         "factors": {
-            "core_level": ["pdPOC"],
+            "core_level": ["ONH"],
             "partner_levels": [["SMA_50_1min"]],
             "confluence_mode": ["global_cluster"],
             "trigger": ["touch"],
@@ -287,7 +287,8 @@ def test_other_families_unchanged_when_session_vwap_enabled():
     assert COL_WVWAP in out_on.columns
     assert COL_MVWAP in out_on.columns
     assert "wOpen" in out_on.columns
-    assert "pdPOC" in out_on.columns
+    assert "pdPOC" not in out_on.columns
+    assert "pdVAH" not in out_on.columns
 
 
 def test_level_engine_version_bumped_for_additive_htf_vwap():

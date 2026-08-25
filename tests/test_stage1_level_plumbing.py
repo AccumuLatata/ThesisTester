@@ -190,8 +190,6 @@ _KNOWN_LEVEL_COLUMNS = [
     "EMA_2",
     "VWAP_rolling_15min",
     "POC_rolling_30min",
-    "pdVAH",
-    "pdPOC",
 ]
 
 

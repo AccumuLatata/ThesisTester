@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-24  
-**Status:** TV1 landed. TV2 (this PR) — prior-profile table library. Typical VA emission unchanged.  
+**Status:** TV1–TV3 landed. TV4 pending (Data page / Study Builder widgets + Help honesty).  
 **Series code:** **TV** (Tick volume-at-price)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 
@@ -10,7 +10,7 @@
 
 **Does not reopen:** R9–R22 milestone text; AH / RS execute semantics; SIA ingest defaults; SW clocks; WMV `dVWAP*` math; AO detector; LC catalog token *names*; kill-list / fresh-round StudySpec; Help-corpus *path* moves; `simulate_trades` / R12 / 3c / touch.
 
-**Amends (only when the implementing PR lands):** LC locked contract #3 (prior-profile allocation). LC series stays frozen; this file becomes the living SoT for `pd*` / `pw*` / `pm*` VA allocation. TV3 adds a one-line pointer on the LC plan. Living honesty docs (`ASSUMPTIONS_AND_LIMITATIONS.md`, `POINT_IN_TIME_GUARANTEES.md`, `METRICS_GLOSSARY.md`) are updated in TV3/TV4, not here.
+**Amends:** LC locked contract #3 (prior-profile allocation) — TV3 added the one-line pointer on the LC plan. This file is the living SoT for `pd*` / `pw*` / `pm*` VA allocation. Living honesty docs (`ASSUMPTIONS_AND_LIMITATIONS.md`, `POINT_IN_TIME_GUARANTEES.md`, `METRICS_GLOSSARY.md`) were updated in TV3; Help/UI copy remains TV4.
 
 **Related living docs (amend only the sentence that is newly true, in the PR that makes it true):**  
 `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/POINT_IN_TIME_GUARANTEES.md`, `docs/METRICS_GLOSSARY.md`, `docs/STUDY_RUNNER.md`, `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/AGENT_GUIDE.md`.

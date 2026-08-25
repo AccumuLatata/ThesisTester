@@ -189,7 +189,7 @@ class TestNormalizeStage6Defaults:
             "vwap_windows": ["30min", "4h"],
             "poc_windows": ["30min"],
             "value_area_pct": 0.70,
-            "prior_day_profile_aggregation_ticks": 4,
+            "prior_day_profile_aggregation_ticks": 1,
             "prior_week_profile_aggregation_ticks": 8,
             "prior_month_profile_aggregation_ticks": 10,
             "pivots_enabled": True,

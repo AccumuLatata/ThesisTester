@@ -9,6 +9,7 @@ from .indicators import compute_indicator_levels
 from .pivots import compute_pivot_levels
 from .prev30m_vwap import compute_prev30m_vwap_levels
 from .profile import compute_profile_levels
+from .tick_vap import PriorProfileTable
 from .session_vwap import compute_session_vwap_levels
 from .sessions import compute_session_levels
 from .tpo import compute_tpo_levels
@@ -28,6 +29,7 @@ def compute_all_levels(
     prior_day_aggregation_ticks: int = 1,
     prior_week_aggregation_ticks: int = 1,
     prior_month_aggregation_ticks: int = 1,
+    prior_profile_table: PriorProfileTable | None = None,
     # --- Stage 1 settings gates (all disabled by default) ---
     pivots_enabled: bool = False,
     pivot_timeframes: list[str] | tuple[str, ...] | None = None,
@@ -87,6 +89,7 @@ def compute_all_levels(
         prior_day_aggregation_ticks=prior_day_aggregation_ticks,
         prior_week_aggregation_ticks=prior_week_aggregation_ticks,
         prior_month_aggregation_ticks=prior_month_aggregation_ticks,
+        prior_profile_table=prior_profile_table,
     )
     pivot_df = compute_pivot_levels(
         df,
