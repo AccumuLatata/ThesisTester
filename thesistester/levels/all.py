@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pandas as pd
 
 from .apoc import compute_apoc_levels
@@ -9,10 +11,12 @@ from .indicators import compute_indicator_levels
 from .pivots import compute_pivot_levels
 from .prev30m_vwap import compute_prev30m_vwap_levels
 from .profile import compute_profile_levels
-from .tick_vap import PriorProfileTable
 from .session_vwap import compute_session_vwap_levels
 from .sessions import compute_session_levels
 from .tpo import compute_tpo_levels
+
+if TYPE_CHECKING:
+    from .tick_vap import PriorProfileTable
 
 
 def compute_all_levels(
