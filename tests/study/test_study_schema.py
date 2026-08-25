@@ -806,7 +806,7 @@ def test_stage_explicit_cells_reject_out_of_domain_values():
         validate_study_spec(normalize_study_spec(raw))
 
     cell = {
-        "core_level": "ONH",  # not in factors.core_level
+        "core_level": "RTH_Open",  # not in factors.core_level (stand-in is ONH)
         "partner_levels": ["SMA_50_1min"],
         "confluence_mode": "global_cluster",
         "trigger": "touch",
