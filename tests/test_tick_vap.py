@@ -326,10 +326,17 @@ def test_timestamp_session_date_still_joins_trading_session_date():
 
 def test_map_shift_uses_one_m_periods_not_table_present_rows():
     """1m has a mid session the table lacks → next session is NaN, not an earlier fill."""
+    later = date(2026, 6, 9)
+    prints_later = [
+        ("2026-06-09 13:30:00", 102.00, 8.0),
+        ("2026-06-09 13:31:00", 102.25, 9.0),
+    ]
+    table = build_prior_profile_table(
+        [_chunk(SESSION_A, PRINTS_A), _chunk(later, prints_later)],
+        instrument="ES",
+    )
     mid = date(2026, 6, 4)
-    table = _two_session_table()
-    keys = pd.Series([SESSION_A, mid, SESSION_B])
-    mapped = map_shifted_prior_profile(keys, table, family="pd")
+    mapped = map_shifted_prior_profile(pd.Series([SESSION_A, mid, later]), table, family="pd")
     assert pd.isna(mapped["pdPOC"].iloc[0])
     np.testing.assert_allclose(mapped["pdPOC"].iloc[1], 100.25)
     assert pd.isna(mapped["pdPOC"].iloc[2])

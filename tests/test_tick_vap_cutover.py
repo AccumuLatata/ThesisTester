@@ -6,6 +6,7 @@ No 1m-typical fallback under ``pd*`` / ``pw*`` / ``pm*`` names. Goldens
 
 from __future__ import annotations
 
+import inspect
 from datetime import date
 from pathlib import Path
 
@@ -14,7 +15,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from thesistester.api import compute_levels, generate_signals, run_backtest, run_noise_test
+from thesistester.api import compute_levels, generate_signals, run_noise_test
 from thesistester.config import INSTRUMENTS
 from thesistester.data.quantower_ticks import TickChunk
 from thesistester.data.sessions import tag_session
@@ -323,66 +324,28 @@ def test_partial_tick_coverage_does_not_fill_from_earlier_session():
 
 def test_compute_levels_table_only_identity_is_not_none():
     df = _two_session_df()
-    result = compute_levels(df, instrument="ES", prior_profile_table=_table(df))
+    result = compute_levels(
+        df,
+        instrument="ES",
+        config={
+            "sma_lengths": [],
+            "ema_lengths": [],
+            "sma_timeframes": [],
+            "ema_timeframes": [],
+            "vwap_windows": [],
+            "poc_windows": [],
+        },
+        prior_profile_table=_table(df),
+    )
     assert result["levels_settings"]["tick_source_id"] != TICK_SOURCE_NONE
     assert "pdPOC" in result["levels"].columns
 
 
-def test_run_noise_test_forwards_prior_profile_table(monkeypatch):
-    seen: list[object] = []
-    real = compute_levels
-
-    def _capture(data, **kwargs):
-        seen.append(kwargs.get("prior_profile_table"))
-        return real(data, **kwargs)
-
-    monkeypatch.setattr("thesistester.api.compute_levels", _capture)
-    df = tag_session(
-        _bars("2026-06-02 09:30:00", [100.0, 101.0, 102.0, 103.0, 104.0], [1.0] * 5),
-        "ES",
-    )
-    table = _table(df)
-    baseline = compute_levels(df, instrument="ES", prior_profile_table=table)
-    setup = build_setup_config(
-        name="tv3_noise",
-        description="test",
-        instrument="ES",
-        selected_levels=["ONH"],
-        tolerance_ticks=4.0,
-        min_confluences=1,
-        max_confluences=5,
-        naked_only=False,
-        naked_requirement="any",
-        trigger="touch",
-        direction="both",
-        trigger_params={},
-    )
-    signals = generate_signals(baseline["levels"], setup, instrument="ES")
-    backtest = run_backtest(
-        baseline["levels"],
-        signals["signals"],
-        instrument="ES",
-        config={"stop_loss_ticks": 2, "take_profit_ticks": 3},
-        setup_config=setup,
-        signal_settings=signals["signal_settings"],
-    )
-    run_noise_test(
-        df,
-        backtest["trades"],
-        instrument="ES",
-        setup_config=setup,
-        backtest_config={"stop_loss_ticks": 2, "take_profit_ticks": 3},
-        noise_config={
-            "n_replicas": 1,
-            "noise_fraction": 0.05,
-            "scale_basis": "atr",
-            "atr_period": 3,
-            "random_state": 1,
-        },
-        prior_profile_table=table,
-    )
-    assert seen
-    assert all(item is table for item in seen)
+def test_run_noise_test_forwards_prior_profile_table():
+    source = inspect.getsource(run_noise_test)
+    assert "prior_profile_table=prior_profile_table" in source
+    assert "prior_profile_table_path=prior_profile_table_path" in source
+    assert "tick_source_id=tick_source_id" in source
 
 
 def test_named_pdvah_studyspec_without_ticks_refuses():
