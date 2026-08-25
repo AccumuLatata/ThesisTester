@@ -631,6 +631,23 @@ def test_resolve_existing_tick_path_checks_store_root(tmp_path, monkeypatch):
     assert data_page._resolve_existing_tick_path("missing/ticks.csv") is None
 
 
+def test_classify_typed_tick_path_rejects_outside_trusted_roots(tmp_path, monkeypatch):
+    data_page = _import_data_page_module({})
+    store = tmp_path / "store"
+    store.mkdir()
+    outside = tmp_path / "outside.csv"
+    outside.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
+    monkeypatch.setattr(data_page, "get_store_root", lambda: store)
+    status, found = data_page._classify_typed_tick_path(str(outside))
+    assert status == "outside"
+    assert found is None
+    assert data_page._resolve_existing_tick_path(str(outside)) is None
+    escaped = store / ".." / "outside.csv"
+    status, found = data_page._classify_typed_tick_path(str(escaped))
+    assert status == "outside"
+    assert found is None
+
+
 def test_install_tick_paths_persists_warnings_across_clear():
     data_page = _import_data_page_module({})
     session_state: dict = {}
@@ -810,6 +827,8 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "{digest}_{name}" in page_text or 'f"{digest}_{name}"' in page_text
     assert "TICK_WARNINGS_KEY" in page_text
     assert "Data-page attach does not feed classic Calculate" in page_text
+    assert "_classify_typed_tick_path(" in page_text
+    assert "outside the trusted local roots (cwd and store)" in page_text
 
 
 def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch):
@@ -1193,3 +1212,22 @@ def test_ah4_dataset_less_bundle_blocks_data_page_auto_fill(monkeypatch):
     )
     assert BUNDLE_IMPORT_OMITTED_DATA_KEY not in session_state
     assert data_page._preserve_dataset_less_bundle(session_state) is False
+
+
+def test_tv4_honesty_docs_lock_suggested_pdpoc_and_readme_object():
+    """TV4 Help copy: tick VAP is the live object; suggested pdPOC is column-gated."""
+    root = pathlib.Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    user_guide = (root / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
+    assumptions = (root / "docs" / "ASSUMPTIONS_AND_LIMITATIONS.md").read_text(
+        encoding="utf-8"
+    )
+    study_runner = (root / "docs" / "STUDY_RUNNER.md").read_text(encoding="utf-8")
+    assert "tick-bucketed ES/NQ volume bins" not in readme
+    assert "tick Last×Volume VAP" in readme
+    assert "absent** otherwise, not 1m typical" in readme
+    assert "Suggested Setup defaults include `pdPOC` only when that column exists" in user_guide
+    assert "Suggested `pdPOC` appears" in assumptions
+    assert "only when the column exists" in assumptions
+    assert "Suggested `pdPOC` appears only when the column" in study_runner
+    assert "under cwd or the local store (same as Studies launch)" in user_guide

@@ -71,7 +71,7 @@ datasets, dataset identity, message size, MessageSizeError
 | `Instrument` | Contract metadata (tick size, point value) | Wrong instrument → wrong R and costs |
 | `Source` | `Sample data` or `Upload CSV` | Sample auto-loads only on an empty session; it does not replace imported or already-loaded data when you navigate back |
 | `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; a few OHLC-identical 15s duplicate opens are resolved (lowest volume) before derive. Use R12 `subtimeframe_conservative` unless Build empty bars is on |
-| `Quantower tick-last (optional)` | One-or-many Tick–Tick–Last CSVs for prior VA | Not an ingestion mode and not a 15s replacement. No ticks → no `pdVA*` columns |
+| `Quantower tick-last (optional)` | One-or-many Tick–Tick–Last CSVs for prior VA | Not an ingestion mode and not a 15s replacement. Paths must sit under cwd or the local store (same as Studies launch). No ticks → no `pdVA*` columns |
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
 | Futures roll controls | `Roll method`, contract/adjustment/rule fields | Validate before trusting continuous history |
@@ -207,6 +207,8 @@ setup, save setup, thesis link
   audit).
 - Cross-dataset loads may warn; unavailable level refs need explicit
   **Save with unavailable levels removed**.
+- Suggested Setup defaults include `pdPOC` only when that column exists
+  (15s-only / no-tick frames drop it). `pdVAH` / `pdVAL` are not suggested.
 
 **Related pages.** Levels; Signals; Backtest / Grid / Validation (OTF consumers).
 

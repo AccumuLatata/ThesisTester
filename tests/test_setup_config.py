@@ -88,6 +88,24 @@ def test_lc3_default_selected_levels_use_product_vwap_window():
     assert "VWAP_rolling_1h" not in selected
 
 
+def test_suggested_pdpoc_appears_only_when_column_exists():
+    """TV4 honesty: suggested pdPOC is dropped on 15s-only / no-tick frames."""
+    with_column = [
+        "ONH",
+        "ONL",
+        "OR_High",
+        "OR_Low",
+        "pdPOC",
+        "VWAP_rolling_30min",
+    ]
+    without_column = [column for column in with_column if column != "pdPOC"]
+    assert "pdPOC" in default_selected_levels(with_column)
+    assert "pdPOC" not in default_selected_levels(without_column)
+    assert "pdPOC" in SUGGESTED_DEFAULT_LEVELS
+    assert "pdVAH" not in SUGGESTED_DEFAULT_LEVELS
+    assert "pdVAL" not in SUGGESTED_DEFAULT_LEVELS
+
+
 def test_available_level_columns_excludes_base_columns():
     df = pd.DataFrame(columns=[*BASE_COLUMNS, "ONH", "ONL", "pdHigh"])
     assert available_level_columns(df) == ["ONH", "ONL", "pdHigh"]

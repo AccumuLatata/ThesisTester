@@ -709,24 +709,53 @@ def _sha256_file(path: Path) -> str:
     return hasher.hexdigest()
 
 
+def _tick_trusted_roots() -> tuple[Path, ...]:
+    """Same trusted roots as Studies launch (cwd + local store)."""
+    return (Path.cwd().resolve(), get_store_root().resolve())
+
+
+def _is_within_tick_trusted_roots(path: Path) -> bool:
+    """True when ``path`` sits under cwd or the local store after resolve."""
+    resolved = path.expanduser().resolve()
+    return any(resolved.is_relative_to(root) for root in _tick_trusted_roots())
+
+
+def _classify_typed_tick_path(raw: str) -> tuple[str, Path | None]:
+    """Classify a typed tick path as ``ok``, ``missing``, or ``outside``.
+
+    Search order matches launch: cwd file first, then store-relative. Files
+    that exist but sit outside cwd/store are ``outside`` so attach cannot
+    cite a path Studies launch will refuse.
+    """
+    token = str(raw).strip()
+    if not token:
+        return "missing", None
+    path = Path(token).expanduser()
+    if path.is_file():
+        resolved = path.resolve()
+        if _is_within_tick_trusted_roots(resolved):
+            return "ok", resolved
+        return "outside", None
+    if path.is_absolute():
+        return "missing", None
+    store_candidate = (get_store_root() / path).resolve()
+    if store_candidate.is_file():
+        if _is_within_tick_trusted_roots(store_candidate):
+            return "ok", store_candidate
+        return "outside", None
+    return "missing", None
+
+
 def _resolve_existing_tick_path(raw: str) -> Path | None:
     """Resolve a typed tick path against cwd first, then the local store root.
 
     Launch pin searches viewer roots the same way; Data-page attach must not
-    refuse a store-relative path that Studies would later find.
+    refuse a store-relative path that Studies would later find. Absolute or
+    ``..`` paths outside cwd/store are rejected so attach cannot cite a file
+    launch will refuse.
     """
-    token = str(raw).strip()
-    if not token:
-        return None
-    path = Path(token).expanduser()
-    if path.is_file():
-        return path.resolve()
-    if path.is_absolute():
-        return None
-    store_candidate = (get_store_root() / path).resolve()
-    if store_candidate.is_file():
-        return store_candidate
-    return None
+    status, found = _classify_typed_tick_path(raw)
+    return found if status == "ok" else None
 
 
 def _dedupe_attached_tick_paths(paths: list[str]) -> tuple[list[str], list[str]]:
@@ -858,7 +887,8 @@ def _render_tick_attach(*, instrument: str) -> None:
             placeholder="data/es_ticks.csv",
             help=(
                 "Local Quantower Tick–Tick–Last paths already on disk. "
-                "Launch and Studies Build pin these the same way as dataset.path."
+                "Must sit under cwd or the local store — Launch and Studies "
+                "Build pin these the same way as dataset.path."
             ),
         )
         if st.button("Attach tick files"):
@@ -868,15 +898,23 @@ def _render_tick_attach(*, instrument: str) -> None:
                 persisted = _persist_tick_uploads(uploaded_files, _tick_upload_dir())
             resolved: list[str] = list(persisted)
             missing: list[str] = []
+            outside: list[str] = []
             for token in typed:
-                found = _resolve_existing_tick_path(token)
-                if found is None:
-                    missing.append(token)
-                else:
+                status, found = _classify_typed_tick_path(token)
+                if status == "ok" and found is not None:
                     resolved.append(str(found))
+                elif status == "outside":
+                    outside.append(token)
+                else:
+                    missing.append(token)
             if missing:
                 st.error("Tick file is not an existing file: " + ", ".join(missing))
-            else:
+            if outside:
+                st.error(
+                    "Tick file is outside the trusted local roots (cwd and store): "
+                    + ", ".join(outside)
+                )
+            if not missing and not outside:
                 combined, dedupe_warnings = _dedupe_attached_tick_paths(resolved)
                 if not combined:
                     st.error("Choose at least one Tick–Tick–Last file or path.")
@@ -909,7 +947,8 @@ def _render_tick_attach(*, instrument: str) -> None:
                 f"Tick-last attached: {len(installed)} file(s){detail}. "
                 "Paste these paths into Studies Build when factors name VA "
                 "tokens. Data-page attach does not feed classic Calculate "
-                "levels. 15s remains the bar clock."
+                "levels. Paths must sit under cwd or the local store. "
+                "15s remains the bar clock."
             )
             for path in installed:
                 st.write(f"- `{path}`")

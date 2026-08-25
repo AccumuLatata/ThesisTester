@@ -251,7 +251,9 @@ This engine is for **research screening**, not proof of a durable edge.
   `Pivot_30m_*` / `Pivot_4h_*`. Hand-edited YAML that uses `Pivot_1min_*` fails
   closed at validate; there is no compatibility alias.
 - Setup `SUGGESTED_DEFAULT_LEVELS` is a subset of
-  `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`. `VWAP_rolling_1h` is opt-in
+  `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`. Suggested `pdPOC` appears
+  only when the column exists (15s-only / no-tick frames drop it). Do not add
+  `pdVAH` / `pdVAL`. `VWAP_rolling_1h` is opt-in
   via `vwap_windows`; product defaults remain `30min` / `4h`. Assistant
   confluence options use that closed set (DEFAULT merge, plus live / selected);
   widget-only MA timeframes (`15min` / `1h` / `4h`) are not implied tokens and
