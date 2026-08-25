@@ -202,9 +202,7 @@ def _validate_dataset_tick_keys(dataset: Mapping[str, Any]) -> None:
             raise StudySpecError("study.dataset.tick_paths must be a list of path strings")
         for index, item in enumerate(raw):
             if not isinstance(item, (str, Path)) or not str(item).strip():
-                raise StudySpecError(
-                    f"study.dataset.tick_paths[{index}] must be a path string"
-                )
+                raise StudySpecError(f"study.dataset.tick_paths[{index}] must be a path string")
     if "tick_format_profile" in dataset and dataset["tick_format_profile"] is not None:
         try:
             resolve_tick_format_profile(dataset["tick_format_profile"])
@@ -235,8 +233,7 @@ def _require_ticks_for_named_va(
     if has_paths:
         return
     raise StudySpecError(
-        "VA requires ticks: study.dataset.tick_paths is missing or empty "
-        f"(named {tokens})"
+        f"VA requires ticks: study.dataset.tick_paths is missing or empty (named {tokens})"
     )
 
 

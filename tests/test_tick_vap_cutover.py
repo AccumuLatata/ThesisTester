@@ -18,7 +18,11 @@ from thesistester.api import generate_signals
 from thesistester.config import INSTRUMENTS
 from thesistester.data.quantower_ticks import TickChunk
 from thesistester.data.sessions import tag_session
-from thesistester.levels import PRIOR_PROFILE_LEVEL_NAMES, compute_all_levels, compute_profile_levels
+from thesistester.levels import (
+    PRIOR_PROFILE_LEVEL_NAMES,
+    compute_all_levels,
+    compute_profile_levels,
+)
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.session_date import trading_session_date
 from thesistester.levels.sessions import compute_session_levels

@@ -1448,10 +1448,7 @@ def _require_ticks_for_named_va(
         return
     if dataset_has_tick_inputs(dict(dataset)):
         return
-    raise ValueError(
-        "VA requires ticks: dataset.tick_paths is missing or empty "
-        f"(named {tokens})"
-    )
+    raise ValueError(f"VA requires ticks: dataset.tick_paths is missing or empty (named {tokens})")
 
 
 def _resolve_dataset_tick_paths(
@@ -1502,9 +1499,7 @@ def _resolve_prior_profile_table(
             prior_month_aggregation_ticks=int(settings["prior_month_profile_aggregation_ticks"]),
             format_profile=profile,
         )
-        source_id = tick_source_id or compute_tick_source_id(
-            tick_paths, format_profile=profile
-        )
+        source_id = tick_source_id or compute_tick_source_id(tick_paths, format_profile=profile)
         return table, source_id
     return None, tick_source_id or TICK_SOURCE_NONE
 
@@ -2808,9 +2803,7 @@ def run_experiment(
         ),
         prior_profile_table_path=table_path,
         tick_source_id=(
-            str(dataset_config["tick_source_id"])
-            if dataset_config.get("tick_source_id")
-            else None
+            str(dataset_config["tick_source_id"]) if dataset_config.get("tick_source_id") else None
         ),
     )
     levels_status = str(level_result.get("cache_status", "bypassed"))

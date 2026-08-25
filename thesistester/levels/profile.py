@@ -182,14 +182,8 @@ def compute_profile_levels(
         day_key_ts = pd.to_datetime(day_key)
         week_key = day_key_ts.dt.to_period("W-SUN")
         month_key = day_key_ts.dt.to_period("M")
-        levels = levels.join(
-            map_shifted_prior_profile(day_key, prior_profile_table, family="pd")
-        )
-        levels = levels.join(
-            map_shifted_prior_profile(week_key, prior_profile_table, family="pw")
-        )
-        levels = levels.join(
-            map_shifted_prior_profile(month_key, prior_profile_table, family="pm")
-        )
+        levels = levels.join(map_shifted_prior_profile(day_key, prior_profile_table, family="pd"))
+        levels = levels.join(map_shifted_prior_profile(week_key, prior_profile_table, family="pw"))
+        levels = levels.join(map_shifted_prior_profile(month_key, prior_profile_table, family="pm"))
 
     return out.join(levels)

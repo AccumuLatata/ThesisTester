@@ -187,8 +187,7 @@ def resolve_tick_format_profile(value: object | None) -> str:
     profile = str(value)
     if profile != TICK_FORMAT_PROFILE:
         raise ValueError(
-            f"Unsupported tick_format_profile: {profile!r}; "
-            f"expected {TICK_FORMAT_PROFILE!r}"
+            f"Unsupported tick_format_profile: {profile!r}; expected {TICK_FORMAT_PROFILE!r}"
         )
     return profile
 

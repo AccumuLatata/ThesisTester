@@ -633,9 +633,7 @@ def _pin_dataset_paths(
         pinned_ticks: list[str] = []
         for index, item in enumerate(raw_ticks):
             if not isinstance(item, (str, Path)):
-                raise StudyLaunchError(
-                    f"study.dataset.tick_paths[{index}] must be a path string"
-                )
+                raise StudyLaunchError(f"study.dataset.tick_paths[{index}] must be a path string")
             path = Path(item)
             if path.is_absolute():
                 pinned = path.resolve()

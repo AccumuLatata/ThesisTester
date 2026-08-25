@@ -454,9 +454,7 @@ def test_prior_day_profile_future_shock():
     day3_extreme = _extreme_future_bars(T, n=10)
     extended = _build_df(day1 + day2 + day3_extreme)
     # Same table on a longer 1m frame: VA is not recomputed from 1m close.
-    r_same_table = compute_profile_levels(
-        extended, instrument="ES", prior_profile_table=table_base
-    )
+    r_same_table = compute_profile_levels(extended, instrument="ES", prior_profile_table=table_base)
     # Rebuilt table that includes the later tick session.
     r_ext = compute_profile_levels(
         extended, instrument="ES", prior_profile_table=_tick_table_from_bars(extended)
@@ -488,9 +486,7 @@ def test_prior_week_profile_future_shock():
     T = base["timestamp"].iloc[-1]
     more_week2 = _extreme_future_bars(T, n=5)
     extended = _build_df(week1_bars + week2_bars + more_week2)
-    r_same_table = compute_profile_levels(
-        extended, instrument="ES", prior_profile_table=table_base
-    )
+    r_same_table = compute_profile_levels(extended, instrument="ES", prior_profile_table=table_base)
     r_ext = compute_profile_levels(
         extended, instrument="ES", prior_profile_table=_tick_table_from_bars(extended)
     )
