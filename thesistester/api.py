@@ -596,7 +596,11 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
 
     levels = run.get("levels", {})
     _require_mapping(levels, section="levels")
-    _validate_keys(levels, set(_LEVEL_DEFAULTS), section="levels")
+    _validate_keys(
+        levels,
+        set(_LEVEL_DEFAULTS) | set(LEVELS_TICK_IDENTITY_KEYS),
+        section="levels",
+    )
     _validate_bool_fields(
         levels,
         {
