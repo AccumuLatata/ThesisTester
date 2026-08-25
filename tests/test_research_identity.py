@@ -12,6 +12,7 @@ import pytest
 
 from thesistester.api import compute_levels, run_experiment
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.tick_vap import TICK_SOURCE_NONE, attach_tick_identity
 from thesistester.persistence.local_store import (
     LEVEL_ENGINE_VERSION,
     compute_dataset_id,
@@ -92,9 +93,12 @@ def test_compute_levels_uses_shared_normalizer():
         instrument="ES",
         config={"sma_lengths": [200, 50], "poc_windows": []},
     )
-    assert result["levels_settings"] == normalize_levels_config(
-        {"sma_lengths": [200, 50], "poc_windows": []},
-        instrument="ES",
+    assert result["levels_settings"] == attach_tick_identity(
+        normalize_levels_config(
+            {"sma_lengths": [200, 50], "poc_windows": []},
+            instrument="ES",
+        ),
+        tick_source_id=TICK_SOURCE_NONE,
     )
 
 

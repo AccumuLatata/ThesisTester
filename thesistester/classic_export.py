@@ -18,6 +18,7 @@ from thesistester.api import load_dataset, validate_run_spec
 from thesistester.data.loader import DataValidationError, format_interval, validate_ohlcv
 from thesistester.engine.exit_management import validate_exit_management_config
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.tick_vap import LEVELS_TICK_IDENTITY_KEYS
 from thesistester.persistence.execution_artifacts import (
     ArtifactMiss,
     DataArtifact,
@@ -149,7 +150,11 @@ def _levels_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExportG
             "Classic state requires levels_settings; defaults are not injected.",
             "levels_settings",
         )
-    levels = {key: deepcopy(value) for key, value in raw.items() if key != "instrument"}
+    levels = {
+        key: deepcopy(value)
+        for key, value in raw.items()
+        if key != "instrument" and key not in LEVELS_TICK_IDENTITY_KEYS
+    }
     unknown = sorted(set(levels) - set(DEFAULT_LEVELS_SETTINGS))
     if unknown:
         return _gap(

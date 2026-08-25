@@ -2,7 +2,7 @@ schema_version: 1
 output_dir: results/studies/pdPOC_golden
 workers: 1
 runs:
-- name: pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_0050ce98e2
+- name: pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_8b6a7a6332
   dataset:
     path: data/es_1m.csv
     instrument: ES
@@ -17,11 +17,11 @@ runs:
     ema_timeframes:
     - 5min
   setup:
-    name: pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_0050ce98e2
+    name: pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_8b6a7a6332
     description: RS2 golden expansion fixture
     instrument: ES
     selected_levels:
-    - pdPOC
+    - ONH
     - SMA_50_1min
     tolerance_ticks: 0.0
     min_confluences: 2
@@ -61,7 +61,7 @@ runs:
     enabled: false
   walk_forward:
     enabled: false
-- name: pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_7961ddac83
+- name: pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_67804511db
   dataset:
     path: data/es_1m.csv
     instrument: ES
@@ -76,11 +76,11 @@ runs:
     ema_timeframes:
     - 5min
   setup:
-    name: pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_7961ddac83
+    name: pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_67804511db
     description: RS2 golden expansion fixture
     instrument: ES
     selected_levels:
-    - pdPOC
+    - ONH
     - SMA_50_1min
     tolerance_ticks: 0.0
     min_confluences: 2
@@ -121,7 +121,7 @@ runs:
     enabled: false
   walk_forward:
     enabled: false
-- name: pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_7ec728a9b5
+- name: pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_616f80e1fa
   dataset:
     path: data/es_1m.csv
     instrument: ES
@@ -136,7 +136,7 @@ runs:
     ema_timeframes:
     - 5min
   setup:
-    name: pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_7ec728a9b5
+    name: pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_616f80e1fa
     description: RS2 golden expansion fixture
     instrument: ES
     selected_levels: []
@@ -149,7 +149,7 @@ runs:
     trigger_timeframe: base
     direction: both
     confluence_mode: anchor_rules
-    anchor_level: pdPOC
+    anchor_level: ONH
     confluence_rules:
     - level: SMA_50_1min
       tolerance_ticks: 0.0
@@ -181,7 +181,7 @@ runs:
     enabled: false
   walk_forward:
     enabled: false
-- name: pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_409f923f05
+- name: pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_1fcdcacc85
   dataset:
     path: data/es_1m.csv
     instrument: ES
@@ -196,7 +196,7 @@ runs:
     ema_timeframes:
     - 5min
   setup:
-    name: pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_409f923f05
+    name: pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_1fcdcacc85
     description: RS2 golden expansion fixture
     instrument: ES
     selected_levels: []
@@ -209,7 +209,7 @@ runs:
     trigger_timeframe: base
     direction: both
     confluence_mode: anchor_rules
-    anchor_level: pdPOC
+    anchor_level: ONH
     confluence_rules:
     - level: SMA_50_1min
       tolerance_ticks: 0.0
@@ -242,7 +242,7 @@ runs:
     enabled: false
   walk_forward:
     enabled: false
-- name: pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_e0b08219ca
+- name: pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_0fe422bc1e
   dataset:
     path: data/es_1m.csv
     instrument: ES
@@ -257,11 +257,11 @@ runs:
     ema_timeframes:
     - 5min
   setup:
-    name: pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_e0b08219ca
+    name: pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_0fe422bc1e
     description: RS2 golden expansion fixture
     instrument: ES
     selected_levels:
-    - pdPOC
+    - ONH
     - EMA_21_5min
     tolerance_ticks: 0.0
     min_confluences: 2
@@ -301,7 +301,7 @@ runs:
     enabled: false
   walk_forward:
     enabled: false
-- name: pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_d511313aca
+- name: pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_efc0b99ce0
   dataset:
     path: data/es_1m.csv
     instrument: ES
@@ -316,11 +316,11 @@ runs:
     ema_timeframes:
     - 5min
   setup:
-    name: pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_d511313aca
+    name: pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_efc0b99ce0
     description: RS2 golden expansion fixture
     instrument: ES
     selected_levels:
-    - pdPOC
+    - ONH
     - EMA_21_5min
     tolerance_ticks: 0.0
     min_confluences: 2
@@ -361,7 +361,7 @@ runs:
     enabled: false
   walk_forward:
     enabled: false
-- name: pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_fe7b9c4b10
+- name: pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_df59dc6bc8
   dataset:
     path: data/es_1m.csv
     instrument: ES
@@ -376,7 +376,7 @@ runs:
     ema_timeframes:
     - 5min
   setup:
-    name: pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_fe7b9c4b10
+    name: pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_df59dc6bc8
     description: RS2 golden expansion fixture
     instrument: ES
     selected_levels: []
@@ -389,7 +389,7 @@ runs:
     trigger_timeframe: base
     direction: both
     confluence_mode: anchor_rules
-    anchor_level: pdPOC
+    anchor_level: ONH
     confluence_rules:
     - level: EMA_21_5min
       tolerance_ticks: 0.0
@@ -421,7 +421,7 @@ runs:
     enabled: false
   walk_forward:
     enabled: false
-- name: pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_652a58bfa5
+- name: pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_298a341148
   dataset:
     path: data/es_1m.csv
     instrument: ES
@@ -436,7 +436,7 @@ runs:
     ema_timeframes:
     - 5min
   setup:
-    name: pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_652a58bfa5
+    name: pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_298a341148
     description: RS2 golden expansion fixture
     instrument: ES
     selected_levels: []
@@ -449,7 +449,7 @@ runs:
     trigger_timeframe: base
     direction: both
     confluence_mode: anchor_rules
-    anchor_level: pdPOC
+    anchor_level: ONH
     confluence_rules:
     - level: EMA_21_5min
       tolerance_ticks: 0.0

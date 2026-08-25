@@ -1,8 +1,8 @@
 {
   "factor_map": {
-    "pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_0050ce98e2": {
+    "pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_8b6a7a6332": {
       "confluence_mode": "global_cluster",
-      "core_level": "pdPOC",
+      "core_level": "ONH",
       "otf": {
         "alignment_mode": "all",
         "directional": true,
@@ -18,9 +18,9 @@
       "trigger": "touch",
       "trigger_timeframe": "base"
     },
-    "pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_7961ddac83": {
+    "pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_67804511db": {
       "confluence_mode": "global_cluster",
-      "core_level": "pdPOC",
+      "core_level": "ONH",
       "otf": {
         "alignment_mode": "all",
         "directional": true,
@@ -38,9 +38,9 @@
       "trigger": "touch",
       "trigger_timeframe": "base"
     },
-    "pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_7ec728a9b5": {
+    "pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_616f80e1fa": {
       "confluence_mode": "anchor_rules",
-      "core_level": "pdPOC",
+      "core_level": "ONH",
       "otf": {
         "alignment_mode": "all",
         "directional": true,
@@ -56,9 +56,9 @@
       "trigger": "touch",
       "trigger_timeframe": "base"
     },
-    "pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_409f923f05": {
+    "pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_1fcdcacc85": {
       "confluence_mode": "anchor_rules",
-      "core_level": "pdPOC",
+      "core_level": "ONH",
       "otf": {
         "alignment_mode": "all",
         "directional": true,
@@ -76,9 +76,9 @@
       "trigger": "touch",
       "trigger_timeframe": "base"
     },
-    "pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_e0b08219ca": {
+    "pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_0fe422bc1e": {
       "confluence_mode": "global_cluster",
-      "core_level": "pdPOC",
+      "core_level": "ONH",
       "otf": {
         "alignment_mode": "all",
         "directional": true,
@@ -94,9 +94,9 @@
       "trigger": "touch",
       "trigger_timeframe": "base"
     },
-    "pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_d511313aca": {
+    "pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_efc0b99ce0": {
       "confluence_mode": "global_cluster",
-      "core_level": "pdPOC",
+      "core_level": "ONH",
       "otf": {
         "alignment_mode": "all",
         "directional": true,
@@ -114,9 +114,9 @@
       "trigger": "touch",
       "trigger_timeframe": "base"
     },
-    "pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_fe7b9c4b10": {
+    "pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_df59dc6bc8": {
       "confluence_mode": "anchor_rules",
-      "core_level": "pdPOC",
+      "core_level": "ONH",
       "otf": {
         "alignment_mode": "all",
         "directional": true,
@@ -132,9 +132,9 @@
       "trigger": "touch",
       "trigger_timeframe": "base"
     },
-    "pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_652a58bfa5": {
+    "pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_298a341148": {
       "confluence_mode": "anchor_rules",
-      "core_level": "pdPOC",
+      "core_level": "ONH",
       "otf": {
         "alignment_mode": "all",
         "directional": true,
@@ -154,5 +154,5 @@
     }
   },
   "run_count": 8,
-  "study_identity_hash": "a61be51116fe715ee29f371cace73d2f2fecbfd5509bc33f6384e7dd2e608c6e"
+  "study_identity_hash": "4d909a18f453e5d280f7ec2d0fcdd5e7ce72601d5318cec861fcc36a176d603a"
 }

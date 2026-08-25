@@ -92,7 +92,8 @@ def test_levels_computation_handles_instrument_without_eth_start(monkeypatch):
     )
 
     profile_levels = compute_profile_levels(df, instrument="ES", rolling_windows=("30min",))
-    assert "pdPOC" in profile_levels.columns
+    assert "pdPOC" not in profile_levels.columns
+    assert "POC_rolling_30min" in profile_levels.columns
 
 
 def test_dopen_uses_eth_session_start_not_midnight():

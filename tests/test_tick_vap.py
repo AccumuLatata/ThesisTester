@@ -201,7 +201,7 @@ def test_empty_chunk_emits_no_period_row():
     assert list(empty_only.frame.columns) == list(PRIOR_PROFILE_TABLE_COLUMNS)
 
 
-def test_compute_profile_levels_still_emits_typical_pdva_without_table():
+def test_compute_profile_levels_omits_pdva_without_table():
     df = pd.DataFrame(
         {
             "timestamp": pd.date_range("2026-06-01 09:30:00", periods=3, freq="1h", tz=TZ),
@@ -213,8 +213,18 @@ def test_compute_profile_levels_still_emits_typical_pdva_without_table():
         }
     )
     out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
-    assert "pdVAH" in out.columns
-    assert "pdPOC" in out.columns
+    assert "pdVAH" not in out.columns
+    assert "pdPOC" not in out.columns
+    assert "POC_rolling_30min" in out.columns
+
+
+def test_quantower_ticks_import_does_not_cycle_through_all_levels():
+    """Loader-first import must not require levels.all → tick_vap at runtime."""
+    import thesistester.data.quantower_ticks as qt
+    from thesistester.levels import compute_all_levels
+
+    assert qt.TICK_FORMAT_PROFILE == "quantower_tick_last"
+    assert callable(compute_all_levels)
 
 
 def test_tick_vap_module_does_not_import_streamlit_or_open_15s():
@@ -312,6 +322,26 @@ def test_timestamp_session_date_still_joins_trading_session_date():
         family="pd",
     )
     np.testing.assert_allclose(mapped["pdPOC"].iloc[1], 100.25)
+
+
+def test_map_shift_uses_one_m_periods_not_table_present_rows():
+    """1m has a mid session the table lacks → next session is NaN, not an earlier fill."""
+    later = date(2026, 6, 9)
+    prints_later = [
+        ("2026-06-09 13:30:00", 102.00, 8.0),
+        ("2026-06-09 13:31:00", 102.25, 9.0),
+    ]
+    table = build_prior_profile_table(
+        [_chunk(SESSION_A, PRINTS_A), _chunk(later, prints_later)],
+        instrument="ES",
+    )
+    mid = date(2026, 6, 4)
+    mapped = map_shifted_prior_profile(pd.Series([SESSION_A, mid, later]), table, family="pd")
+    assert pd.isna(mapped["pdPOC"].iloc[0])
+    np.testing.assert_allclose(mapped["pdPOC"].iloc[1], 100.25)
+    assert pd.isna(mapped["pdPOC"].iloc[2])
+    assert pd.isna(mapped["pdVAH"].iloc[2])
+    assert pd.isna(mapped["pdVAL"].iloc[2])
 
 
 def test_empty_table_parquet_round_trip(tmp_path):

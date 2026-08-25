@@ -16,13 +16,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from datetime import date
+
+from thesistester.config import INSTRUMENTS
+from thesistester.data.quantower_ticks import TickChunk
 from thesistester.data.sessions import tag_session
 from thesistester.engine.anchor_confluence import detect_anchor_confluence_zones
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
 from thesistester.engine.signals import generate_signals
 from thesistester.levels import compute_indicator_levels, compute_profile_levels
+from thesistester.levels.session_date import trading_session_date
 from thesistester.levels.sessions import compute_session_levels
+from thesistester.levels.tick_vap import build_prior_profile_table
 
 
 TZ = "America/New_York"
@@ -390,9 +396,41 @@ def _profile_bars(date: str, prices: list[float], volumes: list[float]) -> list[
     return bars
 
 
+def _tick_table_from_bars(df: pd.DataFrame, *, instrument: str = "ES"):
+    """Tick Last = close (H≠L fixtures still use close as the tick print)."""
+    inst = INSTRUMENTS[instrument]
+    work = df.sort_values("timestamp").reset_index(drop=True).copy()
+    local_ts = work["timestamp"].dt.tz_convert(TZ)
+    work["session_date"] = trading_session_date(local_ts, inst.eth_start)
+    chunks: list[TickChunk] = []
+    for session, group in work.groupby("session_date", sort=True):
+        stamps = pd.to_datetime(group["timestamp"], utc=True)
+        ticks = pd.DataFrame(
+            {
+                "timestamp": stamps,
+                "price": group["close"].to_numpy(dtype="float64"),
+                "volume": group["volume"].to_numpy(dtype="float64"),
+            }
+        )
+        chunks.append(
+            TickChunk(
+                session_date=session if isinstance(session, date) else pd.Timestamp(session).date(),
+                ticks=ticks,
+                source_paths=("r3-synthetic",),
+                filename_window_mismatch=False,
+                warnings=(),
+                first_row_utc=pd.Timestamp(stamps.min()),
+                last_row_utc=pd.Timestamp(stamps.max()),
+                filename_window_start=None,
+                filename_window_end=None,
+            )
+        )
+    return build_prior_profile_table(chunks, instrument=instrument)
+
+
 def test_prior_day_profile_future_shock():
-    """Prior-day profile levels (pdVAH/pdVAL/pdPOC) at T must not change
-    when future bars from day D+1 (or later) are appended."""
+    """Prior-day tick VAP (pdVAH/pdVAL/pdPOC) at T must not change
+    when a later tick session is appended."""
     day1 = _profile_bars(
         "2026-06-02", [4000.0, 4005.0, 4010.0, 4005.0], [200.0, 500.0, 300.0, 400.0]
     )
@@ -401,66 +439,64 @@ def test_prior_day_profile_future_shock():
     )
 
     base = _build_df(day1 + day2)
-    r_base = compute_profile_levels(base, instrument="ES")
+    table_base = _tick_table_from_bars(base)
+    r_base = compute_profile_levels(base, instrument="ES", prior_profile_table=table_base)
 
-    # Day 2 bars should have day 1's profile as prior
+    first_day = r_base[r_base["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
+    assert first_day["pdPOC"].isna().all()
+
     day2_rows = r_base[r_base["timestamp"].dt.date == pd.Timestamp("2026-06-03").date()]
     pdVAH_before = day2_rows["pdVAH"].dropna().iloc[0]
     pdVAL_before = day2_rows["pdVAL"].dropna().iloc[0]
     pdPOC_before = day2_rows["pdPOC"].dropna().iloc[0]
 
-    # Append extreme day 3
     T = base["timestamp"].iloc[-1]
     day3_extreme = _extreme_future_bars(T, n=10)
     extended = _build_df(day1 + day2 + day3_extreme)
-    r_ext = compute_profile_levels(extended, instrument="ES")
+    # Same table on a longer 1m frame: VA is not recomputed from 1m close.
+    r_same_table = compute_profile_levels(extended, instrument="ES", prior_profile_table=table_base)
+    # Rebuilt table that includes the later tick session.
+    r_ext = compute_profile_levels(
+        extended, instrument="ES", prior_profile_table=_tick_table_from_bars(extended)
+    )
 
-    day2_rows_ext = r_ext[r_ext["timestamp"].dt.date == pd.Timestamp("2026-06-03").date()]
-    pdVAH_after = day2_rows_ext["pdVAH"].dropna().iloc[0]
-    pdVAL_after = day2_rows_ext["pdVAL"].dropna().iloc[0]
-    pdPOC_after = day2_rows_ext["pdPOC"].dropna().iloc[0]
-
-    assert pdVAH_before == pytest.approx(pdVAH_after), "pdVAH changed after future bars appended"
-    assert pdVAL_before == pytest.approx(pdVAL_after), "pdVAL changed after future bars appended"
-    assert pdPOC_before == pytest.approx(pdPOC_after), "pdPOC changed after future bars appended"
+    for frame in (r_same_table, r_ext):
+        day2_rows_ext = frame[frame["timestamp"].dt.date == pd.Timestamp("2026-06-03").date()]
+        assert day2_rows_ext["pdVAH"].dropna().iloc[0] == pytest.approx(pdVAH_before)
+        assert day2_rows_ext["pdVAL"].dropna().iloc[0] == pytest.approx(pdVAL_before)
+        assert day2_rows_ext["pdPOC"].dropna().iloc[0] == pytest.approx(pdPOC_before)
 
 
 def test_prior_week_profile_future_shock():
-    """Prior-week profile levels (pwVAH/pwVAL/pwPOC) must not change
-    when future bars from the current (still-incomplete) week are added."""
-    # Week 1: Mon–Fri 2026-06-01..2026-06-05
+    """Prior-week tick VAP (pwVAH/pwVAL/pwPOC) must not change
+    when later ticks from the current (still-incomplete) week are added."""
     week1_bars = []
     for day in ["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05"]:
         week1_bars += _profile_bars(day, [4000.0, 4005.0, 4010.0], [200.0, 500.0, 300.0])
 
-    # Week 2 starts Mon 2026-06-08, partial (only 2 bars)
     week2_bars = _profile_bars("2026-06-08", [4050.0, 4055.0], [300.0, 400.0])
 
     base = _build_df(week1_bars + week2_bars)
-    r_base = compute_profile_levels(base, instrument="ES")
+    table_base = _tick_table_from_bars(base)
+    r_base = compute_profile_levels(base, instrument="ES", prior_profile_table=table_base)
 
-    # Week 2 bars should have week 1's profile as prior
     week2_rows = r_base[r_base["timestamp"].dt.date == pd.Timestamp("2026-06-08").date()]
     pw_before = week2_rows[["pwVAH", "pwVAL", "pwPOC"]].dropna(subset=["pwPOC"]).iloc[0]
 
-    # Append more extreme week 2 bars (still the same week)
     T = base["timestamp"].iloc[-1]
     more_week2 = _extreme_future_bars(T, n=5)
     extended = _build_df(week1_bars + week2_bars + more_week2)
-    r_ext = compute_profile_levels(extended, instrument="ES")
+    r_same_table = compute_profile_levels(extended, instrument="ES", prior_profile_table=table_base)
+    r_ext = compute_profile_levels(
+        extended, instrument="ES", prior_profile_table=_tick_table_from_bars(extended)
+    )
 
-    week2_rows_ext = r_ext[r_ext["timestamp"].dt.date == pd.Timestamp("2026-06-08").date()]
-    pw_after = week2_rows_ext[["pwVAH", "pwVAL", "pwPOC"]].dropna(subset=["pwPOC"]).iloc[0]
-
-    assert pw_before["pwPOC"] == pytest.approx(pw_after["pwPOC"]), (
-        "pwPOC changed after future bars appended"
-    )
-    assert pw_before["pwVAH"] == pytest.approx(pw_after["pwVAH"]), (
-        "pwVAH changed after future bars appended"
-    )
-    assert pw_before["pwVAL"] == pytest.approx(pw_after["pwVAL"]), (
-        "pwVAL changed after future bars appended"
-    )
+    for frame in (r_same_table, r_ext):
+        week2_rows_ext = frame[frame["timestamp"].dt.date == pd.Timestamp("2026-06-08").date()]
+        pw_after = week2_rows_ext[["pwVAH", "pwVAL", "pwPOC"]].dropna(subset=["pwPOC"]).iloc[0]
+        assert pw_before["pwPOC"] == pytest.approx(pw_after["pwPOC"])
+        assert pw_before["pwVAH"] == pytest.approx(pw_after["pwVAH"])
+        assert pw_before["pwVAL"] == pytest.approx(pw_after["pwVAL"])
 
 
 def test_rolling_poc_future_shock():

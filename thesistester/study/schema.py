@@ -14,7 +14,12 @@ from typing import Any, Mapping
 import yaml
 
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
-from thesistester.levels.catalog import STATIC_STUDY_LEVEL_NAMES, pivot_column_names
+from thesistester.levels.catalog import (
+    STATIC_STUDY_LEVEL_NAMES,
+    named_prior_profile_tokens,
+    pivot_column_names,
+)
+from thesistester.levels.tick_vap import resolve_tick_format_profile
 from thesistester.levels.common import normalized_window_label
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
@@ -187,6 +192,49 @@ def _require_nonempty_str_list(value: Any, *, field: str) -> list[str]:
             raise StudySpecError(f"{field}[{index}] must be a non-empty string")
         out.append(item.strip())
     return out
+
+
+def _validate_dataset_tick_keys(dataset: Mapping[str, Any]) -> None:
+    """Validate optional tick-VAP keys when present. Do not close other extras."""
+    if "tick_paths" in dataset and dataset["tick_paths"] is not None:
+        raw = dataset["tick_paths"]
+        if not isinstance(raw, list):
+            raise StudySpecError("study.dataset.tick_paths must be a list of path strings")
+        for index, item in enumerate(raw):
+            if not isinstance(item, (str, Path)) or not str(item).strip():
+                raise StudySpecError(f"study.dataset.tick_paths[{index}] must be a path string")
+    if "tick_format_profile" in dataset and dataset["tick_format_profile"] is not None:
+        try:
+            resolve_tick_format_profile(dataset["tick_format_profile"])
+        except ValueError as exc:
+            raise StudySpecError(str(exc)) from exc
+
+
+def _factor_level_tokens(factors: Mapping[str, Any]) -> list[str]:
+    names: list[object] = []
+    names.extend(factors.get("core_level") or [])
+    for partner_set in factors.get("partner_levels") or []:
+        if isinstance(partner_set, list):
+            names.extend(partner_set)
+    return [str(token) for token in names if isinstance(token, str) and token]
+
+
+def _require_ticks_for_named_va(
+    dataset: Mapping[str, Any],
+    factors: Mapping[str, Any],
+) -> None:
+    tokens = named_prior_profile_tokens(_factor_level_tokens(factors))
+    if not tokens:
+        return
+    raw_paths = dataset.get("tick_paths")
+    has_paths = isinstance(raw_paths, list) and any(
+        isinstance(item, (str, Path)) and str(item).strip() for item in raw_paths
+    )
+    if has_paths:
+        return
+    raise StudySpecError(
+        f"VA requires ticks: study.dataset.tick_paths is missing or empty (named {tokens})"
+    )
 
 
 def _validate_levels_map(levels_map: Mapping[str, Any]) -> None:
@@ -407,6 +455,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
             "study.dataset.ingestion_mode must be one of "
             f"{sorted(STUDY_INGESTION_MODES)!r} when present; got {ingestion_mode!r}"
         )
+    _validate_dataset_tick_keys(dataset)
 
     levels = study.get("levels")
     if levels is None:
@@ -427,6 +476,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
 
     factors = _require_mapping(study.get("factors"), section="study.factors")
     _validate_factors(factors, closed_tokens=closed_tokens, constants=constants)
+    _require_ticks_for_named_va(dataset, factors)
 
     mode_rules = study.get("mode_rules")
     if "confluence_mode" in factors and mode_rules is None:

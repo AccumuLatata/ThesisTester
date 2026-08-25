@@ -8,7 +8,7 @@ they are implied only by ``study.levels`` (see ``closed_level_token_set``).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from .pivots import _PIVOT_COLUMN_LABELS
 from .session_vwap import SESSION_VWAP_COLUMNS
@@ -48,7 +48,9 @@ SESSION_STRUCTURAL_LEVEL_NAMES: tuple[str, ...] = (
     "pmEQ",
 )
 
-# Always-on prior-profile columns from ``compute_profile_levels``.
+# Catalog names for prior-profile VA. Emitted only when a tick
+# ``PriorProfileTable`` is present (TV3). Tokens stay in the closed set so a
+# named-VA study fails as "VA requires ticks", not "unknown token".
 PRIOR_PROFILE_LEVEL_NAMES: tuple[str, ...] = (
     "pdVAH",
     "pdVAL",
@@ -74,6 +76,19 @@ STATIC_STUDY_LEVEL_NAMES: frozenset[str] = frozenset(
         *APOC_LEVEL_NAMES,
     }
 )
+
+
+def named_prior_profile_tokens(names: Sequence[object]) -> list[str]:
+    """Return named tokens that are prior-profile VA (``pd*`` / ``pw*`` / ``pm*``)."""
+    wanted = set(PRIOR_PROFILE_LEVEL_NAMES)
+    found: list[str] = []
+    seen: set[str] = set()
+    for raw in names:
+        token = str(raw)
+        if token in wanted and token not in seen:
+            seen.add(token)
+            found.append(token)
+    return found
 
 
 def pivot_column_names(timeframes: Iterable[str]) -> tuple[str, ...]:

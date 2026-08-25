@@ -36,7 +36,7 @@ study:
       enabled: false
   factors:
     core_level:
-    - pdPOC
+    - ONH
     partner_levels:
     - - SMA_50_1min
     - - EMA_21_5min

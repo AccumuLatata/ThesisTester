@@ -279,6 +279,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - If the input DataFrame lacks a `session` column, RTH membership for `dVWAP_RTH` is derived from the instrument configuration and the timestamp timezone.
 - `session_vwap_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
 - `LEVEL_ENGINE_VERSION` bumped to 10 for the additive `wVWAP` / `mVWAP` vocabulary (cache invalidation when product defaults enable the family).
+- `LEVEL_ENGINE_VERSION` bumped to 11 for the tick-VAP identity cutover: `pd*` / `pw*` / `pm*` VA are tick Last×Volume when ticks are provided and omitted otherwise (cache invalidation vs typical-price VA under the same names).
 
 ### 5c) TPO 30m Single Prints are opt-in scalar levels
 - The Levels page and headless API enable Single Prints in their built-in configuration. Direct `compute_all_levels` calls retain `single_prints_enabled=False` by default.
@@ -445,7 +446,12 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   "prior" level values. `pRTH_High`/`pRTH_Low` aggregate prior RTH bars only and are
   distinct from full-session `pdHigh`/`pdLow`.
 - Prior profile levels (pdVAH/pdVAL/pdPOC, pwVAH/pwVAL/pwPOC, pmVAH/pmVAL/pmPOC)
-  use the same shift guarantee.
+  are tick Last×Volume VAP joined via `map_shifted_prior_profile` (`shift(1)`
+  on the 1m frame's unique period keys; scalars come from the tick table).
+  A prior period with no ticks is `NaN` — the join does not fill from an
+  earlier present table row. They are **absent** when no tick table is
+  supplied. The same shift guarantee holds: future ticks cannot change an
+  earlier bar's prior VA.
 - Rolling POC uses a strict `timestamps <= now` window. No future data enters.
 - Rolling indicators (SMA/EMA/VWAP) on the base timeframe use only bars up to and
   including the current bar. Higher-timeframe indicators use `align_timestamp` gating
@@ -505,10 +511,14 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   at the bar where the setup becomes knowable, never backdated to the arrival bar.
 
 **Remaining limitations (see full detail in `docs/POINT_IN_TIME_GUARANTEES.md`):**
-- Profile levels use a bar-level typical-price approximation. True intrabar
-  volume-at-price data would change level values but would not introduce look-ahead.
-  Prior day/week/month VAH/VAL/POC (`pdVAH`/`pdVAL`/`pdPOC`, `pw*`, `pm*`) are
-  StudySpec tokens; the typical-price MVP is unchanged.
+- Prior day/week/month VAH/VAL/POC (`pdVAH`/`pdVAL`/`pdPOC`, `pw*`, `pm*`) are
+  tick Last×Volume VAP when `dataset.tick_paths` (or a persisted prior-profile
+  table) is provided, and **absent** otherwise. They are not 1m typical under
+  these names. Named-VA studies refuse without ticks (`VA requires ticks`).
+  APOC and rolling POC remain 1m typical `(H+L+C)/3`. Product day aggregation
+  is 1 tick (`prior_day_profile_aggregation_ticks`); week/month stay 8/10.
+  `LEVEL_ENGINE_VERSION` is 11. Residual vs Quantower on the session-20 MNQ
+  desk fixture is ~2–3 points at 1-tick (not a transferability claim).
 - ONH/ONL is not available during ETH (by design; the overnight has not yet closed).
 - AsiaHigh/AsiaLow are unavailable during the Asia window (by design; not a rolling
   extreme). Pre-Asia ETH (e.g. 18:00–20:00 under the default window) is excluded from

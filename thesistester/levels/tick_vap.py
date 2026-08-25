@@ -6,22 +6,27 @@ Period keys match ``compute_profile_levels`` (session date → ``W-SUN`` / ``M``
 Parquet persists ``str(key)``; load reconstructs ``datetime.date`` / ``Period[W-SUN]``
 / ``Period[M]`` so ``period_key.map(...)`` joins those dtypes.
 
-This module does **not** change ``compute_profile_levels`` emission. Typical
-``pdVA*`` / ``pw*`` / ``pm*`` stay on the 1m path until TV3.
+TV3 joins this table onto the 1m frame via ``map_shifted_prior_profile``.
+Typical 1m allocation is no longer used for ``pd*`` / ``pw*`` / ``pm*`` VA.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from hashlib import sha256
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pandas as pd
 
 from thesistester.config import INSTRUMENTS
-from thesistester.data.quantower_ticks import TickChunk
+from thesistester.data.quantower_ticks import (
+    TICK_FORMAT_PROFILE,
+    TickChunk,
+    iter_tick_files,
+)
 from thesistester.levels.profile import (
     _bucket_prices,
     _compute_profile,
@@ -29,6 +34,13 @@ from thesistester.levels.profile import (
 )
 
 VA_SOURCE_TICK_LAST: Final[str] = "tick_last"
+TICK_SOURCE_NONE: Final[str] = "none"
+# Session cut is instrument eth_start in exchange_tz (TV1). Identity must
+# change if that policy ever changes.
+SESSION_CUT_POLICY_ID: Final[str] = "cme_eth_start_v1"
+# Identity-only keys injected into the settings dict hashed by
+# compute_levels_settings_hash. Never passed to compute_all_levels.
+LEVELS_TICK_IDENTITY_KEYS: Final[tuple[str, ...]] = ("tick_source_id", "va_source")
 PRIOR_PROFILE_FAMILIES: Final[tuple[str, ...]] = ("pd", "pw", "pm")
 PRIOR_PROFILE_TABLE_COLUMNS: Final[tuple[str, ...]] = (
     "family",
@@ -140,31 +152,175 @@ def build_prior_profile_table(
     return PriorProfileTable(frame=_normalize_table_frame(pd.DataFrame(rows)))
 
 
+def compute_tick_source_id(
+    paths: Sequence[str | Path] | None,
+    *,
+    format_profile: str = "quantower_tick_last",
+) -> str:
+    """SHA-256 of sorted tick-file content hashes + profile + session-cut policy.
+
+    Missing/empty paths return the explicit ``none`` token so the settings
+    hash still contains ``tick_source_id``.
+    """
+    if not paths:
+        return TICK_SOURCE_NONE
+    resolved = [Path(path) for path in paths]
+    if not resolved:
+        return TICK_SOURCE_NONE
+    # Lazy: execution_artifacts → local_store → engine.otf → levels.
+    from thesistester.persistence.execution_artifacts import source_content_hash
+
+    hasher = sha256()
+    for digest in sorted(source_content_hash(path) for path in resolved):
+        hasher.update(digest.encode("utf-8"))
+        hasher.update(b"\0")
+    hasher.update(str(format_profile).encode("utf-8"))
+    hasher.update(b"\0")
+    hasher.update(SESSION_CUT_POLICY_ID.encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def resolve_tick_format_profile(value: object | None) -> str:
+    """Default ``quantower_tick_last``; any other profile is fail-closed."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return TICK_FORMAT_PROFILE
+    profile = str(value)
+    if profile != TICK_FORMAT_PROFILE:
+        raise ValueError(
+            f"Unsupported tick_format_profile: {profile!r}; expected {TICK_FORMAT_PROFILE!r}"
+        )
+    return profile
+
+
+def dataset_has_tick_inputs(dataset: dict[str, Any] | None) -> bool:
+    """True when tick files or a persisted prior-profile table are present."""
+    if not dataset:
+        return False
+    paths = dataset.get("tick_paths")
+    if isinstance(paths, list) and any(str(item).strip() for item in paths):
+        return True
+    table_path = dataset.get("prior_profile_table_path")
+    return isinstance(table_path, (str, Path)) and bool(str(table_path).strip())
+
+
+def build_prior_profile_table_from_paths(
+    paths: Sequence[str | Path],
+    *,
+    instrument: str,
+    value_area_pct: float = 0.70,
+    prior_day_aggregation_ticks: int = 1,
+    prior_week_aggregation_ticks: int = 1,
+    prior_month_aggregation_ticks: int = 1,
+    format_profile: str = TICK_FORMAT_PROFILE,
+) -> PriorProfileTable:
+    """Load tick-last files and build the prior-profile table (parent / API path)."""
+    resolve_tick_format_profile(format_profile)
+    chunks = iter_tick_files(paths, instrument=instrument)
+    return build_prior_profile_table(
+        chunks,
+        instrument=instrument,
+        value_area_pct=value_area_pct,
+        prior_day_aggregation_ticks=prior_day_aggregation_ticks,
+        prior_week_aggregation_ticks=prior_week_aggregation_ticks,
+        prior_month_aggregation_ticks=prior_month_aggregation_ticks,
+    )
+
+
+def attach_tick_identity(
+    settings: dict[str, Any],
+    *,
+    tick_source_id: str | None = None,
+) -> dict[str, Any]:
+    """Put tick identity keys inside the settings dict used for the levels hash."""
+    attached = dict(settings)
+    attached["tick_source_id"] = tick_source_id if tick_source_id else TICK_SOURCE_NONE
+    attached["va_source"] = VA_SOURCE_TICK_LAST
+    return attached
+
+
+def compute_table_source_id(table: PriorProfileTable) -> str:
+    """Content identity for a table when tick files are not on the call.
+
+    Must not return ``none`` — a present table and a missing table are
+    different research objects (cache-collision if they share ``none``).
+    """
+    hasher = sha256()
+    hasher.update(b"prior_profile_table\0")
+    if table.frame.empty:
+        hasher.update(b"empty")
+        return hasher.hexdigest()
+    persist = table.frame.loc[
+        :,
+        [
+            "family",
+            "period_key",
+            "VAH",
+            "VAL",
+            "POC",
+            "aggregation_ticks",
+            "value_area_pct",
+            "va_source",
+        ],
+    ].copy()
+    persist["period_key"] = persist["period_key"].map(_period_key_text)
+    persist = persist.sort_values(["family", "period_key"]).reset_index(drop=True)
+    hasher.update(persist.to_csv(index=False).encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def compute_table_path_source_id(path: str | Path) -> str:
+    """SHA-256 of a persisted prior-profile parquet (fallback tick identity)."""
+    from thesistester.persistence.execution_artifacts import source_content_hash
+
+    return source_content_hash(path)
+
+
 def map_shifted_prior_profile(
     period_key: pd.Series,
     table: PriorProfileTable,
     *,
     family: str,
 ) -> pd.DataFrame:
-    """Map each period key to the **prior** period's VAH/VAL/POC (``shift(1)``)."""
+    """Map each 1m period key to the **prior 1m period's** table scalars.
+
+    Join semantics match pre-TV3 ``_map_prior_profile_levels``: unique period
+    keys come from the 1m frame (sorted), then ``shift(1)``. Scalars are
+    looked up on the tick table; a prior period with no ticks is ``NaN``.
+    Shifting the table's present rows would fill a gap from an earlier
+    session — forbidden by TV §3.8.
+    """
     if family not in PRIOR_PROFILE_FAMILIES:
         raise ValueError(f"Unknown prior-profile family: {family}")
+    keys = _period_keys_for_join(period_key, family)
+    empty = pd.DataFrame(
+        {
+            f"{family}VAH": pd.Series(index=period_key.index, dtype="float64"),
+            f"{family}VAL": pd.Series(index=period_key.index, dtype="float64"),
+            f"{family}POC": pd.Series(index=period_key.index, dtype="float64"),
+        }
+    )
+    if keys.empty:
+        return empty
+    periods = _typed_period_index(pd.Index(keys.unique()).sort_values(), family)
     fam = table.family_rows(family)
     if fam.empty:
-        empty = pd.DataFrame(
+        aligned = pd.DataFrame(
             {
-                f"{family}VAH": pd.Series(index=period_key.index, dtype="float64"),
-                f"{family}VAL": pd.Series(index=period_key.index, dtype="float64"),
-                f"{family}POC": pd.Series(index=period_key.index, dtype="float64"),
+                "VAH": pd.Series(float("nan"), index=periods, dtype="float64"),
+                "VAL": pd.Series(float("nan"), index=periods, dtype="float64"),
+                "POC": pd.Series(float("nan"), index=periods, dtype="float64"),
             }
         )
-        return empty
-    keys = _period_keys_for_join(period_key, family)
-    ordered = fam.copy()
-    ordered["period_key"] = _period_keys_for_join(ordered["period_key"], family).to_numpy()
-    ordered = ordered.sort_values("period_key").set_index("period_key")[["VAH", "VAL", "POC"]]
-    ordered.index = _typed_period_index(ordered.index, family)
-    shifted = ordered.shift(1)
+    else:
+        ordered = fam.copy()
+        ordered["period_key"] = _period_keys_for_join(ordered["period_key"], family).to_numpy()
+        ordered = ordered.sort_values("period_key").drop_duplicates(
+            subset=["period_key"], keep="last"
+        )
+        lookup = ordered.set_index("period_key")[["VAH", "VAL", "POC"]]
+        lookup.index = _typed_period_index(lookup.index, family)
+        aligned = lookup.reindex(periods)
+    shifted = aligned.shift(1)
     return pd.DataFrame(
         {
             f"{family}VAH": keys.map(shifted["VAH"]),

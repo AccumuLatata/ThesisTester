@@ -20,6 +20,9 @@
 #
 # Replace dataset.path with the same 15-second Quantower History Exporter
 # CSV used on Data. A vendor-native 1m file is a different dataset.
+# Replace dataset.tick_paths with Quantower Tick–Tick–Last export(s)
+# (same session cut as the 15s file). Without ticks this named-VA study
+# refuses: VA requires ticks.
 # Omitting ingestion_mode on a 15s file is not this path (that loads 15s
 # bars as the decision timeframe).
 # Promote absolutizes relative dataset.path when possible (drafts/ is safe).
@@ -38,6 +41,10 @@ study:
 
   dataset:
     path: data/es_15s.csv
+    # Named-VA cores require Quantower Tick–Tick–Last files (TV3). Launch
+    # refuses if the files are missing, same posture as dataset.path.
+    tick_paths:
+      - data/es_ticks.csv
     instrument: ES
     source_timezone: America/New_York
     format_profile: quantower_history_exporter

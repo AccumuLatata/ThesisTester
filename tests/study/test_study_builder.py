@@ -124,10 +124,12 @@ def test_study_draft_field_defaults_stay_legacy_safe():
     assert draft.backtest["intrabar_model"] == "sl_first"
     assert draft.backtest["stop_loss_ticks"] == 8
     assert draft.backtest["commission_per_side"] == 0.0
+    draft.dataset_extra["tick_paths"] = ["data/es_ticks.csv"]
     spec = emit_study_spec(draft)
     assert "ingestion_mode" not in spec["study"]["dataset"]
     assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
     assert spec["study"]["dataset"]["path"] == "data/es_1m.csv"
+    assert spec["study"]["dataset"]["tick_paths"] == ["data/es_ticks.csv"]
     assert spec["study"]["constants"]["backtest"]["intrabar_model"] == "sl_first"
 
 
@@ -167,6 +169,7 @@ def test_emit_blank_format_profile_writes_canonical():
     for raw in (None, "", "  "):
         draft = StudyDraft()
         draft.format_profile = raw  # type: ignore[assignment]
+        draft.dataset_extra["tick_paths"] = ["data/es_ticks.csv"]
         spec = emit_study_spec(draft)
         assert spec["study"]["dataset"]["format_profile"] == DEFAULT_FORMAT_PROFILE
         assert "ingestion_mode" not in spec["study"]["dataset"]
@@ -452,6 +455,7 @@ def test_draft_warnings_core_partner_overlap():
     draft = default_study_draft()
     draft.core_level = ["pdPOC"]
     draft.partner_levels = [["pdPOC", "SMA_50_1min"]]
+    draft.dataset_extra["tick_paths"] = ["data/es_ticks.csv"]
     warnings = draft_warnings(draft)
     assert warnings
     assert "pdPOC" in warnings[0]

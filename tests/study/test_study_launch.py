@@ -37,10 +37,13 @@ def _example_yaml() -> str:
 
 
 def _write_bars(root: Path) -> Path:
-    # Pin target must match the teaching example's dataset.path.
-    bars = root / "data" / "es_15s.csv"
-    bars.parent.mkdir(parents=True, exist_ok=True)
+    # Pin targets must match the teaching example's dataset.path / tick_paths.
+    data_dir = root / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    bars = data_dir / "es_15s.csv"
     bars.write_text("ts,open,high,low,close,volume\n", encoding="utf-8")
+    ticks = data_dir / "es_ticks.csv"
+    ticks.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
     return bars
 
 
