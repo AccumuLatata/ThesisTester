@@ -86,7 +86,8 @@ builder cannot ImportError the page. Seed/Apply use getattr/hasattr and
 `dataset_extra` when `StudyDraft.ingestion_mode` is missing.
 Studies-scoped keys only:
 `studies_builder_draft` and `studies_builder_pending_sync` (plus
-`_study_builder_*` widget keys, including `_study_builder_ingestion_mode`).
+`_study_builder_*` widget keys, including `_study_builder_ingestion_mode`
+and `_study_builder_tick_paths`).
 The Build tab body executes before Preview
 so Apply can write `studies_preview_yaml` (and reseed the launch output-dir
 widget) before those widgets instantiate. Build does not write classic
@@ -1223,7 +1224,8 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 Path citations only (no line numbers). Line anchors drift across page renumbers and edits; treat producing/consuming paths as the contract, not offsets.
 
 Studies Build (SB2–SB3) adds `studies_builder_draft` and `studies_builder_pending_sync`
-on `pages/15_Studies.py` only. Those keys are not classic research state and
+on `pages/15_Studies.py` only (TV4 adds `_study_builder_tick_paths` among the
+`_study_builder_*` widget keys). Those keys are not classic research state and
 must not be read from Data / Levels / Setup Builder. Study Viewer SV1–SV5 add
 `studies_catalog_entries`, `studies_catalog_roots_key`,
 `studies_viewer_pending_path`, `studies_viewer_catalog_select`, and
@@ -1234,10 +1236,11 @@ Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when
 a file is present. `apply_research_bundle_to_session` sets the one-shot
 `_data_page_invalidate_source` flag so the Data page increments
-`_primary_csv_uploader_nonce` and `_subtimeframe_uploader_nonce` before
-instantiating uploaders — a leftover primary or lower-TF CSV widget must not
-replace a just-imported session dataset (a leftover lower file would re-apply
-on signature mismatch and clear execution dependents).
+`_primary_csv_uploader_nonce`, `_subtimeframe_uploader_nonce`, and
+`_tick_uploader_nonce` before instantiating uploaders — a leftover primary,
+lower-TF, or tick-last CSV widget must not replace a just-imported session
+dataset (a leftover lower file would re-apply on signature mismatch and clear
+execution dependents).
 Uploader nonce ≠ leftover research keys: apply also clears
 `otf_filter_summary`, `otf_filter_result`, `backtest_otf_filter`,
 `grid_otf_filter`, `otf_rejected_signals`, `otf_candidate_signals`,
@@ -1258,6 +1261,10 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
 | `subtimeframe_interval` | Data page, R18 API/CLI, or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
+| `tick_paths` | Data page optional tick-last attach | Data page honesty / copy-into Studies Build | `list[str]` durable Quantower Tick–Tick–Last paths. Not an ingestion mode and not a replacement for `data`. Cleared when dataset identity changes or source invalidation runs |
+| `_tick_uploader_nonce` | Data page / bundle source invalidation | Data page tick `file_uploader` key | `int` — bumped so a leftover tick upload cannot re-apply after restore |
+| `_tick_upload_signature` | Data page tick attach | Data page only | Installed-path signature; not bundle-managed |
+| `tick_row_count` / `tick_session_count` | Data page tick attach | Data page caption | Optional attach diagnostics; not engine inputs |
 | `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count, sparse-minute count; when 15s source opens were OHLC-identical duplicates, also `source_duplicate_resolution` / group and discarded-row counts / `source_duplicate_audit`) |
 | `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Mapping with `sparse_buckets` (`incomplete_coverage`, retained) and `dropped_buckets` (`timestamp_misalignment`, absent from canonical); never used to patch source or parent bars |
 | `resampled_data` | Data (`pages/1_Data.py`) | Data summary (`pages/1_Data.py`) | `dict[str, pd.DataFrame]` |

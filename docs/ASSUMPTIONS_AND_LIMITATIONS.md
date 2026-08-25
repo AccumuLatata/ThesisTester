@@ -514,7 +514,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - Prior day/week/month VAH/VAL/POC (`pdVAH`/`pdVAL`/`pdPOC`, `pw*`, `pm*`) are
   tick Last×Volume VAP when `dataset.tick_paths` (or a persisted prior-profile
   table) is provided, and **absent** otherwise. They are not 1m typical under
-  these names. Named-VA studies refuse without ticks (`VA requires ticks`).
+  these names.   Named-VA studies refuse without ticks (`VA requires ticks`).
+  Attach Quantower Tick–Tick–Last files on Data or Studies Build
+  (`dataset.tick_paths`); 15s remains the bar clock. New drafts omit the key.
   APOC and rolling POC remain 1m typical `(H+L+C)/3`. Product day aggregation
   is 1 tick (`prior_day_profile_aggregation_ticks`); week/month stay 8/10.
   `LEVEL_ENGINE_VERSION` is 11. Residual vs Quantower on the session-20 MNQ

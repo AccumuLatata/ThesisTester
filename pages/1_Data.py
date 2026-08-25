@@ -31,6 +31,7 @@ from thesistester.data.loader import (
     resolve_ohlc_identical_duplicates,
     validate_ohlcv,
 )
+from thesistester.data.quantower_ticks import TickIngestError, iter_tick_files
 from thesistester.data.rolls import (
     ROLL_METHODS,
     detect_contract_column,
@@ -94,6 +95,12 @@ DERIVED_PARENT_DIAGNOSTICS_KEY = "derived_parent_diagnostics"
 SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
 SUBTIMEFRAME_UPLOADER_NONCE_KEY = "_subtimeframe_uploader_nonce"
 PRIMARY_CSV_UPLOADER_NONCE_KEY = "_primary_csv_uploader_nonce"
+TICK_PATHS_KEY = "tick_paths"
+TICK_UPLOADER_NONCE_KEY = "_tick_uploader_nonce"
+TICK_UPLOAD_SIGNATURE_KEY = "_tick_upload_signature"
+TICK_ROW_COUNT_KEY = "tick_row_count"
+TICK_SESSION_COUNT_KEY = "tick_session_count"
+TICK_PATHS_TEXT_KEY = "_tick_paths_text"
 LOAD_SAMPLE_REQUESTED_KEY = "_load_sample_data_requested"
 SUBTIMEFRAME_FALLBACK_BARS_KEY = "subtimeframe_fallback_parent_bars"
 SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY = "_subtimeframe_compatibility_report"
@@ -308,6 +315,7 @@ def _consume_data_page_source_invalidation(session_state=None) -> bool:
         return False
     state[PRIMARY_CSV_UPLOADER_NONCE_KEY] = int(state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0)) + 1
     state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = int(state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
+    state[TICK_UPLOADER_NONCE_KEY] = int(state.get(TICK_UPLOADER_NONCE_KEY, 0)) + 1
     # Signatures are Data-page widget keys, not bundle-managed. A stale hash
     # from the pre-import upload would skip an explicit re-upload of the same
     # file after restore (session would keep the imported lower frame).
@@ -318,6 +326,10 @@ def _consume_data_page_source_invalidation(session_state=None) -> bool:
         SUBTIMEFRAME_DUPLICATE_SOURCE_KEY,
         SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY,
         SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY,
+        TICK_PATHS_KEY,
+        TICK_UPLOAD_SIGNATURE_KEY,
+        TICK_ROW_COUNT_KEY,
+        TICK_SESSION_COUNT_KEY,
     ):
         state.pop(key, None)
     return True
@@ -649,8 +661,191 @@ def _clear_dataset_dependent_state() -> None:
         "roll_contract_column_input",
         "roll_adjustment_method_selector",
         "roll_rule_selector",
+        TICK_PATHS_KEY,
+        TICK_UPLOAD_SIGNATURE_KEY,
+        TICK_ROW_COUNT_KEY,
+        TICK_SESSION_COUNT_KEY,
     ]:
         st.session_state.pop(key, None)
+
+
+def _normalize_tick_path_list(raw) -> list[str]:
+    """Coerce widget / leftover extra tick paths to a de-duplicated string list."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        tokens: list[str] = []
+        for line in raw.replace(",", "\n").splitlines():
+            token = line.strip()
+            if token:
+                tokens.append(token)
+        return list(dict.fromkeys(tokens))
+    if isinstance(raw, (list, tuple)):
+        tokens = []
+        for item in raw:
+            token = str(item).strip()
+            if token:
+                tokens.append(token)
+        return list(dict.fromkeys(tokens))
+    token = str(raw).strip()
+    return [token] if token else []
+
+
+def _tick_upload_dir() -> Path:
+    dest = get_store_root() / "tick_uploads"
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
+
+
+def _persist_tick_uploads(files, dest_dir: Path) -> list[str]:
+    """Write Streamlit uploads to disk so Studies Build can cite durable paths."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[str] = []
+    for uploaded in files or []:
+        name = Path(str(getattr(uploaded, "name", "ticks.csv") or "ticks.csv")).name
+        dest = dest_dir / name
+        dest.write_bytes(uploaded.getvalue())
+        paths.append(str(dest.resolve()))
+    return paths
+
+
+def _validate_attached_tick_paths(
+    paths: list[str],
+    *,
+    instrument: str,
+    source_tz: str = "UTC",
+) -> tuple[int, int, list[str]]:
+    """Parse attached Tick–Tick–Last files via the TV1 session iterator.
+
+    Does not call ``load_ohlcv`` and does not concatenate sessions into one
+    frame. Returns ``(session_count, row_count, warnings)``.
+    """
+    sessions = 0
+    rows = 0
+    warnings: list[str] = []
+    for chunk in iter_tick_files(paths, instrument=instrument, source_tz=source_tz):
+        sessions += 1
+        rows += len(chunk.ticks)
+        if chunk.filename_window_mismatch:
+            warnings.append(
+                "Filename window does not cover row timestamps: "
+                + ", ".join(chunk.source_paths)
+            )
+        warnings.extend(chunk.warnings)
+    return sessions, rows, list(dict.fromkeys(warnings))
+
+
+def _install_tick_paths(
+    session_state,
+    paths: list[str],
+    *,
+    row_count: int | None = None,
+    session_count: int | None = None,
+    signature: str | None = None,
+) -> None:
+    """Record validated tick paths. Does not mutate primary ``data``."""
+    session_state[TICK_PATHS_KEY] = list(paths)
+    if row_count is not None:
+        session_state[TICK_ROW_COUNT_KEY] = int(row_count)
+    if session_count is not None:
+        session_state[TICK_SESSION_COUNT_KEY] = int(session_count)
+    if signature is not None:
+        session_state[TICK_UPLOAD_SIGNATURE_KEY] = signature
+
+
+def _clear_tick_session_state(session_state=None) -> None:
+    """Drop installed tick attach keys. Does not mutate widget-bound text."""
+    state = st.session_state if session_state is None else session_state
+    for key in (
+        TICK_PATHS_KEY,
+        TICK_UPLOAD_SIGNATURE_KEY,
+        TICK_ROW_COUNT_KEY,
+        TICK_SESSION_COUNT_KEY,
+    ):
+        state.pop(key, None)
+
+
+def _render_tick_attach(*, instrument: str) -> None:
+    """Optional Quantower Tick–Tick–Last attach beside the 15s bar clock."""
+    with st.expander("Quantower tick-last (optional, prior VA only)", expanded=False):
+        st.caption(
+            "Attach one or many Quantower Tick–Tick–Last CSVs for prior VA. "
+            "This does not replace the 15-second (or one-minute) OHLCV file "
+            "and is not an ingestion mode. No ticks → no `pdVA*` / `pw*` / "
+            "`pm*` columns; those names are tick Last×Volume VAP. APOC and "
+            "rolling POC remain 1m typical. Studies keep walking 1m."
+        )
+        uploader_nonce = int(st.session_state.get(TICK_UPLOADER_NONCE_KEY, 0))
+        uploaded_files = st.file_uploader(
+            "Tick–Tick–Last CSV (one or many)",
+            type=["csv", "txt"],
+            accept_multiple_files=True,
+            key=f"tick_csv_upload_{uploader_nonce}",
+        )
+        st.text_area(
+            "Tick file paths (one per line, optional)",
+            key=TICK_PATHS_TEXT_KEY,
+            placeholder="data/es_ticks.csv",
+            help=(
+                "Local Quantower Tick–Tick–Last paths already on disk. "
+                "Launch and Studies Build pin these the same way as dataset.path."
+            ),
+        )
+        if st.button("Attach tick files"):
+            typed = _normalize_tick_path_list(st.session_state.get(TICK_PATHS_TEXT_KEY))
+            persisted: list[str] = []
+            if uploaded_files:
+                persisted = _persist_tick_uploads(uploaded_files, _tick_upload_dir())
+            combined = list(dict.fromkeys([*persisted, *typed]))
+            if not combined:
+                st.error("Choose at least one Tick–Tick–Last file or path.")
+            else:
+                missing = [path for path in combined if not Path(path).is_file()]
+                if missing:
+                    st.error("Tick file is not an existing file: " + ", ".join(missing))
+                else:
+                    try:
+                        sessions, rows, warnings = _validate_attached_tick_paths(
+                            combined,
+                            instrument=instrument,
+                        )
+                    except (TickIngestError, DataValidationError, OSError, ValueError) as exc:
+                        st.error(str(exc))
+                    else:
+                        _install_tick_paths(
+                            st.session_state,
+                            combined,
+                            row_count=rows,
+                            session_count=sessions,
+                            signature="|".join(combined),
+                        )
+                        st.success(
+                            f"Attached {len(combined)} tick file(s): "
+                            f"{sessions:,} session(s), {rows:,} prints."
+                        )
+                        for warning in warnings:
+                            st.warning(warning)
+                        st.rerun()
+        installed = st.session_state.get(TICK_PATHS_KEY)
+        if isinstance(installed, list) and installed:
+            sessions = st.session_state.get(TICK_SESSION_COUNT_KEY)
+            rows = st.session_state.get(TICK_ROW_COUNT_KEY)
+            detail = ""
+            if isinstance(sessions, int) and isinstance(rows, int):
+                detail = f" ({sessions:,} session(s), {rows:,} prints)"
+            st.info(
+                f"Tick-last attached: {len(installed)} file(s){detail}. "
+                "Paste these paths into Studies Build when factors name VA "
+                "tokens. 15s remains the bar clock."
+            )
+            for path in installed:
+                st.write(f"- `{path}`")
+            if st.button("Clear tick attach"):
+                _clear_tick_session_state()
+                st.session_state[TICK_UPLOADER_NONCE_KEY] = (
+                    int(st.session_state.get(TICK_UPLOADER_NONCE_KEY, 0)) + 1
+                )
+                st.rerun()
 
 
 def _clear_execution_dependent_state() -> None:
@@ -1262,7 +1457,9 @@ st.caption(
     "Load and validate OHLCV data for the active instrument. "
     "Upload a one-minute primary CSV, or use the explicit 15-second-primary mode "
     "to derive one-minute canonical bars and attach the 15-second source for R12 replay. "
-    "Legacy dual-upload lower-timeframe attachment remains available for one-minute primaries."
+    "Legacy dual-upload lower-timeframe attachment remains available for one-minute primaries. "
+    "Optional Quantower Tick–Tick–Last files sit beside that 15s clock for prior VA only: "
+    "no ticks → no `pdVA*` columns."
 )
 render_classic_nav_prefill_caption(target_page="pages/1_Data.py")
 
@@ -1633,6 +1830,7 @@ if current_df is not None:
             source_timezone=st.session_state.get("source_timezone"),
             exchange_timezone=st.session_state.get("exchange_timezone", meta.exchange_tz),
         )
+    _render_tick_attach(instrument=st.session_state.get("instrument", inst))
     st.divider()
     _render_roll_assumptions(
         current_df,

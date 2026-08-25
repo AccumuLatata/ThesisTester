@@ -76,6 +76,7 @@ def _make_streamlit_stub(session_state: dict) -> types.ModuleType:
         "dataframe",
         "metric",
         "text_input",
+        "text_area",
         "columns",
         "divider",
         "expander",
@@ -523,6 +524,82 @@ def test_clear_dataset_dependent_state_clears_15s_primary_keys(monkeypatch):
         assert key not in session_state
 
 
+def test_tick_attach_does_not_replace_primary_data():
+    parent, _ = _parent_and_subtimeframe_frames()
+    session_state = {"data": parent, "dataset_id": "keep-id"}
+    data_page = _import_data_page_module(session_state)
+    data_page._install_tick_paths(
+        session_state,
+        ["data/es_ticks.csv"],
+        row_count=4,
+        session_count=1,
+        signature="data/es_ticks.csv",
+    )
+    assert session_state["data"] is parent
+    assert session_state["dataset_id"] == "keep-id"
+    assert session_state[data_page.TICK_PATHS_KEY] == ["data/es_ticks.csv"]
+    assert session_state[data_page.TICK_ROW_COUNT_KEY] == 4
+    assert session_state[data_page.TICK_SESSION_COUNT_KEY] == 1
+
+
+def test_clear_dataset_dependent_state_clears_tick_paths(monkeypatch):
+    parent, _ = _parent_and_subtimeframe_frames()
+    session_state = {
+        "data": parent,
+        "dataset_id": "keep-id",
+        "tick_paths": ["data/es_ticks.csv"],
+        "tick_row_count": 4,
+        "tick_session_count": 1,
+        "_tick_upload_signature": "sig",
+        "levels": "x",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._clear_dataset_dependent_state()
+
+    assert session_state["data"] is parent
+    assert session_state["dataset_id"] == "keep-id"
+    for key in (
+        data_page.TICK_PATHS_KEY,
+        data_page.TICK_ROW_COUNT_KEY,
+        data_page.TICK_SESSION_COUNT_KEY,
+        data_page.TICK_UPLOAD_SIGNATURE_KEY,
+        "levels",
+    ):
+        assert key not in session_state
+
+
+def test_validate_attached_tick_paths_uses_quantower_ticks(tmp_path):
+    fixture = (
+        pathlib.Path(__file__).parent / "fixtures" / "ticks" / "rth_open_stub.csv"
+    )
+    dest = tmp_path / "es_ticks.csv"
+    dest.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+    data_page = _import_data_page_module({})
+    sessions, rows, warnings = data_page._validate_attached_tick_paths(
+        [str(dest)],
+        instrument="MNQ",
+    )
+    assert sessions == 1
+    assert rows >= 1
+    assert warnings == []
+    persisted = data_page._persist_tick_uploads(
+        [_Uploaded(dest.name, dest.read_bytes())],
+        tmp_path / "uploads",
+    )
+    assert persisted == [str((tmp_path / "uploads" / dest.name).resolve())]
+
+
+class _Uploaded:
+    def __init__(self, name: str, payload: bytes) -> None:
+        self.name = name
+        self._payload = payload
+
+    def getvalue(self) -> bytes:
+        return self._payload
+
+
 def test_on_ingestion_mode_change_clears_15s_primary_session(monkeypatch):
     session_state = {
         "data_source_selector": "Upload CSV",
@@ -665,6 +742,12 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "_invalidate_primary_csv_uploader()" in page_text
     assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in page_text
     assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
+    page_body = page_text.split('st.title(')[-1]
+    assert "_render_tick_attach(" in page_body
+    assert page_body.index("_render_tick_attach(") > page_body.index(
+        "_hide_legacy_subtimeframe_uploader(ingestion_mode)"
+    )
+    assert "Quantower tick-last (optional, prior VA only)" in page_text
 
 
 def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch):
@@ -962,6 +1045,8 @@ def test_consume_data_page_source_invalidation_increments_uploader_nonce():
         data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY: True,
         data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY: 2,
         data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY: 4,
+        data_page.TICK_UPLOADER_NONCE_KEY: 1,
+        data_page.TICK_PATHS_KEY: ["data/es_ticks.csv"],
         data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY: "canonical:stale",
         data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY: "canonical:stale",
         data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY: "canonical:stale",
@@ -971,12 +1056,15 @@ def test_consume_data_page_source_invalidation_increments_uploader_nonce():
     assert data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY not in session_state
     assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
     assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+    assert session_state[data_page.TICK_UPLOADER_NONCE_KEY] == 2
+    assert data_page.TICK_PATHS_KEY not in session_state
     assert data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY not in session_state
     assert data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY not in session_state
     assert data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY not in session_state
     assert data_page._consume_data_page_source_invalidation(session_state) is False
     assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
     assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+    assert session_state[data_page.TICK_UPLOADER_NONCE_KEY] == 2
 
 
 def test_session_has_primary_data_requires_dataframe():
