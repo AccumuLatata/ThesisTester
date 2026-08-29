@@ -5,7 +5,10 @@
 **Status:** Protocol published, then amended the same day against engine semantics, Study expand, and the locked desk contract (Notion *Process and roadmap*). Inventory still verified against `main` (`56c9d59`) via `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`.  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4 (this file is docs-only; no engine/golden touch)  
 **Related:** `docs/STUDY_RUNNER.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md`, `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md`, `docs/research-methodology.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`  
-**Desk-page switch (Notion contract, do not dump this protocol):** `docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`
+**Desk-page switch (Notion contract, do not dump this protocol):** `docs/LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md`  
+**Holistic combination concept (not this file):** `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md`
+
+**Program identity:** this file is **Program A** — the desk product funnel (kill list → survivors → transfer). It was aligned to the locked Notion *Process and roadmap* page and then executed. It is **not** the holistic “variety of levels × confluence classes” design. That concept is Program B (`docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md`). Do not run Program B as the next desk step. Do not amend the lock page from Program B.
 
 Normative amendments in this revision (do not silently revert):
 

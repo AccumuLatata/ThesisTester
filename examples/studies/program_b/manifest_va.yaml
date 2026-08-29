@@ -1,0 +1,16 @@
+packet: tick
+total_studies: 4
+total_cells: 207
+studies:
+- file: progB_w0_va.yaml
+  cells: 9
+  min_valid: 0
+- file: progB_w4_profile_ma.yaml
+  cells: 108
+  min_valid: 1
+- file: progB_w4_profile_rvwap.yaml
+  cells: 18
+  min_valid: 1
+- file: progB_w4_profile_pivot.yaml
+  cells: 72
+  min_valid: 1
