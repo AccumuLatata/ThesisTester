@@ -17,7 +17,7 @@ Compute and run count are not constraints. Completeness and structure are.
 | Side | What | Count |
 |---|---|---:|
 | **Anchors** | Named locations you test | **50** (49 static + `prev30mVWAP`) |
-| **Wave 0 — solo** | Each anchor, **no** partner | **50** |
+| **Wave 0 — solo** | Each anchor, **no** partner | **50** (41 in `progB_w0_solo.yaml`; 9 VA in `progB_w0_va.yaml`) |
 | **Confirms (default)** | What you test them against | **22** (12 MA + 2 rolling VWAP + 8 pivot) |
 | **One-partner cells / product** | `core=L`, `partners=[X]` | **1,100** |
 | **Confirms (widget-maximal)** | Same families, full editor catalog | **48** (36 MA + 4 rolling VWAP + 8 pivot) |
@@ -59,13 +59,20 @@ Do not omit costs (engine default 0/0 is gross-era). Do not cartesian 40 vs 80, 
 
 ---
 
-## 0.2 Wave 0 — levels alone (50 cells)
+## 0.2 Wave 0 — levels alone (50 cells, two StudySpecs)
 
 Question: which of the 50 named locations have **positive expectancy when traded with no confluence**?
 
+The catalog is still 50. After TV3, the nine prior-profile VA tokens (`pd*` / `pw*` / `pm*` VAH/VAL/POC) are tick VAP. A StudySpec that names any of them refuses without `dataset.tick_paths`. VA and non-VA results are different objects — they must not share a YAML.
+
+| Packet | File | Cores | When |
+|---|---|---:|---|
+| 15s (`manifest.yaml`) | `progB_w0_solo.yaml` | **41** non-VA | Run now on the 15s export |
+| Tick (`manifest_va.yaml`) | `progB_w0_va.yaml` | **9** VA | Park until Tick–Tick–Last is pinned |
+
 ```yaml
 factors:
-  core_level: [<all 50 anchors>]
+  core_level: [<41 non-VA anchors>]   # or the 9 VA names in progB_w0_va.yaml
   partner_levels:
     - []
   confluence_mode: [anchor_rules]
@@ -79,7 +86,7 @@ AO1 (`docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md`, shipped on `main`): empty rules 
 
 Same product locks as §0.1 otherwise (MNQ, 80/80, costs 0.5 / 1.0, flatten true).
 
-Run Wave 0 **first**, as its own study (50 cells). Then the 1,100 pair cells. A pair’s ΔE vs its solo cell mixes “value of the confirm” with **zone-shape change** (point vs partner bounding box). Report both; do not treat ΔE as a pure confluence effect.
+Run **15s Wave 0 first** (`progB_w0_solo.yaml`, 41 cells), then the 902 pair cells in waves 1–3 and 5–8. Wave 4 (198) and `progB_w0_va.yaml` (9) wait for ticks. A pair’s ΔE vs its solo cell mixes “value of the confirm” with **zone-shape change** (point vs partner bounding box). Report both; do not treat ΔE as a pure confluence effect. Do not compare a 15s pair to a missing VA solo.
 
 Readout (same honesty as pairs): n, `expectancy_r`, PF. Interpret at n≥30. Coin-flip hold if `|E|<0.03` or PF ∈ [0.95, 1.05]. “Positive expectancy” for this question = n≥30 and E≥0.03 and PF>1.05. Descriptive, not Admit.
 
@@ -87,7 +94,7 @@ Readout (same honesty as pairs): n, `expectancy_r`, PF. Interpret at n≥30. Coi
 
 ## 1. Anchors — complete list (50)
 
-Every default token that is **not** an MA, **not** a rolling VWAP, **not** a pivot. Work through **by wave**. Wave 0 uses this same list with no partners. Do not skip a later wave because an earlier name bled.
+Every default token that is **not** an MA, **not** a rolling VWAP, **not** a pivot. Work through **by wave**. Wave 0 uses this same list with no partners, split across `progB_w0_solo.yaml` (41 non-VA) and `progB_w0_va.yaml` (9 VA, tick-gated). Do not skip a later wave because an earlier name bled.
 
 ### Wave 1 — Session extremes (12)
 
@@ -142,7 +149,7 @@ There is **no** `RTH_High` / `RTH_Low` / `dHigh` / `OR_Mid` token.
 
 ### Wave 4 — Prior profile (9)
 
-Typical-price MVP `(H+L+C)/3`, 70% VA, `shift(1)`. Not true VAP.
+Tick-gated (`manifest_va.yaml` + `progB_w0_va.yaml`). After TV3 these nine names are tick VAP. A StudySpec that lists any of them refuses without `dataset.tick_paths`. Do not launch on 15s-only. Do not treat 15s typical-price MVP as these tokens.
 
 | # | Token |
 |---|---|
@@ -259,18 +266,20 @@ Finish a wave before the next. Inside a wave, finish one confirm **family** acro
 ```text
 pick ONE product lock (do not mix touch/10 with 3c/20)
 
-Wave 0  (own study, min_valid: 0)
-  for L in all 50 anchors:
+Wave 0 15s  (progB_w0_solo.yaml, min_valid: 0)
+  for L in 41 non-VA anchors:
     core=L, partner_levels=[]          # point zone at L
 
-Waves 1–8  (own studies, min_valid: 1)
-  for wave in 1..8:
+Waves 1–3, 5–8  (own studies, min_valid: 1)
+  for wave in (1, 2, 3, 5, 6, 7, 8):
     for family in (MA, rolling VWAP, pivot):
       for L in wave:
         for X in family:
           core=L, partners=[X]
           required, anchor_rules
           NO dVWAP partner
+
+Wave 0 VA + Wave 4  (manifest_va.yaml) — park until ticks
 ```
 
 **First product lock:** §0.1. MNQ, `touch` @ `1min`, confluence **10** ticks, SL/TP **80 / 80**, costs **0.5 / 1.0**, flatten **true**. No `dVWAP` partner.

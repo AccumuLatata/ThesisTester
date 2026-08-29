@@ -48,6 +48,12 @@ def assert_inventory_matches_catalog(generate: Any | None = None) -> None:
             "Program B anchors drifted from catalog: "
             f"missing={sorted(expected_anchors - got)} extra={sorted(got - expected_anchors)}"
         )
+    if list(gen.VA_ANCHORS) != list(gen.ANCHORS["w4_profile"]):
+        raise SystemExit("Program B VA_ANCHORS must equal wave-4 prior-profile tokens")
+    if set(gen.FIFTEEN_S_ANCHORS) & set(gen.VA_ANCHORS):
+        raise SystemExit("Program B 15s and VA anchor sets must be disjoint")
+    if set(gen.FIFTEEN_S_ANCHORS) | set(gen.VA_ANCHORS) != got:
+        raise SystemExit("Program B 15s ∪ VA anchors must equal ALL_ANCHORS")
     closed = closed_level_token_set(DEFAULT_LEVELS_SETTINGS)
     confirms = [row[0] for family in gen.CONFIRMS.values() for row in family]
     unknown = [token for token in confirms if token not in closed]
@@ -124,8 +130,14 @@ def validate_study_file(
     if min_valid == 0:
         if partners != [[]]:
             failures.append(f"{path.name}: Wave 0 partner_levels must be [[]]")
-        if set(cores) != set(gen.ALL_ANCHORS):
-            failures.append(f"{path.name}: Wave 0 cores drifted from inventory")
+        if stem == "progB_w0_solo":
+            if cores != list(gen.FIFTEEN_S_ANCHORS):
+                failures.append(f"{path.name}: Wave 0 15s cores drifted from FIFTEEN_S_ANCHORS")
+        elif stem == "progB_w0_va":
+            if cores != list(gen.VA_ANCHORS):
+                failures.append(f"{path.name}: Wave 0 VA cores drifted from VA_ANCHORS")
+        else:
+            failures.append(f"{path.name}: unknown Wave 0 study stem")
     else:
         if any(len(partner_set) == 0 for partner_set in partners):
             failures.append(f"{path.name}: empty partner set illegal when min_valid>=1")
@@ -209,17 +221,21 @@ def validate_study_file(
 
 def validate_manifest(
     root: Path | None = None,
+    *,
+    manifest_name: str = "manifest.yaml",
 ) -> tuple[list[str], list[str], int, int]:
-    """Validate every manifest row.
+    """Validate every row in one Program B manifest.
 
-    Returns ``(ok_lines, failures, n_studies, n_cells)``. A file is listed in
-    ``ok_lines`` only when it produced zero failures — callers must not print
-    ``ok`` for a file that failed a lock check.
+    Default ``manifest.yaml`` is the 15s packet. ``manifest_va.yaml`` is
+    tick-gated (Wave 0 VA + Wave 4). Returns ``(ok_lines, failures,
+    n_studies, n_cells)``. A file is listed in ``ok_lines`` only when it
+    produced zero failures — callers must not print ``ok`` for a file that
+    failed a lock check.
     """
     base = root or ROOT
     generate = _load_generate()
     assert_inventory_matches_catalog(generate)
-    manifest = yaml.safe_load((base / "manifest.yaml").read_text(encoding="utf-8"))
+    manifest = yaml.safe_load((base / manifest_name).read_text(encoding="utf-8"))
     failures: list[str] = []
     ok_lines: list[str] = []
     for row in manifest["studies"]:

@@ -17,11 +17,16 @@ Run the locked Program B grid on MNQ and collect n / `expectancy_r` / PF per cel
 | Stage | What | Cells | StudySpec |
 |---|---|---:|---|
 | Smoke | `ONH` × `SMA_50_5min` | 1 | `progB_smoke_ONH_SMA50_5min.yaml` |
-| Wave 0 | 50 anchors **alone** | 50 | `progB_w0_solo.yaml` |
-| Waves 1–8 | same 50 × 22 confirms | 1,100 | 24 family YAMLs |
-| **Total** | | **1,151** | 26 files (`manifest.yaml`) |
+| Wave 0 (15s) | 41 non-VA anchors **alone** | 41 | `progB_w0_solo.yaml` |
+| Waves 1–3, 5–8 | same 41 × 22 confirms | 902 | 21 family YAMLs |
+| **15s total** | | **944** | 23 files (`manifest.yaml`) |
+| Wave 0 VA | 9 prior-profile anchors alone | 9 | `progB_w0_va.yaml` — **tick-gated** |
+| Wave 4 | same 9 × 22 confirms | 198 | 3 family YAMLs — **tick-gated** |
+| **Tick total** | | **207** | 4 files (`manifest_va.yaml`) |
 
-Order: **smoke → Wave 0 → Wave 1 MA → rVWAP → pivot → Wave 2 … Wave 8.** Do not skip ahead because a cell is green. Do not drop a name because solo E < 0.
+Catalog is still 50 anchors. VA and non-VA are different objects (TV3 tick VAP). They must not share a YAML: one named-VA token refuses the **whole** study when `dataset.tick_paths` is empty.
+
+**15s-only (this desk):** run `manifest.yaml` only. Order: **smoke → Wave 0 (`progB_w0_solo`) → Wave 1 MA → rVWAP → pivot → Wave 2 → Wave 3 → Wave 5 … Wave 8.** Skip Wave 4 and `progB_w0_va.yaml` until a Quantower Tick–Tick–Last export is pinned. Do not skip ahead because a cell is green. Do not drop a name because solo E < 0.
 
 ---
 
@@ -51,25 +56,25 @@ Order: **smoke → Wave 0 → Wave 1 MA → rVWAP → pivot → Wave 2 … Wave 
 | Rank | `expectancy_r` only. Never `total_r` |
 | Workers | `1` until smoke is ok; POSIX only to raise |
 
-All 26 YAMLs already stamp these. If a YAML disagrees with this table, **stop** — do not “fix” tokens by hand. Re-run `generate_program_b_yaml.py`.
+All generated YAMLs already stamp these. If a YAML disagrees with this table, **stop** — do not “fix” tokens by hand. Re-run `generate_program_b_yaml.py`.
 
 ---
 
 ## 2. Preconditions
 
 1. Code tree includes **AO1** (empty `partner_levels: [[]]` + `min_valid_confluences: 0` expands). `main` at/after PR #423.
-2. Dataset file exists. Default path in YAML is `data/mnq_15s.csv`. **Replace** `study.dataset.path` in every file with the same 15s Quantower History Exporter CSV used on Data. Same path for all 26 studies.
-3. Expand-validate once after the path edit:
+2. Dataset file exists. **Replace** `study.dataset.path` in every **15s** YAML with the same 15s Quantower History Exporter CSV used on Data. Same path for all 23 files in `manifest.yaml`. Do not add `tick_paths` on those files.
+3. Expand-validate the 15s packet once after the path edit:
 
 ```bash
 PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py
 ```
 
-Expect: `ok 26 studies / 1151 cells`. The script expand-checks every file **and**
+Expect: `ok 23 studies / 944 cells`. The script expand-checks `manifest.yaml` **and**
 the lock table (MNQ, exclusive `anchor_rules`, `from_partners: required`,
-Wave 0 `[[]]` + `min_valid: 0`, no `dVWAP` partner, 80/80, costs, flatten
+Wave 0 `[[]]` + `min_valid: 0`, no VA cores, no `dVWAP` partner, 80/80, costs, flatten
 `16:00` `America/New_York`). A file that fails a lock is **not** printed as
-`ok`. If this fails, do not run.
+`ok`. If this fails, do not run. Do not launch `manifest_va.yaml` on 15s-only.
 
 4. Start from the repo root. `workers: 1` first (Windows-safe).
 
@@ -100,7 +105,7 @@ After each `report`, record for every cell: `core_level`, `partner_levels`, `tra
 | # | File | Cells | `min_valid` |
 |---|---|---:|---:|
 | 0 | `progB_smoke_ONH_SMA50_5min.yaml` | 1 | 1 |
-| 1 | `progB_w0_solo.yaml` | 50 | 0 |
+| 1 | `progB_w0_solo.yaml` | 41 | 0 |
 | 2 | `progB_w1_ext_ma.yaml` | 144 | 1 |
 | 3 | `progB_w1_ext_rvwap.yaml` | 24 | 1 |
 | 4 | `progB_w1_ext_pivot.yaml` | 96 | 1 |
@@ -110,23 +115,29 @@ After each `report`, record for every cell: `core_level`, `partner_levels`, `tra
 | 8 | `progB_w3_range_ma.yaml` | 120 | 1 |
 | 9 | `progB_w3_range_rvwap.yaml` | 20 | 1 |
 | 10 | `progB_w3_range_pivot.yaml` | 80 | 1 |
-| 11 | `progB_w4_profile_ma.yaml` | 108 | 1 |
-| 12 | `progB_w4_profile_rvwap.yaml` | 18 | 1 |
-| 13 | `progB_w4_profile_pivot.yaml` | 72 | 1 |
-| 14 | `progB_w5_svwap_ma.yaml` | 48 | 1 |
-| 15 | `progB_w5_svwap_rvwap.yaml` | 8 | 1 |
-| 16 | `progB_w5_svwap_pivot.yaml` | 32 | 1 |
-| 17 | `progB_w6_sp_ma.yaml` | 48 | 1 |
-| 18 | `progB_w6_sp_rvwap.yaml` | 8 | 1 |
-| 19 | `progB_w6_sp_pivot.yaml` | 32 | 1 |
-| 20 | `progB_w7_apoc_ma.yaml` | 24 | 1 |
-| 21 | `progB_w7_apoc_rvwap.yaml` | 4 | 1 |
-| 22 | `progB_w7_apoc_pivot.yaml` | 16 | 1 |
-| 23 | `progB_w8_prev30m_ma.yaml` | 12 | 1 |
-| 24 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
-| 25 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
+| 11 | `progB_w5_svwap_ma.yaml` | 48 | 1 |
+| 12 | `progB_w5_svwap_rvwap.yaml` | 8 | 1 |
+| 13 | `progB_w5_svwap_pivot.yaml` | 32 | 1 |
+| 14 | `progB_w6_sp_ma.yaml` | 48 | 1 |
+| 15 | `progB_w6_sp_rvwap.yaml` | 8 | 1 |
+| 16 | `progB_w6_sp_pivot.yaml` | 32 | 1 |
+| 17 | `progB_w7_apoc_ma.yaml` | 24 | 1 |
+| 18 | `progB_w7_apoc_rvwap.yaml` | 4 | 1 |
+| 19 | `progB_w7_apoc_pivot.yaml` | 16 | 1 |
+| 20 | `progB_w8_prev30m_ma.yaml` | 12 | 1 |
+| 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
+| 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
 
-Smoke must finish `status=ok` before Wave 0. Wave 0 answers “which levels have +E alone.” Pair waves still run for **every** name.
+Parked until ticks (`manifest_va.yaml`; do not launch on 15s-only):
+
+| File | Cells | `min_valid` |
+|---|---:|---:|
+| `progB_w0_va.yaml` | 9 | 0 |
+| `progB_w4_profile_ma.yaml` | 108 | 1 |
+| `progB_w4_profile_rvwap.yaml` | 18 | 1 |
+| `progB_w4_profile_pivot.yaml` | 72 | 1 |
+
+Smoke must finish `status=ok` before Wave 0. Wave 0 (15s) answers “which non-VA levels have +E alone.” Pair waves 1–3 and 5–8 still run for **every** 15s name. Wave 4 / `w0_va` wait for ticks.
 
 ---
 
@@ -166,11 +177,12 @@ You run ThesisTester Program B. Read and follow docs/PROGRAM_B_OPERATOR_RUNBOOK.
 exactly. YAMLs are in examples/studies/program_b/. Do not invent tokens or axes.
 
 1. Confirm the tree has AO1 (empty partner_levels + min_valid 0 expands).
-2. Set study.dataset.path in every YAML to the operator’s MNQ 15s Quantower HE CSV.
-   Same path for all 26 files.
+2. Set study.dataset.path in every 15s YAML (manifest.yaml) to the operator’s
+   MNQ 15s Quantower HE CSV. Same path for all 23 files. Do not add tick_paths.
 3. PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py
-   Must print: ok 26 studies / 1151 cells. Stop if it fails.
-4. Run the manifest in listed order. Smoke first.
+   Must print: ok 23 studies / 944 cells. Stop if it fails.
+4. Run manifest.yaml in listed order. Smoke first. Skip manifest_va.yaml
+   (Wave 0 VA + Wave 4) until a tick export exists.
    For each file:
      python -m thesistester study expand <yaml> --output-dir results/studies/<name>
      python -m thesistester study run <yaml> --output-dir results/studies/<name>

@@ -69,6 +69,9 @@ ANCHORS: dict[str, list[str]] = {
 }
 
 ALL_ANCHORS = [token for keys in ANCHORS.values() for token in keys]
+VA_ANCHORS = list(ANCHORS["w4_profile"])
+VA_ANCHOR_SET = set(VA_ANCHORS)
+FIFTEEN_S_ANCHORS = [token for token in ALL_ANCHORS if token not in VA_ANCHOR_SET]
 
 CONFIRMS: dict[str, list[list[str]]] = {
     "ma": [
@@ -217,8 +220,24 @@ def _dump(path: Path, header: str, spec: dict) -> None:
     )
 
 
+def _write_manifest(path: Path, packet: str, rows: list[dict[str, object]]) -> None:
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "packet": packet,
+                "total_studies": len(rows),
+                "total_cells": sum(int(row["cells"]) for row in rows),
+                "studies": rows,
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
-    manifest: list[dict[str, object]] = []
+    fifteen_s: list[dict[str, object]] = []
+    tick_gated: list[dict[str, object]] = []
 
     smoke = _shared(
         name="progB_smoke_ONH_SMA50_5min",
@@ -232,27 +251,63 @@ def main() -> None:
         _header("smoke", 1, "# Run first. Do not start Wave 0 until this cell is ok.\n"),
         smoke,
     )
-    manifest.append({"file": "progB_smoke_ONH_SMA50_5min.yaml", "cells": 1, "min_valid": 1})
+    fifteen_s.append({"file": "progB_smoke_ONH_SMA50_5min.yaml", "cells": 1, "min_valid": 1})
 
     solo = _shared(
         name="progB_w0_solo",
-        description="Program B Wave 0: 50 anchors alone (AO1 point zone, min_valid 0).",
+        description=(
+            "Program B Wave 0 (15s): 41 non-VA anchors alone "
+            "(AO1 point zone, min_valid 0)."
+        ),
         min_valid=0,
     )
-    solo["study"]["factors"]["core_level"] = list(ALL_ANCHORS)
+    solo["study"]["factors"]["core_level"] = list(FIFTEEN_S_ANCHORS)
     solo["study"]["factors"]["partner_levels"] = [[]]
     _dump(
         OUT / "progB_w0_solo.yaml",
         _header(
-            "Wave 0 solo (AO1)",
-            50,
-            "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n",
+            "Wave 0 solo 15s (AO1)",
+            len(FIFTEEN_S_ANCHORS),
+            "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
+            "# 15s-safe: no pd/pw/pm VA tokens. Tick-gated solos are progB_w0_va.yaml.\n",
         ),
         solo,
     )
-    manifest.append({"file": "progB_w0_solo.yaml", "cells": 50, "min_valid": 0})
+    fifteen_s.append(
+        {"file": "progB_w0_solo.yaml", "cells": len(FIFTEEN_S_ANCHORS), "min_valid": 0}
+    )
+
+    solo_va = _shared(
+        name="progB_w0_va",
+        description=(
+            "Program B Wave 0 VA: 9 prior-profile anchors alone "
+            "(AO1 point zone, min_valid 0). Tick-gated."
+        ),
+        min_valid=0,
+    )
+    solo_va["study"]["factors"]["core_level"] = list(VA_ANCHORS)
+    solo_va["study"]["factors"]["partner_levels"] = [[]]
+    _dump(
+        OUT / "progB_w0_va.yaml",
+        _header(
+            "Wave 0 solo VA (AO1, tick-gated)",
+            len(VA_ANCHORS),
+            "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
+            "# Tick-gated: do not launch on 15s-only. TV3 refuses without dataset.tick_paths.\n",
+        ),
+        solo_va,
+    )
+    tick_gated.append({"file": "progB_w0_va.yaml", "cells": len(VA_ANCHORS), "min_valid": 0})
 
     for wave_key, cores in ANCHORS.items():
+        tick_wave = wave_key == "w4_profile"
+        extra = (
+            "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
+            "# Tick-gated: prior-profile VA cores. Do not launch on 15s-only.\n"
+            if tick_wave
+            else "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
+        )
+        target = tick_gated if tick_wave else fifteen_s
         for family, partners in CONFIRMS.items():
             name = f"progB_{wave_key}_{family}"
             cells = len(cores) * len(partners)
@@ -268,27 +323,19 @@ def main() -> None:
             spec["study"]["factors"]["partner_levels"] = [list(row) for row in partners]
             _dump(
                 OUT / f"{name}.yaml",
-                _header(
-                    f"{wave_key} / {family}",
-                    cells,
-                    "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n",
-                ),
+                _header(f"{wave_key} / {family}", cells, extra),
                 spec,
             )
-            manifest.append({"file": f"{name}.yaml", "cells": cells, "min_valid": 1})
+            target.append({"file": f"{name}.yaml", "cells": cells, "min_valid": 1})
 
-    (OUT / "manifest.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "total_studies": len(manifest),
-                "total_cells": sum(int(row["cells"]) for row in manifest),
-                "studies": manifest,
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    _write_manifest(OUT / "manifest.yaml", "15s", fifteen_s)
+    _write_manifest(OUT / "manifest_va.yaml", "tick", tick_gated)
+    print(
+        f"wrote 15s {len(fifteen_s)} studies / "
+        f"{sum(int(r['cells']) for r in fifteen_s)} cells; "
+        f"tick-gated {len(tick_gated)} studies / "
+        f"{sum(int(r['cells']) for r in tick_gated)} cells"
     )
-    print(f"wrote {len(manifest)} studies, {sum(int(r['cells']) for r in manifest)} cells")
 
 
 if __name__ == "__main__":

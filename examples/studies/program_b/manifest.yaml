@@ -1,11 +1,12 @@
-total_studies: 26
-total_cells: 1151
+packet: 15s
+total_studies: 23
+total_cells: 944
 studies:
 - file: progB_smoke_ONH_SMA50_5min.yaml
   cells: 1
   min_valid: 1
 - file: progB_w0_solo.yaml
-  cells: 50
+  cells: 41
   min_valid: 0
 - file: progB_w1_ext_ma.yaml
   cells: 144
@@ -33,15 +34,6 @@ studies:
   min_valid: 1
 - file: progB_w3_range_pivot.yaml
   cells: 80
-  min_valid: 1
-- file: progB_w4_profile_ma.yaml
-  cells: 108
-  min_valid: 1
-- file: progB_w4_profile_rvwap.yaml
-  cells: 18
-  min_valid: 1
-- file: progB_w4_profile_pivot.yaml
-  cells: 72
   min_valid: 1
 - file: progB_w5_svwap_ma.yaml
   cells: 48

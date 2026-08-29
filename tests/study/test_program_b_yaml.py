@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from thesistester.levels.catalog import STATIC_STUDY_LEVEL_NAMES
+from thesistester.levels.catalog import PRIOR_PROFILE_LEVEL_NAMES, STATIC_STUDY_LEVEL_NAMES
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.study.schema import closed_level_token_set
 
@@ -41,6 +41,10 @@ def test_program_b_inventory_matches_default_closed_set():
     confirms = {row[0] for family in gen.CONFIRMS.values() for row in family}
     assert set(gen.ALL_ANCHORS) == anchors
     assert len(gen.ALL_ANCHORS) == 50
+    assert set(gen.VA_ANCHORS) == set(PRIOR_PROFILE_LEVEL_NAMES)
+    assert len(gen.FIFTEEN_S_ANCHORS) == 41
+    assert set(gen.FIFTEEN_S_ANCHORS).isdisjoint(gen.VA_ANCHORS)
+    assert set(gen.FIFTEEN_S_ANCHORS) | set(gen.VA_ANCHORS) == set(gen.ALL_ANCHORS)
     assert len(confirms) == 22
     assert "dVWAP" not in confirms
     leftover = closed - anchors - confirms
@@ -51,10 +55,37 @@ def test_program_b_manifest_validates_without_false_ok():
     validate = _validator()
     ok_lines, failures, n_studies, n_cells = validate.validate_manifest(PROGRAM_B)
     assert failures == []
-    assert n_studies == 26
-    assert n_cells == 1151
-    assert len(ok_lines) == 26
+    assert n_studies == 23
+    assert n_cells == 944
+    assert len(ok_lines) == 23
     assert all(line.startswith("ok ") for line in ok_lines)
+
+
+def test_program_b_va_manifest_validates_separately():
+    validate = _validator()
+    ok_lines, failures, n_studies, n_cells = validate.validate_manifest(
+        PROGRAM_B, manifest_name="manifest_va.yaml"
+    )
+    assert failures == []
+    assert n_studies == 4
+    assert n_cells == 207
+    assert len(ok_lines) == 4
+    fifteen_s = yaml.safe_load((PROGRAM_B / "manifest.yaml").read_text(encoding="utf-8"))
+    tick = yaml.safe_load((PROGRAM_B / "manifest_va.yaml").read_text(encoding="utf-8"))
+    fifteen_files = {row["file"] for row in fifteen_s["studies"]}
+    tick_files = {row["file"] for row in tick["studies"]}
+    assert fifteen_files.isdisjoint(tick_files)
+    assert fifteen_s["packet"] == "15s"
+    assert tick["packet"] == "tick"
+
+
+def test_program_b_w0_solo_excludes_va_tokens():
+    spec = yaml.safe_load((PROGRAM_B / "progB_w0_solo.yaml").read_text(encoding="utf-8"))
+    cores = spec["study"]["factors"]["core_level"]
+    assert cores
+    assert set(cores).isdisjoint(PRIOR_PROFILE_LEVEL_NAMES)
+    va = yaml.safe_load((PROGRAM_B / "progB_w0_va.yaml").read_text(encoding="utf-8"))
+    assert va["study"]["factors"]["core_level"] == list(_generate().VA_ANCHORS)
 
 
 def test_program_b_validator_rejects_timezone_and_omits_ok(tmp_path):
