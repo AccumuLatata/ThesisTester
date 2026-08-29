@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import pathlib
 import sys
@@ -76,6 +77,7 @@ def _make_streamlit_stub(session_state: dict) -> types.ModuleType:
         "dataframe",
         "metric",
         "text_input",
+        "text_area",
         "columns",
         "divider",
         "expander",
@@ -523,6 +525,157 @@ def test_clear_dataset_dependent_state_clears_15s_primary_keys(monkeypatch):
         assert key not in session_state
 
 
+def test_tick_attach_does_not_replace_primary_data():
+    parent, _ = _parent_and_subtimeframe_frames()
+    session_state = {"data": parent, "dataset_id": "keep-id"}
+    data_page = _import_data_page_module(session_state)
+    data_page._install_tick_paths(
+        session_state,
+        ["data/es_ticks.csv"],
+        row_count=4,
+        session_count=1,
+        signature="data/es_ticks.csv",
+    )
+    assert session_state["data"] is parent
+    assert session_state["dataset_id"] == "keep-id"
+    assert session_state[data_page.TICK_PATHS_KEY] == ["data/es_ticks.csv"]
+    assert session_state[data_page.TICK_ROW_COUNT_KEY] == 4
+    assert session_state[data_page.TICK_SESSION_COUNT_KEY] == 1
+
+
+def test_clear_dataset_dependent_state_clears_tick_paths(monkeypatch):
+    parent, _ = _parent_and_subtimeframe_frames()
+    session_state = {
+        "data": parent,
+        "dataset_id": "keep-id",
+        "tick_paths": ["data/es_ticks.csv"],
+        "tick_row_count": 4,
+        "tick_session_count": 1,
+        "tick_attach_warnings": ["stale"],
+        "_tick_upload_signature": "sig",
+        "levels": "x",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._clear_dataset_dependent_state()
+
+    assert session_state["data"] is parent
+    assert session_state["dataset_id"] == "keep-id"
+    for key in (
+        data_page.TICK_PATHS_KEY,
+        data_page.TICK_ROW_COUNT_KEY,
+        data_page.TICK_SESSION_COUNT_KEY,
+        data_page.TICK_UPLOAD_SIGNATURE_KEY,
+        data_page.TICK_WARNINGS_KEY,
+        "levels",
+    ):
+        assert key not in session_state
+
+
+def test_validate_attached_tick_paths_uses_quantower_ticks(tmp_path):
+    fixture = pathlib.Path(__file__).parent / "fixtures" / "ticks" / "rth_open_stub.csv"
+    dest = tmp_path / "es_ticks.csv"
+    dest.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+    data_page = _import_data_page_module({})
+    sessions, rows, warnings = data_page._validate_attached_tick_paths(
+        [str(dest)],
+        instrument="MNQ",
+    )
+    assert sessions == 1
+    assert rows >= 1
+    assert warnings == []
+    payload = dest.read_bytes()
+    persisted = data_page._persist_tick_uploads(
+        [_Uploaded(dest.name, payload)],
+        tmp_path / "uploads",
+    )
+    digest = hashlib.sha256(payload).hexdigest()[:12]
+    assert persisted == [str((tmp_path / "uploads" / f"{digest}_{dest.name}").resolve())]
+
+
+def test_persist_tick_uploads_keeps_same_basename_distinct(tmp_path):
+    data_page = _import_data_page_module({})
+    first = data_page._persist_tick_uploads(
+        [_Uploaded("same.csv", b"jan-ticks")],
+        tmp_path,
+    )
+    second = data_page._persist_tick_uploads(
+        [_Uploaded("same.csv", b"feb-ticks")],
+        tmp_path,
+    )
+    assert len(first) == 1 and len(second) == 1
+    assert first[0] != second[0]
+    assert pathlib.Path(first[0]).read_bytes() == b"jan-ticks"
+    assert pathlib.Path(second[0]).read_bytes() == b"feb-ticks"
+
+
+def test_dedupe_attached_tick_paths_drops_identical_content(tmp_path):
+    data_page = _import_data_page_module({})
+    left = tmp_path / "a.csv"
+    right = tmp_path / "b.csv"
+    left.write_bytes(b"same-bytes")
+    right.write_bytes(b"same-bytes")
+    unique, warnings = data_page._dedupe_attached_tick_paths([str(left), str(right)])
+    assert unique == [str(left.resolve())]
+    assert any("exact-duplicate" in item for item in warnings)
+
+
+def test_resolve_existing_tick_path_checks_store_root(tmp_path, monkeypatch):
+    data_page = _import_data_page_module({})
+    dest = tmp_path / "nested" / "ticks.csv"
+    dest.parent.mkdir()
+    dest.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
+    monkeypatch.setattr(data_page, "get_store_root", lambda: tmp_path)
+    assert data_page._resolve_existing_tick_path("nested/ticks.csv") == dest.resolve()
+    assert data_page._resolve_existing_tick_path("missing/ticks.csv") is None
+
+
+def test_classify_typed_tick_path_rejects_outside_trusted_roots(tmp_path, monkeypatch):
+    data_page = _import_data_page_module({})
+    store = tmp_path / "store"
+    store.mkdir()
+    outside = tmp_path / "outside.csv"
+    outside.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
+    monkeypatch.setattr(data_page, "get_store_root", lambda: store)
+    status, found = data_page._classify_typed_tick_path(str(outside))
+    assert status == "outside"
+    assert found is None
+    assert data_page._resolve_existing_tick_path(str(outside)) is None
+    escaped = store / ".." / "outside.csv"
+    status, found = data_page._classify_typed_tick_path(str(escaped))
+    assert status == "outside"
+    assert found is None
+
+
+def test_install_tick_paths_persists_warnings_across_clear():
+    data_page = _import_data_page_module({})
+    session_state: dict = {}
+    data_page._install_tick_paths(
+        session_state,
+        ["data/es_ticks.csv"],
+        row_count=4,
+        session_count=1,
+        signature="sig",
+        warnings=["Filename window does not cover row timestamps: x.csv"],
+    )
+    assert session_state[data_page.TICK_WARNINGS_KEY] == [
+        "Filename window does not cover row timestamps: x.csv"
+    ]
+    data_page._clear_tick_session_state(session_state)
+    assert data_page.TICK_WARNINGS_KEY not in session_state
+    assert data_page.TICK_PATHS_KEY not in session_state
+
+
+class _Uploaded:
+    def __init__(self, name: str, payload: bytes) -> None:
+        self.name = name
+        self._payload = payload
+
+    def getvalue(self) -> bytes:
+        return self._payload
+
+
 def test_on_ingestion_mode_change_clears_15s_primary_session(monkeypatch):
     session_state = {
         "data_source_selector": "Upload CSV",
@@ -665,6 +818,17 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "_invalidate_primary_csv_uploader()" in page_text
     assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in page_text
     assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
+    page_body = page_text.split("st.title(")[-1]
+    assert "_render_tick_attach(" in page_body
+    assert page_body.index("_render_tick_attach(") > page_body.index(
+        "_hide_legacy_subtimeframe_uploader(ingestion_mode)"
+    )
+    assert "Quantower tick-last (optional, prior VA only)" in page_text
+    assert "{digest}_{name}" in page_text or 'f"{digest}_{name}"' in page_text
+    assert "TICK_WARNINGS_KEY" in page_text
+    assert "Data-page attach does not feed classic Calculate" in page_text
+    assert "_classify_typed_tick_path(" in page_text
+    assert "outside the trusted local roots (cwd and store)" in page_text
 
 
 def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch):
@@ -962,6 +1126,9 @@ def test_consume_data_page_source_invalidation_increments_uploader_nonce():
         data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY: True,
         data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY: 2,
         data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY: 4,
+        data_page.TICK_UPLOADER_NONCE_KEY: 1,
+        data_page.TICK_PATHS_KEY: ["data/es_ticks.csv"],
+        data_page.TICK_WARNINGS_KEY: ["stale warning"],
         data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY: "canonical:stale",
         data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY: "canonical:stale",
         data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY: "canonical:stale",
@@ -971,12 +1138,16 @@ def test_consume_data_page_source_invalidation_increments_uploader_nonce():
     assert data_page.DATA_PAGE_INVALIDATE_SOURCE_KEY not in session_state
     assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
     assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+    assert session_state[data_page.TICK_UPLOADER_NONCE_KEY] == 2
+    assert data_page.TICK_PATHS_KEY not in session_state
+    assert data_page.TICK_WARNINGS_KEY not in session_state
     assert data_page.SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY not in session_state
     assert data_page.SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY not in session_state
     assert data_page.SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY not in session_state
     assert data_page._consume_data_page_source_invalidation(session_state) is False
     assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 3
     assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+    assert session_state[data_page.TICK_UPLOADER_NONCE_KEY] == 2
 
 
 def test_session_has_primary_data_requires_dataframe():
@@ -1041,3 +1212,20 @@ def test_ah4_dataset_less_bundle_blocks_data_page_auto_fill(monkeypatch):
     )
     assert BUNDLE_IMPORT_OMITTED_DATA_KEY not in session_state
     assert data_page._preserve_dataset_less_bundle(session_state) is False
+
+
+def test_tv4_honesty_docs_lock_suggested_pdpoc_and_readme_object():
+    """TV4 Help copy: tick VAP is the live object; suggested pdPOC is column-gated."""
+    root = pathlib.Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    user_guide = (root / "docs" / "USER_GUIDE.md").read_text(encoding="utf-8")
+    assumptions = (root / "docs" / "ASSUMPTIONS_AND_LIMITATIONS.md").read_text(encoding="utf-8")
+    study_runner = (root / "docs" / "STUDY_RUNNER.md").read_text(encoding="utf-8")
+    assert "tick-bucketed ES/NQ volume bins" not in readme
+    assert "tick Last×Volume VAP" in readme
+    assert "absent** otherwise, not 1m typical" in readme
+    assert "Suggested Setup defaults include `pdPOC` only when that column exists" in user_guide
+    assert "Suggested `pdPOC` appears" in assumptions
+    assert "only when the column exists" in assumptions
+    assert "Suggested `pdPOC` appears only when the column" in study_runner
+    assert "under cwd or the local store (same as Studies launch)" in user_guide

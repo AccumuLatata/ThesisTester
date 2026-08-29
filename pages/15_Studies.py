@@ -85,6 +85,7 @@ from thesistester.study.builder import (
     WIDGET_KEY_STAGE_MODE,
     WIDGET_KEY_STOP_LOSS,
     WIDGET_KEY_TAKE_PROFIT,
+    WIDGET_KEY_TICK_PATHS,
     WIDGET_KEY_TOLERANCE_TICKS,
     WIDGET_KEY_TRIGGER,
     WIDGET_KEY_TRIGGER_TIMEFRAME,
@@ -111,6 +112,7 @@ from thesistester.study.builder import (
     explicit_cell_row_label,
     format_csv_values,
     format_stage_value,
+    format_tick_paths_widget,
     hydrate_study_yaml,
     infer_stage_mode_label,
     infer_tf_mode,
@@ -119,6 +121,7 @@ from thesistester.study.builder import (
     otf_for_selected_presets,
     otf_preset_ids,
     parse_csv_tokens,
+    parse_tick_paths_widget,
     preferred_group_by,
     stage_mode_from_label,
 )
@@ -1327,8 +1330,10 @@ _BUILDER_HONESTY = (
     "**Honesty.** Combinatorial `run_count` is a screening size, not independent "
     "statistical tests. Large factorials need `--confirm` (two-step Bind confirm "
     "then Confirm and run on the Preview tab). Descriptive ranking after a run "
-    "is not a validated edge. The child process is "
-    "`python -m thesistester study run …`."
+    "is not a validated edge. Named `pdVA*` / `pw*` / `pm*` tokens require "
+    "`dataset.tick_paths` (Quantower Tick–Tick–Last). No ticks → those columns "
+    "are absent. APOC and rolling POC remain 1m typical. 15s stays the bar "
+    "clock. The child process is `python -m thesistester study run …`."
 )
 
 
@@ -1357,6 +1362,7 @@ def _sync_builder_widgets(draft: StudyDraft) -> None:
     st.session_state[WIDGET_KEY_FORMAT_PROFILE] = normalize_builder_format_profile(
         draft.format_profile
     )
+    st.session_state[WIDGET_KEY_TICK_PATHS] = format_tick_paths_widget(draft.tick_paths)
     st.session_state[WIDGET_KEY_INGESTION_MODE] = _resolved_builder_ingestion_mode(
         _draft_ingestion_mode(draft)
     )
@@ -1520,6 +1526,7 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.format_profile = normalize_builder_format_profile(
         st.session_state.get(WIDGET_KEY_FORMAT_PROFILE)
     )
+    draft.tick_paths = parse_tick_paths_widget(st.session_state.get(WIDGET_KEY_TICK_PATHS))
     _apply_builder_ingestion_mode(draft, st.session_state.get(WIDGET_KEY_INGESTION_MODE))
 
     levels = copy.deepcopy(dict(draft.levels))
@@ -1929,6 +1936,24 @@ def _render_build() -> None:
         format_func=lambda key: FORMAT_PROFILE_LABELS.get(key, str(key)),
         help="Explicit selection only; ThesisTester never auto-detects vendor formats.",
         key=WIDGET_KEY_FORMAT_PROFILE,
+    )
+    st.text_area(
+        "Tick paths (optional)",
+        key=WIDGET_KEY_TICK_PATHS,
+        placeholder="data/es_ticks.csv",
+        help=(
+            "Optional Quantower Tick–Tick–Last CSVs for prior VA. One path per "
+            "line. Omit unless factors name pdVA* / pw* / pm* tokens. Does not "
+            "replace the 15s bar CSV. Launch pins and refuses missing files "
+            "the same way as dataset.path."
+        ),
+    )
+    st.caption(
+        "Optional Quantower Tick–Tick–Last files for prior VA only. "
+        "Emit writes `dataset.tick_paths` only when this box is set. "
+        "New drafts stay 15s-only. No ticks → no `pdVA*` columns; those "
+        "names are tick Last×Volume VAP. APOC / rolling POC remain 1m typical. "
+        "Studies keep walking 1m. Does not replace the 15s bar CSV."
     )
 
     st.markdown("### Levels → tokens")

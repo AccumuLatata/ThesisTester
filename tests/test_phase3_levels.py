@@ -3,12 +3,17 @@ import pandas as pd
 import pytest
 
 from thesistester.data.sessions import tag_session
+from datetime import date
+
+from thesistester.data.quantower_ticks import TickChunk
 from thesistester.levels import (
     PRIOR_PROFILE_LEVEL_NAMES,
     compute_all_levels,
     compute_indicator_levels,
     compute_profile_levels,
 )
+from thesistester.levels.session_date import trading_session_date
+from thesistester.levels.tick_vap import build_prior_profile_table
 
 
 TZ = "America/New_York"
@@ -252,6 +257,56 @@ def test_rolling_poc_correctness_on_simple_dataset():
     assert out["POC_rolling_30min"].iloc[-1] == 100.0
 
 
+def _tick_chunk_from_bars(df: pd.DataFrame, *, instrument: str = "ES") -> list[TickChunk]:
+    """One TickChunk per trading session; Last = bar typical because H=L=C fixtures."""
+    from thesistester.config import INSTRUMENTS
+
+    inst = INSTRUMENTS[instrument]
+    work = df.sort_values("timestamp").reset_index(drop=True).copy()
+    local_ts = work["timestamp"].dt.tz_convert(TZ)
+    work["session_date"] = trading_session_date(local_ts, inst.eth_start)
+    chunks: list[TickChunk] = []
+    for session, group in work.groupby("session_date", sort=True):
+        stamps = pd.to_datetime(group["timestamp"], utc=True)
+        ticks = pd.DataFrame(
+            {
+                "timestamp": stamps,
+                "price": group["close"].to_numpy(dtype="float64"),
+                "volume": group["volume"].to_numpy(dtype="float64"),
+            }
+        )
+        chunks.append(
+            TickChunk(
+                session_date=session if isinstance(session, date) else pd.Timestamp(session).date(),
+                ticks=ticks,
+                source_paths=("phase3-synthetic",),
+                filename_window_mismatch=False,
+                warnings=(),
+                first_row_utc=pd.Timestamp(stamps.min()),
+                last_row_utc=pd.Timestamp(stamps.max()),
+                filename_window_start=None,
+                filename_window_end=None,
+            )
+        )
+    return chunks
+
+
+def _table_from_bars(df: pd.DataFrame, **kwargs):
+    return build_prior_profile_table(
+        _tick_chunk_from_bars(df),
+        instrument="ES",
+        **kwargs,
+    )
+
+
+def test_prior_profile_columns_omitted_without_table():
+    df = _multi_period_profile_df()
+    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    for name in PRIOR_PROFILE_LEVEL_NAMES:
+        assert name not in out.columns
+    assert "POC_rolling_30min" in out.columns
+
+
 def test_prior_day_profile_levels_use_completed_prior_day_only():
     day1 = pd.DataFrame(
         {
@@ -274,7 +329,12 @@ def test_prior_day_profile_levels_use_completed_prior_day_only():
         }
     )
     df = pd.concat([day1, day2], ignore_index=True)
-    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    out = compute_profile_levels(
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        prior_profile_table=_table_from_bars(df),
+    )
     assert set(PRIOR_PROFILE_LEVEL_NAMES) <= set(out.columns)
 
     first_day = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-01").date()]
@@ -302,7 +362,12 @@ def test_prior_day_profile_levels_use_trading_session_boundary():
             "volume": [10.0, 30.0, 5.0, 50.0, 10.0],
         }
     )
-    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    out = compute_profile_levels(
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        prior_profile_table=_table_from_bars(df),
+    )
     session2 = out[out["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
 
     assert np.allclose(session2["pdPOC"].to_numpy(), [101.0, 101.0])
@@ -329,7 +394,12 @@ def test_prior_week_profile_levels_use_trading_session_week_boundary():
             "volume": [10.0, 30.0, 5.0, 50.0, 10.0],
         }
     )
-    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    out = compute_profile_levels(
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        prior_profile_table=_table_from_bars(df),
+    )
     new_week = out[out["timestamp"] >= pd.Timestamp("2026-06-07 18:00:00", tz=TZ)]
 
     assert np.allclose(new_week["pwPOC"].to_numpy(), [101.0, 101.0])
@@ -356,7 +426,12 @@ def test_prior_month_profile_levels_use_trading_session_month_boundary():
             "volume": [10.0, 30.0, 5.0, 50.0, 10.0],
         }
     )
-    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    out = compute_profile_levels(
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        prior_profile_table=_table_from_bars(df),
+    )
     new_month = out[out["timestamp"] >= pd.Timestamp("2026-06-30 18:00:00", tz=TZ)]
 
     assert np.allclose(new_month["pmPOC"].to_numpy(), [101.0, 101.0])
@@ -379,7 +454,11 @@ def test_value_area_returns_sensible_bounds_around_poc():
     df = pd.concat([day1, day2], ignore_index=True)
 
     out = compute_profile_levels(
-        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        value_area_pct=0.70,
+        prior_profile_table=_table_from_bars(df),
     )
     second_day = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
     assert np.allclose(second_day["pdPOC"].to_numpy(), [100.0, 100.0])
@@ -390,8 +469,13 @@ def test_value_area_returns_sensible_bounds_around_poc():
 def test_prior_profile_aggregation_defaults_preserve_existing_behavior():
     df = _multi_period_profile_df()
 
+    table = _table_from_bars(df)
     baseline = compute_profile_levels(
-        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        value_area_pct=0.70,
+        prior_profile_table=table,
     )
     explicit_defaults = compute_profile_levels(
         df,
@@ -401,6 +485,7 @@ def test_prior_profile_aggregation_defaults_preserve_existing_behavior():
         prior_day_aggregation_ticks=1,
         prior_week_aggregation_ticks=1,
         prior_month_aggregation_ticks=1,
+        prior_profile_table=table,
     )
 
     profile_columns = [
@@ -422,7 +507,11 @@ def test_prior_day_aggregation_changes_only_prior_day_profile_levels():
     df = _multi_period_profile_df()
 
     baseline = compute_profile_levels(
-        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        value_area_pct=0.70,
+        prior_profile_table=_table_from_bars(df, prior_day_aggregation_ticks=1),
     )
     changed = compute_profile_levels(
         df,
@@ -430,6 +519,7 @@ def test_prior_day_aggregation_changes_only_prior_day_profile_levels():
         rolling_windows=["30min"],
         value_area_pct=0.70,
         prior_day_aggregation_ticks=4,
+        prior_profile_table=_table_from_bars(df, prior_day_aggregation_ticks=4),
     )
 
     july_7_mask = changed["timestamp"].dt.date == pd.Timestamp("2026-07-07").date()
@@ -470,13 +560,18 @@ def test_prior_profile_aggregation_settings_are_independent(
     df = _multi_period_profile_df()
 
     baseline = compute_profile_levels(
-        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        value_area_pct=0.70,
+        prior_profile_table=_table_from_bars(df),
     )
     changed = compute_profile_levels(
         df,
         instrument="ES",
         rolling_windows=["30min"],
         value_area_pct=0.70,
+        prior_profile_table=_table_from_bars(df, **kwargs),
         **kwargs,
     )
 
@@ -549,17 +644,37 @@ def test_compute_all_levels_includes_session_indicator_and_profile_columns():
         "EMA_2",
         "VWAP_rolling_15min",
         "POC_rolling_30min",
-        "pdVAH",
-        "pdPOC",
     ]:
         assert col in out.columns
+    assert "pdVAH" not in out.columns
+    assert "pdPOC" not in out.columns
+
+    with_table = compute_all_levels(
+        df,
+        instrument="ES",
+        opening_range_minutes=5,
+        sma_lengths=[2],
+        ema_lengths=[2],
+        vwap_windows=["15min"],
+        poc_windows=["30min"],
+        value_area_pct=0.70,
+        prior_profile_table=_table_from_bars(df),
+    )
+    assert "pdVAH" in with_table.columns
+    assert "pdPOC" in with_table.columns
 
 
 def test_compute_all_levels_passes_prior_profile_aggregation_settings_through():
     df = tag_session(_multi_period_profile_df(), "ES")
 
     baseline = compute_all_levels(
-        df, instrument="ES", poc_windows=["30min"], sma_lengths=[], ema_lengths=[], vwap_windows=[]
+        df,
+        instrument="ES",
+        poc_windows=["30min"],
+        sma_lengths=[],
+        ema_lengths=[],
+        vwap_windows=[],
+        prior_profile_table=_table_from_bars(df),
     )
     changed = compute_all_levels(
         df,
@@ -571,6 +686,12 @@ def test_compute_all_levels_passes_prior_profile_aggregation_settings_through():
         prior_day_aggregation_ticks=4,
         prior_week_aggregation_ticks=4,
         prior_month_aggregation_ticks=4,
+        prior_profile_table=_table_from_bars(
+            df,
+            prior_day_aggregation_ticks=4,
+            prior_week_aggregation_ticks=4,
+            prior_month_aggregation_ticks=4,
+        ),
     )
 
     assert not np.allclose(

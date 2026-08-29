@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,9 @@ import pandas as pd
 from ..config import INSTRUMENTS
 from .common import normalized_window_label, require_tz_aware_timestamp
 from .session_date import trading_session_date
+
+if TYPE_CHECKING:
+    from .tick_vap import PriorProfileTable
 
 DEFAULT_ROLLING_POC_WINDOWS: tuple[str, ...] = ("30min", "1h", "4h")
 
@@ -104,41 +108,6 @@ def _rolling_poc(
     return out_series
 
 
-def _map_prior_profile_levels(
-    out: pd.DataFrame,
-    period_key: pd.Series,
-    prices: pd.Series,
-    volumes: pd.Series,
-    tick_size: float,
-    value_area_pct: float,
-    prefix: str,
-) -> pd.DataFrame:
-    periods = pd.Index(period_key.unique()).sort_values()
-    prior_levels = pd.DataFrame(
-        index=periods, columns=[f"{prefix}VAH", f"{prefix}VAL", f"{prefix}POC"], dtype="float64"
-    )
-
-    for period in periods:
-        mask = period_key == period
-        vah, val, poc = _compute_profile(
-            prices[mask], volumes[mask], tick_size=tick_size, value_area_pct=value_area_pct
-        )
-        prior_levels.loc[period, f"{prefix}VAH"] = vah
-        prior_levels.loc[period, f"{prefix}VAL"] = val
-        prior_levels.loc[period, f"{prefix}POC"] = poc
-
-    shifted = prior_levels.shift(1)
-    return pd.DataFrame(
-        {
-            f"{prefix}VAH": period_key.map(shifted[f"{prefix}VAH"]),
-            f"{prefix}VAL": period_key.map(shifted[f"{prefix}VAL"]),
-            f"{prefix}POC": period_key.map(shifted[f"{prefix}POC"]),
-        },
-        index=out.index,
-        dtype="float64",
-    )
-
-
 def compute_profile_levels(
     df: pd.DataFrame,
     instrument: str = "ES",
@@ -147,21 +116,19 @@ def compute_profile_levels(
     prior_day_aggregation_ticks: int = 1,
     prior_week_aggregation_ticks: int = 1,
     prior_month_aggregation_ticks: int = 1,
+    prior_profile_table: PriorProfileTable | None = None,
 ) -> pd.DataFrame:
-    """Compute rolling POC and prior day/week/month profile levels.
+    """Compute rolling POC and, when a tick table is supplied, prior-profile VA.
 
-    Notes
-    -----
-    MVP approximation: each bar allocates its full bar volume to a single price bin
-    using bar typical price ``(high + low + close) / 3``. This avoids look-ahead and
-    keeps behavior deterministic with CSV OHLCV-only input. When true volume-at-price
-    data is added later, this function can replace bar-level allocation with intrabar
-    bin allocation while keeping the same output column contract.
+    Rolling POC still allocates each 1m bar's volume to typical
+    ``(high + low + close) / 3``. The nine ``pd*`` / ``pw*`` / ``pm*`` VA
+    columns are **tick Last×Volume** when ``prior_profile_table`` is set and
+    **absent** when it is ``None``. There is no 1m-typical fallback under those
+    names.
 
-    Prior-profile aggregation values are tick multiples. The effective prior-profile
-    bin size is ``instrument_tick_size * aggregation_ticks`` for the ``pd*``, ``pw*``,
-    and ``pm*`` value-area columns, while rolling POC windows remain on the raw
-    instrument tick size.
+    ``prior_*_aggregation_ticks`` remain on the signature for API compatibility.
+    Day/week/month bin width is applied when the table is built, not when it is
+    joined.
     """
     require_tz_aware_timestamp(df)
     if instrument not in INSTRUMENTS:
@@ -206,44 +173,17 @@ def compute_profile_levels(
             value_area_pct=value_area_pct,
         )
 
-    local_ts = out["timestamp"].dt.tz_convert(exchange_tz)
-    day_key = trading_session_date(local_ts, eth_start)
-    day_key_ts = pd.to_datetime(day_key)
-    week_key = day_key_ts.dt.to_period("W-SUN")
-    month_key = day_key_ts.dt.to_period("M")
+    if prior_profile_table is not None:
+        # Lazy import: tick_vap.py already imports this module's expander.
+        from .tick_vap import map_shifted_prior_profile
 
-    levels = levels.join(
-        _map_prior_profile_levels(
-            out,
-            period_key=day_key,
-            prices=prices,
-            volumes=volumes,
-            tick_size=inst.tick_size * prior_day_aggregation_ticks,
-            value_area_pct=value_area_pct,
-            prefix="pd",
-        )
-    )
-    levels = levels.join(
-        _map_prior_profile_levels(
-            out,
-            period_key=week_key,
-            prices=prices,
-            volumes=volumes,
-            tick_size=inst.tick_size * prior_week_aggregation_ticks,
-            value_area_pct=value_area_pct,
-            prefix="pw",
-        )
-    )
-    levels = levels.join(
-        _map_prior_profile_levels(
-            out,
-            period_key=month_key,
-            prices=prices,
-            volumes=volumes,
-            tick_size=inst.tick_size * prior_month_aggregation_ticks,
-            value_area_pct=value_area_pct,
-            prefix="pm",
-        )
-    )
+        local_ts = out["timestamp"].dt.tz_convert(exchange_tz)
+        day_key = trading_session_date(local_ts, eth_start)
+        day_key_ts = pd.to_datetime(day_key)
+        week_key = day_key_ts.dt.to_period("W-SUN")
+        month_key = day_key_ts.dt.to_period("M")
+        levels = levels.join(map_shifted_prior_profile(day_key, prior_profile_table, family="pd"))
+        levels = levels.join(map_shifted_prior_profile(week_key, prior_profile_table, family="pw"))
+        levels = levels.join(map_shifted_prior_profile(month_key, prior_profile_table, family="pm"))
 
     return out.join(levels)

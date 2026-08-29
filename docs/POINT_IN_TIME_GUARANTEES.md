@@ -60,9 +60,9 @@ future-shock tests and/or code inspection.
 
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
-| `pdVAH / pdVAL / pdPOC` | `_map_prior_profile_levels(day_key)` | **Yes** | First bar of the new trading day | Profile for the current incomplete day is never used as "prior"; `shift(1)` ensures bars on day D receive day D-1's complete profile | `test_r3_point_in_time.py::test_prior_day_profile_future_shock` |
-| `pwVAH / pwVAL / pwPOC` | `_map_prior_profile_levels(week_key)` | **Yes** | First bar of the new week | Same shift guarantee; incomplete current week is never the prior | `test_r3_point_in_time.py::test_prior_week_profile_future_shock` |
-| `pmVAH / pmVAL / pmPOC` | `_map_prior_profile_levels(month_key)` | **Yes** | First bar of the new month | Same | — |
+| `pdVAH / pdVAL / pdPOC` | `map_shifted_prior_profile` on tick `PriorProfileTable` (day keys) | **Yes** | First bar of the new trading session when a tick table is present; **columns absent** without ticks | Tick Last×Volume VAP, 70% expander; `shift(1)` is on 1m unique session keys (not table-present rows). Session T+1 looks up session T in the table (`NaN` if that session has no ticks). Current incomplete session is never the prior. 1m truncation does not recompute VA | `test_r3_point_in_time.py::test_prior_day_profile_future_shock`, `tests/test_tick_vap_cutover.py` |
+| `pwVAH / pwVAL / pwPOC` | `map_shifted_prior_profile` (week keys `W-SUN`) | **Yes** | First bar of the new trading week when a tick table is present; **columns absent** without ticks | Same shift guarantee; week histogram is merged day histograms, not a second tick pass | `test_r3_point_in_time.py::test_prior_week_profile_future_shock` |
+| `pmVAH / pmVAL / pmPOC` | `map_shifted_prior_profile` (month keys `M`) | **Yes** | First bar of the new trading month when a tick table is present; **columns absent** without ticks | Same | `tests/test_tick_vap.py` month family |
 | `POC_rolling_*` | `_rolling_poc` | **Yes** | Each bar uses `timestamps <= now` strictly | O(N²) MVP implementation; bars near the window boundary use only the bars in `(now - window, now]` | `test_r3_point_in_time.py::test_rolling_poc_future_shock` |
 
 ### Rolling indicators — `levels/indicators.py`

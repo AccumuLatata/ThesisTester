@@ -76,7 +76,7 @@ def _one_cell_spec(
                 "walk_forward": {"enabled": False},
             },
             "factors": {
-                "core_level": ["pdPOC"],
+                "core_level": ["ONH"],
                 "partner_levels": [["SMA_50_1min"]],
                 "confluence_mode": ["global_cluster"],
                 "trigger": ["touch"],
@@ -166,6 +166,8 @@ def test_ah2_p3_launch_prefers_spec_parent_over_cwd(tmp_path: Path, monkeypatch)
     cwd_home = tmp_path / "cwd_home"
     spec_csv = _write_csv(spec_home / "data" / "es_15s.csv", "SPEC")
     cwd_csv = _write_csv(cwd_home / "data" / "es_15s.csv", "CWD")
+    _write_csv(spec_home / "data" / "es_ticks.csv", "SPEC_TICKS")
+    _write_csv(cwd_home / "data" / "es_ticks.csv", "CWD_TICKS")
     yaml_text = example_study_spec_path().read_text(encoding="utf-8")
     monkeypatch.chdir(cwd_home)
     plan = build_launch_plan(
@@ -238,6 +240,8 @@ def test_ah2_launch_without_parent_keeps_cwd_root_ahead_of_store(tmp_path: Path,
     store_home = tmp_path / "store_home"
     cwd_csv = _write_csv(cwd_home / "data" / "es_15s.csv", "CWD")
     store_csv = _write_csv(store_home / "data" / "es_15s.csv", "STORE")
+    _write_csv(cwd_home / "data" / "es_ticks.csv", "CWD_TICKS")
+    _write_csv(store_home / "data" / "es_ticks.csv", "STORE_TICKS")
     yaml_text = example_study_spec_path().read_text(encoding="utf-8")
     monkeypatch.chdir(cwd_home)
     plan = build_launch_plan(

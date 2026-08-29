@@ -61,7 +61,7 @@ def _plan_example_study(**overrides):
             "walk_forward": {"enabled": False},
         },
         "factors": {
-            "core_level": ["pdPOC"],
+            "core_level": ["ONH"],
             "partner_levels": [
                 ["SMA_50_1min"],
                 ["SMA_50_5min"],
@@ -161,14 +161,14 @@ def test_global_and_anchor_emission_rules():
     assert globals_ and anchors
     for run in globals_:
         setup = run["setup"]
-        assert setup["selected_levels"][0] == "pdPOC"
+        assert setup["selected_levels"][0] == "ONH"
         assert len(setup["selected_levels"]) >= 2
         assert setup["min_confluences"] == setup["max_confluences"] == len(setup["selected_levels"])
         assert len(setup["selected_levels"]) <= 5
     for run in anchors:
         setup = run["setup"]
         assert setup["selected_levels"] == []
-        assert setup["anchor_level"] == "pdPOC"
+        assert setup["anchor_level"] == "ONH"
         assert setup["confluence_rules"]
         assert all(rule.get("required") is True for rule in setup["confluence_rules"])
 
@@ -202,7 +202,7 @@ def test_stage_filter_reduces_800_to_40():
 def test_explicit_cells_no_cartesian_leakage():
     raw = _base_study(
         factors={
-            "core_level": ["pdPOC"],
+            "core_level": ["ONH"],
             "partner_levels": [["SMA_50_1min"], ["EMA_21_5min"]],
             "confluence_mode": ["global_cluster", "anchor_rules"],
             "trigger": ["touch", "3c"],
@@ -213,7 +213,7 @@ def test_explicit_cells_no_cartesian_leakage():
             "mode": "explicit_cells",
             "cells": [
                 {
-                    "core_level": "pdPOC",
+                    "core_level": "ONH",
                     "partner_levels": ["SMA_50_1min"],
                     "confluence_mode": "global_cluster",
                     "trigger": "touch",
@@ -221,7 +221,7 @@ def test_explicit_cells_no_cartesian_leakage():
                     "otf": {"enabled": False},
                 },
                 {
-                    "core_level": "pdPOC",
+                    "core_level": "ONH",
                     "partner_levels": ["EMA_21_5min"],
                     "confluence_mode": "anchor_rules",
                     "trigger": "3c",
@@ -254,7 +254,7 @@ def test_enabled_false_emitted_not_bare_empty():
 def test_otf_canonicalized_in_factor_map():
     raw = _base_study(
         factors={
-            "core_level": ["pdPOC"],
+            "core_level": ["ONH"],
             "partner_levels": [["SMA_50_1min"]],
             "confluence_mode": ["global_cluster"],
             "trigger": ["touch"],
@@ -303,7 +303,7 @@ def test_setup_injects_name_instrument_description():
 def test_otf_alias_duplicates_fail_closed():
     raw = _base_study(
         factors={
-            "core_level": ["pdPOC"],
+            "core_level": ["ONH"],
             "partner_levels": [["SMA_50_1min"]],
             "confluence_mode": ["global_cluster"],
             "trigger": ["touch"],
@@ -337,7 +337,7 @@ def test_otf_alias_duplicates_fail_closed():
 def test_duplicate_or_core_overlapping_partners_fail_closed():
     raw = _base_study(
         factors={
-            "core_level": ["pdPOC"],
+            "core_level": ["ONH"],
             "partner_levels": [["ONH", "ONH"]],
             "confluence_mode": ["global_cluster"],
             "trigger": ["touch"],
@@ -356,8 +356,8 @@ def test_duplicate_or_core_overlapping_partners_fail_closed():
 
     raw = _base_study(
         factors={
-            "core_level": ["pdPOC"],
-            "partner_levels": [["pdPOC"]],
+            "core_level": ["ONH"],
+            "partner_levels": [["ONH"]],
             "confluence_mode": ["global_cluster"],
             "trigger": ["touch"],
             "trigger_timeframe": ["base"],

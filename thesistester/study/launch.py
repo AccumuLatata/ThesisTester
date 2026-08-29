@@ -626,6 +626,35 @@ def _pin_dataset_paths(
                 "Preview may succeed without the CSV; launch requires it."
             )
         dataset[key] = str(pinned)
+    raw_ticks = dataset.get("tick_paths")
+    if raw_ticks is not None:
+        if not isinstance(raw_ticks, list):
+            raise StudyLaunchError("study.dataset.tick_paths must be a list of path strings")
+        pinned_ticks: list[str] = []
+        for index, item in enumerate(raw_ticks):
+            if not isinstance(item, (str, Path)):
+                raise StudyLaunchError(f"study.dataset.tick_paths[{index}] must be a path string")
+            path = Path(item)
+            if path.is_absolute():
+                pinned = path.resolve()
+            else:
+                found: Path | None = None
+                for root in search_roots:
+                    candidate = (root / path).resolve()
+                    if candidate.is_file():
+                        found = candidate
+                        break
+                pinned = found if found is not None else (cwd / path).resolve()
+            pinned = _ensure_within_roots(
+                pinned, resolved_roots, label=f"dataset.tick_paths[{index}]"
+            )
+            if not pinned.is_file():
+                raise StudyLaunchError(
+                    f"Pinned dataset.tick_paths[{index}] is not an existing file: {pinned}. "
+                    "Preview may succeed without the CSV; launch requires it."
+                )
+            pinned_ticks.append(str(pinned))
+        dataset["tick_paths"] = pinned_ticks
     study["dataset"] = dataset
     spec["study"] = study
 

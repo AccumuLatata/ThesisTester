@@ -25,7 +25,10 @@ default to **MNQ + `source_timezone: UTC`** (AMP/Rithmic HE naive stamps) and
 example is legacy 1m). Execute is still CLI / `run_experiment`. Studies does
 not walk the Data page. The 15s-primary derive loader resolves OHLC-identical
 source duplicate opens (lowest volume) before 1m derivation; OHLC conflicts
-fail the cell.
+fail the cell. Optional `dataset.tick_paths` (Quantower Tick–Tick–Last list)
+is required only when factors name `pdVA*` / `pw*` / `pm*` tokens; generate
+refuses without it (`VA requires ticks`). New drafts omit the key. Launch
+pins the list like `dataset.path` and refuses missing files.
 **SV** (Study Viewer) SV1–SV5 ✅
 `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0–**SV5** shipped (catalog +
 `study list` + click-to-load + quality panes + overview charts + cell peek +
@@ -131,6 +134,8 @@ A core/partner token is valid if it is in:
    (`dVWAP_RTH`, `dVWAP`, `wVWAP`, `mVWAP`), etc.
    (`STATIC_STUDY_LEVEL_NAMES` in `thesistester/levels/catalog.py`;
    `STUDY_STATIC_LEVEL_NAMES` is that set). Rolling VWAP/POC are not static.
+   Naming any of those nine VA tokens without `dataset.tick_paths` fails
+   generate (`VA requires ticks`). The tokens stay in the catalog.
 2. **Implied by `study.levels`** — `SMA_{len}_{tf}` / `EMA_{len}_{tf}` from
    lengths×timeframes (`null` timeframes → bare `SMA_{len}` / `EMA_{len}` like
    the levels engine; explicit `[]` → no MA tokens), plus `VWAP_rolling_*` /
@@ -141,7 +146,9 @@ A core/partner token is valid if it is in:
    uses `Pivot_1min_*` fails closed at validate.
 
 Suggested Setup defaults (`SUGGESTED_DEFAULT_LEVELS`) are a subset of the
-default closed token set. `VWAP_rolling_1h` is opt-in via
+default closed token set. Suggested `pdPOC` appears only when the column
+exists (no ticks → the intersection drops it). The list does not include
+`pdVAH` / `pdVAL`. `VWAP_rolling_1h` is opt-in via
 `study.levels.vwap_windows`; it is not a product-default token. Assistant
 confluence options use the same closed set ∪ live columns ∪ already-selected
 (DEFAULT merge when keys are omitted). Widget catalogs (`15min`/`1h` MA TFs)
@@ -397,7 +404,7 @@ Draft rules:
 
 - `stage.mode: explicit_cells` with one cell per survivor (every factor axis present)
 - Factor domains narrowed to survivor values (cartesian skipped by explicit_cells)
-- Relative `dataset.path` / `subtimeframe_path` are absolutized when possible so drafts under `drafts/` do not reinterpret bars paths against the draft parent
+- Relative `dataset.path` / `subtimeframe_path` / `tick_paths` are absolutized when possible so drafts under `drafts/` do not reinterpret bars or tick paths against the draft parent
 - Header comments mark **DRAFT**; description notes source study_dir
 - Validates as StudySpec before write; **never** calls execute / `run_batch`
 - Phase-2 **800**-cell cartesian is reached by removing/widening `stage` on the **unpromoted** example (full factor domains). Dropping `stage` from a promote draft expands only the narrowed survivor domains — not 800.
@@ -463,9 +470,9 @@ Inputs: `study_path` **or** validated `study_spec` dict; plus required `output_d
 
 Assistant dispatch sandboxes `study_path` / `study_dir` / `output_dir` /
 `output` and Spec-embedded `dataset.path` / `dataset.subtimeframe_path` /
-`study.output_dir` under configured `data_roots` (same posture as other write
-tools). Dict `study_spec` relative paths resolve against `base_directory` or cwd
-(not the ephemeral temp materialization directory).
+`dataset.tick_paths` / `study.output_dir` under configured `data_roots` (same
+posture as other write tools). Dict `study_spec` relative paths resolve against
+`base_directory` or cwd (not the ephemeral temp materialization directory).
 
 Full multi-step external Grok routine pack is **RS-D5** (extends this recipe —
 see below). Do not duplicate a divergent long recipe here.
@@ -584,7 +591,7 @@ python -m thesistester study run study.launch.yaml --output-dir <dir> [--confirm
 |---|---|
 | Single runner | Child is CLI `study run` → `run_study`. The page does **not** call `run_study()` in-process or dispatch `STUDY.run` |
 | Confirm | `run_count >= confirm_above_runs` → **Bind confirm** then **Confirm and run** with `--confirm`. Bound triple `{pinned_study_identity_hash, run_count, resolved_output_dir}` is hashed **after pin** — never `StudyPreview.study_identity_hash`. Under threshold: **Run via CLI** without `--confirm` |
-| YAML | Writes `{output_dir}/study.launch.yaml`. Pin **both** `dataset.path` and `dataset.subtimeframe_path` (viewer roots then cwd). Never clobber inspect `study.spec.yaml`. Refuse if a pinned CSV is missing. Do not rewrite `study.output_dir` in the launch YAML. Re-previewing **changed** YAML clears armed confirm and reseeds CLI `output_dir` from the new Spec |
+| YAML | Writes `{output_dir}/study.launch.yaml`. Pin `dataset.path`, `dataset.subtimeframe_path`, and list `dataset.tick_paths` (viewer roots then cwd). Never clobber inspect `study.spec.yaml`. Refuse if a pinned CSV is missing. Do not rewrite `study.output_dir` in the launch YAML. Re-previewing **changed** YAML clears armed confirm and reseeds CLI `output_dir` from the new Spec |
 | Identity | Prefer a **new** `output_dir`. Launching into an existing CLI dir with a different identity refuses without `--force` |
 | Detach | `Popen` (`shell=False`; POSIX new session + `close_fds`; Windows `CREATE_NEW_PROCESS_GROUP` + `CREATE_NO_WINDOW`, **not** `DETACHED_PROCESS` — that flag drops redirected stdout so `study.launch.log` stays empty). Child env `PYTHONUNBUFFERED=1`. Exclusive `O_EXCL` pid claim before spawn (in-flight placeholder is the Streamlit pid, not `0`). Windows PID probe via `OpenProcess`, not `os.kill`. Progress = Inspect **Refresh** (honors the current Inspect path field) + `study.launch.log`. Streamlit `Ignoring changed path` under `results/` is the watcher, not the study log |
 | Not a queue | No scheduler / retry / kill UI. Streamlit reruns do not respawn. Refuse if launch pid is still alive or `O_EXCL` is lost |
@@ -649,7 +656,7 @@ pattern as `launch.py`). **No Streamlit. No execute / launch / preview import.**
 
 | API | Role |
 |---|---|
-| `default_study_draft` | Valid 2-cell default (1×1×2×1×1). Ingest: MNQ, UTC, `data/mnq_15s.csv`, Quantower HE, `15s_primary_derive_1m`, `subtimeframe_conservative`. Costs 0.5 / 1.0 tick, SL 40 / TP 80, tolerance 15. `workers: 1`. `StudyDraft()` field defaults stay ES / NY / `es_1m.csv` / `canonical` / `primary` / `sl_first` |
+| `default_study_draft` | Valid 2-cell default (1×1×2×1×1). Ingest: MNQ, UTC, `data/mnq_15s.csv`, Quantower HE, `15s_primary_derive_1m`, `subtimeframe_conservative`. Costs 0.5 / 1.0 tick, SL 40 / TP 80, tolerance 15. `workers: 1`. Omits `tick_paths` (farm stays 15s-only). `StudyDraft()` field defaults stay ES / NY / `es_1m.csv` / `canonical` / `primary` / `sl_first` |
 | `emit_study_spec` / `emit_study_yaml` | Canonical YAML; `mode_rules` for listed modes only; batteries always have `enabled` |
 | `hydrate_study_draft` / `hydrate_study_yaml` | Lossless vs `load_study_spec` identity hash on the golden + examples |
 | `builder_token_catalog` | `sorted(closed_level_token_set(levels))` |

@@ -32,6 +32,12 @@ except ImportError:  # pragma: no cover - POSIX
 import pandas as pd
 
 from thesistester.api import run_experiment
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.tick_vap import (
+    build_prior_profile_table_from_paths,
+    compute_tick_source_id,
+    resolve_tick_format_profile,
+)
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 from thesistester.study.expand import ExpansionResult, expand_study, write_expansion_artifacts
 from thesistester.study.ledger import (
@@ -79,6 +85,7 @@ R18_INDEX_METRIC_KEYS: tuple[str, ...] = (
 )
 
 STUDY_INDEX_KEYS: tuple[str, ...] = R18_INDEX_METRIC_KEYS + ("bundle_path", "status")
+STUDY_PRIOR_PROFILE_PARQUET = "study.prior_profile.parquet"
 
 
 def _coerce_index_float(value: Any) -> float | None:
@@ -290,6 +297,59 @@ def _backfill_pf_wr_from_bundle(
     if need_wr:
         out["win_rate"] = _coerce_index_float(summary.get("win_rate"))
     return out
+
+
+def _prepare_study_prior_profile(
+    spec: Mapping[str, Any],
+    expansion: ExpansionResult,
+    *,
+    output_dir: Path,
+    base_directory: Path,
+) -> None:
+    """Build PriorProfileTable once; inject parquet path onto every cell dataset."""
+    study = spec.get("study")
+    if not isinstance(study, Mapping):
+        return
+    dataset = study.get("dataset")
+    if not isinstance(dataset, Mapping):
+        return
+    raw_paths = dataset.get("tick_paths")
+    if not isinstance(raw_paths, list) or not raw_paths:
+        return
+    resolved: list[Path] = []
+    for index, item in enumerate(raw_paths):
+        path = Path(item)
+        if not path.is_absolute():
+            path = (Path(base_directory) / path).resolve()
+        else:
+            path = path.resolve()
+        if not path.is_file():
+            raise StudySpecError(
+                f"study.dataset.tick_paths[{index}] is not an existing file: {path}"
+            )
+        resolved.append(path)
+    instrument = str(dataset.get("instrument") or "ES")
+    levels = {**DEFAULT_LEVELS_SETTINGS, **dict(study.get("levels") or {})}
+    format_profile = resolve_tick_format_profile(dataset.get("tick_format_profile"))
+    table = build_prior_profile_table_from_paths(
+        resolved,
+        instrument=instrument,
+        value_area_pct=float(levels["value_area_pct"]),
+        prior_day_aggregation_ticks=int(levels["prior_day_profile_aggregation_ticks"]),
+        prior_week_aggregation_ticks=int(levels["prior_week_profile_aggregation_ticks"]),
+        prior_month_aggregation_ticks=int(levels["prior_month_profile_aggregation_ticks"]),
+        format_profile=format_profile,
+    )
+    parquet = output_dir / STUDY_PRIOR_PROFILE_PARQUET
+    table.to_parquet(parquet)
+    source_id = compute_tick_source_id(resolved, format_profile=format_profile)
+    for run in expansion.experiment.get("runs") or []:
+        if not isinstance(run, dict):
+            continue
+        run_ds = dict(run.get("dataset") or {})
+        run_ds["prior_profile_table_path"] = str(parquet)
+        run_ds["tick_source_id"] = source_id
+        run["dataset"] = run_ds
 
 
 def execute_study_cell(
@@ -690,7 +750,15 @@ def run_study(
                     "StudySpec expansion; pass --force to re-run, or use a new output_dir"
                 )
 
-        # Gates passed — now persist expansion artifacts.
+        # Gates passed — build the prior-profile table once, then persist
+        # expansion artifacts so workers receive the parquet path.
+        out.mkdir(parents=True, exist_ok=True)
+        _prepare_study_prior_profile(
+            spec,
+            expansion,
+            output_dir=out,
+            base_directory=Path(base_directory),
+        )
         write_expansion_artifacts(
             out,
             normalized_spec=spec,
