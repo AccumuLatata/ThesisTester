@@ -84,8 +84,67 @@ def test_program_b_w0_solo_excludes_va_tokens():
     cores = spec["study"]["factors"]["core_level"]
     assert cores
     assert set(cores).isdisjoint(PRIOR_PROFILE_LEVEL_NAMES)
+    assert "tick_paths" not in spec["study"]["dataset"]
     va = yaml.safe_load((PROGRAM_B / "progB_w0_va.yaml").read_text(encoding="utf-8"))
-    assert va["study"]["factors"]["core_level"] == list(_generate().VA_ANCHORS)
+    gen = _generate()
+    assert va["study"]["factors"]["core_level"] == list(gen.VA_ANCHORS)
+    assert va["study"]["dataset"]["tick_paths"] == gen.VA_TICK_PATHS
+
+
+def test_program_b_fifteen_s_yamls_omit_tick_paths():
+    fifteen_s = yaml.safe_load((PROGRAM_B / "manifest.yaml").read_text(encoding="utf-8"))
+    for row in fifteen_s["studies"]:
+        spec = yaml.safe_load((PROGRAM_B / row["file"]).read_text(encoding="utf-8"))
+        assert "tick_paths" not in spec["study"]["dataset"], row["file"]
+
+
+def test_program_b_va_yamls_have_placeholder_tick_paths():
+    gen = _generate()
+    tick = yaml.safe_load((PROGRAM_B / "manifest_va.yaml").read_text(encoding="utf-8"))
+    for row in tick["studies"]:
+        spec = yaml.safe_load((PROGRAM_B / row["file"]).read_text(encoding="utf-8"))
+        assert spec["study"]["dataset"]["tick_paths"] == gen.VA_TICK_PATHS, row["file"]
+        cores = spec["study"]["factors"]["core_level"]
+        assert cores
+        assert set(cores) <= set(PRIOR_PROFILE_LEVEL_NAMES)
+
+
+def test_program_b_validator_rejects_tick_paths_on_15s_yaml(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    spec["study"]["dataset"]["tick_paths"] = list(_generate().VA_TICK_PATHS)
+    drifted = tmp_path / "progB_smoke_ONH_SMA50_5min.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 1, "min_valid": 1}, packet="15s"
+    )
+    assert any("15s packet must omit tick_paths" in item for item in failures)
+
+
+def test_program_b_validator_rejects_va_yaml_without_tick_paths(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_w0_va.yaml").read_text())
+    spec["study"]["dataset"].pop("tick_paths", None)
+    drifted = tmp_path / "progB_w0_va.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 9, "min_valid": 0}, packet="tick"
+    )
+    assert any("VA requires ticks" in item or "tick_paths" in item for item in failures)
+
+
+def test_program_b_validator_rejects_va_core_on_15s_packet(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    spec["study"]["factors"]["core_level"] = ["pdPOC"]
+    spec["study"]["dataset"]["tick_paths"] = list(_generate().VA_TICK_PATHS)
+    drifted = tmp_path / "progB_smoke_ONH_SMA50_5min.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 1, "min_valid": 1}, packet="15s"
+    )
+    assert any("15s packet must omit tick_paths" in item for item in failures)
+    assert any("cannot name VA cores" in item for item in failures)
 
 
 def test_program_b_validator_rejects_timezone_and_omits_ok(tmp_path):

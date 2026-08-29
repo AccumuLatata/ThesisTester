@@ -63,6 +63,49 @@ def assert_inventory_matches_catalog(generate: Any | None = None) -> None:
         raise SystemExit("Program B confirms must not include dVWAP")
 
 
+def _infer_packet(stem: str) -> str:
+    """15s vs tick from the generate-owned filename when the caller omits packet."""
+    if stem == "progB_w0_va" or stem.startswith("progB_w4_profile_"):
+        return "tick"
+    return "15s"
+
+
+def _check_packet_locks(
+    label: str,
+    *,
+    dataset: Mapping[str, Any],
+    cores: list[str],
+    packet: str,
+    generate: Any,
+) -> list[str]:
+    """Keep VA tokens and tick_paths inside the tick packet only."""
+    failures: list[str] = []
+    raw_ticks = dataset.get("tick_paths")
+    va_in_cores = [token for token in cores if token in generate.VA_ANCHOR_SET]
+    if packet == "15s":
+        if raw_ticks not in (None, [], ()):
+            failures.append(
+                f"{label}: 15s packet must omit tick_paths (VA studies live in manifest_va.yaml)"
+            )
+        if va_in_cores:
+            failures.append(
+                f"{label}: 15s packet cannot name VA cores {va_in_cores} "
+                "(TV3 requires ticks; park in manifest_va.yaml)"
+            )
+        return failures
+    if packet == "tick":
+        if list(raw_ticks or []) != list(generate.VA_TICK_PATHS):
+            failures.append(
+                f"{label}: tick packet tick_paths must be the generate-owned placeholder "
+                f"{list(generate.VA_TICK_PATHS)!r}"
+            )
+        if not cores or any(token not in generate.VA_ANCHOR_SET for token in cores):
+            failures.append(f"{label}: tick packet must name only PRIOR_PROFILE VA cores")
+        return failures
+    failures.append(f"{label}: packet must be 15s or tick")
+    return failures
+
+
 def _check_backtest(bt: Mapping[str, Any], label: str) -> list[str]:
     if (
         float(bt.get("stop_loss_ticks", 0)) != 80
@@ -84,10 +127,12 @@ def validate_study_file(
     row: Mapping[str, Any],
     *,
     generate: Any | None = None,
+    packet: str | None = None,
 ) -> list[str]:
     """Return lock/expand failures for one Program B YAML. Empty list means pass."""
     gen = generate if generate is not None else _load_generate()
     failures: list[str] = []
+    resolved_packet = packet if packet in {"15s", "tick"} else _infer_packet(path.stem)
     try:
         spec = load_study_spec(path)
     except (OSError, StudySpecError, yaml.YAMLError) as exc:
@@ -112,6 +157,15 @@ def validate_study_file(
         failures.append(f"{path.name}: source_timezone drifted")
     if dataset.get("ingestion_mode") != LOCKED_INGEST:
         failures.append(f"{path.name}: ingestion_mode drifted")
+    failures.extend(
+        _check_packet_locks(
+            path.name,
+            dataset=dataset,
+            cores=cores,
+            packet=resolved_packet,
+            generate=gen,
+        )
+    )
     if list(factors.get("confluence_mode") or []) != [LOCKED_MODE]:
         failures.append(f"{path.name}: confluence_mode must be exclusive [{LOCKED_MODE}]")
     if list(factors.get("trigger") or []) != [LOCKED_TRIGGER]:
@@ -238,9 +292,23 @@ def validate_manifest(
     manifest = yaml.safe_load((base / manifest_name).read_text(encoding="utf-8"))
     failures: list[str] = []
     ok_lines: list[str] = []
-    for row in manifest["studies"]:
+    packet = manifest.get("packet")
+    if packet not in {"15s", "tick"}:
+        failures.append(f"{manifest_name}: packet must be 15s or tick")
+        packet = None
+    rows = list(manifest.get("studies") or [])
+    if int(manifest.get("total_studies") or 0) != len(rows):
+        failures.append(
+            f"{manifest_name}: total_studies {manifest.get('total_studies')!r} != {len(rows)}"
+        )
+    listed_cells = sum(int(row["cells"]) for row in rows)
+    if int(manifest.get("total_cells") or 0) != listed_cells:
+        failures.append(
+            f"{manifest_name}: total_cells {manifest.get('total_cells')!r} != {listed_cells}"
+        )
+    for row in rows:
         path = base / str(row["file"])
-        file_failures = validate_study_file(path, row, generate=generate)
+        file_failures = validate_study_file(path, row, generate=generate, packet=packet)
         if file_failures:
             failures.extend(file_failures)
             continue

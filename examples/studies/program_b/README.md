@@ -17,5 +17,9 @@ python3 examples/studies/program_b/generate_program_b_yaml.py
 PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py
 ```
 
-Replace `dataset.path` (`data/mnq_15s.csv`) with the operator’s 15s Quantower HE
-file before `study run`.
+`dataset.path` is already pinned to the operator AMP/Rithmic 15s Quantower HE
+CSV. Change it only if that file moves — same path for every YAML. Do not add
+`tick_paths` on the 15s packet. VA files already list the generate-owned
+placeholder `data/mnq_tick_last.csv`; validate/expand succeed, launch still
+refuses until a real Tick–Tick–Last export exists. Do not use the session-20
+CI tick fixture.

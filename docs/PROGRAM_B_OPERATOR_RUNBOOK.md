@@ -63,7 +63,13 @@ All generated YAMLs already stamp these. If a YAML disagrees with this table, **
 ## 2. Preconditions
 
 1. Code tree includes **AO1** (empty `partner_levels: [[]]` + `min_valid_confluences: 0` expands). `main` at/after PR #423.
-2. Dataset file exists. **Replace** `study.dataset.path` in every **15s** YAML with the same 15s Quantower History Exporter CSV used on Data. Same path for all 23 files in `manifest.yaml`. Do not add `tick_paths` on those files.
+2. Dataset file exists. **15s YAMLs already pin** `study.dataset.path` to the
+   operator AMP/Rithmic 15s Quantower HE CSV. Change it only if that file moves —
+   same path for all 23 files in `manifest.yaml`. Do **not** add `tick_paths` on
+   those files. Parked VA YAMLs already list the generate-owned placeholder
+   `dataset.tick_paths: [data/mnq_tick_last.csv]` so validate/expand succeed;
+   launch still refuses until a real Tick–Tick–Last file is pinned. Do not use
+   the session-20 CI tick fixture.
 3. Expand-validate the 15s packet once after the path edit:
 
 ```bash
@@ -128,7 +134,9 @@ After each `report`, record for every cell: `core_level`, `partner_levels`, `tra
 | 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
 | 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
 
-Parked until ticks (`manifest_va.yaml`; do not launch on 15s-only):
+Parked until ticks (`manifest_va.yaml`; do not launch on 15s-only). Files already
+carry placeholder `tick_paths` so TV3 can load/expand; launch still refuses the
+missing Tick–Tick–Last file:
 
 | File | Cells | `min_valid` |
 |---|---:|---:|
@@ -161,6 +169,10 @@ Do not `study promote` unless the human names a cell. Promote writes a draft onl
 
 - Invent tokens (`Pivot_1min_*`, `SMA_50_15min`, `RTH_High`, floor PP/R1).
 - Put `dVWAP` in `partner_levels`.
+- Put VA tokens (`pd*` / `pw*` / `pm*` VAH/VAL/POC) in a 15s YAML.
+- Add `tick_paths` on any `manifest.yaml` file.
+- Launch `manifest_va.yaml` on 15s-only, or swap the VA placeholder
+  `data/mnq_tick_last.csv` for the session-20 CI tick fixture.
 - Put `[]` in a `min_valid: 1` study, or `min_valid: 1` on Wave 0.
 - Cartesian 40 vs 80, 10 vs 20, touch vs 3c, cost-on vs cost-off.
 - Enable `grid` / `validation` / `walk_forward` / `factors.otf`.
@@ -177,8 +189,11 @@ You run ThesisTester Program B. Read and follow docs/PROGRAM_B_OPERATOR_RUNBOOK.
 exactly. YAMLs are in examples/studies/program_b/. Do not invent tokens or axes.
 
 1. Confirm the tree has AO1 (empty partner_levels + min_valid 0 expands).
-2. Set study.dataset.path in every 15s YAML (manifest.yaml) to the operator’s
-   MNQ 15s Quantower HE CSV. Same path for all 23 files. Do not add tick_paths.
+2. 15s YAMLs already pin dataset.path to the AMP/Rithmic 15s HE CSV. Change it
+   only if that file moves. Same path for all 23 files. Do not add tick_paths
+   on manifest.yaml. Do not launch manifest_va.yaml on 15s-only. Leave the VA
+   placeholder tick_paths (data/mnq_tick_last.csv) until a real Tick–Tick–Last
+   export is pinned. Do not use the session-20 CI tick fixture.
 3. PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py
    Must print: ok 23 studies / 944 cells. Stop if it fails.
 4. Run manifest.yaml in listed order. Smoke first. Skip manifest_va.yaml

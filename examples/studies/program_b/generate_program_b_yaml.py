@@ -72,6 +72,9 @@ ALL_ANCHORS = [token for keys in ANCHORS.values() for token in keys]
 VA_ANCHORS = list(ANCHORS["w4_profile"])
 VA_ANCHOR_SET = set(VA_ANCHORS)
 FIFTEEN_S_ANCHORS = [token for token in ALL_ANCHORS if token not in VA_ANCHOR_SET]
+# Placeholder only. TV3 needs a non-empty list so the StudySpec loads.
+# Launch still refuses until the operator pins a real Tick–Tick–Last export.
+VA_TICK_PATHS = ["data/mnq_tick_last.csv"]
 
 CONFIRMS: dict[str, list[list[str]]] = {
     "ma": [
@@ -119,7 +122,22 @@ FAMILY_TITLE = {
 }
 
 
-def _shared(*, name: str, description: str, min_valid: int) -> dict:
+def _shared(
+    *,
+    name: str,
+    description: str,
+    min_valid: int,
+    tick_paths: list[str] | None = None,
+) -> dict:
+    dataset: dict[str, object] = {
+        "path": r"C:\dev\ThesisTester\data\MNQ AMP Futures (Rithmic), Time - Time - 15s, 8_1_2024 120000 AM-8_7_2026 120000 AM_72578ad9-eaad-41cc-a03e-cf056050cf77.csv",
+        "instrument": "MNQ",
+        "format_profile": "quantower_history_exporter",
+        "source_timezone": "UTC",
+        "ingestion_mode": "15s_primary_derive_1m",
+    }
+    if tick_paths:
+        dataset["tick_paths"] = list(tick_paths)
     return {
         "schema_version": 1,
         "study": {
@@ -128,13 +146,7 @@ def _shared(*, name: str, description: str, min_valid: int) -> dict:
             "workers": 1,
             "confirm_above_runs": 200,
             "output_dir": f"results/studies/{name}",
-            "dataset": {
-                "path": r"C:\dev\ThesisTester\data\MNQ AMP Futures (Rithmic), Time - Time - 15s, 8_1_2024 120000 AM-8_7_2026 120000 AM_72578ad9-eaad-41cc-a03e-cf056050cf77.csv",
-                "instrument": "MNQ",
-                "format_profile": "quantower_history_exporter",
-                "source_timezone": "UTC",
-                "ingestion_mode": "15s_primary_derive_1m",
-            },
+            "dataset": dataset,
             "levels": {
                 "sma_lengths": [50, 200],
                 "ema_lengths": [9, 21],
@@ -256,8 +268,7 @@ def main() -> None:
     solo = _shared(
         name="progB_w0_solo",
         description=(
-            "Program B Wave 0 (15s): 41 non-VA anchors alone "
-            "(AO1 point zone, min_valid 0)."
+            "Program B Wave 0 (15s): 41 non-VA anchors alone (AO1 point zone, min_valid 0)."
         ),
         min_valid=0,
     )
@@ -284,6 +295,7 @@ def main() -> None:
             "(AO1 point zone, min_valid 0). Tick-gated."
         ),
         min_valid=0,
+        tick_paths=VA_TICK_PATHS,
     )
     solo_va["study"]["factors"]["core_level"] = list(VA_ANCHORS)
     solo_va["study"]["factors"]["partner_levels"] = [[]]
@@ -293,7 +305,9 @@ def main() -> None:
             "Wave 0 solo VA (AO1, tick-gated)",
             len(VA_ANCHORS),
             "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
-            "# Tick-gated: do not launch on 15s-only. TV3 refuses without dataset.tick_paths.\n",
+            "# Tick-gated: do not launch on 15s-only. TV3 refuses without dataset.tick_paths.\n"
+            "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
+            "missing files.\n",
         ),
         solo_va,
     )
@@ -304,6 +318,8 @@ def main() -> None:
         extra = (
             "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
             "# Tick-gated: prior-profile VA cores. Do not launch on 15s-only.\n"
+            "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
+            "missing files.\n"
             if tick_wave
             else "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
         )
@@ -314,10 +330,10 @@ def main() -> None:
             spec = _shared(
                 name=name,
                 description=(
-                    f"Program B {wave_key} ({WAVE_TITLE[wave_key]}) x "
-                    f"{FAMILY_TITLE[family]}."
+                    f"Program B {wave_key} ({WAVE_TITLE[wave_key]}) x {FAMILY_TITLE[family]}."
                 ),
                 min_valid=1,
+                tick_paths=VA_TICK_PATHS if tick_wave else None,
             )
             spec["study"]["factors"]["core_level"] = list(cores)
             spec["study"]["factors"]["partner_levels"] = [list(row) for row in partners]
