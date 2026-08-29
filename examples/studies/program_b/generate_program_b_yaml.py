@@ -130,7 +130,7 @@ def _shared(
     tick_paths: list[str] | None = None,
 ) -> dict:
     dataset: dict[str, object] = {
-        "path": r"C:\dev\ThesisTester\data\MNQ AMP Futures (Rithmic), Time - Time - 15s, 8_1_2024 120000 AM-8_7_2026 120000 AM_72578ad9-eaad-41cc-a03e-cf056050cf77.csv",
+        "path": r"/Users/florianrichling/Dropbox/thesistester/data/MNQ AMP Futures (Rithmic), Time - Time - 15s, 8_1_2024 120000 AM-8_7_2026 120000 AM_72578ad9-eaad-41cc-a03e-cf056050cf77.csv",
         "instrument": "MNQ",
         "format_profile": "quantower_history_exporter",
         "source_timezone": "UTC",
