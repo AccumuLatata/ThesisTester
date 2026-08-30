@@ -1600,6 +1600,9 @@ def test_query_facets_ignore_lens_columns_when_lens_off(tmp_path: Path) -> None:
         lens_facets={"desk_class": ["plus_e"]},
     )
     assert composed == {"instrument": ["ES"]}
+    as_str = apply_facets(frame, {"useful_confluence": ["True"]})
+    as_bool = apply_facets(frame, {"useful_confluence": [True]})
+    assert list(as_str["run_name"]) == list(as_bool["run_name"]) == ["onh_sma"]
 
 
 def test_heatmap_focus_applies_existing_core_partner_facets(tmp_path: Path) -> None:
@@ -1900,8 +1903,9 @@ def test_observatory_page_lens_facets_and_heatmap_cell(
     useful = next(box for box in app.multiselect if box.label == "useful_confluence")
     assert "plus_e" in list(desk_class.options)
     assert "hold" in list(desk_class.options)
-    assert True in list(useful.options)
-    assert False in list(useful.options)
+    useful_opts = list(useful.options)
+    assert True in useful_opts or "True" in useful_opts
+    assert False in useful_opts or "False" in useful_opts
     heatmap = next(box for box in app.selectbox if box.label == "Heatmap cell")
     assert any("ONH" in str(option) and "SMA" in str(option) for option in heatmap.options)
     captions = [item.value for item in app.caption]

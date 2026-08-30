@@ -1205,7 +1205,11 @@ def unique_facet_values(frame: pd.DataFrame, column: str) -> list[Any]:
 
 
 def canonical_facet_value(value: Any) -> Any:
-    """Stable facet token. ``80`` / ``80.0`` / ``np.int64(80)`` → ``80``."""
+    """Stable facet token. ``80`` / ``80.0`` / ``np.int64(80)`` → ``80``.
+
+    Streamlit stringifies bool widget options; ``"True"`` / ``"False"``
+    must match the Python bools ``useful_confluence`` stores.
+    """
     if value is None or _is_na(value):
         return None
     if isinstance(value, bool):
@@ -1221,6 +1225,8 @@ def canonical_facet_value(value: Any) -> Any:
     if boxed is not value:
         return canonical_facet_value(boxed)
     text = str(value).strip()
+    if text in {"True", "False"}:
+        return text == "True"
     return text if text else None
 
 
