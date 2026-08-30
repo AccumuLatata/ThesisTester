@@ -388,14 +388,24 @@ def cohort_choice_labels(keys: Sequence[Any]) -> list[str]:
 
 
 def cohort_differ_fields(keys: Sequence[Any]) -> tuple[str, ...]:
-    """§4.5 field names whose parsed values are not identical across ``keys``."""
+    """§4.5 field names whose parsed values are not identical across ``keys``.
+
+    Empty if fewer than two keys or all raw keys are equal. Distinct raw
+    keys that fail parse (empty dict) must not look like a shared lock —
+    return every ``COHORT_FIELDS`` name (fail closed).
+    """
     raws = ["" if key is None or _is_na(key) else str(key) for key in keys]
-    if len(raws) < 2:
+    if len(raws) < 2 or len(set(raws)) == 1:
         return ()
     parsed_rows = [parse_cohort_key(raw) for raw in raws]
-    return tuple(
+    differ = tuple(
         field for field in COHORT_FIELDS if len({row.get(field, "") for row in parsed_rows}) > 1
     )
+    if differ:
+        return differ
+    if any(not row for row in parsed_rows):
+        return tuple(COHORT_FIELDS)
+    return ()
 
 
 def sample_class_for(trade_count: Any, min_trades: Any) -> str:

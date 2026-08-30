@@ -626,7 +626,7 @@ keys = unique_facet_values(filtered, "cohort_key") if not filtered.empty else []
 differ_fields = cohort_differ_fields(keys)
 if differ_fields:
     st.caption("Differing lock fields in this filtered set: " + ", ".join(differ_fields))
-else:
+elif keys:
     st.caption("All filtered cells share one cohort key.")
 
 st.markdown("### Cohort lock")
@@ -666,10 +666,11 @@ if keys:
         format_func=lambda key: label_by_key.get(key, format_cohort_label(key)),
         help="Default is the majority key in the filtered set; ties break lexicographically.",
     )
+    active_label = label_by_key.get(active_cohort, format_cohort_label(active_cohort))
     if majority is not None and str(active_cohort) == str(majority):
-        st.caption(f"Active cohort is the majority key in the filtered set: `{active_cohort}`.")
+        st.caption(f"Active cohort is the majority key in the filtered set: `{active_label}`.")
     else:
-        st.caption(f"Active cohort is operator-picked: `{active_cohort}`.")
+        st.caption(f"Active cohort is operator-picked: `{active_label}`.")
 else:
     active_cohort = None
     st.caption("No cohort keys in the filtered set.")

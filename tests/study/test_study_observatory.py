@@ -17,6 +17,7 @@ from thesistester.cli import main as cli_main
 from thesistester.study.ledger import empty_ledger, save_ledger
 from thesistester.study.observatory import (
     CLI_COLUMNS,
+    COHORT_FIELDS,
     DESK_SCHEMA_VERSION,
     HEATMAP_SOLO_PARTNER,
     HEATMAP_Z_MISSING,
@@ -347,6 +348,7 @@ def test_parse_cohort_key_round_trip_and_malformed():
     assert parsed["instrument"] == "MNQ"
     assert parsed["dataset_id"] == "ds-a"
     assert parsed["min_valid_confluences"] == "1"
+    assert cohort_key_from_values(parsed) == key
     assert parse_cohort_key("a|b") == {}
     assert format_cohort_label("a|b") == "a|b"
     assert format_cohort_label("") == ""
@@ -387,6 +389,9 @@ def test_cohort_differ_fields_one_key_and_instrument():
     assert cohort_differ_fields([mnq]) == ()
     assert cohort_differ_fields([mnq, es]) == ("instrument",)
     assert cohort_differ_fields([mnq, mnq]) == ()
+    assert cohort_differ_fields([]) == ()
+    # Distinct unparseable keys must not look like one shared lock.
+    assert cohort_differ_fields(["a|b", "c|d"]) == tuple(COHORT_FIELDS)
 
 
 def test_load_splits_cohort_when_min_valid_confluences_differs(tmp_path: Path):
@@ -897,6 +902,8 @@ def test_observatory_page_ast_and_contract():
     assert "observatory_cohort_pick" in source
     assert "Differing lock fields in this filtered set:" in source
     assert "All filtered cells share one cohort key." in source
+    assert "elif keys:" in source
+    assert "active_label" in source
     assert "not part of the ranked sort" in source
     assert "trade_count × expectancy_r" in source
     assert "No cells with trade_count × expectancy_r to chart." in source
@@ -1587,9 +1594,62 @@ def test_observatory_page_renders_studies_pane(
     cohort_box = next(box for box in app.selectbox if box.label == "Active cohort")
     assert "|" in str(cohort_box.value)
     assert callable(cohort_box.format_func)
+    # format_func must label the raw widget value, not only already-formatted options.
+    assert "min_valid=" in str(cohort_box.format_func(cohort_box.value))
     assert all("min_valid=" in str(cohort_box.format_func(option)) for option in cohort_box.options)
     assert any(button.label == "Open study in Inspect" for button in app.button)
     assert any(button.label == "Open in Inspect" for button in app.button)
     captions = [item.value for item in app.caption]
     assert any("not as invented cell rows" in text for text in captions)
     assert any("All filtered cells share one cohort key." in text for text in captions)
+    majority_captions = [text for text in captions if "majority key in the filtered set" in text]
+    assert majority_captions
+    assert all("min_valid=" in text for text in majority_captions)
+    assert all("|" not in text for text in majority_captions)
+
+
+def test_observatory_empty_facets_do_not_claim_shared_cohort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    isolate_observatory_apptest_globals: None,
+) -> None:
+    """Conflicting facets empty the cell frame — do not claim one shared lock."""
+    from streamlit.testing.v1 import AppTest
+
+    store = tmp_path / "store"
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(store))
+
+    def _isolated_roots() -> tuple[Path, ...]:
+        return (store.resolve(),)
+
+    monkeypatch.setattr("thesistester.study.viewer.default_study_viewer_roots", _isolated_roots)
+    monkeypatch.setattr(
+        "thesistester.study.observatory.default_study_viewer_roots", _isolated_roots
+    )
+    root = store / "results" / "studies"
+    _write_study(
+        root,
+        "mnq_study",
+        instrument="MNQ",
+        cells=[{"run_name": "mnq_c0", "trade_count": 40, "expectancy_r": 0.10}],
+    )
+    _write_study(
+        root,
+        "es_study",
+        instrument="ES",
+        cells=[{"run_name": "es_c0", "trade_count": 40, "expectancy_r": 0.11}],
+    )
+    page = Path(__file__).resolve().parents[2] / "pages" / "16_Study_Observatory.py"
+    app = AppTest.from_file(str(page), default_timeout=45)
+    app.run()
+    assert not app.exception
+    instrument = next(box for box in app.multiselect if box.label == "Instrument")
+    study_name = next(box for box in app.multiselect if box.label == "Study name")
+    instrument.set_value(["MNQ"])
+    study_name.set_value(["es_study"])
+    app.run()
+    assert not app.exception
+    captions = [item.value for item in app.caption]
+    assert not any("All filtered cells share one cohort key." in text for text in captions)
+    assert any("No cohort keys in the filtered set." in text for text in captions)
+    assert any("No cells match the current facets." in text for text in captions)
