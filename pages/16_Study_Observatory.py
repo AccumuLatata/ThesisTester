@@ -242,9 +242,7 @@ def _apply_observatory_desk(desk: Any) -> None:
     st.session_state[OBSERVATORY_BREAK_COMPARABILITY_KEY] = bool(
         state.get("break_comparability", False)
     )
-    st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = str(
-        state.get("sort_column") or "expectancy_r"
-    )
+    st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = str(state.get("sort_column") or "expectancy_r")
     st.session_state[OBSERVATORY_ACTIVE_LENS_KEY] = str(state.get("lens") or "auto")
     name = str(state.get("name") or "").strip()
     if name:

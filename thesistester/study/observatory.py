@@ -716,7 +716,14 @@ def parse_observatory_desk(path: Path) -> ObservatoryDesk | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         return observatory_desk_from_payload(payload, file_stem=path.stem)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ObservatoryError, TypeError, ValueError):
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ObservatoryError,
+        TypeError,
+        ValueError,
+    ):
         return None
 
 
