@@ -445,6 +445,140 @@ def test_format_empty_table(tmp_path: Path):
     )
 
 
+def test_corrupt_otf_does_not_fail_sibling(tmp_path: Path):
+    _write_study(
+        tmp_path / "results" / "studies",
+        "good",
+        cells=[{"run_name": "good_c0", "trade_count": 40}],
+    )
+    bad = _write_study(
+        tmp_path / "results" / "studies",
+        "bad_otf",
+        cells=[{"run_name": "bad_c0", "trade_count": 40}],
+    )
+    expansion = json.loads((bad / "study.expansion.json").read_text(encoding="utf-8"))
+    expansion["factor_map"]["bad_c0"]["otf"] = "not-a-dict"
+    (bad / "study.expansion.json").write_text(json.dumps(expansion), encoding="utf-8")
+    model = load_observatory_frame(roots=(tmp_path.resolve(),))
+    assert set(model.frame["run_name"]) == {"good_c0", "bad_c0"}
+    assert not bool(model.studies["error"].notna().any())
+    bad_row = model.frame.loc[model.frame["run_name"] == "bad_c0"].iloc[0]
+    assert bad_row["factor_otf"] == "not-a-dict"
+    assert bool(bad_row["factor_otf_enabled"]) is False
+
+
+def test_setup_kind_falls_back_to_exclusive_factors(tmp_path: Path):
+    study_dir = _write_study(
+        tmp_path / "results" / "studies",
+        "exclusive",
+        cells=[{"run_name": "ex_c0", "trade_count": 40}],
+    )
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    expansion["factor_map"]["ex_c0"] = {
+        "core_level": "ONH",
+        "partner_levels": ["SMA_50_1min"],
+    }
+    (study_dir / "study.expansion.json").write_text(json.dumps(expansion), encoding="utf-8")
+    model = load_observatory_frame(roots=(tmp_path.resolve(),))
+    row = model.frame.iloc[0]
+    assert row["factors_joined"]
+    assert row["trigger"] == "touch"
+    assert row["trigger_timeframe"] == "1min"
+    assert row["confluence_mode"] == "anchor_rules"
+    assert row["setup_kind"] == "touch@1min/anchor_rules"
+
+
+def test_numeric_run_name_join_survives_pandas_float_upcast(tmp_path: Path):
+    study_dir = _write_study(
+        tmp_path / "results" / "studies",
+        "numeric_names",
+        cells=[{"run_name": "123", "trade_count": 40, "expectancy_r": 0.2}],
+    )
+    expansion = json.loads((study_dir / "study.expansion.json").read_text(encoding="utf-8"))
+    expansion["factor_map"] = {
+        "123": expansion["factor_map"].pop("123"),
+        "456": {
+            "core_level": "ONH",
+            "partner_levels": ["SMA_50_1min"],
+            "confluence_mode": "anchor_rules",
+            "trigger": "touch",
+            "trigger_timeframe": "1min",
+        },
+    }
+    (study_dir / "study.expansion.json").write_text(json.dumps(expansion), encoding="utf-8")
+    frame = pd.read_csv(study_dir / "results_index.csv")
+    extra = frame.iloc[0].to_dict()
+    extra["run_name"] = 456
+    extra["expectancy_r"] = 0.05
+    # A blank run_name forces pandas to float-upcast 123 → 123.0 on the next read.
+    blank = extra.copy()
+    blank["run_name"] = None
+    pd.concat([frame, pd.DataFrame([extra, blank])], ignore_index=True).to_csv(
+        study_dir / "results_index.csv", index=False
+    )
+    model = load_observatory_frame(roots=(tmp_path.resolve(),))
+    by_name = {str(row["run_name"]): row for row in model.frame.to_dict("records")}
+    assert set(by_name) == {"123", "456"}
+    assert bool(by_name["123"]["factors_joined"])
+    assert bool(by_name["456"]["factors_joined"])
+    assert by_name["123"]["setup_kind"] == "touch@1min/anchor_rules"
+
+
+def test_coerce_and_cohort_tokens_accept_numpy_scalars():
+    np = pytest.importorskip("numpy")
+    assert sample_class_for(np.int64(40), np.int64(30)) == "interpretable"
+    assert sample_class_for(np.int64(10), 30) == "below_min_trades"
+    assert cohort_key_from_values(
+        {
+            "flat_by_session_close": np.bool_(True),
+            "stop_loss_ticks": np.int64(80),
+        }
+    ) == cohort_key_from_values(
+        {
+            "flat_by_session_close": True,
+            "stop_loss_ticks": 80,
+        }
+    )
+
+
+def test_scalar_exclusive_factor_in_spec(tmp_path: Path):
+    study_dir = _write_study(
+        tmp_path / "results" / "studies",
+        "scalar_trig",
+        cells=[{"run_name": "sc_c0", "trade_count": 40}],
+        ledger_only=True,
+    )
+    spec = yaml.safe_load((study_dir / STUDY_SPEC_FILENAME).read_text(encoding="utf-8"))
+    spec["study"]["factors"]["trigger"] = "touch"
+    spec["study"]["factors"]["trigger_timeframe"] = "1min"
+    spec["study"]["factors"]["confluence_mode"] = "anchor_rules"
+    (study_dir / STUDY_SPEC_FILENAME).write_text(
+        yaml.safe_dump(spec, sort_keys=False), encoding="utf-8"
+    )
+    pd.DataFrame(
+        [
+            {
+                "run_name": "orphan",
+                "dataset_id": "ds-a",
+                "instrument": "ES",
+                "trade_count": 40,
+                "expectancy_r": 0.1,
+                "total_r": 4.0,
+                "max_drawdown_r": 1.0,
+                "profit_factor": 1.2,
+                "win_rate": 0.5,
+                "bundle_path": "orphan.research.zip",
+                "status": "ok",
+            }
+        ]
+    ).to_csv(study_dir / "results_index.csv", index=False)
+    model = load_observatory_frame(roots=(tmp_path.resolve(),))
+    row = model.frame.iloc[0]
+    assert row["run_name"] == "orphan"
+    assert not bool(row["factors_joined"])
+    assert row["setup_kind"] == "touch@1min/anchor_rules"
+
+
 def test_observatory_and_viewer_import_guards():
     observatory = Path("thesistester/study/observatory.py").read_text(encoding="utf-8")
     viewer = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")

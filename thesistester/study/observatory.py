@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import numbers
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -203,8 +204,8 @@ def load_observatory_frame(
         if cached is not None and cached[0] == stamp:
             cached_cells, cached_study = cached[1], cached[2]
             if cached_cells is not None and not cached_cells.empty:
-                cell_frames.append(cached_cells)
-            study_rows.append(cached_study)
+                cell_frames.append(cached_cells.copy())
+            study_rows.append(dict(cached_study))
             continue
         cells, study_row = _load_study_slice(entry)
         if cells is not None and not cells.empty:
@@ -390,7 +391,7 @@ def _index_prior_slices(
         if not frame.empty and "study_dir" in frame.columns:
             slice_frame = frame.loc[frame["study_dir"].astype(str) == key]
             if not slice_frame.empty:
-                cells = slice_frame.reset_index(drop=True)
+                cells = slice_frame.reset_index(drop=True).copy()
         out[key] = (tuple(stamp), cells, dict(record))
     return out
 
@@ -415,13 +416,17 @@ def _load_study_slice(
     except Exception as exc:  # noqa: BLE001 — corrupt index isolated to this dir
         study_row["error"] = f"index: {exc}"
         return None, study_row
-    factor_map = _read_factor_map(entry.study_dir)
-    if locks.get("study_identity_hash") is None:
-        identity = _expansion_identity_hash(entry.study_dir)
-        if identity:
-            study_row["study_identity_hash"] = identity
-            locks["study_identity_hash"] = identity
-    cells = _join_index_rows(entry, index, factor_map, locks, has_admit)
+    try:
+        factor_map = _read_factor_map(entry.study_dir)
+        if locks.get("study_identity_hash") is None:
+            identity = _expansion_identity_hash(entry.study_dir)
+            if identity:
+                study_row["study_identity_hash"] = identity
+                locks["study_identity_hash"] = identity
+        cells = _join_index_rows(entry, index, factor_map, locks, has_admit)
+    except Exception as exc:  # noqa: BLE001 — flatten/join must not fail the corpus
+        study_row["error"] = f"join: {exc}"
+        return None, study_row
     return cells, study_row
 
 
@@ -504,6 +509,8 @@ def _read_results_index(path: Path) -> pd.DataFrame:
     frame = pd.read_csv(path)
     if "run_name" not in frame.columns:
         raise ObservatoryError(f"{RESULTS_INDEX} must include a run_name column")
+    frame = frame.copy()
+    frame["run_name"] = [_index_run_name(value) for value in frame["run_name"].tolist()]
     return frame
 
 
@@ -559,7 +566,11 @@ def _join_index_rows(
     for name, record in index_by_name.items():
         factors = factor_map.get(name)
         joined = factors is not None
-        flat = _flatten_factors(factors) if joined else {}
+        try:
+            flat = _flatten_factors(factors) if joined else {}
+        except (TypeError, ValueError, RecursionError):
+            flat = {}
+            joined = False
         row = _cell_row(
             entry=entry,
             locks=locks,
@@ -584,12 +595,12 @@ def _cell_row(
     joined: bool,
     has_admit: bool,
 ) -> dict[str, Any]:
-    trigger = flat.get("factor_trigger") if joined else locks.get("trigger")
-    trigger_tf = (
-        flat.get("factor_trigger_timeframe") if joined else locks.get("trigger_timeframe")
+    trigger = _joined_or_lock(flat, "factor_trigger", locks.get("trigger"))
+    trigger_tf = _joined_or_lock(
+        flat, "factor_trigger_timeframe", locks.get("trigger_timeframe")
     )
-    mode = flat.get("factor_confluence_mode") if joined else locks.get("confluence_mode")
-    direction = flat.get("factor_direction") if joined and "factor_direction" in flat else locks.get("direction")
+    mode = _joined_or_lock(flat, "factor_confluence_mode", locks.get("confluence_mode"))
+    direction = _joined_or_lock(flat, "factor_direction", locks.get("direction"))
     instrument = index_row.get("instrument")
     if _is_na(instrument) or instrument is None or str(instrument).strip() == "":
         instrument = locks.get("instrument")
@@ -674,15 +685,28 @@ def _flatten_factors(factors: Mapping[str, Any]) -> dict[str, Any]:
         if key == "partner_levels":
             flat[col] = format_partner_levels(value)
         elif key == "otf":
-            flat[col] = otf_canonical_key(value)
-            flat["factor_otf_enabled"] = bool(
-                normalize_otf_filter_config(
-                    dict(value) if isinstance(value, Mapping) else value
-                ).get("enabled", False)
-            )
+            _flatten_otf(flat, col, value)
         else:
             flat[col] = value
     return flat
+
+
+def _flatten_otf(flat: dict[str, Any], col: str, value: Any) -> None:
+    """Match Inspect otf strings when valid; never raise on a bad cell."""
+    try:
+        flat[col] = otf_canonical_key(value)
+        flat["factor_otf_enabled"] = bool(
+            normalize_otf_filter_config(
+                dict(value) if isinstance(value, Mapping) else value
+            ).get("enabled", False)
+        )
+    except (TypeError, ValueError, RecursionError):
+        if isinstance(value, Mapping):
+            flat[col] = json.dumps(dict(value), sort_keys=True, default=str)
+            flat["factor_otf_enabled"] = bool(value.get("enabled", False))
+        else:
+            flat[col] = "" if value is None or _is_na(value) else str(value)
+            flat["factor_otf_enabled"] = False
 
 
 def _align_frame_columns(frame: pd.DataFrame) -> pd.DataFrame:
@@ -697,20 +721,66 @@ def _empty_frame() -> pd.DataFrame:
 
 
 def _singleton_factor(value: Any) -> Any:
-    if isinstance(value, (list, tuple)) and len(value) == 1:
+    if isinstance(value, (list, tuple)):
+        if len(value) != 1:
+            return None
         item = value[0]
         if isinstance(item, (list, tuple, dict)):
             return None
         return item
-    return None
+    if isinstance(value, dict) or value is None or _is_na(value):
+        return None
+    return value
+
+
+def _joined_or_lock(flat: Mapping[str, Any], key: str, lock_value: Any) -> Any:
+    """§4.4: joined ``factor_*`` if present, else exclusive spec value."""
+    if key in flat:
+        return flat.get(key)
+    return lock_value
+
+
+def _index_run_name(value: Any) -> Any:
+    """Keep factor_map joins stable when pandas upcasts numeric run names."""
+    if value is None or _is_na(value):
+        return pd.NA
+    boxed = _box_scalar(value)
+    if boxed is None or _is_na(boxed):
+        return pd.NA
+    if isinstance(boxed, bool):
+        return str(boxed)
+    if isinstance(boxed, numbers.Real) and not isinstance(boxed, bool):
+        number = float(boxed)
+        if math.isnan(number):
+            return pd.NA
+        if number.is_integer():
+            return str(int(number))
+        return format(number, ".15g")
+    text = str(boxed).strip()
+    return text or pd.NA
+
+
+def _box_scalar(value: Any) -> Any:
+    item = getattr(value, "item", None)
+    if callable(item) and not isinstance(value, (bytes, str)):
+        try:
+            boxed = item()
+            if boxed is not value:
+                return boxed
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            return value
+    return value
 
 
 def _coerce_number(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
         return None
-    if _is_na(value):
-        return None
-    if isinstance(value, (int, float)):
+    try:
+        if value is pd.NA or pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, numbers.Real) and not isinstance(value, bool):
         number = float(value)
         if math.isnan(number):
             return None
@@ -719,10 +789,17 @@ def _coerce_number(value: Any) -> float | None:
         text = value.strip()
         if not text or text.lower() in {"nan", "none", "null"}:
             return None
+        if text.lower() in {"inf", "+inf", "infinity"}:
+            return float("inf")
+        if text.lower() in {"-inf", "-infinity"}:
+            return float("-inf")
         try:
             return float(text)
         except ValueError:
             return None
+    boxed = _box_scalar(value)
+    if boxed is not value:
+        return _coerce_number(boxed)
     return None
 
 
@@ -736,9 +813,12 @@ def _is_na(value: Any) -> bool:
 def _cohort_token(value: Any) -> str:
     if value is None or _is_na(value):
         return ""
+    boxed = _box_scalar(value)
+    if boxed is not value:
+        return _cohort_token(boxed)
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
+    if isinstance(value, numbers.Real) and not isinstance(value, bool):
         number = float(value)
         if math.isnan(number):
             return ""
