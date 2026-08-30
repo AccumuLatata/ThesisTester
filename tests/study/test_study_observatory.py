@@ -1084,7 +1084,9 @@ def test_delta_e_does_not_cross_instrument_or_null_when_each_has_wave0(tmp_path:
         instrument="MNQ",
         partners=[],
         min_valid=0,
-        cells=[{"run_name": "w0_mnq", "trade_count": 40, "expectancy_r": 0.02, "instrument": "MNQ"}],
+        cells=[
+            {"run_name": "w0_mnq", "trade_count": 40, "expectancy_r": 0.02, "instrument": "MNQ"}
+        ],
         dataset_id="ds-mnq",
     )
     _write_study(
