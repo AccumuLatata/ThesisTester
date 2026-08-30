@@ -1,11 +1,13 @@
-"""SO2–SO4 / SO7–SO8 Study Observatory — corpus page, lens, desks, studies pane.
+"""SO2–SO4 / SO7–SO9 Study Observatory — corpus page, lens, desks, studies pane.
 
 Read-only corpus page. Does not execute studies, write report artifacts,
 or hydrate classic research session keys. Desks persist query state only
 under the ThesisTester store — never under ``results/studies/``. SO7
 surfaces the existing studies grain (ledger progress + study-level Inspect
 drill) without inventing cell rows. SO8 labels Active cohort without
-changing the raw ``cohort_key``.
+changing the raw ``cohort_key``. SO9 facets ``desk_class`` /
+``useful_confluence`` when the Program B lens is on and focuses the
+heatmap through existing Core / Partner facets.
 """
 
 from __future__ import annotations
@@ -39,6 +41,8 @@ OBSERVATORY_SELECTED_STUDY_KEY = "observatory_selected_study"
 # Mutating a widget-bound key after ``st.selectbox`` / ``st.checkbox`` raises.
 OBSERVATORY_PENDING_DESK_KEY = "_observatory_pending_desk"
 OBSERVATORY_PENDING_SAVED_ID_KEY = "_observatory_pending_saved_desk_id"
+OBSERVATORY_PENDING_FACETS_KEY = "_observatory_pending_facets"
+OBSERVATORY_HEATMAP_CELL_KEY = "observatory_heatmap_cell"
 
 # Existing Studies drill keys (same strings as pages/15_Studies.py).
 STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
@@ -101,6 +105,15 @@ _PACKET_CHROME_FALLBACK = (
     "15s operator packet: 23 files. Parked VA packet: 4 files. "
     "These counts are lens chrome, not catalog membership."
 )
+_LENS_FACET_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("desk_class", "desk_class"),
+    ("useful_confluence", "useful_confluence"),
+)
+_INERT_LENS_FACETS = "Saved lens facets are inert until the Program B lens is on."
+_HEATMAP_FOCUS_CAPTION = (
+    "Heatmap focus writes the Core / Partner facets. "
+    "Clear those facets to see the full heatmap again."
+)
 
 load_observatory_frame = getattr(_observatory, "load_observatory_frame", None)
 apply_facets = getattr(_observatory, "apply_facets", None)
@@ -144,6 +157,14 @@ sort_observatory_studies = getattr(_observatory, "sort_observatory_studies", Non
 observatory_studies_table = getattr(_observatory, "observatory_studies_table", None)
 study_choice_labels = getattr(_observatory, "study_choice_labels", None)
 inspect_selected_run_for_drill = getattr(_observatory, "inspect_selected_run_for_drill", None)
+heatmap_focus_label = getattr(_observatory, "heatmap_focus_label", None)
+parse_heatmap_focus_label = getattr(_observatory, "parse_heatmap_focus_label", None)
+heatmap_focus_pending_facets = getattr(_observatory, "heatmap_focus_pending_facets", None)
+query_facets_for_frame = getattr(_observatory, "query_facets_for_frame", None)
+HEATMAP_SOLO_PARTNER = getattr(_observatory, "HEATMAP_SOLO_PARTNER", "(solo)")
+LENS_FACET_COLUMNS = getattr(
+    _observatory, "LENS_FACET_COLUMNS", ("desk_class", "useful_confluence")
+)
 
 
 def _helpers_ready() -> bool:
@@ -176,6 +197,10 @@ def _helpers_ready() -> bool:
             observatory_studies_table,
             study_choice_labels,
             inspect_selected_run_for_drill,
+            heatmap_focus_label,
+            parse_heatmap_focus_label,
+            heatmap_focus_pending_facets,
+            query_facets_for_frame,
         )
     )
 
@@ -189,6 +214,11 @@ def _ensure_defaults() -> None:
         desk = pending
     if desk is not None:
         _apply_observatory_desk(desk)
+    pending_facets = st.session_state.pop(OBSERVATORY_PENDING_FACETS_KEY, None)
+    if isinstance(pending_facets, dict):
+        for column, values in pending_facets.items():
+            if column in {name for name, _label in _FACET_COLUMNS}:
+                st.session_state[f"observatory_facet_{column}"] = list(values) if values else []
     if OBSERVATORY_PENDING_SAVED_ID_KEY in st.session_state:
         st.session_state[OBSERVATORY_SAVED_DESK_KEY] = str(
             st.session_state.pop(OBSERVATORY_PENDING_SAVED_ID_KEY) or ""
@@ -278,6 +308,9 @@ def _apply_observatory_desk(desk: Any) -> None:
         st.session_state.pop(OBSERVATORY_COHORT_PICK_KEY, None)
     desk_facets = dict(state.get("facets") or {})
     for column, _label in _FACET_COLUMNS:
+        values = desk_facets.get(column, ())
+        st.session_state[f"observatory_facet_{column}"] = list(values) if values else []
+    for column in LENS_FACET_COLUMNS:
         values = desk_facets.get(column, ())
         st.session_state[f"observatory_facet_{column}"] = list(values) if values else []
 
@@ -481,12 +514,89 @@ def _render_scatter(
     st.plotly_chart(fig, width="stretch")
 
 
+def _program_b_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty or "lens_hint" not in frame.columns:
+        return frame
+    return frame.loc[frame["lens_hint"].astype(str) == "program_b"]
+
+
+def _sync_lens_facets(prog: pd.DataFrame) -> dict[str, list[Any]]:
+    """Constrain lens widgets to pre-lens-facet Program B options (plan §6.11).
+
+    Must run before the peek ``apply_facets`` so a stale ``plus_e`` / ``True``
+    cannot empty the cohort strip on the same run that those options disappear.
+    """
+    lens_facets: dict[str, list[Any]] = {}
+    for column, _label in _LENS_FACET_COLUMNS:
+        widget_key = f"observatory_facet_{column}"
+        raw = st.session_state.get(widget_key)
+        options = unique_facet_values(prog, column)
+        if isinstance(raw, (list, tuple)):
+            constrained = constrain_facet_selection(raw, options)
+            if list(raw) != constrained:
+                st.session_state[widget_key] = constrained
+            raw = constrained
+        if isinstance(raw, (list, tuple)) and raw:
+            lens_facets[column] = list(raw)
+    return lens_facets
+
+
+def _on_heatmap_cell() -> None:
+    label = st.session_state.get(OBSERVATORY_HEATMAP_CELL_KEY) or ""
+    if heatmap_focus_pending_facets is None or parse_heatmap_focus_label is None:
+        return
+    # "—" / unparseable must not wipe independently-set Core / Partner facets.
+    # Spec clears focus by clearing those widgets, not the other way around.
+    if parse_heatmap_focus_label(label) is None:
+        return
+    st.session_state[OBSERVATORY_PENDING_FACETS_KEY] = heatmap_focus_pending_facets(label)
+    st.rerun()
+
+
+def _render_heatmap_cell_picker(prog: pd.DataFrame) -> None:
+    grid = program_b_heatmap_cells(prog) if program_b_heatmap_cells is not None else pd.DataFrame()
+    labels: list[str] = []
+    seen: set[str] = set()
+    if isinstance(grid, pd.DataFrame) and not grid.empty:
+        for record in grid.to_dict(orient="records"):
+            label = heatmap_focus_label(
+                record.get("factor_core_level"),
+                record.get("factor_partner_levels"),
+            )
+            if label and label not in seen:
+                seen.add(label)
+                labels.append(label)
+    options = [""] + labels
+    current = st.session_state.get(OBSERVATORY_HEATMAP_CELL_KEY)
+    cores = list(st.session_state.get("observatory_facet_factor_core_level") or [])
+    partners = list(st.session_state.get("observatory_facet_factor_partner_levels") or [])
+    inferred = ""
+    # One core with an empty Partner widget is "no partner filter", not Wave 0.
+    if len(cores) == 1 and len(partners) == 1 and heatmap_focus_label is not None:
+        inferred = heatmap_focus_label(cores[0], partners[0])
+    if current not in options:
+        st.session_state[OBSERVATORY_HEATMAP_CELL_KEY] = inferred if inferred in options else ""
+    elif current and heatmap_focus_pending_facets is not None:
+        expected = heatmap_focus_pending_facets(current)
+        if cores != expected.get("factor_core_level", []) or partners != expected.get(
+            "factor_partner_levels", []
+        ):
+            st.session_state[OBSERVATORY_HEATMAP_CELL_KEY] = inferred if inferred in options else ""
+    st.selectbox(
+        "Heatmap cell",
+        options=options,
+        format_func=lambda item: item or "—",
+        key=OBSERVATORY_HEATMAP_CELL_KEY,
+        on_change=_on_heatmap_cell,
+        help=_HEATMAP_FOCUS_CAPTION,
+    )
+    st.caption(_HEATMAP_FOCUS_CAPTION)
+
+
 def _render_program_b_lens(frame: pd.DataFrame) -> None:
     st.markdown("### Program B lens")
     st.caption(_DELTA_E_CAPTION)
-    prog = frame
-    if "lens_hint" in frame.columns:
-        prog = frame.loc[frame["lens_hint"].astype(str) == "program_b"]
+    prog = _program_b_rows(frame)
     counts = desk_class_counts(prog)
     count_cols = st.columns(len(DESK_CLASS_ORDER))
     for index, name in enumerate(DESK_CLASS_ORDER):
@@ -621,7 +731,16 @@ for index, (column, label) in enumerate(_FACET_COLUMNS):
         if selected:
             facets[column] = list(selected)
 st.session_state[OBSERVATORY_FACET_STATE_KEY] = facets
-filtered = apply_facets(frame, facets)
+generic_filtered = apply_facets(frame, facets)
+peek_lens_mode = str(st.session_state.get(OBSERVATORY_ACTIVE_LENS_KEY) or "auto")
+peek_lens_active = bool(resolve_program_b_lens(peek_lens_mode, generic_filtered))
+lens_facets: dict[str, list[Any]] = {}
+if peek_lens_active:
+    lens_facets = _sync_lens_facets(_program_b_rows(generic_filtered))
+filtered = apply_facets(
+    generic_filtered,
+    query_facets_for_frame({}, lens_active=peek_lens_active, lens_facets=lens_facets),
+)
 keys = unique_facet_values(filtered, "cohort_key") if not filtered.empty else []
 differ_fields = cohort_differ_fields(keys)
 if differ_fields:
@@ -685,8 +804,35 @@ lens_mode = st.radio(
     horizontal=True,
     help="auto attaches Program B chrome when any filtered row is progB_*.",
 )
-lens_active = bool(resolve_program_b_lens(str(lens_mode), filtered))
+lens_active = bool(resolve_program_b_lens(str(lens_mode), generic_filtered))
+carried_lens_facets = any(
+    bool(st.session_state.get(f"observatory_facet_{column}"))
+    for column, _label in _LENS_FACET_COLUMNS
+)
+if not lens_active and carried_lens_facets:
+    st.caption(_INERT_LENS_FACETS)
 if lens_active:
+    prog = _program_b_rows(generic_filtered)
+    lens_cols = st.columns(2)
+    for index, (column, label) in enumerate(_LENS_FACET_COLUMNS):
+        with lens_cols[index % 2]:
+            options = unique_facet_values(prog, column)
+            widget_key = f"observatory_facet_{column}"
+            current = st.session_state.get(widget_key)
+            if isinstance(current, (list, tuple)):
+                constrained = constrain_facet_selection(current, options)
+                if list(current) != constrained:
+                    st.session_state[widget_key] = constrained
+            selected = st.multiselect(label, options=options, key=widget_key)
+            if selected:
+                lens_facets[column] = list(selected)
+            else:
+                lens_facets.pop(column, None)
+    filtered = apply_facets(
+        generic_filtered,
+        query_facets_for_frame({}, lens_active=True, lens_facets=lens_facets),
+    )
+    _render_heatmap_cell_picker(prog)
     _render_program_b_lens(filtered)
 elif str(lens_mode) == "generic":
     st.caption("Generic lens: Program B heatmap and desk_class chrome are hidden.")
@@ -697,8 +843,13 @@ sort_options = ["expectancy_r"] + sorted(name for name in SORT_ALLOW_LIST if nam
 if st.session_state.get(OBSERVATORY_SORT_COLUMN_KEY) not in sort_options:
     st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = "expectancy_r"
 sort_column = st.selectbox("Sort", options=sort_options, key=OBSERVATORY_SORT_COLUMN_KEY)
+save_facets = dict(facets)
+for column, _label in _LENS_FACET_COLUMNS:
+    raw = st.session_state.get(f"observatory_facet_{column}")
+    if isinstance(raw, (list, tuple)) and raw:
+        save_facets[column] = list(raw)
 _render_saved_desks(
-    facets=facets,
+    facets=save_facets,
     cohort_lock=bool(cohort_lock),
     break_comparability=bool(break_comparability),
     active_cohort=str(active_cohort) if active_cohort is not None else None,

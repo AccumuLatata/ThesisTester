@@ -1,4 +1,4 @@
-"""SO1–SO4 / SO7–SO8 Study Observatory — fact table, CLI, page AST, lens, desks, studies, labels."""
+"""SO1–SO4 / SO7–SO9 Study Observatory — fact table, CLI, page AST, lens, desks, studies, labels."""
 
 from __future__ import annotations
 
@@ -18,8 +18,10 @@ from thesistester.study.ledger import empty_ledger, save_ledger
 from thesistester.study.observatory import (
     CLI_COLUMNS,
     COHORT_FIELDS,
+    DESK_FACET_COLUMNS,
     DESK_SCHEMA_VERSION,
     HEATMAP_SOLO_PARTNER,
+    LENS_FACET_COLUMNS,
     HEATMAP_Z_MISSING,
     OBSERVATORY_HONESTY,
     PROGRAM_B_LENS_PACKET_CHROME,
@@ -41,6 +43,8 @@ from thesistester.study.observatory import (
     format_cohort_label,
     format_observatory_table,
     heatmap_class_z,
+    heatmap_focus_label,
+    heatmap_focus_pending_facets,
     inspect_selected_run_for_drill,
     list_observatory_desks,
     load_observatory_frame,
@@ -50,8 +54,10 @@ from thesistester.study.observatory import (
     observatory_desks_dir,
     observatory_studies_table,
     parse_cohort_key,
+    parse_heatmap_focus_label,
     parse_observatory_desk,
     program_b_heatmap_cells,
+    query_facets_for_frame,
     resolve_program_b_lens,
     sample_class_for,
     save_observatory_desk,
@@ -188,6 +194,57 @@ def _write_study(
         )
     pd.DataFrame(rows).to_csv(study_dir / "results_index.csv", index=False)
     return study_dir
+
+
+def _write_program_b_lens_corpus(studies: Path) -> None:
+    """Generic + Wave 0 + plus_e pair + hold pair (SO9 lens-facet fixture)."""
+    _write_study(
+        studies,
+        "alpha",
+        cells=[{"run_name": "alpha_c0", "trade_count": 40, "expectancy_r": 0.10}],
+    )
+    _write_study(
+        studies,
+        "progB_w0_solo",
+        partners=[],
+        min_valid=0,
+        cells=[
+            {
+                "run_name": "w0_onh",
+                "trade_count": 40,
+                "expectancy_r": 0.00,
+                "profit_factor": 1.2,
+            }
+        ],
+    )
+    _write_study(
+        studies,
+        "progB_w1_onh_sma",
+        core="ONH",
+        partners=["SMA"],
+        cells=[
+            {
+                "run_name": "onh_sma",
+                "trade_count": 40,
+                "expectancy_r": 0.10,
+                "profit_factor": 1.2,
+            }
+        ],
+    )
+    _write_study(
+        studies,
+        "progB_w1_onl_ema",
+        core="ONL",
+        partners=["EMA"],
+        cells=[
+            {
+                "run_name": "onl_ema",
+                "trade_count": 40,
+                "expectancy_r": 0.10,
+                "profit_factor": 1.0,
+            }
+        ],
+    )
 
 
 def test_two_studies_index_and_ledger_only(tmp_path: Path):
@@ -945,6 +1002,11 @@ def test_observatory_page_ast_and_contract():
     assert "observatory_active_lens" in source
     assert "observatory_saved_desk_id" in source
     assert "_observatory_pending_desk" in source
+    assert "_observatory_pending_facets" in source
+    assert "_sync_lens_facets" in source
+    assert "Heatmap cell" in source
+    assert "Saved lens facets are inert until the Program B lens is on." in source
+    assert "Heatmap focus writes the Core / Partner facets." in source
     assert "_observatory_pending_saved_desk_id" in source
     assert "observatory_desk_query_state" in source
     assert "observatory_desk_from_payload" in source
@@ -1363,7 +1425,12 @@ def test_saved_desk_round_trip_and_schema_v1(tmp_path: Path):
     assert ignored == ()
     saved = save_observatory_desk(
         name="MNQ 15s",
-        facets={"instrument": ["MNQ", 80, "MNQ"], "status": ["ok"]},
+        facets={
+            "instrument": ["MNQ", 80, "MNQ"],
+            "status": ["ok"],
+            "desk_class": ["plus_e"],
+            "useful_confluence": [True],
+        },
         cohort_lock=True,
         break_comparability=False,
         active_cohort="mnq|ds-a",
@@ -1378,11 +1445,18 @@ def test_saved_desk_round_trip_and_schema_v1(tmp_path: Path):
     assert payload["lens"] == "program_b"
     assert payload["sort_column"] == "profit_factor"
     assert payload["facets"]["instrument"] == ["MNQ", 80]
+    assert payload["facets"]["desk_class"] == ["plus_e"]
+    assert payload["facets"]["useful_confluence"] == [True]
+    assert "desk_class" in DESK_FACET_COLUMNS
+    assert "useful_confluence" in DESK_FACET_COLUMNS
+    assert LENS_FACET_COLUMNS == ("desk_class", "useful_confluence")
     desks, ignored_after = list_observatory_desks(store_root=store)
     assert ignored_after == ()
     assert len(desks) == 1
     loaded = desks[0]
     assert loaded.facets["instrument"] == ("MNQ", 80)
+    assert loaded.facets["desk_class"] == ("plus_e",)
+    assert loaded.facets["useful_confluence"] == (True,)
     assert loaded.lens == "program_b"
     assert loaded.sort_column == "profit_factor"
     assert loaded.cohort_lock is True
@@ -1408,6 +1482,161 @@ def test_saved_desk_round_trip_and_schema_v1(tmp_path: Path):
     assert not (study_dir / "study_observatory").exists()
     assert delete_observatory_desk(saved.id, store_root=store) is True
     assert list_observatory_desks(store_root=store)[0] == ()
+
+
+def test_saved_desk_accepts_pre_so9_v1_without_lens_facet_keys(tmp_path: Path):
+    store = tmp_path / "store"
+    desks_dir = observatory_desks_dir(store_root=store)
+    desks_dir.mkdir(parents=True)
+    path = desks_dir / "old-desk.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "old-desk",
+                "name": "Old",
+                "facets": {"instrument": ["ES"]},
+                "lens": "auto",
+                "sort_column": "expectancy_r",
+            }
+        ),
+        encoding="utf-8",
+    )
+    loaded = parse_observatory_desk(path)
+    assert loaded is not None
+    assert "desk_class" not in loaded.facets
+    assert "useful_confluence" not in loaded.facets
+    state = observatory_desk_query_state(loaded)
+    assert state["facets"]["instrument"] == ["ES"]
+    assert state["facets"]["desk_class"] == []
+    assert state["facets"]["useful_confluence"] == []
+
+
+def test_heatmap_focus_label_uses_solo_token() -> None:
+    label = heatmap_focus_label("ONH", "")
+    assert HEATMAP_SOLO_PARTNER in label
+    assert parse_heatmap_focus_label(label) == ("ONH", "")
+    assert parse_heatmap_focus_label(heatmap_focus_label("ONH", "ONL")) == ("ONH", "ONL")
+    assert parse_heatmap_focus_label("not-a-cell") is None
+    assert parse_heatmap_focus_label("") is None
+
+
+def test_heatmap_focus_pending_facets_writes_core_and_partner() -> None:
+    pending = heatmap_focus_pending_facets(heatmap_focus_label("ONH", "ONL"))
+    assert pending == {
+        "factor_core_level": ["ONH"],
+        "factor_partner_levels": ["ONL"],
+    }
+    solo = heatmap_focus_pending_facets(heatmap_focus_label("ONH", ""))
+    assert solo["factor_core_level"] == ["ONH"]
+    assert solo["factor_partner_levels"] == [HEATMAP_SOLO_PARTNER]
+    assert heatmap_focus_pending_facets("not-a-cell") == {
+        "factor_core_level": [],
+        "factor_partner_levels": [],
+    }
+
+
+def test_query_facets_ignore_lens_columns_when_lens_off(tmp_path: Path) -> None:
+    _write_program_b_lens_corpus(tmp_path / "results" / "studies")
+    frame = attach_program_b_projections(load_observatory_frame(roots=(tmp_path.resolve(),)).frame)
+    assert "alpha_c0" in set(frame["run_name"])
+    lens_off = apply_facets(
+        frame,
+        query_facets_for_frame(
+            {},
+            lens_active=False,
+            lens_facets={"desk_class": ["plus_e"]},
+        ),
+    )
+    assert len(lens_off) == len(frame)
+    assert "alpha_c0" in set(lens_off["run_name"])
+    plus = apply_facets(
+        frame,
+        query_facets_for_frame(
+            {},
+            lens_active=True,
+            lens_facets={"desk_class": ["plus_e"]},
+        ),
+    )
+    assert not plus.empty
+    assert plus["desk_class"].eq("plus_e").all()
+    assert set(plus["run_name"]) == {"onh_sma"}
+    prog = frame.loc[frame["lens_hint"].astype(str) == "program_b"]
+    assert "plus_e" in unique_facet_values(prog, "desk_class")
+    assert "hold" in unique_facet_values(prog, "desk_class")
+    useful = apply_facets(
+        frame,
+        query_facets_for_frame(
+            {},
+            lens_active=True,
+            lens_facets={"useful_confluence": [True]},
+        ),
+    )
+    assert not useful.empty
+    assert useful["useful_confluence"].eq(True).all()
+    assert set(useful["run_name"]) == {"onh_sma"}
+    not_useful = apply_facets(
+        frame,
+        query_facets_for_frame(
+            {},
+            lens_active=True,
+            lens_facets={"useful_confluence": [False]},
+        ),
+    )
+    assert not not_useful.empty
+    assert not_useful["useful_confluence"].eq(False).all()
+    assert "onh_sma" not in set(not_useful["run_name"])
+    empty = apply_facets(
+        frame,
+        query_facets_for_frame(
+            {},
+            lens_active=True,
+            lens_facets={"useful_confluence": []},
+        ),
+    )
+    assert len(empty) == len(frame)
+    composed = query_facets_for_frame(
+        {"instrument": ["ES"], "desk_class": ["plus_e"]},
+        lens_active=False,
+        lens_facets={"desk_class": ["plus_e"]},
+    )
+    assert composed == {"instrument": ["ES"]}
+    as_str = apply_facets(frame, {"useful_confluence": ["True"]})
+    as_bool = apply_facets(frame, {"useful_confluence": [True]})
+    assert list(as_str["run_name"]) == list(as_bool["run_name"]) == ["onh_sma"]
+    np = pytest.importorskip("numpy")
+    assert canonical_facet_value(np.bool_(True)) is True
+    assert canonical_facet_value(np.bool_(False)) is False
+    assert constrain_facet_selection(
+        [HEATMAP_SOLO_PARTNER],
+        unique_facet_values(frame, "factor_partner_levels"),
+    ) == [HEATMAP_SOLO_PARTNER]
+
+
+def test_heatmap_focus_applies_existing_core_partner_facets(tmp_path: Path) -> None:
+    _write_program_b_lens_corpus(tmp_path / "results" / "studies")
+    frame = attach_program_b_projections(load_observatory_frame(roots=(tmp_path.resolve(),)).frame)
+    pending = heatmap_focus_pending_facets(heatmap_focus_label("ONH", "SMA"))
+    focused = apply_facets(frame, pending)
+    assert set(focused["run_name"]) == {"onh_sma"}
+    solo = apply_facets(frame, heatmap_focus_pending_facets(heatmap_focus_label("ONH", "")))
+    assert set(solo["run_name"]) == {"w0_onh"}
+    assert HEATMAP_SOLO_PARTNER in unique_facet_values(frame, "factor_partner_levels")
+    cleared = apply_facets(
+        frame,
+        {"factor_core_level": [], "factor_partner_levels": []},
+    )
+    assert len(cleared) == len(frame)
+    grid = program_b_heatmap_cells(frame.loc[frame["lens_hint"].astype(str) == "program_b"])
+    labels = {
+        heatmap_focus_label(
+            record.get("factor_core_level"),
+            record.get("factor_partner_levels"),
+        )
+        for record in grid.to_dict(orient="records")
+    }
+    assert heatmap_focus_label("ONH", "SMA") in labels
+    assert heatmap_focus_label("ONH", "") in labels
 
 
 def test_saved_desk_ignores_corrupt_and_v2(tmp_path: Path):
@@ -1606,6 +1835,9 @@ def test_observatory_page_renders_studies_pane(
     assert majority_captions
     assert all("min_valid=" in text for text in majority_captions)
     assert all("|" not in text for text in majority_captions)
+    assert not any(box.label == "Heatmap cell" for box in app.selectbox)
+    assert not any(box.label == "desk_class" for box in app.multiselect)
+    assert not any(box.label == "useful_confluence" for box in app.multiselect)
 
 
 def test_observatory_empty_facets_do_not_claim_shared_cohort(
@@ -1653,3 +1885,91 @@ def test_observatory_empty_facets_do_not_claim_shared_cohort(
     assert not any("All filtered cells share one cohort key." in text for text in captions)
     assert any("No cohort keys in the filtered set." in text for text in captions)
     assert any("No cells match the current facets." in text for text in captions)
+
+
+def test_observatory_page_lens_facets_and_heatmap_cell(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    isolate_observatory_apptest_globals: None,
+) -> None:
+    """SO9 AppTest: lens-on facets + Heatmap cell; generic hides them."""
+    from streamlit.testing.v1 import AppTest
+
+    store = tmp_path / "store"
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(store))
+
+    def _isolated_roots() -> tuple[Path, ...]:
+        return (store.resolve(),)
+
+    monkeypatch.setattr("thesistester.study.viewer.default_study_viewer_roots", _isolated_roots)
+    monkeypatch.setattr(
+        "thesistester.study.observatory.default_study_viewer_roots", _isolated_roots
+    )
+    _write_program_b_lens_corpus(store / "results" / "studies")
+    page = Path(__file__).resolve().parents[2] / "pages" / "16_Study_Observatory.py"
+    app = AppTest.from_file(str(page), default_timeout=45)
+    app.run()
+    assert not app.exception
+    desk_class = next(box for box in app.multiselect if box.label == "desk_class")
+    useful = next(box for box in app.multiselect if box.label == "useful_confluence")
+    assert "plus_e" in list(desk_class.options)
+    assert "hold" in list(desk_class.options)
+    useful_opts = list(useful.options)
+    assert True in useful_opts or "True" in useful_opts
+    assert False in useful_opts or "False" in useful_opts
+    heatmap = next(box for box in app.selectbox if box.label == "Heatmap cell")
+    assert any("ONH" in str(option) and "SMA" in str(option) for option in heatmap.options)
+    captions = [item.value for item in app.caption]
+    assert any("Heatmap focus writes the Core / Partner facets." in text for text in captions)
+    desk_class.set_value(["plus_e"])
+    app.run()
+    assert not app.exception
+    cell_box = next(box for box in app.selectbox if box.label == "Cell")
+    assert list(cell_box.options) == ["progB_w1_onh_sma / onh_sma"]
+    still_desk = next(box for box in app.multiselect if box.label == "desk_class")
+    assert "plus_e" in list(still_desk.options)
+    assert "hold" in list(still_desk.options)
+    lens = next(box for box in app.radio if box.label == "Lens")
+    lens.set_value("generic")
+    app.run()
+    assert not app.exception
+    assert not any(box.label == "Heatmap cell" for box in app.selectbox)
+    assert not any(box.label == "desk_class" for box in app.multiselect)
+    captions_off = [item.value for item in app.caption]
+    assert any(
+        "Saved lens facets are inert until the Program B lens is on." in text
+        for text in captions_off
+    )
+    cell_generic = next(box for box in app.selectbox if box.label == "Cell")
+    assert "alpha / alpha_c0" in list(cell_generic.options)
+    lens_on = next(box for box in app.radio if box.label == "Lens")
+    lens_on.set_value("program_b")
+    app.run()
+    assert not app.exception
+    heatmap_after = next(box for box in app.selectbox if box.label == "Heatmap cell")
+    heatmap_after.set_value(heatmap_focus_label("ONH", "SMA"))
+    app.run()
+    assert not app.exception
+    core = next(box for box in app.multiselect if box.label == "Core level")
+    partner = next(box for box in app.multiselect if box.label == "Partner levels")
+    assert list(core.value) == ["ONH"]
+    assert list(partner.value) == ["SMA"]
+    core.set_value([])
+    partner.set_value([])
+    useful_true = next(box for box in app.multiselect if box.label == "useful_confluence")
+    useful_true.set_value([True] if True in list(useful_true.options) else ["True"])
+    app.run()
+    assert not app.exception
+    heatmap_solo = next(box for box in app.selectbox if box.label == "Heatmap cell")
+    heatmap_solo.set_value(heatmap_focus_label("ONH", ""))
+    app.run()
+    assert not app.exception
+    core_solo = next(box for box in app.multiselect if box.label == "Core level")
+    partner_solo = next(box for box in app.multiselect if box.label == "Partner levels")
+    assert list(core_solo.value) == ["ONH"]
+    assert list(partner_solo.value) == [HEATMAP_SOLO_PARTNER]
+    captions_solo = [item.value for item in app.caption]
+    assert not any("No cohort keys in the filtered set." in text for text in captions_solo)
+    assert not any("No cells match the current facets." in text for text in captions_solo)
+    cell_solo = next(box for box in app.selectbox if box.label == "Cell")
+    assert list(cell_solo.options) == ["progB_w0_solo / w0_onh"]

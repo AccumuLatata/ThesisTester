@@ -19,6 +19,8 @@ Open study in Inspect). No new heading.
 is extended only when SO8/SO9 code ships.  
 **SO8 (2026-08-30):** same H2 extended (Active-cohort labels / differ
 caption). No new heading. SO9 still planned.  
+**SO9 (2026-08-30):** same H2 extended (lens-on `desk_class` /
+`useful_confluence` / Heatmap cell). No new heading. SO5/SO6 parked.  
 **RS5 (2026-08-12):** USER_GUIDE **Research Study Runner (headless)** H2 +
 §7.1.4 / `HELP_CORPUS_MANIFEST` amend (same PR as Study Runner promote/examples).
 **Owner surface:** Help corpus content + narrow `help_corpus` allowlist/tests

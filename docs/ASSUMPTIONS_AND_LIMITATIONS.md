@@ -1081,7 +1081,7 @@ other than the last bar in the dataset.
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met
   the cell's grid `min_trades`.
 
-## Study Observatory (SO — SO7 shipped)
+## Study Observatory (SO — SO9 shipped)
 
 - The Study Observatory (`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`) is
   a corpus projection of artifacts the runner already wrote. SO2 ships the
@@ -1117,9 +1117,11 @@ other than the last bar in the dataset.
 - Cohort **labels** (SO8) are display-only. The raw `cohort_key` stays the
   lock, sort identity, and saved-desk value. Labels are not a new
   comparability score.
-- SO9 is **planned**, not shipped: Program B lens **facets** (`desk_class` /
-  `useful_confluence`, heatmap focus via existing core/partner facets).
-  Lens facets are not Admit.
+- Lens **facets** (SO9) query existing `desk_class` / `useful_confluence`
+  only while the Program B lens is on. Heatmap focus writes the existing
+  Core / Partner facets; it is not a separate persisted id. Lens facets
+  are query state, not Admit and not a usefulness float. Desk
+  `schema_version` stays 1.
 - Observatory must not unzip every cell or rewrite `study.overview.*`.
 
 ## Practical interpretation

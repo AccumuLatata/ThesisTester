@@ -1069,8 +1069,9 @@ dir and every index cell under `results/studies/` and `out/`. The strip and
 **Studies** table show ledger progress; ledger-only dirs stay there, not as
 invented cells. Filter/sort cells inside a comparability cohort. The
 Program B **lens** adds `desk_class` / ΔE / heatmap when `progB_*` rows
-exist. **Open study in Inspect** drills a catalog dir; **Open in Inspect**
-drills a cell. Headless: `study observatory`.
+exist; when the lens is on, facet those overlay columns or focus a
+**Heatmap cell**. **Open study in Inspect** drills a catalog dir; **Open
+in Inspect** drills a cell. Headless: `study observatory`.
 
 **When to use it.** After many studies finish — or while some are still
 running — scan the corpus before one Inspect session. Keep cohort lock on
@@ -1078,7 +1079,8 @@ when comparing E / PF across shared instrument, dataset, costs, and locks.
 
 **Related terms.** Study Observatory, corpus, studies pane, ledger strip,
 cohort lock, cohort label, sample class, n×E scatter, lens, desk class, ΔE,
-saved desk, Open study in Inspect, study observatory CLI
+useful confluence, Heatmap cell, saved desk, Open study in Inspect, study
+observatory CLI
 
 **Key settings.**
 
@@ -1094,7 +1096,7 @@ saved desk, Open study in Inspect, study observatory CLI
 | Sort | E / PF / WR / n / max DD / name / status | `total_r` is not sortable |
 | n×E scatter | `trade_count` × `expectancy_r` | Empty metrics → caption |
 | Lens / packet chrome | `auto` / `program_b` / `generic`; 23+4 chrome | `auto` only if a filtered row is `progB_*`. Chrome ≠ ingest |
-| desk_class / heatmap | Runbook overlay; core × partners | failed first; noisy 15≤n<30; unidentified n<15; grey ≠ failed |
+| desk_class / useful_confluence / Heatmap cell | Lens-on filters; heatmap writes Core / Partner (`(solo)` = empty partners) | Lens off: saved lens facets stay inert. Clear Core / Partner to unfocus |
 | Saved desk | Store query only | Not evidence. Not under `results/studies/` |
 | Open in Inspect | Cell drill to Studies | No classic hydrate / Bundles |
 
@@ -1108,7 +1110,8 @@ saved desk, Open study in Inspect, study observatory CLI
    the raw key. A caption lists lock fields that differ in the filtered set.
 4. Read n×E + table. `sample_class` is n vs that study’s `min_trades`.
 5. Lens `auto` when `progB_*` exist. ΔE = pair E − Wave 0 (`w0_va` for
-   prior-profile cores, else `w0_solo`).
+   prior-profile cores, else `w0_solo`). Lens on: facet `desk_class` /
+   `useful_confluence`. **Heatmap cell** writes Core / Partner.
 6. Optionally **Save desk**. Select a cell → **Open in Inspect**. CLI:
    `python -m thesistester study observatory`.
 
@@ -1118,9 +1121,9 @@ saved desk, Open study in Inspect, study observatory CLI
 - Not Admit. `desk_class` / +E is a Program B overlay. ΔE mixes confirm
   value with zone-shape. Do not write onto the Program A desk.
 - A desk is a stored query. Ledger-only dirs are progress, not invented
-  cells. Cohort labels are display, not a new comparability score. No
-  classic-key mutate. Catalog membership is not a quality score. SO5/SO6
-  parked. SO9 (lens as filter) is not shipped.
+  cells. Cohort labels are display, not a new comparability score. Lens
+  facets are query state, not Admit. No classic-key mutate. Catalog
+  membership is not a quality score. SO5/SO6 parked.
 
 **Related pages.** Studies viewer (read-only); Research Study Runner
 (headless); Focus vs Admit; Validation and robustness.
