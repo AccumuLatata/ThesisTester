@@ -1064,72 +1064,61 @@ Analysis; Focus vs Admit; Research Bundles; Validation and robustness.
 
 ## Study Observatory
 
-**What it is.** Streamlit **Study Observatory** lists every local study cell
-under `results/studies/` and `out/` as one fact table. Filter by instrument,
-setup kind, core / partners, status, sample class, SL/TP, and ingest. Sort
-inside a comparability cohort. The n×E scatter colors `sample_class`. An
-optional Program B **lens** adds `desk_class`, ΔE vs Wave 0, thinning, and a
-core × partner heatmap when `progB_*` cells are in the filtered set. **Open
-in Inspect** drills one cell into Studies. Headless: `study observatory`.
+**What it is.** Streamlit **Study Observatory** lists every local catalog
+dir and every index cell under `results/studies/` and `out/`. The strip and
+**Studies** table show ledger progress; ledger-only dirs stay there, not as
+invented cells. Filter/sort cells inside a comparability cohort. The
+Program B **lens** adds `desk_class` / ΔE / heatmap when `progB_*` rows
+exist. **Open study in Inspect** drills a catalog dir; **Open in Inspect**
+drills a cell. Headless: `study observatory`.
 
-**When to use it.** After many studies finish (or while some are still
-running), scan the corpus before opening one Inspect session. Use cohort lock
-when comparing expectancy / profit factor across cells that share instrument,
-dataset, costs, and lock fields.
+**When to use it.** After many studies finish — or while some are still
+running — scan the corpus before one Inspect session. Keep cohort lock on
+when comparing E / PF across shared instrument, dataset, costs, and locks.
 
-**Related terms.** Study Observatory, corpus, cell, facet, cohort lock, break
-comparability, sample class, n×E scatter, lens, desk class, ΔE, thinning,
-heatmap, saved desk, Refresh, Open in Inspect, study observatory CLI
+**Related terms.** Study Observatory, corpus, studies pane, ledger strip,
+cohort lock, sample class, n×E scatter, lens, desk class, ΔE, saved desk,
+Open study in Inspect, study observatory CLI
 
 **Key settings.**
 
 | Control | Meaning | Common pitfall |
 |---|---|---|
-| Refresh | Rediscover dirs and reload index + expansion | Does not run cells or rewrite overviews |
-| Facets | Keep rows whose values are in the selected sets | Empty selection = no filter on that column |
-| Cohort lock | Sort / scatter highlight stay in one `cohort_key` | Default on. Unchecking it spans keys and shows the incomparability banner |
-| Active cohort | Majority key after facets, or operator pick | Ties break to the lexicographically first key |
-| Break comparability | Allow sort across keys | Banner required; this is the only legal global PF/E sort |
-| Sort | Allow-list: E / PF / WR / n / max DD / name / status | `total_r` is not sortable |
-| n×E scatter | `trade_count` × `expectancy_r`; vline at displayed `min_trades` | Empty metrics → caption, not a chart |
-| Lens | `auto` / `program_b` / `generic` | `auto` attaches only when a filtered row is `progB_*` |
-| Packet chrome | 15s packet = 23 files; parked VA = 4 | Chrome only. Not catalog membership or ingest |
-| desk_class | Runbook overlay: failed first; noisy 15≤n<30; unidentified n<15; `other` = E≥0.03 and PF<0.95 | Not Admit. `sample_class` stays the n-gate |
-| desk_class heatmap | Core × partners; color is class, grey = missing | Grey is missing/pending, not `failed`. Hidden on a generic-only corpus |
-| Saved desk | Store query (facets / cohort / lens / sort) | Not a validated edge. Not written under `results/studies/`. Save updates the selected desk or creates one |
-| Open in Inspect | Writes Studies path keys and switches to Studies | Does not hydrate classic session keys or Bundles |
+| Refresh | Rediscover + reload index/expansion | Does not run cells |
+| Studies / Cells / Running / Last stamp | Catalog dirs, index cells, in-flight ledger cells, newest mtime | Cells ≠ pending ledger rows |
+| Ok / Failed / Pending / Skipped | Ledger sums across dirs | Not a quality score. No invented cell row for pending dirs |
+| Studies table / Open study in Inspect | One row per catalog dir; study drill clears leftover `run_name` | Ledger-only dirs appear here only |
+| Facets | Keep selected values | Empty = no filter on that column |
+| Cohort lock / Active cohort | Sort/scatter stay in one `cohort_key`; majority or pick | Default on. Ties → lex-first key |
+| Break comparability | Sort across keys | Banner required; only legal global PF/E sort |
+| Sort | E / PF / WR / n / max DD / name / status | `total_r` is not sortable |
+| n×E scatter | `trade_count` × `expectancy_r` | Empty metrics → caption |
+| Lens / packet chrome | `auto` / `program_b` / `generic`; 23+4 chrome | `auto` only if a filtered row is `progB_*`. Chrome ≠ ingest |
+| desk_class / heatmap | Runbook overlay; core × partners | failed first; noisy 15≤n<30; unidentified n<15; grey ≠ failed |
+| Saved desk | Store query only | Not evidence. Not under `results/studies/` |
+| Open in Inspect | Cell drill to Studies | No classic hydrate / Bundles |
 
 **How to use.**
 
-1. Leave studies under `results/studies/` or `out/` (same scan as Studies).
-2. Open **Study Observatory**. Read the corpus strip (studies / cells /
-   running / last stamp). **Refresh** after new dirs finish.
-3. Facet (for example Instrument = MNQ). Keep **Cohort lock** on unless you
-   mean to compare incomparable locks.
-4. Read the n×E scatter and the sorted table. `sample_class` is n vs that
-   study’s `min_trades`, not Program B +E / Hold / Dead.
-5. Leave **Lens** on `auto` when Program B dirs are present. Read the
-   class-count strip, packet chrome (23 / 4 files — not catalog
-   membership), and heatmap. ΔE is pair E minus Wave 0
-   (`progB_w0_va` for prior-profile cores, else `progB_w0_solo`) on the
-   same instrument / dataset lock. n<15 is unidentified; 15≤n<30 is
-   noisy.
-6. Optionally **Save desk** to reuse the query. Load / delete from the store
-   sidecar. A desk is not evidence.
-7. Select a cell → **Open in Inspect** for briefing / peek. CLI:
-   `python -m thesistester study observatory` (`--csv` for the same columns).
+1. Leave studies under `results/studies/` or `out/`.
+2. Open Observatory. Read the strip and **Studies** table. **Open study in
+   Inspect** for a dir. **Refresh** after new dirs finish.
+3. Facet (e.g. Instrument = MNQ). Keep **Cohort lock** on unless you mean
+   to mix locks.
+4. Read n×E + table. `sample_class` is n vs that study’s `min_trades`.
+5. Lens `auto` when `progB_*` exist. ΔE = pair E − Wave 0 (`w0_va` for
+   prior-profile cores, else `w0_solo`).
+6. Optionally **Save desk**. Select a cell → **Open in Inspect**. CLI:
+   `python -m thesistester study observatory`.
 
 **What it is not.**
 
-- Not a validated edge. Ranking many cells is multiple-testing.
-- Not a second runner, job queue, or unzip-all of cell zips.
-- Not Admit. +E / `desk_class` is a Program B runbook overlay, not a promote.
-- ΔE mixes confirm value with zone-shape (point vs partner box). Do not write
-  these numbers onto the Program A scalp map.
-- A saved desk is a stored query, not a validated edge. Unknown schema files
-  are ignored. SO5 watch / SO6 Discuss stay parked.
-- Does not mutate classic session keys or switch to Bundles / Portfolio.
-- Catalog membership is not a quality score.
+- Not a validated edge, second runner, job queue, or unzip-all.
+- Not Admit. `desk_class` / +E is a Program B overlay. ΔE mixes confirm
+  value with zone-shape. Do not write onto the Program A desk.
+- A desk is a stored query. Ledger-only dirs are progress, not invented
+  cells. No classic-key mutate. Catalog membership is not a quality score.
+  SO5/SO6 parked.
 
 **Related pages.** Studies viewer (read-only); Research Study Runner
 (headless); Focus vs Admit; Validation and robustness.

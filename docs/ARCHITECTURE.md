@@ -146,7 +146,9 @@ must not be imported by `viewer.py`. SO2 adds `pages/16_Study_Observatory.py`
 (facets, cohort lock, n×E scatter, Inspect drill). SO3 attaches the Program B
 lens (`desk_class`, ΔE vs Wave 0, heatmap) when `progB_*` cells are present.
 SO4 persists query-only desks under `{store}/study_observatory/desks`
-(`schema_version: 1`; unknown schema ignored).
+(`schema_version: 1`; unknown schema ignored). SO7 surfaces the existing
+`studies` grain (ledger strip + catalog-dir table + study-level Inspect
+drill) without inventing cell rows.
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
@@ -1248,10 +1250,11 @@ research state. Study Observatory SO2 adds `observatory_cached_model`,
 `observatory_break_comparability`, `observatory_sort_column`, and
 `observatory_selected_run` on `pages/16_Study_Observatory.py` only. SO3 adds
 `observatory_active_lens` (`auto` / `program_b` / `generic`). SO4 adds
-`observatory_saved_desk_id`. Drill
-writes existing Studies keys (`studies_viewer_study_dir`,
-`studies_viewer_pending_path`) and pops Inspect cache; it must not write
-classic research keys.
+`observatory_saved_desk_id`. SO7 adds `observatory_selected_study`. Cell
+drill writes existing Studies keys (`studies_viewer_study_dir`,
+`studies_viewer_pending_path`) and pops Inspect cache. Study-level drill
+does the same and assigns empty leftover `studies_viewer_selected_run`
+(do not pop that widget key). Neither drill writes classic research keys.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when

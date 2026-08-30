@@ -1081,7 +1081,7 @@ other than the last bar in the dataset.
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met
   the cell's grid `min_trades`.
 
-## Study Observatory (SO — SO4 shipped)
+## Study Observatory (SO — SO7 shipped)
 
 - The Study Observatory (`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`) is
   a corpus projection of artifacts the runner already wrote. SO2 ships the
@@ -1110,6 +1110,10 @@ other than the last bar in the dataset.
   not a validated edge and is not written into `results/studies/`. Unknown
   schema or corrupt files are ignored; the page still loads. No desks file
   is required.
+- The studies pane (SO7) is the existing catalog-dir grain: ledger
+  ok / failed / pending / skipped / running. Ledger-only dirs appear there
+  and on the strip, never as invented cell rows. Those counts are progress,
+  not a quality score.
 - Observatory must not unzip every cell or rewrite `study.overview.*`.
 
 ## Practical interpretation

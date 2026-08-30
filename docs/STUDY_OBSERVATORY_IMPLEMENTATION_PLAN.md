@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-30  
-**Status:** **SO4 shipped (saved desks). SO1–SO4 complete. SO5 / SO6 parked.**  
+**Status:** **SO7 shipped (corpus studies pane). SO1–SO4 + SO7 complete. SO5 / SO6 parked.**  
 **Series code:** **SO** (Study Observatory)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** RS1–RS5 + RS-D7 + RS-D2 + RS-D4 + RS-D8 + RS-D9; SB1–SB3; SIA0–SIA3; SV0–SV5; SAF1–SAF3; AO1; Program B operator packet (`examples/studies/program_b/`)  
@@ -11,7 +11,7 @@
 **Related but separate:** Studies Inspect (`pages/15_Studies.py`) remains the **one-study microscope**. Portfolio (`pages/13_Portfolio.py`) remains multi-setup **trade** composition. Research Bundles remains zip import into classic session. Classic thesis runs stay out until a later series joins on `dataset_id` / `research_identity`.  
 **Related follow-on (do not implement here):** SO5 opt-in watch; SO6 grounded Discuss over the observatory frame. Neither reopens SV Refresh, RQ auditor, or `STUDY.*` tools.
 
-**Completeness posture:** After SO4, an operator can open one Streamlit page, see **every** local study cell as a typed fact table, filter/sort by instrument, setup kind, n / E / PF / WR, keep incomparable locks out of one rank (cohort lock), apply a Program B lens when that packet is present, save a desk, and drill one cell into existing Inspect — without a second runner, a new primary metric, classic `st.session_state` mutation, or writes into `results/studies/`.
+**Completeness posture:** After SO7, an operator can open one Streamlit page, see **every** local catalog dir’s ledger progress (ok / failed / pending / running / skipped) plus every index cell as a typed fact table, filter/sort by instrument, setup kind, n / E / PF / WR, keep incomparable locks out of one rank (cohort lock), apply a Program B lens when that packet is present, save a desk, and drill one **study** or one **cell** into existing Inspect — without a second runner, a new primary metric, classic `st.session_state` mutation, invented cell rows for ledger-only dirs, or writes into `results/studies/`.
 
 ---
 
@@ -38,7 +38,7 @@ Ship a **Study Observatory**: a corpus-level, program-agnostic investigation sur
 | Schema / expand / execute / launch / promote / report write | **No behavior edits** |
 | Assistant / MCP | Unchanged through SO4. SO6 (parked) must not add `STUDY.*` without a later RS6 amend |
 | Research Bundles / classic keys | **No** `apply_research_bundle_to_session`. Drill uses existing Studies session keys only |
-| Series complete when | SO4 acceptance is green. SO5 / SO6 stay parked |
+| Series complete when | SO4 acceptance is green. SO7 (studies pane) is the first post-SO4 UX amend. SO5 / SO6 stay parked |
 
 **Feasibility:** High. Catalog discovery, index columns (`expectancy_r`, `profit_factor`, `win_rate`, `dataset_id`, `instrument`), expansion factor tags, and Inspect drill keys already exist. Missing piece is a **cached concat + comparability gate + page**, not a new aggregator or ranker.
 
@@ -53,6 +53,7 @@ Ship a **Study Observatory**: a corpus-level, program-agnostic investigation sur
 | Program B lens when `progB_*` cells exist (SO3) | Hard-coding Observatory as Program-B-only |
 | Inspect drill via existing Studies keys | Classic hydrate; Bundles / Portfolio deep-link |
 | Saved desks + store sidecar (SO4) | Writes into `results/studies/` or `study.overview.*` |
+| Studies pane + ledger strip (SO7) | Inventing cell rows for ledger-only dirs; SO5 watch |
 | Additive `study observatory` CLI | Changing `expand\|run\|report\|promote\|rollup\|list` |
 | Extend / add USER_GUIDE per §8 | Engine / golden regen / `run_batch` / `STUDY.run` |
 | | Job queue, kill/retry, in-process `run_study` |
@@ -256,6 +257,7 @@ Observatory-scoped only. Must not collide. Must not write `CLASSIC_RESEARCH_SESS
 | `observatory_selected_run` | SO2 | `(study_dir, run_name)` or empty |
 | `observatory_active_lens` | SO3 | `generic` / `program_b` / `auto` |
 | `observatory_saved_desk_id` | SO4 | selected desk |
+| `observatory_selected_study` | SO7 | selected catalog `study_dir` (study-level drill) |
 | `studies_viewer_study_dir` | existing | **Drill only** — same string SV1 sets |
 | `studies_viewer_pending_path` | existing | **Drill only** |
 | `studies_viewer_cached_model` / `_dir` | existing | Drill **pops** these so Inspect reloads |
@@ -292,7 +294,7 @@ Program B lens repeats runbook: n&lt;15 unidentified; 15≤n&lt;30 noisy; +E is 
 
 ## 5. Milestone sequence (locked)
 
-**SO0 → SO1 → SO2 → SO3 → SO4**. Do not reorder without amending this plan. Do not implement SO2–SO4 inside SO1. Do not implement observatory code in SO0.
+**SO0 → SO1 → SO2 → SO3 → SO4**. Do not reorder without amending this plan. Do not implement SO2–SO4 inside SO1. Do not implement observatory code in SO0. **SO7** is the first post-SO4 UX amend (studies grain). It does **not** implement parked SO5 / SO6.
 
 | ID | Intent | Code? |
 |---|---|---|
@@ -303,6 +305,7 @@ Program B lens repeats runbook: n&lt;15 unidentified; 15≤n&lt;30 noisy; +E is 
 | **SO4** | Saved desks + schema-versioned store sidecar (default unused) | store helper + page load/save |
 | **SO5** | Parked — opt-in fragment refresh of **corpus strip only** | — |
 | **SO6** | Parked — grounded Discuss over the filtered frame | — |
+| **SO7** | Corpus studies pane — ledger strip + catalog-dir table + study-level Inspect drill | `observatory.py` helpers + page 16 |
 
 ---
 
@@ -474,21 +477,53 @@ Do not implement in SO1–SO4.
 
 Do not implement in SO1–SO4. Requires a later RQ/RI amend if it lands.
 
+### 6.8 SO7 — Corpus studies pane
+
+| | |
+|---|---|
+| **Depends on** | SO4 |
+| **Likely files** | `thesistester/study/observatory.py` (progress / studies-table helpers); `pages/16_Study_Observatory.py`; `tests/study/test_study_observatory.py`; USER_GUIDE Observatory H2; ARCHITECTURE keys; STUDY_RUNNER §SO; roadmap |
+| **Behavior** | Surface the existing `studies` grain. Corpus strip adds ledger sums (`ok` / `failed` / `pending` / `skipped`) next to studies / cells / running / last stamp. Studies table: one row per catalog dir; ledger-only dirs included; **no** invented `frame` rows. Sort: parse `error` first, then running / pending / failed desc, then `study_name` / `study_dir`. **Open study in Inspect** sets Studies path keys, pops Inspect cache, **assigns empty** leftover `studies_viewer_selected_run` (do **not** `pop` that widget key — Streamlit can restore a shared `cell_000`), `st.switch_page` to page 15. Cell drill unchanged (still sets run). |
+| **Out of scope** | SO5 `st.fragment` watch; SO6 Discuss; new metrics; unzip; writing study dirs; changing `study observatory` CLI columns; saved-desk schema bump |
+| **Regression** | Cell grain / cohort lock / lens / desks unchanged; Inspect / Preview / Build / launch unchanged; no classic keys; goldens untouched |
+| **Acceptance checklist** | |
+| | ☑ Indexed + ledger-only fixture: strip `pending >= 1`; studies table lists both; `frame` still has cells from the indexed dir only |
+| | ☑ Corrupt-index sibling sorts before the good dir |
+| | ☑ Duplicate `study_name` labels disambiguate with `study_dir` |
+| | ☑ Study drill clears leftover selected run (assign empty; do not pop the widget key); cell drill still sets it |
+| | ☑ Page AST: `Open study in Inspect`; no `run_study` / `st.fragment` / classic keys |
+| | ☑ `observatory.py` still Streamlit/Plotly-free |
+| | ☑ USER_GUIDE Observatory H2 extended (same H2; no new heading) |
+| | ☑ Goldens untouched; `tests/study/` + help-corpus structure green |
+
+**Copy-ready agent prompt:**
+
+```text
+Implement SO7 only from docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md §6.8.
+Surface the existing studies grain on pages/16_Study_Observatory.py:
+ledger strip (ok/failed/pending/skipped) + catalog-dir table +
+Open study in Inspect (path keys + clear leftover selected run;
+assign empty, do not pop the widget key).
+Do not invent cell rows for ledger-only dirs. Do not implement SO5 watch
+or SO6 Discuss. Do not change CLI columns, desk schema, engine, or goldens.
+Extend USER_GUIDE Observatory H2 (no new H2). §4.2.
+```
+
 ---
 
-## 7. End-to-end product acceptance (after SO4)
+## 7. End-to-end product acceptance (after SO7)
 
 A researcher running many studies (Program B 15s packet of 23 files, parked VA packet of 4, or any later StudySpecs) can:
 
 1. Open **Study Observatory** while cells are finishing.
-2. See corpus progress (ok / failed / running / pending) without opening one Inspect session per study.
+2. See corpus progress (ok / failed / running / pending / skipped) and the catalog-dir table without opening one Inspect session per study. Ledger-only dirs stay on the studies pane.
 3. Filter by instrument, setup kind, core, partners, n-gate, status.
 4. Sort by E / PF / WR / n **inside a comparability cohort** (or explicitly break the lock).
 5. Read the n×E scatter (n=30 line) as the primary money plot.
 6. If Program B dirs exist, switch on the lens: class counts, ΔE vs Wave 0, core×confirm heatmap.
 7. Save the current query as a desk.
-8. Click one cell → existing Studies Inspect (briefing / peek) without classic hydrate.
-9. CLI `study observatory` prints the same grain for headless / bot logs.
+8. Click one study or one cell → existing Studies Inspect (briefing / peek) without classic hydrate.
+9. CLI `study observatory` prints the **cell** grain for headless / bot logs (not the studies pane).
 
 `study expand|run|report|promote|rollup|list` remain the academic path. Observatory does not execute.
 
@@ -500,13 +535,13 @@ A researcher running many studies (Program B 15s packet of 23 files, parked VA p
 |---|---|---|
 | This plan | SO0 | Lock |
 | `docs/README.md` | SO0 | Index row |
-| `docs/ENGINEERING_ROADMAP.md` | SO0 planned; SO4 ✅ | Status table + SO section |
-| `docs/STUDY_RUNNER.md` | SO0 §SO planned; SO1–SO4 mark shipped | Operator contract |
+| `docs/ENGINEERING_ROADMAP.md` | SO0 planned; SO4 ✅; SO7 ✅ | Status table + SO section |
+| `docs/STUDY_RUNNER.md` | SO0 §SO planned; SO1–SO4 / SO7 mark shipped | Operator contract |
 | `docs/USER_GUIDE.md` H2 `Studies viewer (read-only)` | SO0 honesty (Observatory **not** shipped); SO2 Related pages | Keep Inspect-honest |
 | `docs/USER_GUIDE.md` H2 `Study Observatory` | **SO2** | New H2 + HC §6.2 shape |
 | RQ §7.1.4 / HC §6.1 / `_USER_GUIDE_SECTIONS` | **SO2 same PR** | Allowlist the new H2; fail-closed if drifted |
-| `docs/ARCHITECTURE.md` | SO0 pointer; SO1 import graph; SO2 keys; SO4 store | Boundary |
-| `docs/AGENT_GUIDE.md` | SO0 planned; SO4 shipped | Do not implement SO inside an RS/SV/SAF PR |
+| `docs/ARCHITECTURE.md` | SO0 pointer; SO1 import graph; SO2 keys; SO4 store; SO7 study-select key | Boundary |
+| `docs/AGENT_GUIDE.md` | SO0 planned; SO4 shipped; SO7 shipped | Do not implement SO inside an RS/SV/SAF PR |
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | SO0 short; SO2 scatter; SO3 desk_class | Corpus ≠ edge; cohort; ΔE zone-shape |
 | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` | SO0 | Related-follow-on one-liner |
 | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` §12 | SO0 pointer; SO3 optional “lens shipped” | Spreadsheet remains valid; UI is product |
@@ -528,6 +563,7 @@ Help: SO0 must **not** add a stub H2. SO2 must not ship the page without the H2 
 | Help | structure + corpus allowlist includes `Study Observatory` | SO2 |
 | Lens | ΔE / desk_class fixtures; generic corpus hides heatmap | SO3 |
 | Desks | schema v1 round-trip; corrupt ignored; no study-dir write | SO4 |
+| Studies pane | ledger sums; ledger-only listed; error-first sort; no invented cells | SO7 |
 | Goldens | `tests/fixtures/study/golden/*` and `tests/fixtures/golden/*` stable | all |
 | Program B packet | `tests/study/test_program_b_yaml.py` unchanged | all |
 | Suite | `pytest -q tests/study/` per code PR; help tests when USER_GUIDE/HC change | code PRs |
@@ -573,4 +609,4 @@ No Streamlit AppTest required if AST + pure helpers cover the contract (RS-D8/D9
 
 ## 12. Regression-safety paragraph (every code PR)
 
-This series is **read-only over existing study artifacts**. It does not change `simulate_trades`, levels, signals, expand, execute, report writes, or golden fixtures. New behavior is a new module + new page + additive CLI subcommand. Defaults: cohort lock on, break-comparability off, Program B lens auto-only when `progB_*` rows exist. Persisted desks (SO4) are schema-versioned and ignored on drift. CI: `tests/study/` + help structure when docs/allowlists change; full suite before SO4 merge.
+This series is **read-only over existing study artifacts**. It does not change `simulate_trades`, levels, signals, expand, execute, report writes, or golden fixtures. New behavior is a new module + new page + additive CLI subcommand. Defaults: cohort lock on, break-comparability off, Program B lens auto-only when `progB_*` rows exist. Persisted desks (SO4) are schema-versioned and ignored on drift. SO7 is display-only over the existing `studies` grain. CI: `tests/study/` + help structure when docs/allowlists change; full suite before merge.

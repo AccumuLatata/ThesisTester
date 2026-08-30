@@ -1,11 +1,12 @@
-"""SO1–SO4 Study Observatory — fact table, Program B lens, saved desks.
+"""SO1–SO4 / SO7 Study Observatory — fact table, lens, desks, studies pane.
 
 Concatenates existing ``results_index.csv`` ⟕ ``study.expansion.json`` plus
 StudySpec locks across SV1 catalog hits. SO3 attaches optional Program B
 projections (``desk_class``, ΔE vs Wave 0, thinning, useful-confluence).
-SO4 persists query-only desks under the ThesisTester store. Does not call
-``report_study``, ``rollup_study``, or ``run_study``. Does not unzip cell
-bundles. Does not write ``results/studies/``.
+SO4 persists query-only desks under the ThesisTester store. SO7 projects the
+existing ``studies`` grain (ledger ok / failed / pending / running) without
+inventing cell rows. Does not call ``report_study``, ``rollup_study``, or
+``run_study``. Does not unzip cell bundles. Does not write ``results/studies/``.
 
 This module must not import Streamlit, Plotly, ``execute``, ``cli_study``,
 ``thesistester.cli``, ``launch``, ``builder``, ``promote``, ``tools``, or
@@ -152,6 +153,18 @@ STUDIES_COLUMNS: tuple[str, ...] = (
     "index_present",
     "error",
     "mtime",
+)
+STUDIES_TABLE_COLUMNS: tuple[str, ...] = (
+    "study_name",
+    "ok",
+    "failed",
+    "skipped",
+    "running",
+    "pending",
+    "index_present",
+    "ledger_present",
+    "error",
+    "study_dir",
 )
 
 _STAMP_FILES: tuple[str, ...] = (
@@ -1105,6 +1118,122 @@ def _cell_base_label(row: Mapping[str, Any]) -> str:
     study_s = "—" if study is None or _is_na(study) else str(study)
     run_s = "—" if run is None or _is_na(run) else str(run)
     return f"{study_s} / {run_s}"
+
+
+def corpus_progress_counts(studies: pd.DataFrame) -> dict[str, int]:
+    """Sum ledger counts across catalog dirs. Missing columns stay 0."""
+    counts = {
+        "studies": 0 if studies.empty else int(len(studies)),
+        "ok": 0,
+        "failed": 0,
+        "skipped": 0,
+        "running": 0,
+        "pending": 0,
+    }
+    if studies.empty:
+        return counts
+    for column in ("ok", "failed", "skipped", "running", "pending"):
+        if column not in studies.columns:
+            continue
+        total = 0
+        for raw in studies[column].tolist():
+            number = _coerce_number(raw)
+            if number is None or not math.isfinite(number):
+                continue
+            total += int(number)
+        counts[column] = total
+    return counts
+
+
+def sort_observatory_studies(studies: pd.DataFrame) -> pd.DataFrame:
+    """Parse errors and in-flight dirs before completed names.
+
+    Display order only. Does not change cell ranking or invent cell rows.
+    """
+    if studies.empty:
+        return studies.copy()
+    work = studies.copy()
+    if "error" in work.columns:
+        work["_error_rank"] = [
+            0 if _error_text_present(value) else 1 for value in work["error"].tolist()
+        ]
+    else:
+        work["_error_rank"] = 1
+    for column, dest in (
+        ("running", "_running"),
+        ("pending", "_pending"),
+        ("failed", "_failed"),
+    ):
+        if column in work.columns:
+            work[dest] = pd.to_numeric(work[column], errors="coerce").fillna(0)
+        else:
+            work[dest] = 0
+    if "study_name" not in work.columns:
+        work["study_name"] = ""
+    if "study_dir" not in work.columns:
+        work["study_dir"] = ""
+    work = work.sort_values(
+        by=["_error_rank", "_running", "_pending", "_failed", "study_name", "study_dir"],
+        ascending=[True, False, False, False, True, True],
+        kind="mergesort",
+    )
+    return work.drop(columns=["_error_rank", "_running", "_pending", "_failed"]).reset_index(
+        drop=True
+    )
+
+
+def observatory_studies_table(studies: pd.DataFrame) -> pd.DataFrame:
+    """Display projection of the studies grain (plan §4.2)."""
+    ranked = sort_observatory_studies(studies)
+    columns = [column for column in STUDIES_TABLE_COLUMNS if column in ranked.columns]
+    return ranked.reindex(columns=columns)
+
+
+def _error_text_present(value: Any) -> bool:
+    if value is None or _is_na(value):
+        return False
+    token = str(value).strip()
+    return token not in {"", "<NA>", "nan", "None"}
+
+
+def inspect_selected_run_for_drill(run_name: Any) -> str:
+    """Value to write onto ``studies_viewer_selected_run`` before ``switch_page``.
+
+    Cell drill returns the run. Study-level drill returns ``""`` so a leftover
+    shared name (``cell_000``) cannot stick. Do **not** ``pop`` that widget
+    key — Streamlit can restore a popped value when Inspect remounts.
+    """
+    if run_name is None or _is_na(run_name):
+        return ""
+    text = str(run_name).strip()
+    if not text or text in {"<NA>", "nan", "None"}:
+        return ""
+    return text
+
+
+def study_choice_labels(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Unique study-drill labels. Duplicate ``study_name`` get ``study_dir``."""
+    bases: list[str] = []
+    for row in rows:
+        name = row.get("study_name")
+        bases.append("—" if name is None or _is_na(name) else str(name))
+    counts: dict[str, int] = {}
+    for base in bases:
+        counts[base] = counts.get(base, 0) + 1
+    labels: list[str] = []
+    seen: dict[str, int] = {}
+    for index, row in enumerate(rows):
+        base = bases[index]
+        if counts[base] == 1:
+            labels.append(base)
+            continue
+        directory = str(row.get("study_dir") or "").strip() or f"row-{index}"
+        label = f"{base} — {directory}"
+        seen[label] = seen.get(label, 0) + 1
+        if seen[label] > 1:
+            label = f"{label} #{seen[label]}"
+        labels.append(label)
+    return labels
 
 
 def _facet_sort_key(value: Any) -> tuple[int, float | str]:
