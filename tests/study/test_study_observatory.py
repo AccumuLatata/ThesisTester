@@ -1003,6 +1003,7 @@ def test_observatory_page_ast_and_contract():
     assert "observatory_saved_desk_id" in source
     assert "_observatory_pending_desk" in source
     assert "_observatory_pending_facets" in source
+    assert "_sync_lens_facets" in source
     assert "Heatmap cell" in source
     assert "Saved lens facets are inert until the Program B lens is on." in source
     assert "Heatmap focus writes the Core / Partner facets." in source
@@ -1528,7 +1529,7 @@ def test_heatmap_focus_pending_facets_writes_core_and_partner() -> None:
     }
     solo = heatmap_focus_pending_facets(heatmap_focus_label("ONH", ""))
     assert solo["factor_core_level"] == ["ONH"]
-    assert solo["factor_partner_levels"] == []
+    assert solo["factor_partner_levels"] == [HEATMAP_SOLO_PARTNER]
     assert heatmap_focus_pending_facets("not-a-cell") == {
         "factor_core_level": [],
         "factor_partner_levels": [],
@@ -1603,6 +1604,13 @@ def test_query_facets_ignore_lens_columns_when_lens_off(tmp_path: Path) -> None:
     as_str = apply_facets(frame, {"useful_confluence": ["True"]})
     as_bool = apply_facets(frame, {"useful_confluence": [True]})
     assert list(as_str["run_name"]) == list(as_bool["run_name"]) == ["onh_sma"]
+    np = pytest.importorskip("numpy")
+    assert canonical_facet_value(np.bool_(True)) is True
+    assert canonical_facet_value(np.bool_(False)) is False
+    assert constrain_facet_selection(
+        [HEATMAP_SOLO_PARTNER],
+        unique_facet_values(frame, "factor_partner_levels"),
+    ) == [HEATMAP_SOLO_PARTNER]
 
 
 def test_heatmap_focus_applies_existing_core_partner_facets(tmp_path: Path) -> None:
@@ -1611,6 +1619,9 @@ def test_heatmap_focus_applies_existing_core_partner_facets(tmp_path: Path) -> N
     pending = heatmap_focus_pending_facets(heatmap_focus_label("ONH", "SMA"))
     focused = apply_facets(frame, pending)
     assert set(focused["run_name"]) == {"onh_sma"}
+    solo = apply_facets(frame, heatmap_focus_pending_facets(heatmap_focus_label("ONH", "")))
+    assert set(solo["run_name"]) == {"w0_onh"}
+    assert HEATMAP_SOLO_PARTNER in unique_facet_values(frame, "factor_partner_levels")
     cleared = apply_facets(
         frame,
         {"factor_core_level": [], "factor_partner_levels": []},
@@ -1943,3 +1954,22 @@ def test_observatory_page_lens_facets_and_heatmap_cell(
     partner = next(box for box in app.multiselect if box.label == "Partner levels")
     assert list(core.value) == ["ONH"]
     assert list(partner.value) == ["SMA"]
+    core.set_value([])
+    partner.set_value([])
+    useful_true = next(box for box in app.multiselect if box.label == "useful_confluence")
+    useful_true.set_value([True] if True in list(useful_true.options) else ["True"])
+    app.run()
+    assert not app.exception
+    heatmap_solo = next(box for box in app.selectbox if box.label == "Heatmap cell")
+    heatmap_solo.set_value(heatmap_focus_label("ONH", ""))
+    app.run()
+    assert not app.exception
+    core_solo = next(box for box in app.multiselect if box.label == "Core level")
+    partner_solo = next(box for box in app.multiselect if box.label == "Partner levels")
+    assert list(core_solo.value) == ["ONH"]
+    assert list(partner_solo.value) == [HEATMAP_SOLO_PARTNER]
+    captions_solo = [item.value for item in app.caption]
+    assert not any("No cohort keys in the filtered set." in text for text in captions_solo)
+    assert not any("No cells match the current facets." in text for text in captions_solo)
+    cell_solo = next(box for box in app.selectbox if box.label == "Cell")
+    assert list(cell_solo.options) == ["progB_w0_solo / w0_onh"]
