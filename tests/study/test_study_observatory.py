@@ -1585,7 +1585,9 @@ def test_observatory_page_renders_studies_pane(
     cell_box = next(box for box in app.selectbox if box.label == "Cell")
     assert list(cell_box.options) == ["alpha / alpha_c0"]
     cohort_box = next(box for box in app.selectbox if box.label == "Active cohort")
-    assert all("|" in str(option) for option in cohort_box.options)
+    assert "|" in str(cohort_box.value)
+    assert callable(cohort_box.format_func)
+    assert all("min_valid=" in str(cohort_box.format_func(option)) for option in cohort_box.options)
     assert any(button.label == "Open study in Inspect" for button in app.button)
     assert any(button.label == "Open in Inspect" for button in app.button)
     captions = [item.value for item in app.caption]
