@@ -1,10 +1,11 @@
-"""SO2–SO4 / SO7 Study Observatory — corpus page, lens, desks, studies pane.
+"""SO2–SO4 / SO7–SO8 Study Observatory — corpus page, lens, desks, studies pane.
 
 Read-only corpus page. Does not execute studies, write report artifacts,
 or hydrate classic research session keys. Desks persist query state only
 under the ThesisTester store — never under ``results/studies/``. SO7
 surfaces the existing studies grain (ledger progress + study-level Inspect
-drill) without inventing cell rows.
+drill) without inventing cell rows. SO8 labels Active cohort without
+changing the raw ``cohort_key``.
 """
 
 from __future__ import annotations
@@ -105,6 +106,9 @@ load_observatory_frame = getattr(_observatory, "load_observatory_frame", None)
 apply_facets = getattr(_observatory, "apply_facets", None)
 sort_observatory_frame = getattr(_observatory, "sort_observatory_frame", None)
 majority_cohort_key = getattr(_observatory, "majority_cohort_key", None)
+format_cohort_label = getattr(_observatory, "format_cohort_label", None)
+cohort_choice_labels = getattr(_observatory, "cohort_choice_labels", None)
+cohort_differ_fields = getattr(_observatory, "cohort_differ_fields", None)
 unique_facet_values = getattr(_observatory, "unique_facet_values", None)
 displayed_min_trades = getattr(_observatory, "displayed_min_trades", None)
 constrain_facet_selection = getattr(_observatory, "constrain_facet_selection", None)
@@ -150,6 +154,9 @@ def _helpers_ready() -> bool:
             apply_facets,
             sort_observatory_frame,
             majority_cohort_key,
+            format_cohort_label,
+            cohort_choice_labels,
+            cohort_differ_fields,
             unique_facet_values,
             displayed_min_trades,
             constrain_facet_selection,
@@ -615,6 +622,12 @@ for index, (column, label) in enumerate(_FACET_COLUMNS):
             facets[column] = list(selected)
 st.session_state[OBSERVATORY_FACET_STATE_KEY] = facets
 filtered = apply_facets(frame, facets)
+keys = unique_facet_values(filtered, "cohort_key") if not filtered.empty else []
+differ_fields = cohort_differ_fields(keys)
+if differ_fields:
+    st.caption("Differing lock fields in this filtered set: " + ", ".join(differ_fields))
+elif keys:
+    st.caption("All filtered cells share one cohort key.")
 
 st.markdown("### Cohort lock")
 lock_cols = st.columns(2)
@@ -640,22 +653,24 @@ if spans_keys:
 if COHORT_FIELDS:
     st.caption("Cohort lock fields: " + ", ".join(COHORT_FIELDS))
 
-keys = unique_facet_values(filtered, "cohort_key") if not filtered.empty else []
 majority = majority_cohort_key(filtered) if not filtered.empty else None
 if keys:
     default_pick = majority if majority in keys else keys[0]
     if st.session_state.get(OBSERVATORY_COHORT_PICK_KEY) not in keys:
         st.session_state[OBSERVATORY_COHORT_PICK_KEY] = default_pick
+    label_by_key = dict(zip(keys, cohort_choice_labels(keys)))
     active_cohort = st.selectbox(
         "Active cohort",
         options=keys,
         key=OBSERVATORY_COHORT_PICK_KEY,
+        format_func=lambda key: label_by_key.get(key, format_cohort_label(key)),
         help="Default is the majority key in the filtered set; ties break lexicographically.",
     )
+    active_label = label_by_key.get(active_cohort, format_cohort_label(active_cohort))
     if majority is not None and str(active_cohort) == str(majority):
-        st.caption(f"Active cohort is the majority key in the filtered set: `{active_cohort}`.")
+        st.caption(f"Active cohort is the majority key in the filtered set: `{active_label}`.")
     else:
-        st.caption(f"Active cohort is operator-picked: `{active_cohort}`.")
+        st.caption(f"Active cohort is operator-picked: `{active_label}`.")
 else:
     active_cohort = None
     st.caption("No cohort keys in the filtered set.")
