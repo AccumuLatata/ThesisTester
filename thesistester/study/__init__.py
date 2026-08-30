@@ -59,6 +59,11 @@ from thesistester.study.preview import (
     preview_study_spec,
     preview_study_yaml,
 )
+from thesistester.study.observatory import (
+    ObservatoryError,
+    ObservatoryModel,
+    load_observatory_frame,
+)
 from thesistester.study.viewer import (
     StudyCatalogEntry,
     StudyViewerError,
@@ -73,6 +78,8 @@ __all__ = [
     "StudyRollupResult",
     "StudyToolsDisabledError",
     "StudyToolsSettings",
+    "ObservatoryError",
+    "ObservatoryModel",
     "StudyCatalogEntry",
     "StudyViewerError",
     "StudyViewerModel",
@@ -96,6 +103,7 @@ __all__ = [
     "expand_study",
     "expand_study_to_directory",
     "factor_cell_fingerprint",
+    "load_observatory_frame",
     "load_study_spec",
     "load_study_tools_settings",
     "load_study_view",
