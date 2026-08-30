@@ -522,7 +522,7 @@ A researcher running many studies (Program B 15s packet of 23 files, parked VA p
 6. If Program B dirs exist, switch on the lens: class counts, ΔE vs Wave 0, core×confirm heatmap.
 7. Save the current query as a desk.
 8. Click one study or one cell → existing Studies Inspect (briefing / peek) without classic hydrate.
-9. CLI `study observatory` prints the same grain for headless / bot logs.
+9. CLI `study observatory` prints the **cell** grain for headless / bot logs (not the studies pane).
 
 `study expand|run|report|promote|rollup|list` remain the academic path. Observatory does not execute.
 

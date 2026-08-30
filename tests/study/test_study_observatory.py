@@ -748,6 +748,9 @@ def test_corpus_progress_counts_empty_and_missing_columns():
     counts = corpus_progress_counts(bare)
     assert counts["studies"] == 1
     assert counts["ok"] == 0
+    inf = pd.DataFrame({"ok": [float("inf")], "failed": [1]})
+    assert corpus_progress_counts(inf)["ok"] == 0
+    assert corpus_progress_counts(inf)["failed"] == 1
     assert list(sort_observatory_studies(pd.DataFrame()).columns) == []
     assert list(observatory_studies_table(pd.DataFrame()).columns) == []
     with_na = pd.DataFrame(
@@ -1442,6 +1445,16 @@ def test_observatory_page_renders_studies_pane(
 
     store = tmp_path / "store"
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(store))
+
+    def _isolated_roots() -> tuple[Path, ...]:
+        return (store.resolve(),)
+
+    # Page load uses default trusted roots (cwd + store). Pin both bound names
+    # so a developer `results/studies/` under cwd cannot leak into AppTest.
+    monkeypatch.setattr("thesistester.study.viewer.default_study_viewer_roots", _isolated_roots)
+    monkeypatch.setattr(
+        "thesistester.study.observatory.default_study_viewer_roots", _isolated_roots
+    )
     root = store / "results" / "studies"
     _write_study(
         root,

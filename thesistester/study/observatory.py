@@ -1138,7 +1138,7 @@ def corpus_progress_counts(studies: pd.DataFrame) -> dict[str, int]:
         total = 0
         for raw in studies[column].tolist():
             number = _coerce_number(raw)
-            if number is None:
+            if number is None or not math.isfinite(number):
                 continue
             total += int(number)
         counts[column] = total
