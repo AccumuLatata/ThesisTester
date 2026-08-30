@@ -1081,12 +1081,14 @@ other than the last bar in the dataset.
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met
   the cell's grid `min_trades`.
 
-## Study Observatory (SO — SO1 shipped)
+## Study Observatory (SO — SO2 shipped)
 
 - The Study Observatory (`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`) is
-  a corpus projection of artifacts the runner already wrote. SO1 ships the
-  compiler + `study observatory` CLI; the Streamlit page is **not** shipped
-  (SO2). Listing every local study cell is discovery, not a quality score.
+  a corpus projection of artifacts the runner already wrote. SO2 ships the
+  Streamlit page (`pages/16_Study_Observatory.py`) plus the SO1 compiler /
+  `study observatory` CLI. Listing every local study cell is discovery, not
+  a quality score. The n×E scatter is `trade_count` × `expectancy_r` colored
+  by `sample_class` — a descriptive screen, not a validated edge.
 - Sorting many cells by expectancy / profit factor / win rate is the same
   multiple-testing screen as RS4, now across studies. A comparability cohort
   (instrument, dataset, costs, SL/TP, trigger, width, flatten,

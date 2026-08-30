@@ -1,4 +1,4 @@
-"""SO1 Study Observatory — fact table, cohort/sort, CLI. No page / no report_study."""
+"""SO1–SO2 Study Observatory — fact table, CLI, page AST. No report_study."""
 
 from __future__ import annotations
 
@@ -20,14 +20,19 @@ from thesistester.study.observatory import (
     SORT_ALLOW_LIST,
     ObservatoryError,
     apply_facets,
+    canonical_facet_value,
+    cell_choice_labels,
     cohort_key_from_values,
+    constrain_facet_selection,
+    displayed_min_trades,
     format_observatory_table,
     load_observatory_frame,
     majority_cohort_key,
     sample_class_for,
     sort_observatory_frame,
+    unique_facet_values,
 )
-from thesistester.study.viewer import STUDY_SPEC_FILENAME
+from thesistester.study.viewer import CLASSIC_RESEARCH_SESSION_KEYS, STUDY_SPEC_FILENAME
 
 
 def _write_study(
@@ -609,3 +614,123 @@ def test_observatory_and_viewer_import_guards():
     assert "run_study(" not in observatory
     assert "thesistester.study.observatory" not in viewer
     assert "import observatory" not in viewer
+    assert "plotly" not in observatory
+    assert "streamlit" not in observatory
+
+
+def test_facet_instrument_hides_other_symbols(tmp_path: Path):
+    _write_study(
+        tmp_path / "results" / "studies",
+        "mnq_study",
+        instrument="MNQ",
+        cells=[{"run_name": "mnq_c0", "instrument": "MNQ"}],
+    )
+    _write_study(
+        tmp_path / "results" / "studies",
+        "es_study",
+        instrument="ES",
+        cells=[{"run_name": "es_c0", "instrument": "ES"}],
+    )
+    model = load_observatory_frame(roots=(tmp_path.resolve(),))
+    filtered = apply_facets(model.frame, {"instrument": ["MNQ"]})
+    assert set(filtered["instrument"]) == {"MNQ"}
+    assert set(filtered["run_name"]) == {"mnq_c0"}
+    assert unique_facet_values(model.frame, "instrument") == ["ES", "MNQ"]
+
+
+def test_displayed_min_trades_majority_then_smaller_tie():
+    frame = pd.DataFrame({"min_trades": [30, 30, 50, 10]})
+    assert displayed_min_trades(frame) == 30.0
+    tied = pd.DataFrame({"min_trades": [50, 30, 50, 30]})
+    assert displayed_min_trades(tied) == 30.0
+    assert displayed_min_trades(pd.DataFrame()) is None
+
+
+def test_numeric_facets_match_int_and_float_and_drop_numpy():
+    np = pytest.importorskip("numpy")
+    frame = pd.DataFrame(
+        {
+            "stop_loss_ticks": [80, 80.0, 100, np.int64(80)],
+            "instrument": ["ES", "ES", "MNQ", "ES"],
+        }
+    )
+    values = unique_facet_values(frame, "stop_loss_ticks")
+    assert values == [80, 100]
+    assert all(type(value) is int for value in values)
+    assert canonical_facet_value(np.int64(80)) == 80
+    assert canonical_facet_value(80.0) == 80
+    filtered = apply_facets(frame, {"stop_loss_ticks": [80]})
+    assert set(filtered["instrument"]) == {"ES"}
+    assert len(filtered) == 3
+    assert constrain_facet_selection([np.int64(80), 999, 80.0], values) == [80]
+    assert constrain_facet_selection(["MNQ"], unique_facet_values(frame, "instrument")) == ["MNQ"]
+    assert constrain_facet_selection(["NQ"], unique_facet_values(frame, "instrument")) == []
+
+
+def test_cell_choice_labels_disambiguate_duplicate_names():
+    rows = [
+        {"study_name": "alpha", "run_name": "c0", "study_dir": "/tmp/a/alpha"},
+        {"study_name": "alpha", "run_name": "c0", "study_dir": "/tmp/b/alpha"},
+        {"study_name": "beta", "run_name": "c1", "study_dir": "/tmp/b/beta"},
+    ]
+    labels = cell_choice_labels(rows)
+    assert labels[2] == "beta / c1"
+    assert labels[0] != labels[1]
+    assert "/tmp/a/alpha" in labels[0]
+    assert "/tmp/b/alpha" in labels[1]
+    assert len(set(labels)) == 3
+
+
+def test_observatory_page_ast_and_contract():
+    page = Path("pages/16_Study_Observatory.py")
+    assert page.is_file()
+    source = page.read_text(encoding="utf-8")
+    observatory = Path("thesistester/study/observatory.py").read_text(encoding="utf-8")
+    assert "st.fragment" not in source
+    assert "run_every" not in source
+    assert "run_study(" not in source
+    assert "rollup_study(" not in source
+    assert "report_study(" not in source
+    assert "apply_research_bundle_to_session" not in source
+    assert "desk_class" not in source
+    assert "delta_e" not in source
+    assert "st.plotly_chart" in source
+    assert "import plotly.express" in source
+    assert 'st.switch_page("pages/15_Studies.py")' in source
+    assert "pages/12_Research_Bundles" not in source
+    assert "pages/7_Backtest" not in source
+    assert "pages/13_Portfolio" not in source
+    assert "pages/1_Data" not in source
+    assert "Break comparability" in source
+    assert "Comparability lock is not in effect." in source
+    assert "constrain_facet_selection" in source
+    assert "cell_choice_labels" in source
+    assert "not part of the ranked sort" in source
+    assert "trade_count × expectancy_r" in source
+    assert "No cells with trade_count × expectancy_r to chart." in source
+    assert "Paste a path on Studies" in source
+    assert "Open in Inspect" in source
+    assert "STUDIES_VIEWER_DIR_KEY" in source
+    assert "STUDIES_VIEWER_PENDING_PATH_KEY" in source
+    assert "STUDIES_VIEWER_CACHED_MODEL_KEY" in source
+    assert "from thesistester.study.observatory import" not in source
+    assert "import thesistester.study.observatory as" in source
+    assert OBSERVATORY_HONESTY.split(".")[0] in source
+    assert "import plotly" not in observatory
+    assert "import streamlit" not in observatory
+    for key in CLASSIC_RESEARCH_SESSION_KEYS:
+        assert f'st.session_state["{key}"]' not in source
+        assert f"st.session_state['{key}']" not in source
+    tree = ast.parse(source)
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    assert "thesistester.study.execute" not in imported
+    assert "thesistester.study.rollup" not in imported
+    assert "thesistester.classic_record" not in imported
+    assert "observatory_cached_model" in source
+    assert "observatory_active_lens" not in source
+    assert "observatory_saved_desk_id" not in source

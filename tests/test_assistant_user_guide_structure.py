@@ -34,6 +34,7 @@ REQUIRED_USER_GUIDE_H2S = (
     "Research mode on classic pages",
     "Research Study Runner (headless)",
     "Studies viewer (read-only)",
+    "Study Observatory",
     "When to use Help vs Discuss results",
 )
 

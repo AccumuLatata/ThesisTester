@@ -142,8 +142,8 @@ plus additive CLI `python -m thesistester study observatory`. It concatenates
 existing index + expansion + spec locks via SV1 `discover_study_dirs`. It
 must not call `report_study` / `rollup_study` / `run_study`, must not unzip
 every cell, must not import Streamlit/Plotly inside `observatory.py`, and
-must not be imported by `viewer.py`. `pages/16_Study_Observatory.py` and
-Inspect drill remain SO2.
+must not be imported by `viewer.py`. SO2 adds `pages/16_Study_Observatory.py`
+(facets, cohort lock, n×E scatter, Inspect drill). Program B lens is SO3.
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
@@ -1160,9 +1160,9 @@ Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 `pages/10_Validation.py`, `pages/11_Report_Export.py`,
 `pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`,
 `pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 inspect + RS-D8 preview + RS-D9 CLI spawn + SB2/SB3 Build tab;
-not part of the classic research mutate path). Study Observatory is a planned
-**new** `pages/16_Study_Observatory.py` (SO) — do not grow Inspect into a
-corpus page. Studies builder session keys
+not part of the classic research mutate path),
+`pages/16_Study_Observatory.py` (SO2 corpus readout + Inspect drill; not
+classic mutate). Do not grow Inspect into a corpus page. Studies builder session keys
 are `studies_builder_draft` and `studies_builder_pending_sync` only.
 
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
@@ -1240,7 +1240,13 @@ must not be read from Data / Levels / Setup Builder. Study Viewer SV1–SV5 add
 `studies_catalog_entries`, `studies_catalog_roots_key`,
 `studies_viewer_pending_path`, `studies_viewer_catalog_select`, and
 `studies_viewer_selected_run` on that same page only — still not classic
-research state.
+research state. Study Observatory SO2 adds `observatory_cached_model`,
+`observatory_cache_stamp`, `observatory_facet_state`, `observatory_cohort_lock`,
+`observatory_break_comparability`, `observatory_sort_column`, and
+`observatory_selected_run` on `pages/16_Study_Observatory.py` only. Drill
+writes existing Studies keys (`studies_viewer_study_dir`,
+`studies_viewer_pending_path`) and pops Inspect cache; it must not write
+classic research keys.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when
