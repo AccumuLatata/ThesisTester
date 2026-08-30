@@ -394,9 +394,7 @@ def cohort_differ_fields(keys: Sequence[Any]) -> tuple[str, ...]:
         return ()
     parsed_rows = [parse_cohort_key(raw) for raw in raws]
     return tuple(
-        field
-        for field in COHORT_FIELDS
-        if len({row.get(field, "") for row in parsed_rows}) > 1
+        field for field in COHORT_FIELDS if len({row.get(field, "") for row in parsed_rows}) > 1
     )
 
 

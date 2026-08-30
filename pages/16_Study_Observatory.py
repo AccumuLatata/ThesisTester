@@ -625,9 +625,7 @@ filtered = apply_facets(frame, facets)
 keys = unique_facet_values(filtered, "cohort_key") if not filtered.empty else []
 differ_fields = cohort_differ_fields(keys)
 if differ_fields:
-    st.caption(
-        "Differing lock fields in this filtered set: " + ", ".join(differ_fields)
-    )
+    st.caption("Differing lock fields in this filtered set: " + ", ".join(differ_fields))
 else:
     st.caption("All filtered cells share one cohort key.")
 
