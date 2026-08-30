@@ -139,6 +139,7 @@ corpus_progress_counts = getattr(_observatory, "corpus_progress_counts", None)
 sort_observatory_studies = getattr(_observatory, "sort_observatory_studies", None)
 observatory_studies_table = getattr(_observatory, "observatory_studies_table", None)
 study_choice_labels = getattr(_observatory, "study_choice_labels", None)
+inspect_selected_run_for_drill = getattr(_observatory, "inspect_selected_run_for_drill", None)
 
 
 def _helpers_ready() -> bool:
@@ -167,6 +168,7 @@ def _helpers_ready() -> bool:
             sort_observatory_studies,
             observatory_studies_table,
             study_choice_labels,
+            inspect_selected_run_for_drill,
         )
     )
 
@@ -222,12 +224,12 @@ def _open_in_inspect(study_dir: str, run_name: str | None) -> None:
     """Drill into Studies Inspect. Pops Inspect cache so the dir reloads."""
     st.session_state[STUDIES_VIEWER_DIR_KEY] = study_dir
     st.session_state[STUDIES_VIEWER_PENDING_PATH_KEY] = study_dir
-    run_text = "" if run_name is None else str(run_name).strip()
-    if run_text and run_text not in {"<NA>", "nan", "None"}:
-        st.session_state[STUDIES_VIEWER_SELECTED_RUN_KEY] = run_text
-    else:
-        # Study-level drill must not keep a leftover cell from another dir.
-        st.session_state.pop(STUDIES_VIEWER_SELECTED_RUN_KEY, None)
+    # Always assign. Do not pop the widget key — Streamlit can restore a
+    # leftover cell from another dir (shared names like cell_000).
+    clearer = inspect_selected_run_for_drill
+    st.session_state[STUDIES_VIEWER_SELECTED_RUN_KEY] = (
+        clearer(run_name) if callable(clearer) else ""
+    )
     st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_KEY, None)
     st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY, None)
     st.switch_page("pages/15_Studies.py")

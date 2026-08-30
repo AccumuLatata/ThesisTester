@@ -37,6 +37,7 @@ from thesistester.study.observatory import (
     displayed_min_trades,
     format_observatory_table,
     heatmap_class_z,
+    inspect_selected_run_for_drill,
     list_observatory_desks,
     load_observatory_frame,
     majority_cohort_key,
@@ -721,6 +722,15 @@ def test_cell_choice_labels_disambiguate_duplicate_names():
     assert len(set(labels)) == 3
 
 
+def test_inspect_selected_run_for_drill_clears_study_level():
+    assert inspect_selected_run_for_drill(None) == ""
+    assert inspect_selected_run_for_drill(pd.NA) == ""
+    assert inspect_selected_run_for_drill("cell_000") == "cell_000"
+    assert inspect_selected_run_for_drill("  ") == ""
+    assert inspect_selected_run_for_drill("<NA>") == ""
+    assert inspect_selected_run_for_drill("nan") == ""
+
+
 def test_study_choice_labels_disambiguate_duplicate_names():
     rows = [
         {"study_name": "alpha", "study_dir": "/tmp/a/alpha"},
@@ -800,6 +810,8 @@ def test_observatory_page_ast_and_contract():
     assert "observatory_selected_study" in source
     assert "STUDIES_VIEWER_SELECTED_RUN_KEY" in source
     assert "leftover cell from another dir" in source
+    assert "inspect_selected_run_for_drill" in source
+    assert "pop(STUDIES_VIEWER_SELECTED_RUN_KEY" not in source
     assert "corpus_progress_counts" in source
     assert "observatory_studies_table" in source
     assert "study_choice_labels" in source

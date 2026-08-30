@@ -707,8 +707,9 @@ Paste `output_dir` remains valid alongside the catalog.
 **Plan:** `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`.
 
 Cross-study readout of every catalog hit (`results/studies/` + `out/`, same
-SV1 discover). Grain is the **cell**. Inspect remains the one-study
-microscope. Execute stays CLI.
+SV1 discover). Ranking / CLI grain is the **cell**; the studies pane is
+the catalog-dir grain. Inspect remains the one-study microscope. Execute
+stays CLI.
 
 | Step | What happens | What does not happen |
 |---|---|---|

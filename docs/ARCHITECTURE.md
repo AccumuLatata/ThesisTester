@@ -1253,8 +1253,8 @@ research state. Study Observatory SO2 adds `observatory_cached_model`,
 `observatory_saved_desk_id`. SO7 adds `observatory_selected_study`. Cell
 drill writes existing Studies keys (`studies_viewer_study_dir`,
 `studies_viewer_pending_path`) and pops Inspect cache. Study-level drill
-does the same and also pops leftover `studies_viewer_selected_run`.
-Neither drill writes classic research keys.
+does the same and assigns empty leftover `studies_viewer_selected_run`
+(do not pop that widget key). Neither drill writes classic research keys.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when

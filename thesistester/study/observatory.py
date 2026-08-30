@@ -1196,6 +1196,21 @@ def _error_text_present(value: Any) -> bool:
     return token not in {"", "<NA>", "nan", "None"}
 
 
+def inspect_selected_run_for_drill(run_name: Any) -> str:
+    """Value to write onto ``studies_viewer_selected_run`` before ``switch_page``.
+
+    Cell drill returns the run. Study-level drill returns ``""`` so a leftover
+    shared name (``cell_000``) cannot stick. Do **not** ``pop`` that widget
+    key — Streamlit can restore a popped value when Inspect remounts.
+    """
+    if run_name is None or _is_na(run_name):
+        return ""
+    text = str(run_name).strip()
+    if not text or text in {"<NA>", "nan", "None"}:
+        return ""
+    return text
+
+
 def study_choice_labels(rows: Sequence[Mapping[str, Any]]) -> list[str]:
     """Unique study-drill labels. Duplicate ``study_name`` get ``study_dir``."""
     bases: list[str] = []

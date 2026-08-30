@@ -483,14 +483,14 @@ Do not implement in SO1–SO4. Requires a later RQ/RI amend if it lands.
 |---|---|
 | **Depends on** | SO4 |
 | **Likely files** | `thesistester/study/observatory.py` (progress / studies-table helpers); `pages/16_Study_Observatory.py`; `tests/study/test_study_observatory.py`; USER_GUIDE Observatory H2; ARCHITECTURE keys; STUDY_RUNNER §SO; roadmap |
-| **Behavior** | Surface the existing `studies` grain. Corpus strip adds ledger sums (`ok` / `failed` / `pending` / `skipped`) next to studies / cells / running / last stamp. Studies table: one row per catalog dir; ledger-only dirs included; **no** invented `frame` rows. Sort: parse `error` first, then running / pending / failed desc, then `study_name` / `study_dir`. **Open study in Inspect** sets Studies path keys, pops Inspect cache **and** leftover `studies_viewer_selected_run`, `st.switch_page` to page 15. Cell drill unchanged (still sets run). |
+| **Behavior** | Surface the existing `studies` grain. Corpus strip adds ledger sums (`ok` / `failed` / `pending` / `skipped`) next to studies / cells / running / last stamp. Studies table: one row per catalog dir; ledger-only dirs included; **no** invented `frame` rows. Sort: parse `error` first, then running / pending / failed desc, then `study_name` / `study_dir`. **Open study in Inspect** sets Studies path keys, pops Inspect cache, **assigns empty** leftover `studies_viewer_selected_run` (do **not** `pop` that widget key — Streamlit can restore a shared `cell_000`), `st.switch_page` to page 15. Cell drill unchanged (still sets run). |
 | **Out of scope** | SO5 `st.fragment` watch; SO6 Discuss; new metrics; unzip; writing study dirs; changing `study observatory` CLI columns; saved-desk schema bump |
 | **Regression** | Cell grain / cohort lock / lens / desks unchanged; Inspect / Preview / Build / launch unchanged; no classic keys; goldens untouched |
 | **Acceptance checklist** | |
 | | ☑ Indexed + ledger-only fixture: strip `pending >= 1`; studies table lists both; `frame` still has cells from the indexed dir only |
 | | ☑ Corrupt-index sibling sorts before the good dir |
 | | ☑ Duplicate `study_name` labels disambiguate with `study_dir` |
-| | ☑ Study drill pops leftover selected run; cell drill still sets it |
+| | ☑ Study drill clears leftover selected run (assign empty; do not pop the widget key); cell drill still sets it |
 | | ☑ Page AST: `Open study in Inspect`; no `run_study` / `st.fragment` / classic keys |
 | | ☑ `observatory.py` still Streamlit/Plotly-free |
 | | ☑ USER_GUIDE Observatory H2 extended (same H2; no new heading) |
@@ -502,7 +502,8 @@ Do not implement in SO1–SO4. Requires a later RQ/RI amend if it lands.
 Implement SO7 only from docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md §6.8.
 Surface the existing studies grain on pages/16_Study_Observatory.py:
 ledger strip (ok/failed/pending/skipped) + catalog-dir table +
-Open study in Inspect (path keys + pop leftover selected run).
+Open study in Inspect (path keys + clear leftover selected run;
+assign empty, do not pop the widget key).
 Do not invent cell rows for ledger-only dirs. Do not implement SO5 watch
 or SO6 Discuss. Do not change CLI columns, desk schema, engine, or goldens.
 Extend USER_GUIDE Observatory H2 (no new H2). §4.2.
