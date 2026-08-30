@@ -1056,6 +1056,7 @@ study list, StudyDraft
 - Ranked cells ≠ SL/TP grid. `grid.enabled` writes `best_grid_*` + zip
   `grid_results.parquet` per cell — Inspect now shows those.
 - Does not mutate classic session keys or deep-link Research Bundles.
+- Cross-study **Study Observatory** is planned (`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`, SO) and **not shipped**. Inspect remains one study at a time.
 
 **Related pages.** Research Study Runner (headless); Time Analysis; Focus vs
 Admit; Research Bundles; Validation and robustness.

@@ -1081,6 +1081,22 @@ other than the last bar in the dataset.
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met
   the cell's grid `min_trades`.
 
+## Study Observatory (SO — planned)
+
+- The Study Observatory (`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`) is
+  a **planned** corpus projection of artifacts the runner already wrote. SO0
+  is docs-only; the page is **not** shipped. Listing every local study cell
+  is discovery, not a quality score.
+- Sorting many cells by expectancy / profit factor / win rate is the same
+  multiple-testing screen as RS4, now across studies. A comparability cohort
+  (instrument, dataset, costs, SL/TP, trigger, width, flatten) is required
+  before treating a sort as even a descriptive rank. Breaking the lock is
+  explicit and must be labeled.
+- Program B `desk_class` / ΔE vs Wave 0 (SO3) are named overlays of the
+  operator runbook, not a new primary metric and not Admit. ΔE mixes
+  confirm value with zone-shape (point vs partner box).
+- Observatory must not unzip every cell or rewrite `study.overview.*`.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

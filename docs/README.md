@@ -57,6 +57,7 @@ Engine / data contracts:
 - [STUDY_BUILDER_IMPLEMENTATION_PLAN.md](STUDY_BUILDER_IMPLEMENTATION_PLAN.md) (SB — Study Builder UX; SB1–SB3 complete; does not change RS execute/preview/launch)
 - [STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md](STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md) (SIA — Studies authoring aligns to 15s-primary `run_experiment`; SIA0–SIA3 ✅; does not change engine/Data/execute)
 - [STUDY_VIEWER_IMPLEMENTATION_PLAN.md](STUDY_VIEWER_IMPLEMENTATION_PLAN.md) (SV — Studies Inspect catalog / quality / charts / cell peek / briefing; SV0–SV5 ✅; does not reopen RS-D2 execute/session boundaries)
+- [STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md](STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md) (SO — corpus fact table + facets + cohort lock + Program B lens; **SO0 plan lock**; SO1–SO4 not started; SO5/SO6 parked; does not reopen SV Inspect or execute)
 - [AUDIT_HONESTY_IMPLEMENTATION_PLAN.md](AUDIT_HONESTY_IMPLEMENTATION_PLAN.md) (AH — research-honesty remediations from the 2026-08-18 audit merge; AH0–AH6 landed)
 - [STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md](STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md) (SAF — Admit follow-up draft from a completed study; SAF1–SAF3 shipped: CLI `--admit-tod auto` / `--tod-group` / `--allow-thin` + Inspect draft + catalog `parent`; SAF4 parked; does not auto-run or add a ToD factor axis)
 - [LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md](LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md) (LC — catalog completeness/correctness for already-emitted levels; LC0–LC4 landed; no new price series)

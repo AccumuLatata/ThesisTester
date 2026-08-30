@@ -44,6 +44,10 @@ thin-refuse and writes Preview YAML only. Catalog / `study list` show a
 best-effort `parent` from `study.lineage`. Promote without `--admit-tod`
 stays RS5. SAF4 (one-click child launch) is parked. Does not auto-`study run`
 and does not add ToD as a factor axis.
+**SO** (Study Observatory) — SO0 plan lock
+`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`. Corpus readout of every
+local study cell (facets / cohort / optional Program B lens). SO1–SO4 not
+started. SO5 / SO6 parked. Does not change Inspect, execute, or promote.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -693,6 +697,28 @@ diagnostics. Cell peek / briefing / NY ToD are not a validated edge.
 Time-of-day is post-hoc on completed trades, not a cartesian factor.
 
 Paste `output_dir` remains valid alongside the catalog.
+
+---
+
+## SO — Study Observatory (operator contract)
+
+**Status:** SO0 plan lock. SO1–SO4 not started. SO5 / SO6 parked.  
+**Plan:** `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`.
+
+Cross-study readout of every catalog hit (`results/studies/` + `out/`, same
+SV1 discover). Grain is the **cell**. Inspect remains the one-study
+microscope. Execute stays CLI.
+
+| Step | What happens | What does not happen |
+|---|---|---|
+| Fact table (SO1) | Concat `results_index.csv` ⟕ expansion + spec locks; mtime cache; CLI `study observatory` | `report_study` loop; unzip-all; new ranker; `viewer.py` importing observatory |
+| Page (SO2) | Facets, cohort lock (default on), n×E scatter, table, drill → Inspect | Classic hydrate; Bundles/Portfolio deep-link; global PF board without a banner |
+| Program B lens (SO3) | `desk_class`, ΔE vs Wave 0, thinning, heatmap when `progB_*` present | Manifest-as-inventory; Admit auto-promote; writing onto the Program A desk map |
+| Saved desks (SO4) | Query state under store `study_observatory/` | Writes into `results/studies/` |
+
+**Honesty.** Corpus listing is discovery. Sort is descriptive and
+multiple-testing-biased. Cohort lock keeps incomparable locks out of one
+rank. Program B +E is not Admit.
 
 ---
 

@@ -102,6 +102,17 @@ Inspect. `viewer.py` must not import `cli_study` / `thesistester.cli` /
 `st.session_state`. Do not add time-of-day as a StudySpec factor axis.
 Operator contract: `docs/STUDY_RUNNER.md` §SV.
 
+**SO (SO0 plan lock):** Study Observatory —
+`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`.
+Corpus fact table + facets + cohort lock + optional Program B lens on a
+**new** `pages/16_Study_Observatory.py`. Reuse `discover_study_dirs`. Do
+not implement SO inside an RS/SV/SAF/SB/SIA PR. Do not call `report_study`
+per study, `run_study()`, `rollup_study()`, or unzip-all. `observatory.py`
+must not import `cli_study` / `execute` / Streamlit / Plotly. `viewer.py`
+must not import `observatory`. Do not write `results/studies/`. Do not
+hydrate classic `st.session_state` except existing Studies drill keys.
+Operator contract: `docs/STUDY_RUNNER.md` §SO.
+
 **SAF (SAF1–SAF3 shipped):** Study Admit Follow-up —
 `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.
 `study promote --admit-tod auto` drafts a linked child StudySpec with Admit

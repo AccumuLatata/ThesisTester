@@ -104,6 +104,8 @@ Soft-resume is default. Do not `--force` wipe a finished `output_dir`.
 
 After each `report`, record for every cell: `core_level`, `partner_levels`, `trade_count`, `expectancy_r`, `profit_factor`, `max_drawdown_r`, status (ok / failed). Ranked overview is empty when all cells are n<30 — that is not a bug.
 
+Cross-study UI readout is a **separate** planned series (Study Observatory, `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`). This runbook stays CLI. Do not wait on that page to finish the packet.
+
 ---
 
 ## 4. Run list (do in this order)
