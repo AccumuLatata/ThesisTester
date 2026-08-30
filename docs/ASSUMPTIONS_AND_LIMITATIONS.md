@@ -1114,6 +1114,10 @@ other than the last bar in the dataset.
   ok / failed / pending / skipped / running. Ledger-only dirs appear there
   and on the strip, never as invented cell rows. Those counts are progress,
   not a quality score.
+- SO8/SO9 are **planned**, not shipped: readable cohort **labels** (the raw
+  `cohort_key` stays the lock) and Program B lens **facets** (`desk_class` /
+  `useful_confluence`, heatmap focus via existing core/partner facets).
+  Labels are not a new comparability score. Lens facets are not Admit.
 - Observatory must not unzip every cell or rewrite `study.overview.*`.
 
 ## Practical interpretation

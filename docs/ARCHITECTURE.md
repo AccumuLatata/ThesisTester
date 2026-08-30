@@ -148,7 +148,9 @@ lens (`desk_class`, ΔE vs Wave 0, heatmap) when `progB_*` cells are present.
 SO4 persists query-only desks under `{store}/study_observatory/desks`
 (`schema_version: 1`; unknown schema ignored). SO7 surfaces the existing
 `studies` grain (ledger strip + catalog-dir table + study-level Inspect
-drill) without inventing cell rows.
+drill) without inventing cell rows. SO8/SO9 are **planned**
+(readable cohort labels; lens-as-filter). They must not bump desk
+`schema_version`, change `cohort_key`, or unpark SO5/SO6.
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are

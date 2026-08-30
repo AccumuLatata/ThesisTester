@@ -2,16 +2,16 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-30  
-**Status:** **SO7 shipped (corpus studies pane). SO1–SO4 + SO7 complete. SO5 / SO6 parked.**  
+**Status:** **SO7 shipped. SO8/SO9 planned. SO5/SO6 parked.**  
 **Series code:** **SO** (Study Observatory)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** RS1–RS5 + RS-D7 + RS-D2 + RS-D4 + RS-D8 + RS-D9; SB1–SB3; SIA0–SIA3; SV0–SV5; SAF1–SAF3; AO1; Program B operator packet (`examples/studies/program_b/`)  
 **Related living docs:** `docs/STUDY_RUNNER.md` §SO, `docs/USER_GUIDE.md` (H2 `Studies viewer (read-only)` until SO2; new H2 `Study Observatory` in SO2), `docs/ARCHITECTURE.md`, `docs/AGENT_GUIDE.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/PROGRAM_B_OPERATOR_RUNBOOK.md`, `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md`  
 **Does not reopen:** parked RS-D1 / D3 / D6; SV Inspect / catalog / briefing contracts; SAF draft / promote flags; SB emit/hydrate; SIA ingest tokens; RS execute / ledger / `report_study` write; `engine/`; golden-master regeneration  
 **Related but separate:** Studies Inspect (`pages/15_Studies.py`) remains the **one-study microscope**. Portfolio (`pages/13_Portfolio.py`) remains multi-setup **trade** composition. Research Bundles remains zip import into classic session. Classic thesis runs stay out until a later series joins on `dataset_id` / `research_identity`.  
-**Related follow-on (do not implement here):** SO5 opt-in watch; SO6 grounded Discuss over the observatory frame. Neither reopens SV Refresh, RQ auditor, or `STUDY.*` tools.
+**Related follow-on (do not implement here):** SO5 opt-in watch; SO6 grounded Discuss over the observatory frame. Neither reopens SV Refresh, RQ auditor, or `STUDY.*` tools. **This amend does not unpark SO5 or SO6.**
 
-**Completeness posture:** After SO7, an operator can open one Streamlit page, see **every** local catalog dir’s ledger progress (ok / failed / pending / running / skipped) plus every index cell as a typed fact table, filter/sort by instrument, setup kind, n / E / PF / WR, keep incomparable locks out of one rank (cohort lock), apply a Program B lens when that packet is present, save a desk, and drill one **study** or one **cell** into existing Inspect — without a second runner, a new primary metric, classic `st.session_state` mutation, invented cell rows for ledger-only dirs, or writes into `results/studies/`.
+**Completeness posture:** After SO7, an operator can open one Streamlit page, see **every** local catalog dir’s ledger progress (ok / failed / pending / running / skipped) plus every index cell as a typed fact table, filter/sort by instrument, setup kind, n / E / PF / WR, keep incomparable locks out of one rank (cohort lock), apply a Program B lens when that packet is present, save a desk, and drill one **study** or one **cell** into existing Inspect — without a second runner, a new primary metric, classic `st.session_state` mutation, invented cell rows for ledger-only dirs, or writes into `results/studies/`. After **SO8**, the active-cohort control is readable without changing `cohort_key` or sort. After **SO9**, the Program B lens can keep `desk_class` / `useful_confluence` and focus a heatmap pair through existing core/partner facets. SO5 / SO6 remain parked.
 
 ---
 
@@ -38,7 +38,7 @@ Ship a **Study Observatory**: a corpus-level, program-agnostic investigation sur
 | Schema / expand / execute / launch / promote / report write | **No behavior edits** |
 | Assistant / MCP | Unchanged through SO4. SO6 (parked) must not add `STUDY.*` without a later RS6 amend |
 | Research Bundles / classic keys | **No** `apply_research_bundle_to_session`. Drill uses existing Studies session keys only |
-| Series complete when | SO4 acceptance is green. SO7 (studies pane) is the first post-SO4 UX amend. SO5 / SO6 stay parked |
+| Series complete when | **SO0–SO7** shipped. **SO8 then SO9** are the next sequenced UX amends. SO5 / SO6 stay parked |
 
 **Feasibility:** High. Catalog discovery, index columns (`expectancy_r`, `profit_factor`, `win_rate`, `dataset_id`, `instrument`), expansion factor tags, and Inspect drill keys already exist. Missing piece is a **cached concat + comparability gate + page**, not a new aggregator or ranker.
 
@@ -54,6 +54,8 @@ Ship a **Study Observatory**: a corpus-level, program-agnostic investigation sur
 | Inspect drill via existing Studies keys | Classic hydrate; Bundles / Portfolio deep-link |
 | Saved desks + store sidecar (SO4) | Writes into `results/studies/` or `study.overview.*` |
 | Studies pane + ledger strip (SO7) | Inventing cell rows for ledger-only dirs; SO5 watch |
+| Cohort literacy (SO8) | Changing `cohort_key` composition or sort; a comparability score |
+| Lens as filter (SO9) | Usefulness float; heatmap color = raw E; desk `schema_version` bump |
 | Additive `study observatory` CLI | Changing `expand\|run\|report\|promote\|rollup\|list` |
 | Extend / add USER_GUIDE per §8 | Engine / golden regen / `run_batch` / `STUDY.run` |
 | | Job queue, kill/retry, in-process `run_study` |
@@ -95,7 +97,11 @@ trusted roots (cwd + store)
         |
         +-- apply_facets / cohort_lock / sort                (SO1–SO2)
         |
+        +-- format_cohort_label / cohort_choice_labels       (SO8; display only)
+        |
         +-- optional lens: program_b                         (SO3)
+        |         +-- desk_class / useful_confluence facets  (SO9; lens-on only)
+        |         +-- heatmap focus → existing core/partner  (SO9)
         |
         +-- pages/16  (Plotly + widgets)                     (SO2+)
         +-- study observatory CLI                            (SO1)
@@ -258,6 +264,7 @@ Observatory-scoped only. Must not collide. Must not write `CLASSIC_RESEARCH_SESS
 | `observatory_active_lens` | SO3 | `generic` / `program_b` / `auto` |
 | `observatory_saved_desk_id` | SO4 | selected desk |
 | `observatory_selected_study` | SO7 | selected catalog `study_dir` (study-level drill) |
+| `_observatory_pending_facets` | SO9 | one-shot dict merged into `observatory_facet_*` before widgets |
 | `studies_viewer_study_dir` | existing | **Drill only** — same string SV1 sets |
 | `studies_viewer_pending_path` | existing | **Drill only** |
 | `studies_viewer_cached_model` / `_dir` | existing | Drill **pops** these so Inspect reloads |
@@ -290,15 +297,73 @@ On the page (SO2+) and CLI header (one line):
 
 Program B lens repeats runbook: n&lt;15 unidentified; 15≤n&lt;30 noisy; +E is not Admit; do not write onto the Program A scalp map.
 
+SO8 labels are display, not a new lock. SO9 lens facets are query state, not Admit and not a rank score.
+
+### 4.11 Cohort literacy (locked — SO8)
+
+The raw `cohort_key` in §4.5 stays the identity used for lock, sort, majority pick, and saved desks. SO8 adds **display** helpers only. It must not change token order, join character, missing-token rule, or `sort_observatory_frame`.
+
+**Parse.** `parse_cohort_key(key) -> dict[str, str]` splits on `|` into `COHORT_FIELDS` order. If the token count ≠ `len(COHORT_FIELDS)`, return `{}` and treat the raw string as the label (fail closed, no crash).
+
+**Short label** (`format_cohort_label(key)`), empty token → `—`:
+
+```text
+{instrument} · {dataset_id} · SL{stop_loss_ticks}/TP{take_profit_ticks} · {trigger}@{trigger_timeframe} · min_valid={min_valid_confluences}
+```
+
+That short form is **not** the cohort identity. Fields omitted from the short form (ingest, costs, tolerance, flatten, confluence_mode, exposure_policy) still distinguish keys.
+
+**Unique labels** (`cohort_choice_labels(keys) -> list[str]`, parallel to `keys`):
+
+1. Start with `format_cohort_label` for each key.
+2. If two or more keys share a short label, append ` · ` plus `{field}={value}` for every §4.5 field that differs **inside that colliding group**, in `COHORT_FIELDS` order.
+3. If labels still collide, append ` — {raw_key}`.
+
+Page **Active cohort** selectbox: **value = raw `cohort_key`**; `format_func` uses the unique label. Saved desks still persist the raw key. The cells table keeps the raw `cohort_key` column (do not replace it).
+
+**Differ caption** (`cohort_differ_fields(keys) -> tuple[str, ...]`): §4.5 field names whose parsed values are not identical across `keys`. Empty if fewer than two keys or all keys equal. Caption: `Differing lock fields in this filtered set: {fields}` or `All filtered cells share one cohort key.` Show after facets, including when break-comparability is on.
+
+CLI §4.9 columns stay raw. Do not print labels.
+
+### 4.12 Lens as filter (locked — SO9)
+
+SO3 projections (`desk_class`, `useful_confluence`, heatmap) stay the same predicates. SO9 makes them **queryable**. No usefulness float. Heatmap color stays `desk_class`.
+
+**When.** Extra facets render and apply only while the Program B lens is active (`resolve_program_b_lens` is true). When the lens is off, ignore `desk_class` / `useful_confluence` even if they sit in session state or a loaded desk. Caption if a desk carried them: `Saved lens facets are inert until the Program B lens is on.`
+
+**Facets.** Add to the page (lens-on only) and to `DESK_FACET_COLUMNS`:
+
+| Column | Widget | Empty selection |
+|---|---|---|
+| `desk_class` | multiselect of values present after generic facets | no filter |
+| `useful_confluence` | multiselect of canonical bools present (`True` / `False`) | no filter |
+
+`apply_facets` already matches canonical tokens. Do not add a second predicate engine. Class-count **metrics** stay display (SO3). Do not require clickable `st.metric`.
+
+**Heatmap focus.** A Plotly click is optional chrome only. The **tested** control is a selectbox **Heatmap cell** whose options are `core × partner` tokens from `program_b_heatmap_cells` on the current Program B rows (grey / missing cells may appear; selecting one still writes the two facet keys). Selection writes the existing widgets:
+
+- `observatory_facet_factor_core_level`
+- `observatory_facet_factor_partner_levels`
+
+Use the SO4 pending-key pattern (`_observatory_pending_facets`) so writes happen before those multiselects instantiate. Clearing Core / Partner facets clears the focus. Caption: `Heatmap focus writes the Core / Partner facets. Clear those facets to see the full heatmap again.`
+
+Helpers (Streamlit/Plotly-free): `heatmap_focus_label(core, partner) -> str` (partner empty → `(solo)`, same token as SO3 `HEATMAP_SOLO_PARTNER`); `parse_heatmap_focus_label(label) -> tuple[str, str] | None`.
+
+**Desks.** `schema_version` stays **1**. Extend `DESK_FACET_COLUMNS` only. Old v1 files without the new keys load as empty lens facets. Unknown schema / v2 still ignored. Do not persist a separate focus id.
+
+**Must not:** change `desk_class_for` / `useful_confluence_for` / Wave 0 lookup; color the heatmap by raw E; add `STUDY.*` tools; import `st.fragment`.
+
 ---
 
 ## 5. Milestone sequence (locked)
 
-**SO0 → SO1 → SO2 → SO3 → SO4**. Do not reorder without amending this plan. Do not implement SO2–SO4 inside SO1. Do not implement observatory code in SO0. **SO7** is the first post-SO4 UX amend (studies grain). It does **not** implement parked SO5 / SO6.
+**SO0 → SO1 → SO2 → SO3 → SO4**. Do not reorder without amending this plan. Do not implement SO2–SO4 inside SO1. Do not implement observatory code in SO0. **SO7** (studies grain) is **shipped**. It does **not** implement parked SO5 / SO6.
+
+**SO8 → SO9** is the next sequenced UX pair. Do not implement SO9 inside SO8. Do not implement SO5 or SO6 in either PR. SO8 does not depend on SO7.
 
 | ID | Intent | Code? |
 |---|---|---|
-| **SO0** | Plan lock + living-doc pointers | Docs only (this PR) |
+| **SO0** | Plan lock + living-doc pointers | Docs only (historical) |
 | **SO1** | Fact table + cache + facets/sort/cohort helpers + `study observatory` | `observatory.py`, `cli_study.py` (`observatory` only), tests |
 | **SO2** | Page 16: corpus strip, facets, cohort lock, n×E scatter, table, Inspect drill | `pages/16_Study_Observatory.py` + page tests + USER_GUIDE H2 + HC allowlist |
 | **SO3** | Program B lens: `desk_class`, ΔE vs `w0_solo`/`w0_va`, thinning, heatmap, class counts | `observatory.py` + page pane; both manifests are chrome only |
@@ -306,6 +371,9 @@ Program B lens repeats runbook: n&lt;15 unidentified; 15≤n&lt;30 noisy; +E is 
 | **SO5** | Parked — opt-in fragment refresh of **corpus strip only** | — |
 | **SO6** | Parked — grounded Discuss over the filtered frame | — |
 | **SO7** | Corpus studies pane — ledger strip + catalog-dir table + study-level Inspect drill | `observatory.py` helpers + page 16 |
+| **SO8.0** | Plan lock for SO8 / SO9 (this amend) | Docs only |
+| **SO8** | Cohort literacy: readable labels + differ caption | `observatory.py` helpers + page 16 `format_func` |
+| **SO9** | Lens as filter: `desk_class` / `useful_confluence` + heatmap focus | `observatory.py` helpers + page 16 widgets |
 
 ---
 
@@ -467,7 +535,7 @@ Mark SO1–SO4 shipped in living docs. §4.2.
 
 **Must not:** change Studies Inspect Refresh; poll `report_study`; unzip; run when the checkbox is off; import `st.fragment` into `observatory.py`.
 
-Do not implement in SO1–SO4.
+Do not implement in SO1–SO4 or SO8–SO9. Do not unpark in this amend.
 
 ### 6.7 SO6 — Parked: grounded Discuss
 
@@ -475,7 +543,7 @@ Do not implement in SO1–SO4.
 
 **Must not:** add default-on `STUDY.*` tools; invent metrics in prose; treat lens class counts as a validated edge.
 
-Do not implement in SO1–SO4. Requires a later RQ/RI amend if it lands.
+Do not implement in SO1–SO4 or SO8–SO9. Requires a later RQ/RI amend if it lands. Do not unpark in this amend.
 
 ### 6.8 SO7 — Corpus studies pane
 
@@ -511,7 +579,101 @@ Extend USER_GUIDE Observatory H2 (no new H2). §4.2.
 
 ---
 
-## 7. End-to-end product acceptance (after SO7)
+### 6.9 SO8.0 — Plan lock for SO8 / SO9 (this PR)
+
+| | |
+|---|---|
+| **Scope** | This amend + living-doc **planned** pointers. **No** runtime code |
+| **Docs** | This plan §§4.11–4.12 / §6.9–6.11; `ENGINEERING_ROADMAP.md` SO8/SO9 planned rows; `STUDY_RUNNER.md` §SO planned rows; `AGENT_GUIDE.md` do-not-implement-inside-RS; `ARCHITECTURE.md` planned pointer; `ASSUMPTIONS_AND_LIMITATIONS.md` planned honesty; `docs/README.md` index |
+| **Help** | **No new H2.** USER_GUIDE must **not** claim cohort labels or lens facets as shipped |
+| **Must not** | Edit `thesistester/` or `pages/`; unpark SO5/SO6; implement SO8/SO9 behavior; reopen SV/SAF/RS |
+| **Acceptance** | ☑ SO8/SO9 are implementable without `report_study`, unzip, execute, or a desk `schema_version` bump; ☑ SO5/SO6 still parked in every living pointer; ☑ Help still describes the shipped Observatory only; ☑ help-corpus / USER_GUIDE structure tests green |
+
+**Copy-ready agent prompt:**
+
+```text
+Implement SO8.0 only from docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md §6.9.
+Docs-only plan lock for SO8 (cohort literacy) and SO9 (lens as filter).
+Do not edit thesistester/ or pages/. Do not unpark SO5/SO6. USER_GUIDE
+must not claim SO8/SO9 as shipped. No new USER_GUIDE H2. §4.2.
+```
+
+### 6.10 SO8 — Cohort literacy
+
+| | |
+|---|---|
+| **Depends on** | SO2 (page + cohort lock). SO4 desks must keep storing the raw `cohort_key`. Does **not** depend on SO7 |
+| **Likely files** | `thesistester/study/observatory.py` (`parse_cohort_key`, `format_cohort_label`, `cohort_choice_labels`, `cohort_differ_fields`); `pages/16_Study_Observatory.py` (Active cohort `format_func` + differ caption); `tests/study/test_study_observatory.py`; USER_GUIDE Observatory H2 (same heading); ASSUMPTIONS one sentence; ARCHITECTURE no new live keys; roadmap / STUDY_RUNNER mark SO8 shipped |
+| **Behavior** | §4.11. Selectbox **value stays the raw key**. Labels unique under collision rules. Differ caption after facets. Cells table still shows raw `cohort_key`. CLI unchanged. `sort_observatory_frame` / `cohort_key_from_values` / majority-tie lex-first unchanged |
+| **Out of scope** | SO9 lens facets / heatmap focus; SO5 `st.fragment`; SO6 Discuss; changing §4.5 field list; replacing the table key column; desk schema bump |
+| **Regression** | Two keys that differ only by `min_valid_confluences` still cannot share a ranked sort; labels for those two keys must differ; loading a saved desk still restores the raw key; goldens untouched |
+| **Acceptance checklist** | |
+| | ☑ `parse_cohort_key` round-trips a well-formed §4.5 key; malformed (`a\|b`) → `{}` and `format_cohort_label` returns the raw string |
+| | ☑ Short labels differ when `min_valid_confluences` is 0 vs 1 and all other tokens match |
+| | ☑ Two keys that share the short form but differ on `commission_per_side` get unique labels that include `commission_per_side=` |
+| | ☑ `cohort_choice_labels` length equals input; order preserved |
+| | ☑ `cohort_differ_fields` on one key → `()`; on MNQ vs ES → `("instrument",)` |
+| | ☑ Page AST: `format_cohort_label` / `cohort_choice_labels`; Active cohort still binds `observatory_cohort_pick`; no `st.fragment` |
+| | ☑ `sort_observatory_frame` tests from SO1 still pass unchanged |
+| | ☑ Desk load still applies raw `active_cohort` |
+| | ☑ CLI table bytes / columns unchanged |
+| | ☑ `observatory.py` still Streamlit/Plotly-free; `viewer.py` still has no observatory import |
+| | ☑ USER_GUIDE H2 extended (no new heading); goldens untouched; `tests/study/` + help-corpus structure green |
+
+**Copy-ready agent prompt:**
+
+```text
+Implement SO8 only from docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md §6.10
+and §4.11. Add parse_cohort_key, format_cohort_label, cohort_choice_labels,
+and cohort_differ_fields in observatory.py (Streamlit/Plotly-free).
+Page 16: Active cohort format_func uses unique labels; value stays the
+raw cohort_key; differ-field caption after facets. Do not change
+cohort_key composition, sort_observatory_frame, CLI columns, or desks
+schema. Do not implement SO9, SO5, or SO6. Extend USER_GUIDE Observatory
+H2 (no new heading). No engine/golden edits. §4.2.
+```
+
+### 6.11 SO9 — Lens as filter
+
+| | |
+|---|---|
+| **Depends on** | SO8 (readable cohort) + SO3 (lens projections) + SO4 (desks) |
+| **Likely files** | `thesistester/study/observatory.py` (`DESK_FACET_COLUMNS` + heatmap focus helpers); `pages/16_Study_Observatory.py` (lens-on facets, Heatmap cell selectbox, pending facet merge); `tests/study/test_study_observatory.py`; USER_GUIDE Observatory H2; ASSUMPTIONS; ARCHITECTURE pending-key sentence; roadmap / STUDY_RUNNER mark SO9 shipped |
+| **Behavior** | §4.12. When lens is active: `desk_class` + `useful_confluence` multiselects; `apply_facets` on those columns after generic facets. Heatmap cell selectbox writes Core / Partner via `_observatory_pending_facets` (SO4 pending pattern). Generic / auto-off: hide those widgets and do not apply the two lens columns. Desks: `schema_version` remains 1; new facet keys optional |
+| **Out of scope** | SO5 watch; SO6 Discuss; usefulness float; heatmap color = raw E; changing `desk_class_for` / `useful_confluence_for` / Wave 0 lookup; clickable `st.metric`; Plotly-only focus without the selectbox; `schema_version: 2` |
+| **Regression** | Generic-only corpus still hides heatmap; SO3 ΔE / desk_class fixtures unchanged; old v1 desks without the new keys still load; v2 / corrupt still ignored; goldens + `test_program_b_yaml` untouched |
+| **Acceptance checklist** | |
+| | ☑ Lens off: `desk_class=plus_e` in session/desk does **not** hide generic rows |
+| | ☑ Lens on: `desk_class=["plus_e"]` keeps only plus_e Program B rows; other classes remain in the unfiltered projection used to populate the widget options (options from the pre-lens-facet Program B frame, apply after) |
+| | ☑ `useful_confluence=[True]` keeps only useful-confluence rows; `[False]` keeps the complement; empty keeps both |
+| | ☑ `heatmap_focus_label("ONH", "")` / empty partners → contains `(solo)`; `parse_heatmap_focus_label` round-trips |
+| | ☑ Selecting a heatmap cell sets core + partner facets; clearing those facets restores the wider heatmap |
+| | ☑ `DESK_FACET_COLUMNS` includes `desk_class` and `useful_confluence`; saved JSON still `"schema_version": 1` |
+| | ☑ Pre-SO9 v1 desk without those keys loads; v2 file still ignored |
+| | ☑ Page AST: `Open study in Inspect` not required; `st.fragment` absent; no `run_study` / classic keys; Plotly stays on the page |
+| | ☑ `observatory.py` still Streamlit/Plotly-free |
+| | ☑ USER_GUIDE H2 extended (no new heading); +E ≠ Admit caption remains |
+| | ☑ Goldens + `test_program_b_yaml` untouched; `tests/study/` + help-corpus structure green |
+
+**Widget-option honesty (locked).** `desk_class` / `useful_confluence` **options** come from the Program B rows after **generic** facets (instrument / setup / …), before the lens facets apply — otherwise picking `plus_e` would empty the widget and bounce. Heatmap cell options use that same pre-lens-facet Program B frame (or the post-`desk_class` frame; pick one and test it: **pre-lens-facet** for both, so a class filter does not hide other heatmap pairs from the picker). Cell table / scatter / sort use the fully faceted frame.
+
+**Copy-ready agent prompt:**
+
+```text
+Implement SO9 only from docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md §6.11
+and §4.12. When the Program B lens is active, facet desk_class and
+useful_confluence and add a Heatmap cell selectbox that writes existing
+factor_core_level / factor_partner_levels via _observatory_pending_facets.
+Extend DESK_FACET_COLUMNS; do not bump schema_version. Do not add a
+usefulness float or change desk_class_for / useful_confluence_for.
+Generic-only corpus stays heatmap-free. Do not implement SO5/SO6.
+Extend USER_GUIDE Observatory H2 (no new heading). No engine/golden
+edits. §4.2.
+```
+
+---
+
+## 7. End-to-end product acceptance (after SO7; SO8/SO9 add items 4a / 6a)
 
 A researcher running many studies (Program B 15s packet of 23 files, parked VA packet of 4, or any later StudySpecs) can:
 
@@ -519,8 +681,10 @@ A researcher running many studies (Program B 15s packet of 23 files, parked VA p
 2. See corpus progress (ok / failed / running / pending / skipped) and the catalog-dir table without opening one Inspect session per study. Ledger-only dirs stay on the studies pane.
 3. Filter by instrument, setup kind, core, partners, n-gate, status.
 4. Sort by E / PF / WR / n **inside a comparability cohort** (or explicitly break the lock).
+4a. **(SO8)** Read which lock is active without decoding a 15-token `\|` string; see which lock fields differ in the filtered set.
 5. Read the n×E scatter (n=30 line) as the primary money plot.
 6. If Program B dirs exist, switch on the lens: class counts, ΔE vs Wave 0, core×confirm heatmap.
+6a. **(SO9)** Keep `plus_e` / `useful_confluence` and focus one core×partner pair through existing Core / Partner facets.
 7. Save the current query as a desk.
 8. Click one study or one cell → existing Studies Inspect (briefing / peek) without classic hydrate.
 9. CLI `study observatory` prints the **cell** grain for headless / bot logs (not the studies pane).
@@ -533,22 +697,22 @@ A researcher running many studies (Program B 15s packet of 23 files, parked VA p
 
 | Doc | When | What |
 |---|---|---|
-| This plan | SO0 | Lock |
-| `docs/README.md` | SO0 | Index row |
-| `docs/ENGINEERING_ROADMAP.md` | SO0 planned; SO4 ✅; SO7 ✅ | Status table + SO section |
-| `docs/STUDY_RUNNER.md` | SO0 §SO planned; SO1–SO4 / SO7 mark shipped | Operator contract |
+| This plan | SO0; SO8.0 amend | Lock + SO8/SO9 contracts |
+| `docs/README.md` | SO0; SO8.0 planned pointer | Index row |
+| `docs/ENGINEERING_ROADMAP.md` | SO0 planned; SO4 ✅; SO7 ✅; SO8.0 planned rows | Status table + SO section |
+| `docs/STUDY_RUNNER.md` | SO0 §SO planned; SO1–SO4 / SO7 mark shipped; SO8.0 planned rows | Operator contract |
 | `docs/USER_GUIDE.md` H2 `Studies viewer (read-only)` | SO0 honesty (Observatory **not** shipped); SO2 Related pages | Keep Inspect-honest |
-| `docs/USER_GUIDE.md` H2 `Study Observatory` | **SO2** | New H2 + HC §6.2 shape |
+| `docs/USER_GUIDE.md` H2 `Study Observatory` | **SO2**; extend in **SO8** and **SO9** (same H2) | New H2 + HC §6.2 shape. SO8.0 must not claim labels/facets shipped |
 | RQ §7.1.4 / HC §6.1 / `_USER_GUIDE_SECTIONS` | **SO2 same PR** | Allowlist the new H2; fail-closed if drifted |
-| `docs/ARCHITECTURE.md` | SO0 pointer; SO1 import graph; SO2 keys; SO4 store; SO7 study-select key | Boundary |
-| `docs/AGENT_GUIDE.md` | SO0 planned; SO4 shipped; SO7 shipped | Do not implement SO inside an RS/SV/SAF PR |
-| `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | SO0 short; SO2 scatter; SO3 desk_class | Corpus ≠ edge; cohort; ΔE zone-shape |
+| `docs/ARCHITECTURE.md` | SO0 pointer; SO1 import graph; SO2 keys; SO4 store; SO7 study-select key; SO8.0 planned; SO9 pending-key | Boundary |
+| `docs/AGENT_GUIDE.md` | SO0 planned; SO4 shipped; SO7 shipped; SO8.0 planned | Do not implement SO inside an RS/SV/SAF PR; do not unpark SO5/SO6 |
+| `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | SO0 short; SO2 scatter; SO3 desk_class; SO7 studies pane; SO8.0 planned labels/facets | Corpus ≠ edge; cohort; ΔE zone-shape; labels ≠ new lock |
 | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` | SO0 | Related-follow-on one-liner |
 | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` §12 | SO0 pointer; SO3 optional “lens shipped” | Spreadsheet remains valid; UI is product |
 | `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | SO0 one-liner | Runbook still CLI; Observatory is readout |
 | Grok pack | optional SO2 one-liner | Humans may use the page; coworkers still CLI |
 
-Help: SO0 must **not** add a stub H2. SO2 must not ship the page without the H2 + allowlist.
+Help: SO0 must **not** add a stub H2. SO2 must not ship the page without the H2 + allowlist. SO8.0 must **not** claim cohort labels or lens facets as shipped. SO8/SO9 extend the same H2 in their code PRs.
 
 ---
 
@@ -564,6 +728,8 @@ Help: SO0 must **not** add a stub H2. SO2 must not ship the page without the H2 
 | Lens | ΔE / desk_class fixtures; generic corpus hides heatmap | SO3 |
 | Desks | schema v1 round-trip; corrupt ignored; no study-dir write | SO4 |
 | Studies pane | ledger sums; ledger-only listed; error-first sort; no invented cells | SO7 |
+| Cohort labels | parse fail-closed; unique labels; differ fields; sort/CLI unchanged | SO8 |
+| Lens facets | lens-off ignores desk_class; useful_confluence True/False; heatmap focus writes core/partner; schema stays v1 | SO9 |
 | Goldens | `tests/fixtures/study/golden/*` and `tests/fixtures/golden/*` stable | all |
 | Program B packet | `tests/study/test_program_b_yaml.py` unchanged | all |
 | Suite | `pytest -q tests/study/` per code PR; help tests when USER_GUIDE/HC change | code PRs |
@@ -586,9 +752,15 @@ No Streamlit AppTest required if AST + pure helpers cover the contract (RS-D8/D9
 | New H2 breaks HC CI | SO2 updates RQ/HC/`_USER_GUIDE_SECTIONS` together |
 | Writes into live results | Tests: no new files under fixture `output_dir` |
 | ΔE treated as pure confluence | Locked caption (zone-shape) |
-| Reopening SV Refresh | SO2 explicit Refresh only; SO5 parked |
+| Reopening SV Refresh | SO2 explicit Refresh only; SO5 parked (not SO8/SO9) |
 | Classic session contamination | Frozen classic keys; drill uses Studies keys only |
 | Second discover implementation | Must call `discover_study_dirs` |
+| Unreadable cohort → break lock | SO8 labels + differ caption; raw key remains identity |
+| Short-label collision | `cohort_choice_labels` appends differing fields, then raw key |
+| Lens filter treated as Admit | Existing +E ≠ Admit caption; no usefulness float |
+| Desk schema bump breaks old files | SO9 extends `DESK_FACET_COLUMNS` only; `schema_version` stays 1 |
+| Plotly click-only focus | Selectbox is the tested path; click is optional chrome |
+| Unparking SO5/SO6 by accident | Explicit out in SO8.0 / SO8 / SO9; no `st.fragment`; no Discuss |
 
 ---
 
@@ -604,9 +776,13 @@ No Streamlit AppTest required if AST + pure helpers cover the contract (RS-D8/D9
 - Auto-promote / Admit from a green Observatory cell.
 - Writing Program B numbers onto the Program A Notion desk lock.
 - Default-on Assistant tools.
+- Unparking SO5 watch or SO6 Discuss.
+- Changing `cohort_key` composition or adding a comparability score.
+- A float “usefulness” score; heatmap color = raw E.
+- Saved-desk `schema_version` bump.
 
 ---
 
 ## 12. Regression-safety paragraph (every code PR)
 
-This series is **read-only over existing study artifacts**. It does not change `simulate_trades`, levels, signals, expand, execute, report writes, or golden fixtures. New behavior is a new module + new page + additive CLI subcommand. Defaults: cohort lock on, break-comparability off, Program B lens auto-only when `progB_*` rows exist. Persisted desks (SO4) are schema-versioned and ignored on drift. SO7 is display-only over the existing `studies` grain. CI: `tests/study/` + help structure when docs/allowlists change; full suite before merge.
+This series is **read-only over existing study artifacts**. It does not change `simulate_trades`, levels, signals, expand, execute, report writes, or golden fixtures. New behavior is a new module + new page + additive CLI subcommand. Defaults: cohort lock on, break-comparability off, Program B lens auto-only when `progB_*` rows exist. Persisted desks (SO4) are schema-versioned and ignored on drift. SO7 is display-only over the existing `studies` grain. SO8 is display-only over the existing `cohort_key`. SO9 is query-only over existing lens columns and does not bump desk `schema_version`. SO5 / SO6 stay parked. CI: `tests/study/` + help structure when docs/allowlists change; full suite before merge.
