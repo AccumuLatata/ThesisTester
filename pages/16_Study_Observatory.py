@@ -1,8 +1,10 @@
-"""SO2–SO4 Study Observatory — corpus page, Program B lens, saved desks.
+"""SO2–SO4 / SO7 Study Observatory — corpus page, lens, desks, studies pane.
 
 Read-only corpus page. Does not execute studies, write report artifacts,
 or hydrate classic research session keys. Desks persist query state only
-under the ThesisTester store — never under ``results/studies/``.
+under the ThesisTester store — never under ``results/studies/``. SO7
+surfaces the existing studies grain (ledger progress + study-level Inspect
+drill) without inventing cell rows.
 """
 
 from __future__ import annotations
@@ -30,6 +32,8 @@ OBSERVATORY_CELL_SELECT_KEY = "observatory_cell_select"
 OBSERVATORY_ACTIVE_LENS_KEY = "observatory_active_lens"
 OBSERVATORY_SAVED_DESK_KEY = "observatory_saved_desk_id"
 OBSERVATORY_DESK_NAME_KEY = "observatory_desk_name"
+OBSERVATORY_STUDY_SELECT_KEY = "observatory_study_select"
+OBSERVATORY_SELECTED_STUDY_KEY = "observatory_selected_study"
 # One-shot keys. Applied in ``_ensure_defaults`` before any desk widgets exist.
 # Mutating a widget-bound key after ``st.selectbox`` / ``st.checkbox`` raises.
 OBSERVATORY_PENDING_DESK_KEY = "_observatory_pending_desk"
@@ -131,6 +135,10 @@ save_observatory_desk = getattr(_observatory, "save_observatory_desk", None)
 delete_observatory_desk = getattr(_observatory, "delete_observatory_desk", None)
 observatory_desk_query_state = getattr(_observatory, "observatory_desk_query_state", None)
 observatory_desk_from_payload = getattr(_observatory, "observatory_desk_from_payload", None)
+corpus_progress_counts = getattr(_observatory, "corpus_progress_counts", None)
+sort_observatory_studies = getattr(_observatory, "sort_observatory_studies", None)
+observatory_studies_table = getattr(_observatory, "observatory_studies_table", None)
+study_choice_labels = getattr(_observatory, "study_choice_labels", None)
 
 
 def _helpers_ready() -> bool:
@@ -155,6 +163,10 @@ def _helpers_ready() -> bool:
             delete_observatory_desk,
             observatory_desk_query_state,
             observatory_desk_from_payload,
+            corpus_progress_counts,
+            sort_observatory_studies,
+            observatory_studies_table,
+            study_choice_labels,
         )
     )
 
@@ -213,6 +225,9 @@ def _open_in_inspect(study_dir: str, run_name: str | None) -> None:
     run_text = "" if run_name is None else str(run_name).strip()
     if run_text and run_text not in {"<NA>", "nan", "None"}:
         st.session_state[STUDIES_VIEWER_SELECTED_RUN_KEY] = run_text
+    else:
+        # Study-level drill must not keep a leftover cell from another dir.
+        st.session_state.pop(STUDIES_VIEWER_SELECTED_RUN_KEY, None)
     st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_KEY, None)
     st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY, None)
     st.switch_page("pages/15_Studies.py")
@@ -345,6 +360,43 @@ def _load_model(*, refresh: bool) -> Any:
         dict(getattr(model, "stamp", {}) or {}),
     )
     return model
+
+
+def _render_studies_pane(studies: pd.DataFrame) -> None:
+    """Catalog-dir grain. Ledger-only dirs stay here — never as fake cells."""
+    st.markdown("### Studies")
+    st.caption(
+        "One row per catalog dir. Ledger-only dirs appear here, not as invented "
+        "cell rows. Counts are ledger status, not a quality score."
+    )
+    if studies.empty:
+        st.caption("No catalog study dirs in this load.")
+        return
+    ranked = observatory_studies_table(studies)
+    shown = ranked.head(_TABLE_DISPLAY_CAP)
+    if len(ranked) > _TABLE_DISPLAY_CAP:
+        st.caption(f"Showing {_TABLE_DISPLAY_CAP} of {len(ranked)} studies.")
+    st.dataframe(shown, hide_index=True, width="stretch")
+    records = shown.to_dict(orient="records")
+    labels = study_choice_labels(records)
+    if not labels:
+        return
+    if st.session_state.get(OBSERVATORY_STUDY_SELECT_KEY) not in labels:
+        st.session_state[OBSERVATORY_STUDY_SELECT_KEY] = labels[0]
+    chosen = st.selectbox(
+        "Study",
+        options=labels,
+        key=OBSERVATORY_STUDY_SELECT_KEY,
+        help="Open the selected catalog dir in Studies Inspect. Does not pick a cell.",
+    )
+    picked = records[labels.index(chosen)]
+    study_dir = str(picked.get("study_dir") or "").strip()
+    st.session_state[OBSERVATORY_SELECTED_STUDY_KEY] = study_dir
+    if st.button("Open study in Inspect"):
+        if not study_dir:
+            st.error("Selected study has no study_dir.")
+        else:
+            _open_in_inspect(study_dir, None)
 
 
 def _render_scatter(
@@ -518,25 +570,31 @@ frame = model.frame if isinstance(getattr(model, "frame", None), pd.DataFrame) e
 if not frame.empty:
     frame = attach_program_b_projections(frame)
 
-study_count = int(len(studies))
+progress = corpus_progress_counts(studies)
 cell_count = int(len(frame))
-running = (
-    int(studies["running"].fillna(0).sum())
-    if not studies.empty and "running" in studies.columns
-    else 0
-)
-strip = st.columns(4)
-strip[0].metric("Studies", study_count)
-strip[1].metric("Cells", cell_count)
-strip[2].metric("Running", running)
-strip[3].metric("Last stamp", _last_stamp_label(model))
+identity = st.columns(4)
+identity[0].metric("Studies", progress["studies"])
+identity[1].metric("Cells", cell_count)
+identity[2].metric("Running", progress["running"])
+identity[3].metric("Last stamp", _last_stamp_label(model))
+ledger = st.columns(4)
+ledger[0].metric("Ok", progress["ok"])
+ledger[1].metric("Failed", progress["failed"])
+ledger[2].metric("Pending", progress["pending"])
+ledger[3].metric("Skipped", progress["skipped"])
 st.caption(
-    "Catalog membership is discovery, not a quality score. Refresh reloads index + expansion mtimes."
+    "Catalog membership is discovery, not a quality score. "
+    "Ok / failed / pending / skipped / running are ledger sums across catalog "
+    "dirs. Cells is the index grain — ledger-only dirs stay on this strip, "
+    "not as invented cell rows. Refresh reloads index + expansion mtimes."
 )
 
 if studies.empty and frame.empty:
     st.caption(_EMPTY_CATALOG)
     st.stop()
+
+if not studies.empty:
+    _render_studies_pane(studies)
 
 st.markdown("### Facets")
 facet_cols = st.columns(2)

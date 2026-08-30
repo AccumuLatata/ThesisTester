@@ -1,4 +1,4 @@
-"""SO1–SO4 Study Observatory — fact table, CLI, page AST, lens, saved desks."""
+"""SO1–SO4 / SO7 Study Observatory — fact table, CLI, page AST, lens, desks, studies pane."""
 
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ from thesistester.study.observatory import (
     cell_choice_labels,
     cohort_key_from_values,
     constrain_facet_selection,
+    corpus_progress_counts,
     delete_observatory_desk,
     desk_class_counts,
     desk_class_for,
@@ -41,12 +42,15 @@ from thesistester.study.observatory import (
     observatory_desk_from_payload,
     observatory_desk_query_state,
     observatory_desks_dir,
+    observatory_studies_table,
     parse_observatory_desk,
     program_b_heatmap_cells,
     resolve_program_b_lens,
     sample_class_for,
     save_observatory_desk,
     sort_observatory_frame,
+    sort_observatory_studies,
+    study_choice_labels,
     unique_facet_values,
     useful_confluence_for,
     wave0_study_name_for_core,
@@ -201,6 +205,15 @@ def test_two_studies_index_and_ledger_only(tmp_path: Path):
     assert not bool(
         model.studies.loc[model.studies["study_name"] == "beta_inflight", "index_present"].iloc[0]
     )
+    progress = corpus_progress_counts(model.studies)
+    assert progress["studies"] == 2
+    assert progress["ok"] == 1
+    assert progress["pending"] == 1
+    assert progress["failed"] == 0
+    assert progress["running"] == 0
+    table = observatory_studies_table(model.studies)
+    assert list(table["study_name"]) == ["beta_inflight", "alpha"]
+    assert "run_name" not in table.columns
 
 
 def test_corrupt_index_does_not_fail_sibling(tmp_path: Path):
@@ -220,6 +233,8 @@ def test_corrupt_index_does_not_fail_sibling(tmp_path: Path):
     bad_row = model.studies.loc[model.studies["study_name"] == "bad"].iloc[0]
     assert bad_row["error"]
     assert str(bad_row["error"]).startswith("index:")
+    ranked = sort_observatory_studies(model.studies)
+    assert list(ranked["study_name"]) == ["bad", "good"]
 
 
 def test_load_does_not_call_report_run_rollup_or_zip(tmp_path: Path, monkeypatch):
@@ -705,6 +720,48 @@ def test_cell_choice_labels_disambiguate_duplicate_names():
     assert len(set(labels)) == 3
 
 
+def test_study_choice_labels_disambiguate_duplicate_names():
+    rows = [
+        {"study_name": "alpha", "study_dir": "/tmp/a/alpha"},
+        {"study_name": "alpha", "study_dir": "/tmp/b/alpha"},
+        {"study_name": "beta", "study_dir": "/tmp/c/beta"},
+    ]
+    labels = study_choice_labels(rows)
+    assert labels[2] == "beta"
+    assert labels[0] != labels[1]
+    assert "/tmp/a/alpha" in labels[0]
+    assert "/tmp/b/alpha" in labels[1]
+    assert len(set(labels)) == 3
+
+
+def test_corpus_progress_counts_empty_and_missing_columns():
+    assert corpus_progress_counts(pd.DataFrame()) == {
+        "studies": 0,
+        "ok": 0,
+        "failed": 0,
+        "skipped": 0,
+        "running": 0,
+        "pending": 0,
+    }
+    bare = pd.DataFrame({"study_name": ["x"]})
+    counts = corpus_progress_counts(bare)
+    assert counts["studies"] == 1
+    assert counts["ok"] == 0
+    assert list(sort_observatory_studies(pd.DataFrame()).columns) == []
+    assert list(observatory_studies_table(pd.DataFrame()).columns) == []
+    with_na = pd.DataFrame(
+        {
+            "study_name": ["keep", "err"],
+            "study_dir": ["a", "b"],
+            "error": [pd.NA, "index:bad"],
+            "running": [0, 0],
+            "pending": [0, 0],
+            "failed": [0, 0],
+        }
+    )
+    assert list(sort_observatory_studies(with_na)["study_name"]) == ["err", "keep"]
+
+
 def test_observatory_page_ast_and_contract():
     page = Path("pages/16_Study_Observatory.py")
     assert page.is_file()
@@ -735,6 +792,15 @@ def test_observatory_page_ast_and_contract():
     assert "No cells with trade_count × expectancy_r to chart." in source
     assert "Paste a path on Studies" in source
     assert "Open in Inspect" in source
+    assert "Open study in Inspect" in source
+    assert "observatory_selected_study" in source
+    assert "STUDIES_VIEWER_SELECTED_RUN_KEY" in source
+    assert "leftover cell from another dir" in source
+    assert "corpus_progress_counts" in source
+    assert "observatory_studies_table" in source
+    assert "study_choice_labels" in source
+    assert "ledger-only dirs stay on this strip" in source
+    assert "not as invented cell rows" in source
     assert "STUDIES_VIEWER_DIR_KEY" in source
     assert "STUDIES_VIEWER_PENDING_PATH_KEY" in source
     assert "STUDIES_VIEWER_CACHED_MODEL_KEY" in source
