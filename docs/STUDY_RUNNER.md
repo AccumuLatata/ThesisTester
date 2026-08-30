@@ -44,11 +44,11 @@ thin-refuse and writes Preview YAML only. Catalog / `study list` show a
 best-effort `parent` from `study.lineage`. Promote without `--admit-tod`
 stays RS5. SAF4 (one-click child launch) is parked. Does not auto-`study run`
 and does not add ToD as a factor axis.
-**SO** (Study Observatory) — **SO8 shipped**; **SO9 planned**
+**SO** (Study Observatory) — **SO9 shipped**
 `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`. Corpus fact table +
 `study observatory` CLI + `pages/16_Study_Observatory.py` + Program B
-lens + saved desks + studies pane + display-only cohort labels. SO9
-planned (lens facets). SO5 / SO6 parked. Does not change Inspect
+lens + saved desks + studies pane + display-only cohort labels +
+lens-as-filter. SO5 / SO6 parked. Does not change Inspect
 execute path or promote.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
@@ -704,7 +704,7 @@ Paste `output_dir` remains valid alongside the catalog.
 
 ## SO — Study Observatory (operator contract)
 
-**Status:** **SO8 shipped.** SO1–SO4 + SO7–SO8 complete. SO9 planned. SO5 / SO6 parked.  
+**Status:** **SO9 shipped.** SO1–SO4 + SO7–SO9 complete. SO5 / SO6 parked.  
 **Plan:** `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`.
 
 Cross-study readout of every catalog hit (`results/studies/` + `out/`, same
@@ -720,7 +720,7 @@ stays CLI.
 | Saved desks (SO4) ✅ | Query state under store `study_observatory/desks` (`schema_version: 1`) | Writes into `results/studies/` |
 | Studies pane (SO7) ✅ | Ledger strip + catalog-dir table + study-level Inspect drill | Invented cell rows for ledger-only dirs; SO5 watch |
 | Cohort literacy (SO8) ✅ | Readable Active-cohort labels + differ caption | Changing `cohort_key` / sort; comparability score |
-| Lens as filter (SO9) planned | `desk_class` / `useful_confluence` facets + heatmap focus → core/partner | Usefulness float; desk `schema_version` bump; SO5/SO6 |
+| Lens as filter (SO9) ✅ | `desk_class` / `useful_confluence` facets + heatmap focus → core/partner | Usefulness float; desk `schema_version` bump; SO5/SO6 |
 
 **Honesty.** Corpus listing is discovery. Sort is descriptive and
 multiple-testing-biased. Cohort lock keeps incomparable locks out of one

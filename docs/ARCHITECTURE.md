@@ -149,8 +149,11 @@ SO4 persists query-only desks under `{store}/study_observatory/desks`
 (`schema_version: 1`; unknown schema ignored). SO7 surfaces the existing
 `studies` grain (ledger strip + catalog-dir table + study-level Inspect
 drill) without inventing cell rows. SO8 adds display-only cohort labels
-(raw `cohort_key` unchanged; no new session keys). SO9 is **planned**
-(lens-as-filter). It must not bump desk `schema_version`, change
+(raw `cohort_key` unchanged; no new session keys). SO9 makes
+`desk_class` / `useful_confluence` queryable while the Program B lens is
+on and focuses the heatmap through existing Core / Partner facets via
+the one-shot `_observatory_pending_facets` key (same pending pattern as
+SO4 desks). It must not bump desk `schema_version`, change
 `cohort_key`, or unpark SO5/SO6.
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
@@ -1253,7 +1256,9 @@ research state. Study Observatory SO2 adds `observatory_cached_model`,
 `observatory_break_comparability`, `observatory_sort_column`, and
 `observatory_selected_run` on `pages/16_Study_Observatory.py` only. SO3 adds
 `observatory_active_lens` (`auto` / `program_b` / `generic`). SO4 adds
-`observatory_saved_desk_id`. SO7 adds `observatory_selected_study`. Cell
+`observatory_saved_desk_id`. SO7 adds `observatory_selected_study`. SO9
+adds `_observatory_pending_facets` (one-shot merge into
+`observatory_facet_*` before widgets instantiate). Cell
 drill writes existing Studies keys (`studies_viewer_study_dir`,
 `studies_viewer_pending_path`) and pops Inspect cache. Study-level drill
 does the same and assigns empty leftover `studies_viewer_selected_run`
