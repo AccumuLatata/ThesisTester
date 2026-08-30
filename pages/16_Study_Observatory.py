@@ -1,7 +1,7 @@
 """SO2 Study Observatory — corpus fact table, facets, cohort lock, Inspect drill.
 
-Read-only. Does not call ``run_study``, ``rollup_study``, or ``report_study``.
-Does not write classic research session keys. Program B heatmap / desks are SO3/SO4.
+Read-only corpus page. Does not execute studies, write report artifacts,
+or hydrate classic research session keys. Program B heatmap / desks are SO3/SO4.
 """
 
 from __future__ import annotations

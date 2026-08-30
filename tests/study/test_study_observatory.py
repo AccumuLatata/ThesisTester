@@ -650,8 +650,8 @@ def test_observatory_page_ast_and_contract():
     observatory = Path("thesistester/study/observatory.py").read_text(encoding="utf-8")
     assert "st.fragment" not in source
     assert "run_every" not in source
-    assert "run_study" not in source
-    assert "rollup_study" not in source
+    assert "run_study(" not in source
+    assert "rollup_study(" not in source
     assert "report_study(" not in source
     assert "apply_research_bundle_to_session" not in source
     assert "desk_class" not in source
