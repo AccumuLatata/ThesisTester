@@ -1,4 +1,4 @@
-"""SO1–SO4 / SO7–SO8 Study Observatory — fact table, lens, desks, studies pane.
+"""SO1–SO4 / SO7–SO9 Study Observatory — fact table, lens, desks, studies pane.
 
 Concatenates existing ``results_index.csv`` ⟕ ``study.expansion.json`` plus
 StudySpec locks across SV1 catalog hits. SO3 attaches optional Program B
@@ -6,8 +6,10 @@ projections (``desk_class``, ΔE vs Wave 0, thinning, useful-confluence).
 SO4 persists query-only desks under the ThesisTester store. SO7 projects the
 existing ``studies`` grain (ledger ok / failed / pending / running) without
 inventing cell rows. SO8 adds display-only cohort labels over the existing
-``cohort_key``. Does not call ``report_study``, ``rollup_study``, or
-``run_study``. Does not unzip cell bundles. Does not write ``results/studies/``.
+``cohort_key``. SO9 makes ``desk_class`` / ``useful_confluence`` queryable
+and focuses the heatmap through existing Core / Partner facets. Does not
+call ``report_study``, ``rollup_study``, or ``run_study``. Does not unzip
+cell bundles. Does not write ``results/studies/``.
 
 This module must not import Streamlit, Plotly, ``execute``, ``cli_study``,
 ``thesistester.cli``, ``launch``, ``builder``, ``promote``, ``tools``, or
@@ -229,7 +231,10 @@ DESK_FACET_COLUMNS: tuple[str, ...] = (
     "stop_loss_ticks",
     "take_profit_ticks",
     "ingestion_mode",
+    "desk_class",
+    "useful_confluence",
 )
+LENS_FACET_COLUMNS: tuple[str, ...] = ("desk_class", "useful_confluence")
 _DESK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,80}$")
 
 
@@ -993,10 +998,71 @@ def _atomic_write_desk_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 def _heatmap_partner_token(value: Any) -> str:
     """Empty Wave 0 partners stay on the heatmap as ``(solo)``."""
+    if value is not None and not _is_na(value) and str(value).strip() == HEATMAP_SOLO_PARTNER:
+        return HEATMAP_SOLO_PARTNER
     canonical = canonical_facet_value(value)
     if canonical is None:
         return HEATMAP_SOLO_PARTNER
     return str(canonical)
+
+
+def heatmap_focus_label(core: Any, partner: Any) -> str:
+    """``core × partner`` token. Empty partner → ``(solo)`` (plan §4.12)."""
+    core_token = "" if core is None or _is_na(core) else str(core).strip()
+    return f"{core_token} × {_heatmap_partner_token(partner)}"
+
+
+def parse_heatmap_focus_label(label: Any) -> tuple[str, str] | None:
+    """Split a heatmap-cell label. ``(solo)`` partner → empty string. Fail closed."""
+    if label is None or _is_na(label):
+        return None
+    text = str(label).strip()
+    if " × " not in text:
+        return None
+    core, partner = text.split(" × ", 1)
+    core = core.strip()
+    partner = partner.strip()
+    if not core:
+        return None
+    if partner == HEATMAP_SOLO_PARTNER:
+        return (core, "")
+    return (core, partner)
+
+
+def heatmap_focus_pending_facets(label: Any) -> dict[str, list[Any]]:
+    """Core / Partner widget values for a heatmap-cell label (plan §4.12)."""
+    parsed = parse_heatmap_focus_label(label)
+    if parsed is None:
+        return {"factor_core_level": [], "factor_partner_levels": []}
+    core, partner = parsed
+    pending: dict[str, list[Any]] = {"factor_core_level": [core] if core else []}
+    if partner:
+        pending["factor_partner_levels"] = [partner]
+    else:
+        pending["factor_partner_levels"] = []
+    return pending
+
+
+def query_facets_for_frame(
+    generic: Mapping[str, Sequence[Any]] | None,
+    *,
+    lens_active: bool,
+    lens_facets: Mapping[str, Sequence[Any]] | None = None,
+) -> dict[str, list[Any]]:
+    """Generic facets always. Lens columns only while the Program B lens is on."""
+    merged: dict[str, list[Any]] = {}
+    for column, values in dict(generic or {}).items():
+        if column in LENS_FACET_COLUMNS:
+            continue
+        tokens = list(values or ())
+        if tokens:
+            merged[column] = tokens
+    if lens_active:
+        for column in LENS_FACET_COLUMNS:
+            tokens = list((lens_facets or {}).get(column) or ())
+            if tokens:
+                merged[column] = tokens
+    return merged
 
 
 def _wave0_identity(record: Mapping[str, Any], *, study_name: str, core: str) -> tuple[str, ...]:
