@@ -1,4 +1,4 @@
-"""SO1–SO4 / SO7 Study Observatory — fact table, CLI, page AST, lens, desks, studies pane."""
+"""SO1–SO4 / SO7–SO8 Study Observatory — fact table, CLI, page AST, lens, desks, studies, labels."""
 
 from __future__ import annotations
 
@@ -28,6 +28,8 @@ from thesistester.study.observatory import (
     attach_program_b_projections,
     canonical_facet_value,
     cell_choice_labels,
+    cohort_choice_labels,
+    cohort_differ_fields,
     cohort_key_from_values,
     constrain_facet_selection,
     corpus_progress_counts,
@@ -35,6 +37,7 @@ from thesistester.study.observatory import (
     desk_class_counts,
     desk_class_for,
     displayed_min_trades,
+    format_cohort_label,
     format_observatory_table,
     heatmap_class_z,
     inspect_selected_run_for_drill,
@@ -45,6 +48,7 @@ from thesistester.study.observatory import (
     observatory_desk_query_state,
     observatory_desks_dir,
     observatory_studies_table,
+    parse_cohort_key,
     parse_observatory_desk,
     program_b_heatmap_cells,
     resolve_program_b_lens,
@@ -297,6 +301,92 @@ def test_cohort_key_identity_and_instrument_split():
 def test_majority_cohort_key_lexicographic_tie():
     frame = pd.DataFrame({"cohort_key": ["z|a", "a|z", "z|a", "a|z"]})
     assert majority_cohort_key(frame) == "a|z"
+
+
+def _full_cohort(**overrides: object) -> dict[str, object]:
+    values: dict[str, object] = {
+        "instrument": "MNQ",
+        "dataset_id": "ds-a",
+        "ingestion_mode": "15s_primary_derive_1m",
+        "commission_per_side": 0.5,
+        "slippage_ticks": 1.0,
+        "stop_loss_ticks": 80,
+        "take_profit_ticks": 80,
+        "trigger": "touch",
+        "trigger_timeframe": "1min",
+        "tolerance_ticks": 10,
+        "flat_by_session_close": True,
+        "confluence_mode": "anchor_rules",
+        "min_valid_confluences": 1,
+        "exposure_policy": "single_position",
+    }
+    values.update(overrides)
+    return values
+
+
+def test_parse_cohort_key_round_trip_and_malformed():
+    values = _full_cohort()
+    key = cohort_key_from_values(values)
+    parsed = parse_cohort_key(key)
+    assert list(parsed) == [
+        "instrument",
+        "dataset_id",
+        "ingestion_mode",
+        "commission_per_side",
+        "slippage_ticks",
+        "stop_loss_ticks",
+        "take_profit_ticks",
+        "trigger",
+        "trigger_timeframe",
+        "tolerance_ticks",
+        "flat_by_session_close",
+        "confluence_mode",
+        "min_valid_confluences",
+        "exposure_policy",
+    ]
+    assert parsed["instrument"] == "MNQ"
+    assert parsed["dataset_id"] == "ds-a"
+    assert parsed["min_valid_confluences"] == "1"
+    assert parse_cohort_key("a|b") == {}
+    assert format_cohort_label("a|b") == "a|b"
+    assert format_cohort_label("") == ""
+
+
+def test_format_cohort_label_min_valid_and_empty_token():
+    zero = cohort_key_from_values(_full_cohort(min_valid_confluences=0))
+    one = cohort_key_from_values(_full_cohort(min_valid_confluences=1))
+    label_zero = format_cohort_label(zero)
+    label_one = format_cohort_label(one)
+    assert label_zero != label_one
+    assert "min_valid=0" in label_zero
+    assert "min_valid=1" in label_one
+    assert label_one.startswith("MNQ · ds-a · SL80/TP80 · touch@1min")
+    empty_instrument = cohort_key_from_values(_full_cohort(instrument=""))
+    assert format_cohort_label(empty_instrument).startswith("— · ds-a ·")
+
+
+def test_cohort_choice_labels_unique_and_order():
+    cheap = cohort_key_from_values(_full_cohort(commission_per_side=0.5))
+    dear = cohort_key_from_values(_full_cohort(commission_per_side=1.25))
+    labels = cohort_choice_labels([cheap, dear])
+    assert len(labels) == 2
+    assert labels[0] != labels[1]
+    assert "commission_per_side=" in labels[0]
+    assert "commission_per_side=" in labels[1]
+    assert cohort_choice_labels([cheap]) == [format_cohort_label(cheap)]
+    es = cohort_key_from_values(_full_cohort(instrument="ES"))
+    ordered = cohort_choice_labels([es, cheap, dear])
+    assert len(ordered) == 3
+    assert ordered[0] == format_cohort_label(es)
+    assert ordered[1] != ordered[2]
+
+
+def test_cohort_differ_fields_one_key_and_instrument():
+    mnq = cohort_key_from_values(_full_cohort(instrument="MNQ"))
+    es = cohort_key_from_values(_full_cohort(instrument="ES"))
+    assert cohort_differ_fields([mnq]) == ()
+    assert cohort_differ_fields([mnq, es]) == ("instrument",)
+    assert cohort_differ_fields([mnq, mnq]) == ()
 
 
 def test_load_splits_cohort_when_min_valid_confluences_differs(tmp_path: Path):
@@ -801,6 +891,12 @@ def test_observatory_page_ast_and_contract():
     assert "Comparability lock is not in effect." in source
     assert "constrain_facet_selection" in source
     assert "cell_choice_labels" in source
+    assert "format_cohort_label" in source
+    assert "cohort_choice_labels" in source
+    assert "cohort_differ_fields" in source
+    assert "observatory_cohort_pick" in source
+    assert "Differing lock fields in this filtered set:" in source
+    assert "All filtered cells share one cohort key." in source
     assert "not part of the ranked sort" in source
     assert "trade_count × expectancy_r" in source
     assert "No cells with trade_count × expectancy_r to chart." in source
@@ -1488,7 +1584,10 @@ def test_observatory_page_renders_studies_pane(
     assert list(study_box.options) == ["beta_inflight", "alpha"]
     cell_box = next(box for box in app.selectbox if box.label == "Cell")
     assert list(cell_box.options) == ["alpha / alpha_c0"]
+    cohort_box = next(box for box in app.selectbox if box.label == "Active cohort")
+    assert all("|" in str(option) for option in cohort_box.options)
     assert any(button.label == "Open study in Inspect" for button in app.button)
     assert any(button.label == "Open in Inspect" for button in app.button)
     captions = [item.value for item in app.caption]
     assert any("not as invented cell rows" in text for text in captions)
+    assert any("All filtered cells share one cohort key." in text for text in captions)
