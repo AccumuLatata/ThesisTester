@@ -1067,7 +1067,9 @@ Analysis; Focus vs Admit; Research Bundles; Validation and robustness.
 **What it is.** Streamlit **Study Observatory** lists every local study cell
 under `results/studies/` and `out/` as one fact table. Filter by instrument,
 setup kind, core / partners, status, sample class, SL/TP, and ingest. Sort
-inside a comparability cohort. The n×E scatter colors `sample_class`. **Open
+inside a comparability cohort. The n×E scatter colors `sample_class`. An
+optional Program B **lens** adds `desk_class`, ΔE vs Wave 0, thinning, and a
+core × partner heatmap when `progB_*` cells are in the filtered set. **Open
 in Inspect** drills one cell into Studies. Headless: `study observatory`.
 
 **When to use it.** After many studies finish (or while some are still
@@ -1076,8 +1078,8 @@ when comparing expectancy / profit factor across cells that share instrument,
 dataset, costs, and lock fields.
 
 **Related terms.** Study Observatory, corpus, cell, facet, cohort lock, break
-comparability, sample class, n×E scatter, Refresh, Open in Inspect, study
-observatory CLI
+comparability, sample class, n×E scatter, lens, desk class, ΔE, thinning,
+heatmap, Refresh, Open in Inspect, study observatory CLI
 
 **Key settings.**
 
@@ -1090,6 +1092,10 @@ observatory CLI
 | Break comparability | Allow sort across keys | Banner required; this is the only legal global PF/E sort |
 | Sort | Allow-list: E / PF / WR / n / max DD / name / status | `total_r` is not sortable |
 | n×E scatter | `trade_count` × `expectancy_r`; vline at displayed `min_trades` | Empty metrics → caption, not a chart |
+| Lens | `auto` / `program_b` / `generic` | `auto` attaches only when a filtered row is `progB_*` |
+| Packet chrome | 15s packet = 23 files; parked VA = 4 | Chrome only. Not catalog membership or ingest |
+| desk_class | Runbook overlay: failed first; noisy 15≤n<30; unidentified n<15; `other` = E≥0.03 and PF<0.95 | Not Admit. `sample_class` stays the n-gate |
+| desk_class heatmap | Core × partners; color is class, grey = missing | Grey is missing/pending, not `failed`. Hidden on a generic-only corpus |
 | Open in Inspect | Writes Studies path keys and switches to Studies | Does not hydrate classic session keys or Bundles |
 
 **How to use.**
@@ -1101,14 +1107,22 @@ observatory CLI
    mean to compare incomparable locks.
 4. Read the n×E scatter and the sorted table. `sample_class` is n vs that
    study’s `min_trades`, not Program B +E / Hold / Dead.
-5. Select a cell → **Open in Inspect** for briefing / peek. CLI:
+5. Leave **Lens** on `auto` when Program B dirs are present. Read the
+   class-count strip, packet chrome (23 / 4 files — not catalog
+   membership), and heatmap. ΔE is pair E minus Wave 0
+   (`progB_w0_va` for prior-profile cores, else `progB_w0_solo`) on the
+   same instrument / dataset lock. n<15 is unidentified; 15≤n<30 is
+   noisy.
+6. Select a cell → **Open in Inspect** for briefing / peek. CLI:
    `python -m thesistester study observatory` (`--csv` for the same columns).
 
 **What it is not.**
 
 - Not a validated edge. Ranking many cells is multiple-testing.
 - Not a second runner, job queue, or unzip-all of cell zips.
-- Not a Program B heatmap or `desk_class` overlay (later). Saved desks later.
+- Not Admit. +E / `desk_class` is a Program B runbook overlay, not a promote.
+- ΔE mixes confirm value with zone-shape (point vs partner box). Do not write
+  these numbers onto the Program A scalp map. Saved desks later.
 - Does not mutate classic session keys or switch to Bundles / Portfolio.
 - Catalog membership is not a quality score.
 

@@ -1081,7 +1081,7 @@ other than the last bar in the dataset.
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met
   the cell's grid `min_trades`.
 
-## Study Observatory (SO — SO2 shipped)
+## Study Observatory (SO — SO3 shipped)
 
 - The Study Observatory (`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`) is
   a corpus projection of artifacts the runner already wrote. SO2 ships the
@@ -1095,12 +1095,16 @@ other than the last bar in the dataset.
   confluence_mode, min_valid_confluences, exposure_policy) is required
   before treating a sort as even a descriptive rank. Breaking the lock is
   explicit and must be labeled.
-- Program B `desk_class` / ΔE vs Wave 0 (SO3) are named overlays of the
-  operator runbook, not a new primary metric and not Admit. `desk_class`
-  must cover the runbook split (`plus_e` / `hold` / `dead` / `noisy` /
-  `unidentified`) plus `failed` / `other`. ΔE looks up `progB_w0_solo`
-  or `progB_w0_va` by core; it mixes confirm value with zone-shape
-  (point vs partner box).
+- Program B `desk_class` / ΔE vs Wave 0 (SO3 shipped) are named overlays of
+  the operator runbook, not a new primary metric and not Admit. `desk_class`
+  covers the runbook split (`plus_e` / `hold` / `dead` / `noisy` /
+  `unidentified`) plus `failed` / `other`. n<15 is unidentified;
+  15≤n<30 is noisy. ΔE looks up `progB_w0_solo` or `progB_w0_va` by
+  core and the shared lock (instrument / dataset / ingest / costs) except
+  `min_valid_confluences`; it mixes confirm value with zone-shape
+  (point vs partner box). Heatmap grey is missing/pending, not `failed`.
+  Packet file counts (15s 23 / parked VA 4) are lens chrome, not ingest.
+  The lens is optional chrome — ingest stays generic.
 - Observatory must not unzip every cell or rewrite `study.overview.*`.
 
 ## Practical interpretation

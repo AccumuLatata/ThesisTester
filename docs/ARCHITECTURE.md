@@ -143,7 +143,8 @@ existing index + expansion + spec locks via SV1 `discover_study_dirs`. It
 must not call `report_study` / `rollup_study` / `run_study`, must not unzip
 every cell, must not import Streamlit/Plotly inside `observatory.py`, and
 must not be imported by `viewer.py`. SO2 adds `pages/16_Study_Observatory.py`
-(facets, cohort lock, n×E scatter, Inspect drill). Program B lens is SO3.
+(facets, cohort lock, n×E scatter, Inspect drill). SO3 attaches the Program B
+lens (`desk_class`, ΔE vs Wave 0, heatmap) when `progB_*` cells are present.
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
@@ -1243,7 +1244,8 @@ must not be read from Data / Levels / Setup Builder. Study Viewer SV1–SV5 add
 research state. Study Observatory SO2 adds `observatory_cached_model`,
 `observatory_cache_stamp`, `observatory_facet_state`, `observatory_cohort_lock`,
 `observatory_break_comparability`, `observatory_sort_column`, and
-`observatory_selected_run` on `pages/16_Study_Observatory.py` only. Drill
+`observatory_selected_run` on `pages/16_Study_Observatory.py` only. SO3 adds
+`observatory_active_lens` (`auto` / `program_b` / `generic`). Drill
 writes existing Studies keys (`studies_viewer_study_dir`,
 `studies_viewer_pending_path`) and pops Inspect cache; it must not write
 classic research keys.
