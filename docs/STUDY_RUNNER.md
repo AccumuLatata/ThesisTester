@@ -713,7 +713,7 @@ microscope. Execute stays CLI.
 |---|---|---|
 | Fact table (SO1) | Concat `results_index.csv` ⟕ expansion + spec locks; mtime cache; CLI `study observatory` | `report_study` loop; unzip-all; new ranker; `viewer.py` importing observatory |
 | Page (SO2) | Facets, cohort lock (default on), n×E scatter, table, drill → Inspect | Classic hydrate; Bundles/Portfolio deep-link; global PF board without a banner |
-| Program B lens (SO3) | `desk_class`, ΔE vs Wave 0, thinning, heatmap when `progB_*` present | Manifest-as-inventory; Admit auto-promote; writing onto the Program A desk map |
+| Program B lens (SO3) | `desk_class`, ΔE vs Wave 0 (`w0_solo` / `w0_va`), thinning, heatmap when `progB_*` present | Manifest-as-inventory (both `manifest.yaml` and `manifest_va.yaml` are chrome only); Admit auto-promote; writing onto the Program A desk map |
 | Saved desks (SO4) | Query state under store `study_observatory/` | Writes into `results/studies/` |
 
 **Honesty.** Corpus listing is discovery. Sort is descriptive and

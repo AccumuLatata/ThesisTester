@@ -1093,8 +1093,11 @@ other than the last bar in the dataset.
   before treating a sort as even a descriptive rank. Breaking the lock is
   explicit and must be labeled.
 - Program B `desk_class` / ΔE vs Wave 0 (SO3) are named overlays of the
-  operator runbook, not a new primary metric and not Admit. ΔE mixes
-  confirm value with zone-shape (point vs partner box).
+  operator runbook, not a new primary metric and not Admit. `desk_class`
+  must cover the runbook split (`plus_e` / `hold` / `dead` / `noisy` /
+  `unidentified`) plus `failed` / `other`. ΔE looks up `progB_w0_solo`
+  or `progB_w0_va` by core; it mixes confirm value with zone-shape
+  (point vs partner box).
 - Observatory must not unzip every cell or rewrite `study.overview.*`.
 
 ## Practical interpretation

@@ -17,7 +17,7 @@
 
 ## 1. Purpose
 
-SV shipped a read-only **single-study** Inspect. Program B (and every later packet) writes many `output_dir`s under `results/studies/`. The operator then file-hunts 23 (then N) overviews. Program B §12 already named the research gap: cells have n / E / PF; there is **no first-class cross-study map**.
+SV shipped a read-only **single-study** Inspect. Program B (and every later packet) writes many `output_dir`s under `results/studies/`. The operator then file-hunts the 15s packet (23 files) plus parked VA (4), then N overviews. `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` §12 already named the research gap: cells have n / E / PF; there is **no first-class cross-study map**.
 
 Ship a **Study Observatory**: a corpus-level, program-agnostic investigation surface over artifacts the runner already writes. New studies appear because they are study dirs, not because someone edits a registry. Program B is the first **lens**, not the product identity.
 
@@ -130,7 +130,7 @@ Do **not** require `results_index.csv` (in-flight studies belong on the corpus s
 
 ### 4.2 Grain and fact table (locked)
 
-**Grain:** one row per cell that has an index row, plus study-level corpus rows for dirs with no index.
+**Grain (two frames, do not mix):** `frame` is one row per **index** cell (`run_name` present). `studies` is one row per catalog dir (ledger counts, `index_present`, `error`). A ledger-only dir appears in `studies` only — do **not** invent a fake cell row in `frame`. Expansion names with no index row stay out of `frame` (they still count as pending on the corpus strip).
 
 SO1 builds a `pandas.DataFrame` with **locked columns** (names normative; extra factor columns allowed when expansion has them):
 
@@ -138,14 +138,16 @@ SO1 builds a `pandas.DataFrame` with **locked columns** (names normative; extra 
 |---|---|---|
 | Identity | `study_dir`, `study_name`, `study_identity_hash`, `run_name`, `bundle_path`, `status` | catalog + index |
 | Spec locks | `instrument`, `dataset_id`, `ingestion_mode`, `trigger`, `trigger_timeframe`, `confluence_mode`, `direction`, `tolerance_ticks`, `min_valid_confluences`, `stop_loss_ticks`, `take_profit_ticks`, `commission_per_side`, `slippage_ticks`, `flat_by_session_close`, `exposure_policy`, `min_trades`, `primary_metric` | spec constants / dataset / report + index `dataset_id` / `instrument` |
-| Lineage | `lineage_parent`, `lineage_admit_value` | optional `study.lineage` (SAF). Missing → `—` / null |
+| Lineage | `lineage_parent`, `lineage_admit_value` | optional `study.lineage` (SAF). `lineage_parent` = basename of `parent_output_dir` (same as SV catalog `parent`); `lineage_admit_value` = `admit.value`. Missing → `—` / null |
 | Factors | `factor_core_level`, `factor_partner_levels`, plus any other `factor_*` already flattened by report (`trigger`, `otf`, …) | `study.expansion.json` ⟕ `run_name` |
 | Metrics | `trade_count`, `expectancy_r`, `profit_factor`, `win_rate`, `max_drawdown_r`, `total_r` | **index only** |
 | Derived (not inference) | `setup_kind`, `sample_class`, `cohort_key`, `lens_hint` | §4.4–4.6 |
 
 **Index-only metrics (locked).** Observatory must **not** unzip `*.research.zip` during corpus load. RS-D7 already writes `profit_factor` / `win_rate` on the index. Null PF/WR stay null (`profit_factor_source` may be `index` or `missing` only — never `bundle` in SO1–SO4). Inspect peek remains the one-cell zip path.
 
-**Join.** Same key as RS4: `run_name`. Orphan index rows stay (`factors_joined=False`). Expansion names without an index row are omitted from the cell table (they still count as pending on the corpus strip via ledger).
+**Forbidden report reuse (locked).** Do **not** call `report_study`, `build_overview_frame`, or `_resolve_bundle_metrics` — those unzip bundles when index PF/WR is missing. Read `results_index.csv` and `study.expansion.json` (`factor_map` keyed by `run_name`) directly. Prefix factor keys `factor_` to match RS4. `format_partner_levels` (public in `report.py`) is allowed so partner strings match Inspect; that helper does not open zips.
+
+**Join.** Same key as RS4: `run_name`. Orphan index rows stay (`factors_joined=False`). Expansion names without an index row are omitted from `frame` (pending on the corpus strip via ledger).
 
 **Sort allow-list (locked):**  
 `expectancy_r`, `profit_factor`, `win_rate`, `trade_count`, `max_drawdown_r`, `study_name`, `run_name`, `status`.  
@@ -169,7 +171,7 @@ Do not cache in the study dir. Process memory / `st.session_state` only (SO1 CLI
 
 | Column | Rule |
 |---|---|
-| `setup_kind` | `"{trigger}@{trigger_timeframe}/{confluence_mode}"` from **cell factors if joined, else spec constants**. Display/facet only |
+| `setup_kind` | `"{trigger}@{trigger_timeframe}/{confluence_mode}"` from **joined `factor_*` if present, else `study.factors` exclusive values** (not `constants` — trigger lives on factors). Display/facet only |
 | `sample_class` | `missing_n` if `trade_count` is null; `below_min_trades` if `trade_count < min_trades` (row’s study `report.min_trades`, default 30); else `interpretable` |
 
 `sample_class` is **not** +E / Hold / Dead. Those names belong to the Program B **desk overlay** (SO3).
@@ -179,13 +181,13 @@ Do not cache in the study dir. Process memory / `st.session_state` only (SO1 CLI
 `cohort_key` is a deterministic `|`-joined string of:
 
 ```text
-instrument|dataset_id|ingestion_mode|commission_per_side|slippage_ticks|stop_loss_ticks|take_profit_ticks|trigger|trigger_timeframe|tolerance_ticks|flat_by_session_close
+instrument|dataset_id|ingestion_mode|commission_per_side|slippage_ticks|stop_loss_ticks|take_profit_ticks|trigger|trigger_timeframe|tolerance_ticks|flat_by_session_close|confluence_mode|min_valid_confluences|exposure_policy
 ```
 
-Missing field → empty token (row still gets a key). When **cohort lock is on** (SO2 default):
+`min_valid_confluences` is in the key so Wave 0 point-zone cells (`0`) do not share a ranked sort with pair-box cells (`1`) — same honesty as runbook §5 zone-shape. Missing field → empty token (row still gets a key). When **cohort lock is on** (SO2 default):
 
 1. Facets still apply.
-2. Sort / “top cells” / color ranks use only rows sharing the **majority cohort** in the filtered set, **or** the operator-picked cohort (selectbox of keys present after facets).
+2. Sort / “top cells” / color ranks use only rows sharing the **majority cohort** in the filtered set, **or** the operator-picked cohort (selectbox of keys present after facets). Tie for majority count → lexicographically first `cohort_key` among the tied keys; caption states the pick.
 3. Other cohorts remain visible in the table but are excluded from the ranked sort and from the scatter’s “highlight” series unless the operator picks them.
 4. Caption states the lock fields.
 
@@ -205,7 +207,7 @@ Best-effort, never a quality score:
 
 SO3 **attaches** the Program B lens when the filtered frame contains any `program_b` row **or** the operator selects that lens. An empty corpus is generic empty-state, not an error.
 
-Manifest (`examples/studies/program_b/manifest.yaml`) is **wave order + expected cell counts** for the lens, not the ingest inventory. Future programs get a new lens module/function in a later amend — they still ingest as `generic`.
+Manifests (`examples/studies/program_b/manifest.yaml` **and** `manifest_va.yaml`) are **wave order + expected cell counts** for the lens chrome, not the ingest inventory. 15s wave order lives in `manifest.yaml`; Wave 0 VA + Wave 4 live in `manifest_va.yaml`. Future programs get a new lens module/function in a later amend — they still ingest as `generic`.
 
 ### 4.7 Program B lens projection (SO3 only)
 
@@ -213,20 +215,27 @@ Apply only to rows with `lens_hint == program_b` (plus Wave 0 lookup). Numeric l
 
 | Class (`desk_class`) | Rule |
 |---|---|
-| `plus_e` | `sample_class == interpretable` and `expectancy_r >= 0.03` and `profit_factor > 1.05` |
-| `hold` | interpretable and (`abs(expectancy_r) < 0.03` or `profit_factor ∈ [0.95, 1.05]`) |
+| `failed` | `status == failed` (wins over every class below) |
+| `plus_e` | interpretable and `expectancy_r >= 0.03` and `profit_factor > 1.05` |
+| `hold` | interpretable and (`abs(expectancy_r) < 0.03` or `profit_factor ∈ [0.95, 1.05]`) and not `plus_e` |
 | `dead` | interpretable and `expectancy_r < 0` and not `hold` |
-| `unidentified` | `sample_class != interpretable` |
-| `failed` | `status == failed` |
+| `other` | interpretable and not `plus_e` / `hold` / `dead` (the runbook gap: e.g. E≥0.03 and PF<0.95) |
+| `noisy` | `sample_class == below_min_trades` and `trade_count >= 15` (runbook 15≤n<30) |
+| `unidentified` | `sample_class == missing_n` or (`below_min_trades` and `trade_count < 15`) or `status == skipped` |
 
-`plus_e` vs `hold` vs `dead` are mutually exclusive; `failed` wins over class if status is failed.
+`plus_e` / `hold` / `dead` / `other` are mutually exclusive on interpretable rows. `failed` is evaluated first.
 
-**ΔE vs Wave 0.** For a pair row, find the Wave 0 cell with the same `factor_core_level` in study `progB_w0_solo` (15s) or `progB_w0_va` (VA cores). `delta_e = E_pair - E_solo`. Null if solo missing or either E null. Caption **must** say ΔE mixes confirm value with zone-shape (point vs partner box) — runbook §5.
+**ΔE vs Wave 0.** For a pair row (`min_valid_confluences >= 1` and non-empty partners), look up exactly one Wave 0 cell with the same `factor_core_level`:
+
+- `factor_core_level` ∈ `PRIOR_PROFILE_LEVEL_NAMES` (`thesistester.levels.catalog`) → `study_name == "progB_w0_va"`
+- else → `study_name == "progB_w0_solo"`
+
+`delta_e = E_pair - E_solo`. **Null** if the solo is missing, either E is null, or the lookup is not exactly one cell (two dirs with the same `study_name` + core → fail closed). Caption **must** say ΔE mixes confirm value with zone-shape (point vs partner box) — runbook §5.
 
 **Thinning.** `n_pair / n_solo` when both `trade_count` present; else null.
 
 **Useful-confluence flag** (boolean projection, not a rank score):  
-`sample_class == interpretable` and `delta_e >= 0.03` and PF leaves `[0.95, 1.05]` and thinning is not ~1.0 with ΔE≈0. Keep the predicate in one helper; do not surface a float “usefulness” score.
+`sample_class == interpretable` and `delta_e >= 0.03` and PF not in `[0.95, 1.05]` and `thinning` is not null. Keep the predicate in one helper; do not surface a float “usefulness” score. Do not use `~` / `≈` thresholds.
 
 Heatmap: `factor_core_level` × `factor_partner_levels`, color = `desk_class` (not raw E). Missing / pending = grey. Only when the Program B lens is active.
 
@@ -290,7 +299,7 @@ Program B lens repeats runbook: n&lt;30 unidentified; +E is not Admit; do not wr
 | **SO0** | Plan lock + living-doc pointers | Docs only (this PR) |
 | **SO1** | Fact table + cache + facets/sort/cohort helpers + `study observatory` | `observatory.py`, `cli_study.py` (`observatory` only), tests |
 | **SO2** | Page 16: corpus strip, facets, cohort lock, n×E scatter, table, Inspect drill | `pages/16_Study_Observatory.py` + page tests + USER_GUIDE H2 + HC allowlist |
-| **SO3** | Program B lens: `desk_class`, ΔE, thinning, heatmap, class counts | `observatory.py` + page pane; no manifest-as-inventory |
+| **SO3** | Program B lens: `desk_class`, ΔE vs `w0_solo`/`w0_va`, thinning, heatmap, class counts | `observatory.py` + page pane; both manifests are chrome only |
 | **SO4** | Saved desks + schema-versioned store sidecar (default unused) | store helper + page load/save |
 | **SO5** | Parked — opt-in fragment refresh of **corpus strip only** | — |
 | **SO6** | Parked — grounded Discuss over the filtered frame | — |
@@ -324,17 +333,17 @@ No new USER_GUIDE H2. Do not reopen SV/SAF/RS behavior text. §4.2.
 | **Depends on** | SO0 |
 | **Likely files** | `thesistester/study/observatory.py` (new); `thesistester/study/cli_study.py` (`observatory` only); optional `thesistester/study/__init__.py` export; `tests/study/test_study_observatory.py` (new); existing study CLI tests only if help/argv collection needs the new subcommand; docs: `STUDY_RUNNER.md` §SO mark SO1; ARCHITECTURE import-graph sentence; roadmap |
 | **Behavior** | `load_observatory_frame` per §4.2–4.6; facet predicate + cohort key helpers; `study observatory` per §4.9 |
-| **Out of scope** | Streamlit page; Plotly; Program B ΔE/heatmap; store sidecar; unzip; `report_study` |
+| **Out of scope** | Streamlit page; Plotly; Program B ΔE/heatmap; store sidecar; unzip; `report_study` / `build_overview_frame` / `_resolve_bundle_metrics` |
 | **Regression** | `viewer.py` does not import observatory; extra-root still refused; no writes under fixture study dirs; `expand\|run\|report\|promote\|rollup\|list` argv tests still pass; goldens untouched |
 | **Acceptance checklist** | |
 | | ☑ Two tmp study dirs (one with index, one ledger-only) concat: cells from the first, corpus row for both |
 | | ☑ Dir without `study.spec.yaml` is not ingested |
 | | ☑ Extra-root `--root` refused (same honesty as `study list`) |
 | | ☑ Corrupt index on one dir does not fail the other |
-| | ☑ Load does not call `report_study` / `run_study` / `rollup_study` / zipfile on bundles |
+| | ☑ Load does not call `report_study` / `build_overview_frame` / `_resolve_bundle_metrics` / `run_study` / `rollup_study` / zipfile on bundles |
 | | ☑ `observatory.py` AST: no Streamlit, Plotly, `execute`, `cli_study`, `thesistester.cli` |
 | | ☑ `viewer.py` AST: still no `observatory` import |
-| | ☑ `cohort_key` identical for two cells that share §4.5 fields and differs when instrument differs |
+| | ☑ `cohort_key` identical for two cells that share §4.5 fields and differs when instrument **or** `min_valid_confluences` differs |
 | | ☑ `sample_class` uses that study’s `min_trades` |
 | | ☑ Sort helper refuses `total_r` |
 | | ☑ CLI default table + `--csv` deterministic; no file writes |
@@ -346,7 +355,8 @@ No new USER_GUIDE H2. Do not reopen SV/SAF/RS behavior text. §4.2.
 Implement SO1 only from docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md §6.2
 and §4.1–4.6 / §4.9. Add thesistester/study/observatory.py (fact table +
 mtime cache + cohort/sample_class/setup_kind). Reuse discover_study_dirs.
-Do not call report_study or unzip bundles. Additive CLI
+Do not call report_study, build_overview_frame, or _resolve_bundle_metrics.
+Do not unzip bundles. Additive CLI
 `python -m thesistester study observatory` with the same --root sandbox as
 study list. cli_study may import observatory; observatory must not import
 cli_study / execute / Streamlit / Plotly. viewer.py must not import
@@ -367,6 +377,7 @@ edits. No new USER_GUIDE H2. §4.2.
 | | ☑ Empty catalog: caption, not crash; paste/list still lives on Studies |
 | | ☑ Facet instrument=MNQ hides other instruments |
 | | ☑ Cohort lock: two instruments cannot share one ranked sort without break-comparability |
+| | ☑ Cohort lock: `min_valid_confluences` 0 vs 1 cannot share one ranked sort |
 | | ☑ Break-comparability shows a banner |
 | | ☑ Scatter uses `trade_count` × `expectancy_r`; empty metrics → caption |
 | | ☑ Drill sets `STUDIES_VIEWER_DIR_KEY` + pending path and invalidates Inspect cache |
@@ -396,12 +407,13 @@ No engine/golden edits. §4.2.
 |---|---|
 | **Depends on** | SO2 |
 | **Likely files** | `thesistester/study/observatory.py` (ΔE / `desk_class` / thinning helpers); `pages/16_Study_Observatory.py` (lens chrome + heatmap); `tests/study/test_study_observatory.py`; `tests/study/test_program_b_yaml.py` **untouched**; USER_GUIDE Observatory H2 + ASSUMPTIONS; `LEVEL_COMBINATION_RESEARCH_CONCEPT.md` §12 gap row (pointer only); roadmap |
-| **Behavior** | §4.7. Lens control: `auto` (attach if any `progB_` row in **filtered** frame) / `program_b` / `generic`. Heatmap + class-count strip + ΔE / thinning columns when lens is active. Wave 0 lookup by `factor_core_level` into `progB_w0_solo` / `progB_w0_va` |
+| **Behavior** | §4.7. Lens control: `auto` (attach if any `progB_` row in **filtered** frame) / `program_b` / `generic`. Heatmap + class-count strip + ΔE / thinning columns when lens is active. Wave 0 lookup: `PRIOR_PROFILE` cores → `progB_w0_va`, else `progB_w0_solo`; not exactly one match → `delta_e` null |
 | **Out of scope** | Changing Program B YAMLs / validator / generator; Admit auto-promote; Program A map writes; treating manifest as ingest |
 | **Regression** | Generic page still works with zero `progB_*` dirs; Program B validate tests unchanged; no study-dir writes |
 | **Acceptance checklist** | |
 | | ☑ Fixture: solo ONH E=0.00 + pair ONH+SMA E=0.10 → `delta_e == 0.10`; missing solo → `delta_e` null |
-| | ☑ `desk_class` matches §4.7 on n=30 / n=10 / PF=1.0 / failed |
+| | ☑ `pdPOC` pair looks up `progB_w0_va`; two `progB_w0_solo` dirs → `delta_e` null |
+| | ☑ `desk_class` matches §4.7 on n=30 / n=20 / n=10 / PF=1.0 / E=0.05+PF=0.90 / failed |
 | | ☑ Heatmap absent in generic-only corpus |
 | | ☑ Caption: ΔE is not a pure confluence effect; +E ≠ Admit |
 | | ☑ Manifest is not required for ingest |
@@ -411,11 +423,13 @@ No engine/golden edits. §4.2.
 
 ```text
 Implement SO3 only from docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md §6.4
-and §4.7. Add Program B lens projections (desk_class, delta_e vs Wave 0,
+and §4.7. Add Program B lens projections (desk_class including noisy/other,
+delta_e vs Wave 0 via PRIOR_PROFILE → progB_w0_va else progB_w0_solo,
 thinning, useful-confluence boolean) and page heatmap/class counts.
-Lens auto-attaches when filtered rows include progB_*. Do not edit
-examples/studies/program_b/ or the validator. Do not auto-promote.
-No engine/golden edits. Extend USER_GUIDE Observatory H2. §4.2.
+Not exactly one Wave 0 match → delta_e null. Lens auto-attaches when
+filtered rows include progB_*. Do not edit examples/studies/program_b/
+or the validator. Do not auto-promote. No engine/golden edits. Extend
+USER_GUIDE Observatory H2. §4.2.
 ```
 
 ### 6.5 SO4 — Saved desks + store sidecar
@@ -464,10 +478,10 @@ Do not implement in SO1–SO4. Requires a later RQ/RI amend if it lands.
 
 ## 7. End-to-end product acceptance (after SO4)
 
-A researcher running many studies (Program B 23-file packet or any later StudySpecs) can:
+A researcher running many studies (Program B 15s packet of 23 files, parked VA packet of 4, or any later StudySpecs) can:
 
 1. Open **Study Observatory** while cells are finishing.
-2. See corpus progress (ok / failed / running / pending) without opening 23 Inspect sessions.
+2. See corpus progress (ok / failed / running / pending) without opening one Inspect session per study.
 3. Filter by instrument, setup kind, core, partners, n-gate, status.
 4. Sort by E / PF / WR / n **inside a comparability cohort** (or explicitly break the lock).
 5. Read the n×E scatter (n=30 line) as the primary money plot.
