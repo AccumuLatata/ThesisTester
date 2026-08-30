@@ -6,6 +6,7 @@ import ast
 import csv
 import io
 import json
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -1411,3 +1412,58 @@ def test_saved_desk_rejects_invalid_id_and_does_not_write_none_json(tmp_path: Pa
             store_root=store,
         )
     assert not desks_dir.exists()
+
+
+@pytest.fixture()
+def isolate_observatory_apptest_globals():
+    """Undo Streamlit ``__main__`` / ``sys.path`` mutation (same honesty as
+    ``tests/test_assistant_page_render.py``). Required before a second AppTest
+    module can coexist with spawn-context CLI tests.
+    """
+    main_module = sys.modules.get("__main__")
+    path_snapshot = list(sys.path)
+    try:
+        yield
+    finally:
+        if main_module is None:
+            sys.modules.pop("__main__", None)
+        else:
+            sys.modules["__main__"] = main_module
+        sys.path[:] = path_snapshot
+
+
+def test_observatory_page_renders_studies_pane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    isolate_observatory_apptest_globals: None,
+) -> None:
+    """SO7 AppTest: ledger strip + studies table; no invented ledger-only cells."""
+    from streamlit.testing.v1 import AppTest
+
+    store = tmp_path / "store"
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(store))
+    root = store / "results" / "studies"
+    _write_study(
+        root,
+        "alpha",
+        cells=[{"run_name": "alpha_c0", "trade_count": 40, "expectancy_r": 0.12}],
+    )
+    _write_study(root, "beta_inflight", ledger_only=True)
+    page = Path(__file__).resolve().parents[2] / "pages" / "16_Study_Observatory.py"
+    app = AppTest.from_file(str(page), default_timeout=45)
+    app.run()
+    assert not app.exception
+    metrics = {item.label: item.value for item in app.metric}
+    assert metrics["Studies"] == "2"
+    assert metrics["Cells"] == "1"
+    assert metrics["Pending"] == "1"
+    assert metrics["Ok"] == "1"
+    assert metrics["Failed"] == "0"
+    study_box = next(box for box in app.selectbox if box.label == "Study")
+    assert list(study_box.options) == ["beta_inflight", "alpha"]
+    cell_box = next(box for box in app.selectbox if box.label == "Cell")
+    assert list(cell_box.options) == ["alpha / alpha_c0"]
+    assert any(button.label == "Open study in Inspect" for button in app.button)
+    assert any(button.label == "Open in Inspect" for button in app.button)
+    captions = [item.value for item in app.caption]
+    assert any("not as invented cell rows" in text for text in captions)
