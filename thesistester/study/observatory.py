@@ -1,11 +1,12 @@
-"""SO1–SO4 / SO7 Study Observatory — fact table, lens, desks, studies pane.
+"""SO1–SO4 / SO7–SO8 Study Observatory — fact table, lens, desks, studies pane.
 
 Concatenates existing ``results_index.csv`` ⟕ ``study.expansion.json`` plus
 StudySpec locks across SV1 catalog hits. SO3 attaches optional Program B
 projections (``desk_class``, ΔE vs Wave 0, thinning, useful-confluence).
 SO4 persists query-only desks under the ThesisTester store. SO7 projects the
 existing ``studies`` grain (ledger ok / failed / pending / running) without
-inventing cell rows. Does not call ``report_study``, ``rollup_study``, or
+inventing cell rows. SO8 adds display-only cohort labels over the existing
+``cohort_key``. Does not call ``report_study``, ``rollup_study``, or
 ``run_study``. Does not unzip cell bundles. Does not write ``results/studies/``.
 
 This module must not import Streamlit, Plotly, ``execute``, ``cli_study``,
@@ -316,6 +317,87 @@ def dir_artifact_stamp(study_dir: Path) -> tuple[tuple[str, float], ...]:
 def cohort_key_from_values(values: Mapping[str, Any]) -> str:
     """Deterministic ``|``-joined cohort key (plan §4.5). Missing → empty token."""
     return "|".join(_cohort_token(values.get(field)) for field in COHORT_FIELDS)
+
+
+def parse_cohort_key(key: Any) -> dict[str, str]:
+    """Split a raw ``cohort_key`` into ``COHORT_FIELDS`` tokens (plan §4.11).
+
+    Token count must match ``len(COHORT_FIELDS)``. Otherwise return ``{}``
+    (fail closed). Display only — does not change key composition.
+    """
+    if key is None or _is_na(key):
+        return {}
+    tokens = str(key).split("|")
+    if len(tokens) != len(COHORT_FIELDS):
+        return {}
+    return {field: token for field, token in zip(COHORT_FIELDS, tokens)}
+
+
+def format_cohort_label(key: Any) -> str:
+    """Short display label for a raw ``cohort_key`` (plan §4.11).
+
+    Malformed keys (parse → ``{}``) return the raw string. Empty tokens → ``—``.
+    """
+    raw = "" if key is None or _is_na(key) else str(key)
+    parsed = parse_cohort_key(raw)
+    if not parsed:
+        return raw
+
+    def _short(field: str) -> str:
+        token = parsed.get(field, "")
+        return token if token else "—"
+
+    return (
+        f"{_short('instrument')} · {_short('dataset_id')} · "
+        f"SL{_short('stop_loss_ticks')}/TP{_short('take_profit_ticks')} · "
+        f"{_short('trigger')}@{_short('trigger_timeframe')} · "
+        f"min_valid={_short('min_valid_confluences')}"
+    )
+
+
+def cohort_choice_labels(keys: Sequence[Any]) -> list[str]:
+    """Unique Active-cohort labels, parallel to ``keys`` (plan §4.11)."""
+    raws = ["" if key is None or _is_na(key) else str(key) for key in keys]
+    shorts = [format_cohort_label(raw) for raw in raws]
+    groups: dict[str, list[int]] = {}
+    for index, short in enumerate(shorts):
+        groups.setdefault(short, []).append(index)
+    labels = list(shorts)
+    for indexes in groups.values():
+        if len(indexes) < 2:
+            continue
+        parsed_group = [parse_cohort_key(raws[index]) for index in indexes]
+        differ = [
+            field
+            for field in COHORT_FIELDS
+            if len({row.get(field, "") for row in parsed_group}) > 1
+        ]
+        if not differ:
+            continue
+        for index, parsed in zip(indexes, parsed_group):
+            extra = " · ".join(f"{field}={parsed.get(field, '')}" for field in differ)
+            labels[index] = f"{shorts[index]} · {extra}"
+    counts: dict[str, int] = {}
+    for label in labels:
+        counts[label] = counts.get(label, 0) + 1
+    if any(count > 1 for count in counts.values()):
+        for index, label in enumerate(labels):
+            if counts[label] > 1:
+                labels[index] = f"{label} — {raws[index]}"
+    return labels
+
+
+def cohort_differ_fields(keys: Sequence[Any]) -> tuple[str, ...]:
+    """§4.5 field names whose parsed values are not identical across ``keys``."""
+    raws = ["" if key is None or _is_na(key) else str(key) for key in keys]
+    if len(raws) < 2:
+        return ()
+    parsed_rows = [parse_cohort_key(raw) for raw in raws]
+    return tuple(
+        field
+        for field in COHORT_FIELDS
+        if len({row.get(field, "") for row in parsed_rows}) > 1
+    )
 
 
 def sample_class_for(trade_count: Any, min_trades: Any) -> str:
