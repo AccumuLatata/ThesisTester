@@ -1096,7 +1096,7 @@ observatory CLI
 | Sort | E / PF / WR / n / max DD / name / status | `total_r` is not sortable |
 | n×E scatter | `trade_count` × `expectancy_r` | Empty metrics → caption |
 | Lens / packet chrome | `auto` / `program_b` / `generic`; 23+4 chrome | `auto` only if a filtered row is `progB_*`. Chrome ≠ ingest |
-| desk_class / useful_confluence / Heatmap cell | Lens-on filters; heatmap writes Core / Partner | Lens off: saved lens facets stay inert. Clear Core / Partner to unfocus |
+| desk_class / useful_confluence / Heatmap cell | Lens-on filters; heatmap writes Core / Partner (`(solo)` = empty partners) | Lens off: saved lens facets stay inert. Clear Core / Partner to unfocus |
 | Saved desk | Store query only | Not evidence. Not under `results/studies/` |
 | Open in Inspect | Cell drill to Studies | No classic hydrate / Bundles |
 
