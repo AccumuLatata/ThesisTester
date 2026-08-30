@@ -119,9 +119,7 @@ def _write_study(
             for run_name in run_names
         },
     }
-    (study_dir / "study.expansion.json").write_text(
-        json.dumps(expansion), encoding="utf-8"
-    )
+    (study_dir / "study.expansion.json").write_text(json.dumps(expansion), encoding="utf-8")
     ledger = empty_ledger(study_identity_hash=f"hash-{name}", run_names=run_names)
     for run_name in run_names:
         ledger["cells"][run_name]["status"] = "ok" if not ledger_only else "pending"
@@ -271,7 +269,9 @@ def test_load_splits_cohort_when_min_valid_confluences_differs(tmp_path: Path):
     model = load_observatory_frame(roots=(tmp_path.resolve(),))
     keys = set(model.frame["cohort_key"])
     assert len(keys) == 2
-    by_name = {row["run_name"]: row["min_valid_confluences"] for row in model.frame.to_dict("records")}
+    by_name = {
+        row["run_name"]: row["min_valid_confluences"] for row in model.frame.to_dict("records")
+    }
     assert by_name["w0_c0"] == 0
     assert by_name["pair_c0"] == 1
 
@@ -399,7 +399,9 @@ def test_cli_observatory_table_csv_and_extra_root(tmp_path: Path, monkeypatch, c
     _write_study(
         tmp_path / "results" / "studies",
         "cli_alpha",
-        cells=[{"run_name": "cli_c0", "trade_count": 40, "expectancy_r": 0.11, "profit_factor": 1.3}],
+        cells=[
+            {"run_name": "cli_c0", "trade_count": 40, "expectancy_r": 0.11, "profit_factor": 1.3}
+        ],
     )
     monkeypatch.setattr(
         "thesistester.study.viewer.default_study_viewer_roots",

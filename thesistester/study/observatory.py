@@ -212,11 +212,7 @@ def load_observatory_frame(
             cell_frames.append(cells)
         study_rows.append(study_row)
 
-    frame = (
-        pd.concat(cell_frames, ignore_index=True)
-        if cell_frames
-        else _empty_frame()
-    )
+    frame = pd.concat(cell_frames, ignore_index=True) if cell_frames else _empty_frame()
     studies = (
         pd.DataFrame(study_rows, columns=list(STUDIES_COLUMNS))
         if study_rows
@@ -351,9 +347,7 @@ def format_observatory_table(frame: pd.DataFrame) -> str:
     for row in rows:
         for index, cell in enumerate(row):
             widths[index] = max(widths[index], len(cell))
-    lines = [
-        "  ".join(header.ljust(widths[index]) for index, header in enumerate(CLI_COLUMNS))
-    ]
+    lines = ["  ".join(header.ljust(widths[index]) for index, header in enumerate(CLI_COLUMNS))]
     for row in rows:
         lines.append("  ".join(cell.ljust(widths[index]) for index, cell in enumerate(row)))
     return "\n".join(lines)
@@ -363,9 +357,9 @@ def observatory_cli_frame(model: ObservatoryModel) -> pd.DataFrame:
     """Deterministic CLI order: ``study_name``, ``run_name``."""
     if model.frame.empty:
         return model.frame.copy()
-    return model.frame.sort_values(
-        ["study_name", "run_name"], kind="mergesort"
-    ).reset_index(drop=True)
+    return model.frame.sort_values(["study_name", "run_name"], kind="mergesort").reset_index(
+        drop=True
+    )
 
 
 def _index_prior_slices(
@@ -373,9 +367,7 @@ def _index_prior_slices(
 ) -> dict[str, tuple[tuple[tuple[str, float], ...], pd.DataFrame | None, dict[str, Any]]]:
     if prior is None:
         return {}
-    out: dict[
-        str, tuple[tuple[tuple[str, float], ...], pd.DataFrame | None, dict[str, Any]]
-    ] = {}
+    out: dict[str, tuple[tuple[tuple[str, float], ...], pd.DataFrame | None, dict[str, Any]]] = {}
     studies = prior.studies
     if studies.empty or "study_dir" not in studies.columns:
         return {}
@@ -460,9 +452,7 @@ def _read_spec_locks(study_dir: Path) -> tuple[dict[str, Any], bool]:
         raise ObservatoryError(f"{STUDY_SPEC_FILENAME} missing study mapping")
     dataset = study.get("dataset") if isinstance(study.get("dataset"), Mapping) else {}
     constants = study.get("constants") if isinstance(study.get("constants"), Mapping) else {}
-    backtest = (
-        constants.get("backtest") if isinstance(constants.get("backtest"), Mapping) else {}
-    )
+    backtest = constants.get("backtest") if isinstance(constants.get("backtest"), Mapping) else {}
     report = study.get("report") if isinstance(study.get("report"), Mapping) else {}
     factors = study.get("factors") if isinstance(study.get("factors"), Mapping) else {}
     lineage = study.get("lineage") if isinstance(study.get("lineage"), Mapping) else None
@@ -596,9 +586,7 @@ def _cell_row(
     has_admit: bool,
 ) -> dict[str, Any]:
     trigger = _joined_or_lock(flat, "factor_trigger", locks.get("trigger"))
-    trigger_tf = _joined_or_lock(
-        flat, "factor_trigger_timeframe", locks.get("trigger_timeframe")
-    )
+    trigger_tf = _joined_or_lock(flat, "factor_trigger_timeframe", locks.get("trigger_timeframe"))
     mode = _joined_or_lock(flat, "factor_confluence_mode", locks.get("confluence_mode"))
     direction = _joined_or_lock(flat, "factor_direction", locks.get("direction"))
     instrument = index_row.get("instrument")
@@ -696,9 +684,9 @@ def _flatten_otf(flat: dict[str, Any], col: str, value: Any) -> None:
     try:
         flat[col] = otf_canonical_key(value)
         flat["factor_otf_enabled"] = bool(
-            normalize_otf_filter_config(
-                dict(value) if isinstance(value, Mapping) else value
-            ).get("enabled", False)
+            normalize_otf_filter_config(dict(value) if isinstance(value, Mapping) else value).get(
+                "enabled", False
+            )
         )
     except (TypeError, ValueError, RecursionError):
         if isinstance(value, Mapping):
