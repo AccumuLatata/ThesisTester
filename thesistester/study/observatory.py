@@ -277,17 +277,23 @@ def apply_facets(
     frame: pd.DataFrame,
     facets: Mapping[str, Sequence[Any]] | None = None,
 ) -> pd.DataFrame:
-    """Keep rows whose facet columns are in the provided value sets."""
+    """Keep rows whose facet columns are in the provided value sets.
+
+    Numeric tokens use :func:`canonical_facet_value` so ``80`` and ``80.0``
+    match (same honesty as ``cohort_key`` integer tokens). Raw ``isin``
+    would hide one lock when YAML stored an int and pandas upcast a float.
+    """
     if frame.empty or not facets:
         return frame.copy()
     mask = pd.Series(True, index=frame.index)
     for column, raw_values in facets.items():
         if column not in frame.columns:
             continue
-        allowed = list(raw_values)
+        allowed = {canonical_facet_value(value) for value in raw_values}
+        allowed.discard(None)
         if not allowed:
             continue
-        mask = mask & frame[column].isin(allowed)
+        mask = mask & frame[column].map(canonical_facet_value).isin(allowed)
     return frame.loc[mask].reset_index(drop=True)
 
 
@@ -336,20 +342,102 @@ def sort_observatory_frame(
 
 
 def unique_facet_values(frame: pd.DataFrame, column: str) -> list[Any]:
-    """Sorted unique non-null values for a facet column."""
+    """Sorted unique non-null values for a facet column.
+
+    Returns Python scalars (not numpy) so Streamlit widgets can serialize
+    the option list. Integer-valued numbers collapse to ``int``.
+    """
     if frame.empty or column not in frame.columns:
         return []
-    seen: set[str] = set()
+    seen: set[Any] = set()
     values: list[Any] = []
     for value in frame[column].tolist():
-        if value is None or _is_na(value):
+        canonical = canonical_facet_value(value)
+        if canonical is None or canonical in seen:
             continue
-        key = str(value)
-        if key in seen:
+        seen.add(canonical)
+        values.append(canonical)
+    return sorted(values, key=_facet_sort_key)
+
+
+def canonical_facet_value(value: Any) -> Any:
+    """Stable facet token. ``80`` / ``80.0`` / ``np.int64(80)`` → ``80``."""
+    if value is None or _is_na(value):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, numbers.Real):
+        number = float(value)
+        if math.isnan(number):
+            return None
+        if math.isfinite(number) and number.is_integer():
+            return int(number)
+        return number
+    boxed = _box_scalar(value)
+    if boxed is not value:
+        return canonical_facet_value(boxed)
+    text = str(value).strip()
+    return text if text else None
+
+
+def constrain_facet_selection(
+    selected: Sequence[Any] | None,
+    options: Sequence[Any],
+) -> list[Any]:
+    """Keep widget values that still exist in *options* (canonical match)."""
+    if not selected or not options:
+        return []
+    by_key = {canonical_facet_value(option): option for option in options}
+    by_key.pop(None, None)
+    out: list[Any] = []
+    seen: set[Any] = set()
+    for value in selected:
+        key = canonical_facet_value(value)
+        if key is None or key not in by_key or key in seen:
             continue
         seen.add(key)
-        values.append(value)
-    return sorted(values, key=lambda item: str(item))
+        out.append(by_key[key])
+    return out
+
+
+def cell_choice_labels(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Unique Inspect-drill labels. Duplicate ``study / run`` get ``study_dir``."""
+    bases: list[str] = []
+    for row in rows:
+        bases.append(_cell_base_label(row))
+    counts: dict[str, int] = {}
+    for base in bases:
+        counts[base] = counts.get(base, 0) + 1
+    labels: list[str] = []
+    seen: dict[str, int] = {}
+    for index, row in enumerate(rows):
+        base = bases[index]
+        if counts[base] == 1:
+            labels.append(base)
+            continue
+        directory = str(row.get("study_dir") or "").strip() or f"row-{index}"
+        label = f"{base} — {directory}"
+        seen[label] = seen.get(label, 0) + 1
+        if seen[label] > 1:
+            label = f"{label} #{seen[label]}"
+        labels.append(label)
+    return labels
+
+
+def _cell_base_label(row: Mapping[str, Any]) -> str:
+    study = row.get("study_name")
+    run = row.get("run_name")
+    study_s = "—" if study is None or _is_na(study) else str(study)
+    run_s = "—" if run is None or _is_na(run) else str(run)
+    return f"{study_s} / {run_s}"
+
+
+def _facet_sort_key(value: Any) -> tuple[int, str]:
+    if isinstance(value, bool):
+        return (2, "true" if value else "false")
+    if isinstance(value, numbers.Real) and not isinstance(value, bool):
+        return (0, f"{float(value):+.15e}")
+    return (1, str(value))
 
 
 def displayed_min_trades(frame: pd.DataFrame) -> float | None:

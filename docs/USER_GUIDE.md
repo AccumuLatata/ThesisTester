@@ -1085,7 +1085,7 @@ observatory CLI
 |---|---|---|
 | Refresh | Rediscover dirs and reload index + expansion | Does not run cells or rewrite overviews |
 | Facets | Keep rows whose values are in the selected sets | Empty selection = no filter on that column |
-| Cohort lock | Sort / scatter highlight stay in one `cohort_key` | Default on. Two instruments do not share one rank |
+| Cohort lock | Sort / scatter highlight stay in one `cohort_key` | Default on. Unchecking it spans keys and shows the incomparability banner |
 | Active cohort | Majority key after facets, or operator pick | Ties break to the lexicographically first key |
 | Break comparability | Allow sort across keys | Banner required; this is the only legal global PF/E sort |
 | Sort | Allow-list: E / PF / WR / n / max DD / name / status | `total_r` is not sortable |

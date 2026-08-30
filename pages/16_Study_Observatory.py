@@ -78,6 +78,8 @@ sort_observatory_frame = getattr(_observatory, "sort_observatory_frame", None)
 majority_cohort_key = getattr(_observatory, "majority_cohort_key", None)
 unique_facet_values = getattr(_observatory, "unique_facet_values", None)
 displayed_min_trades = getattr(_observatory, "displayed_min_trades", None)
+constrain_facet_selection = getattr(_observatory, "constrain_facet_selection", None)
+cell_choice_labels = getattr(_observatory, "cell_choice_labels", None)
 SORT_ALLOW_LIST = getattr(_observatory, "SORT_ALLOW_LIST", frozenset({"expectancy_r"}))
 COHORT_FIELDS = getattr(_observatory, "COHORT_FIELDS", ())
 OBSERVATORY_HONESTY = getattr(_observatory, "OBSERVATORY_HONESTY", _HONESTY_FALLBACK)
@@ -95,6 +97,8 @@ def _helpers_ready() -> bool:
             majority_cohort_key,
             unique_facet_values,
             displayed_min_trades,
+            constrain_facet_selection,
+            cell_choice_labels,
         )
     )
 
@@ -130,16 +134,13 @@ def _last_stamp_label(model: Any) -> str:
     return latest.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
-def _cell_label(row: dict[str, Any]) -> str:
-    return f"{row.get('study_name', '—')} / {row.get('run_name', '—')}"
-
-
 def _open_in_inspect(study_dir: str, run_name: str | None) -> None:
     """Drill into Studies Inspect. Pops Inspect cache so the dir reloads."""
     st.session_state[STUDIES_VIEWER_DIR_KEY] = study_dir
     st.session_state[STUDIES_VIEWER_PENDING_PATH_KEY] = study_dir
-    if run_name:
-        st.session_state[STUDIES_VIEWER_SELECTED_RUN_KEY] = str(run_name)
+    run_text = "" if run_name is None else str(run_name).strip()
+    if run_text and run_text not in {"<NA>", "nan", "None"}:
+        st.session_state[STUDIES_VIEWER_SELECTED_RUN_KEY] = run_text
     st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_KEY, None)
     st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY, None)
     st.switch_page("pages/15_Studies.py")
@@ -282,7 +283,13 @@ facets: dict[str, list[Any]] = {}
 for index, (column, label) in enumerate(_FACET_COLUMNS):
     with facet_cols[index % 2]:
         options = unique_facet_values(frame, column)
-        selected = st.multiselect(label, options=options, key=f"observatory_facet_{column}")
+        widget_key = f"observatory_facet_{column}"
+        current = st.session_state.get(widget_key)
+        if isinstance(current, (list, tuple)):
+            constrained = constrain_facet_selection(current, options)
+            if list(current) != constrained:
+                st.session_state[widget_key] = constrained
+        selected = st.multiselect(label, options=options, key=widget_key)
         if selected:
             facets[column] = list(selected)
 st.session_state[OBSERVATORY_FACET_STATE_KEY] = facets
@@ -302,10 +309,12 @@ with lock_cols[1]:
         key=OBSERVATORY_BREAK_COMPARABILITY_KEY,
         help="Explicit global sort across cohort keys. Banner required.",
     )
-if break_comparability:
+spans_keys = (not bool(cohort_lock)) or bool(break_comparability)
+if spans_keys:
     st.warning(
-        "**Break comparability is on.** Sort and scatter highlight span cohort keys. "
-        "Incomparable locks may share one rank."
+        "**Comparability lock is not in effect.** Sort and scatter highlight "
+        "span cohort keys. Incomparable locks may share one rank. "
+        "This is the only legal global PF/E sort."
     )
 if COHORT_FIELDS:
     st.caption("Cohort lock fields: " + ", ".join(COHORT_FIELDS))
@@ -366,12 +375,25 @@ else:
     shown = ranked.head(_TABLE_DISPLAY_CAP)
     if len(ranked) > _TABLE_DISPLAY_CAP:
         st.caption(f"Showing {_TABLE_DISPLAY_CAP} of {len(ranked)} cells (sorted).")
+    if (
+        bool(cohort_lock)
+        and not bool(break_comparability)
+        and active_cohort is not None
+        and not shown.empty
+        and "cohort_key" in shown.columns
+    ):
+        other_n = int((shown["cohort_key"].astype(str) != str(active_cohort)).sum())
+        if other_n:
+            st.caption(
+                f"Sorted inside the active cohort. {other_n} other-cohort "
+                "row(s) follow by study_name / run_name — not part of the ranked sort."
+            )
     display = shown.reindex(
         columns=[column for column in _TABLE_COLUMNS if column in shown.columns]
     )
     st.dataframe(display, hide_index=True, width="stretch")
     records = shown.to_dict(orient="records")
-    labels = [_cell_label(row) for row in records]
+    labels = cell_choice_labels(records)
     if labels:
         if st.session_state.get(OBSERVATORY_CELL_SELECT_KEY) not in labels:
             st.session_state[OBSERVATORY_CELL_SELECT_KEY] = labels[0]
