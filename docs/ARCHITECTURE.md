@@ -137,14 +137,13 @@ Default promote stays RS5. The button must not call `run_study`.
 Engine Admit remains `backtest.entry_window` / `grid.entry_window` (SW).
 No `engine/` edit.
 **SO** (Study Observatory, `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`)
-is a planned read-only corpus surface (`thesistester/study/observatory.py`,
-`pages/16_Study_Observatory.py` from SO2). It concatenates existing index +
-expansion + spec locks via SV1 `discover_study_dirs`. It must not call
-`report_study` / `rollup_study` / `run_study`, must not unzip every cell,
-must not import Streamlit/Plotly inside `observatory.py`, and must not be
-imported by `viewer.py`. Drill to Inspect may set existing
-`studies_viewer_*` keys and `st.switch_page` to `pages/15_Studies.py` only.
-SO0 is docs-only.
+SO1 is the read-only corpus compiler (`thesistester/study/observatory.py`)
+plus additive CLI `python -m thesistester study observatory`. It concatenates
+existing index + expansion + spec locks via SV1 `discover_study_dirs`. It
+must not call `report_study` / `rollup_study` / `run_study`, must not unzip
+every cell, must not import Streamlit/Plotly inside `observatory.py`, and
+must not be imported by `viewer.py`. `pages/16_Study_Observatory.py` and
+Inspect drill remain SO2.
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are

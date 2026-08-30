@@ -1084,9 +1084,9 @@ other than the last bar in the dataset.
 ## Study Observatory (SO — planned)
 
 - The Study Observatory (`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`) is
-  a **planned** corpus projection of artifacts the runner already wrote. SO0
-  is docs-only; the page is **not** shipped. Listing every local study cell
-  is discovery, not a quality score.
+  a corpus projection of artifacts the runner already wrote. SO1 ships the
+  compiler + `study observatory` CLI; the Streamlit page is **not** shipped
+  (SO2). Listing every local study cell is discovery, not a quality score.
 - Sorting many cells by expectancy / profit factor / win rate is the same
   multiple-testing screen as RS4, now across studies. A comparability cohort
   (instrument, dataset, costs, SL/TP, trigger, width, flatten) is required

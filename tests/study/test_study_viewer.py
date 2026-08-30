@@ -788,6 +788,7 @@ def test_viewer_module_import_allow_list():
     assert "plotly" not in imported
     assert "streamlit" not in imported
     assert "thesistester.study.rollup" not in imported
+    assert "thesistester.study.observatory" not in imported
     assert "rollup_study(" not in source
 
 

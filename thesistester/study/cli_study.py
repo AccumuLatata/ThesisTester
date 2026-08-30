@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5, RS-D4, SV1–SV2)."""
+"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5, RS-D4, SV1–SV2, SO1)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,14 @@ from thesistester.study.execute import (
 from thesistester.study.promote import StudyPromoteError, promote_study
 from thesistester.study.report import StudyReportError, report_study
 from thesistester.study.rollup import StudyRollupError, rollup_study
+from thesistester.study.observatory import (
+    OBSERVATORY_HONESTY,
+    CLI_COLUMNS,
+    ObservatoryError,
+    format_observatory_table,
+    load_observatory_frame,
+    observatory_cli_frame,
+)
 from thesistester.study.schema import StudySpecError
 from thesistester.study.viewer import (
     StudyViewerError,
@@ -29,7 +37,7 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``study`` command group on the root CLI parser."""
     study_parser = subparsers.add_parser(
         "study",
-        help="Research Study Runner (expand / run / report / promote / rollup / list)",
+        help="Research Study Runner (expand / run / report / promote / rollup / list / observatory)",
     )
     study_sub = study_parser.add_subparsers(dest="study_command", required=True)
 
@@ -183,9 +191,30 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
 
+    observatory_parser = study_sub.add_parser(
+        "observatory",
+        help="Corpus cell table from local study dirs (read-only; no writes)",
+    )
+    observatory_parser.add_argument(
+        "--root",
+        action="append",
+        dest="roots",
+        type=Path,
+        default=None,
+        help=(
+            "Scan path (repeatable): same sandbox as `study list`. Extra-root "
+            "refused. Default: cwd and the ThesisTester store."
+        ),
+    )
+    observatory_parser.add_argument(
+        "--csv",
+        action="store_true",
+        help="Print the cell table as CSV (no honesty banner)",
+    )
+
 
 def dispatch_study(args: argparse.Namespace) -> int:
-    """Dispatch ``study expand|run|report|promote|rollup|list``; return process exit code."""
+    """Dispatch ``study expand|run|report|promote|rollup|list|observatory``."""
     try:
         if args.study_command == "expand":
             return _cmd_expand(args)
@@ -199,6 +228,8 @@ def dispatch_study(args: argparse.Namespace) -> int:
             return _cmd_rollup(args)
         if args.study_command == "list":
             return _cmd_list(args)
+        if args.study_command == "observatory":
+            return _cmd_observatory(args)
     except StudySpecError as exc:
         print(f"StudySpec error: {exc}", file=sys.stderr)
         return 2
@@ -212,7 +243,11 @@ def dispatch_study(args: argparse.Namespace) -> int:
         print(f"Study rollup error: {exc}", file=sys.stderr)
         return 2
     except StudyViewerError as exc:
-        print(f"Study list error: {exc}", file=sys.stderr)
+        label = "observatory" if args.study_command == "observatory" else "list"
+        print(f"Study {label} error: {exc}", file=sys.stderr)
+        return 2
+    except ObservatoryError as exc:
+        print(f"Study observatory error: {exc}", file=sys.stderr)
         return 2
     except ValueError as exc:
         print(f"Study error: {exc}", file=sys.stderr)
@@ -325,4 +360,16 @@ def _cmd_list(args: argparse.Namespace) -> int:
     roots, extras = split_catalog_scan_paths(args.roots)
     entries = discover_study_dirs(roots, extra_dirs=extras)
     print(format_study_catalog_table(entries))
+    return os.EX_OK
+
+
+def _cmd_observatory(args: argparse.Namespace) -> int:
+    roots, extras = split_catalog_scan_paths(args.roots)
+    model = load_observatory_frame(roots=roots, extra_dirs=extras)
+    frame = observatory_cli_frame(model)
+    if bool(getattr(args, "csv", False)):
+        print(frame.reindex(columns=list(CLI_COLUMNS)).to_csv(index=False), end="")
+        return os.EX_OK
+    print(OBSERVATORY_HONESTY)
+    print(format_observatory_table(frame))
     return os.EX_OK
