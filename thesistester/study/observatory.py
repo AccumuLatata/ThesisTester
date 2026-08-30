@@ -1,8 +1,10 @@
-"""SO1 Study Observatory — read-only corpus fact table.
+"""SO1–SO3 Study Observatory — fact table plus Program B lens projections.
 
 Concatenates existing ``results_index.csv`` ⟕ ``study.expansion.json`` plus
-StudySpec locks across SV1 catalog hits. Does not call ``report_study``,
-``rollup_study``, or ``run_study``. Does not unzip cell bundles.
+StudySpec locks across SV1 catalog hits. SO3 attaches optional Program B
+projections (``desk_class``, ΔE vs Wave 0, thinning, useful-confluence).
+Does not call ``report_study``, ``rollup_study``, or ``run_study``. Does
+not unzip cell bundles.
 
 This module must not import Streamlit, Plotly, ``execute``, ``cli_study``,
 ``thesistester.cli``, ``launch``, ``builder``, ``promote``, ``tools``, or
@@ -23,6 +25,7 @@ from typing import Any, Mapping, Sequence
 import pandas as pd
 import yaml
 
+from thesistester.levels.catalog import PRIOR_PROFILE_LEVEL_NAMES
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.report import RESULTS_INDEX, format_partner_levels, otf_canonical_key
 from thesistester.study.viewer import (
@@ -156,6 +159,23 @@ _STAMP_FILES: tuple[str, ...] = (
 )
 
 _PROGB_NAME = re.compile(r"^progB_")
+_PRIOR_PROFILE_CORES = frozenset(PRIOR_PROFILE_LEVEL_NAMES)
+_WAVE0_SOLO = "progB_w0_solo"
+_WAVE0_VA = "progB_w0_va"
+DESK_CLASS_ORDER: tuple[str, ...] = (
+    "plus_e",
+    "hold",
+    "dead",
+    "other",
+    "noisy",
+    "unidentified",
+    "failed",
+)
+_PF_HOLD_LO = 0.95
+_PF_HOLD_HI = 1.05
+_PLUS_E_MIN = 0.03
+_USEFUL_DELTA_E = 0.03
+_NOISY_MIN_TRADES = 15.0
 
 
 class ObservatoryError(ValueError):
@@ -271,6 +291,267 @@ def lens_hint_for(*, study_name: str, has_admit_lineage: bool) -> str:
     if has_admit_lineage:
         return "admit_child"
     return "generic"
+
+
+def desk_class_for(
+    *,
+    status: Any,
+    sample_class: str,
+    trade_count: Any,
+    expectancy_r: Any,
+    profit_factor: Any,
+) -> str:
+    """Program B desk overlay (plan §4.7). Not a quality score or Admit."""
+    status_token = _status_token(status)
+    if status_token == "failed":
+        return "failed"
+    count = _coerce_number(trade_count)
+    if (
+        sample_class == "missing_n"
+        or status_token == "skipped"
+        or (sample_class == "below_min_trades" and (count is None or count < _NOISY_MIN_TRADES))
+    ):
+        return "unidentified"
+    if sample_class == "below_min_trades":
+        return "noisy"
+    if sample_class != "interpretable":
+        return "unidentified"
+    expectancy = _coerce_number(expectancy_r)
+    profit = _coerce_number(profit_factor)
+    if (
+        expectancy is not None
+        and profit is not None
+        and expectancy >= _PLUS_E_MIN
+        and profit > _PF_HOLD_HI
+    ):
+        return "plus_e"
+    if expectancy is not None and (
+        abs(expectancy) < _PLUS_E_MIN
+        or (profit is not None and _PF_HOLD_LO <= profit <= _PF_HOLD_HI)
+    ):
+        return "hold"
+    if expectancy is not None and expectancy < 0:
+        return "dead"
+    return "other"
+
+
+def wave0_study_name_for_core(core: Any) -> str:
+    """PRIOR_PROFILE cores look up ``progB_w0_va``; else ``progB_w0_solo``."""
+    token = _display_token(core)
+    if token in _PRIOR_PROFILE_CORES:
+        return _WAVE0_VA
+    return _WAVE0_SOLO
+
+
+def partners_nonempty(value: Any) -> bool:
+    """True when ``factor_partner_levels`` is a real confirm set."""
+    if value is None or _is_na(value):
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(str(item).strip() for item in value)
+    text = str(value).strip()
+    return bool(text) and text not in {"—", "-", "nan", "None", "null", "[]"}
+
+
+def is_program_b_pair_row(row: Mapping[str, Any]) -> bool:
+    """Pair cell: ``min_valid_confluences >= 1`` and non-empty partners."""
+    min_valid = _coerce_number(row.get("min_valid_confluences"))
+    if min_valid is None or min_valid < 1:
+        return False
+    return partners_nonempty(row.get("factor_partner_levels"))
+
+
+def useful_confluence_for(
+    *,
+    sample_class: str,
+    delta_e: Any,
+    profit_factor: Any,
+    thinning: Any,
+) -> bool:
+    """Boolean useful-confluence flag (plan §4.7). Not a usefulness score."""
+    if sample_class != "interpretable":
+        return False
+    delta = _coerce_number(delta_e)
+    thin = _coerce_number(thinning)
+    profit = _coerce_number(profit_factor)
+    if delta is None or thin is None or profit is None:
+        return False
+    if delta < _USEFUL_DELTA_E:
+        return False
+    if _PF_HOLD_LO <= profit <= _PF_HOLD_HI:
+        return False
+    return True
+
+
+def resolve_program_b_lens(mode: str, frame: pd.DataFrame) -> bool:
+    """``auto`` attaches when any filtered row is ``program_b``."""
+    token = (mode or "auto").strip().lower()
+    if token == "generic":
+        return False
+    if token == "program_b":
+        return True
+    if frame.empty or "lens_hint" not in frame.columns:
+        return False
+    return bool((frame["lens_hint"].astype(str) == "program_b").any())
+
+
+def attach_program_b_projections(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add ``desk_class`` / ``delta_e`` / ``thinning`` / ``useful_confluence``.
+
+    Wave 0 lookup is corpus-wide (faceting away ``w0_*`` must not null ΔE).
+    Non-``program_b`` rows stay null. Not a new primary metric.
+    """
+    out = frame.copy()
+    for column in ("desk_class", "delta_e", "thinning", "useful_confluence"):
+        if column not in out.columns:
+            out[column] = pd.NA
+    if out.empty:
+        return out
+    wave0 = _wave0_lookup(out)
+    desk_values: list[Any] = []
+    delta_values: list[Any] = []
+    thin_values: list[Any] = []
+    useful_values: list[Any] = []
+    for record in out.to_dict(orient="records"):
+        if str(record.get("lens_hint") or "") != "program_b":
+            desk_values.append(pd.NA)
+            delta_values.append(pd.NA)
+            thin_values.append(pd.NA)
+            useful_values.append(pd.NA)
+            continue
+        sample = str(
+            record.get("sample_class")
+            or sample_class_for(record.get("trade_count"), record.get("min_trades"))
+        )
+        desk = desk_class_for(
+            status=record.get("status"),
+            sample_class=sample,
+            trade_count=record.get("trade_count"),
+            expectancy_r=record.get("expectancy_r"),
+            profit_factor=record.get("profit_factor"),
+        )
+        desk_values.append(desk)
+        delta = None
+        thinning = None
+        if is_program_b_pair_row(record):
+            core = _display_token(record.get("factor_core_level"))
+            key = (wave0_study_name_for_core(core), core)
+            found = wave0.get(key)
+            if found is not None:
+                solo_e, solo_n = found
+                pair_e = _coerce_number(record.get("expectancy_r"))
+                pair_n = _coerce_number(record.get("trade_count"))
+                if solo_e is not None and pair_e is not None:
+                    delta = pair_e - solo_e
+                if solo_n is not None and pair_n is not None and solo_n != 0:
+                    thinning = pair_n / solo_n
+        delta_values.append(delta if delta is not None else pd.NA)
+        thin_values.append(thinning if thinning is not None else pd.NA)
+        useful_values.append(
+            useful_confluence_for(
+                sample_class=sample,
+                delta_e=delta,
+                profit_factor=record.get("profit_factor"),
+                thinning=thinning,
+            )
+        )
+    out["desk_class"] = desk_values
+    out["delta_e"] = delta_values
+    out["thinning"] = thin_values
+    out["useful_confluence"] = useful_values
+    return out
+
+
+def desk_class_counts(frame: pd.DataFrame) -> dict[str, int]:
+    """Counts for the class-count strip. Missing classes are 0."""
+    counts = {name: 0 for name in DESK_CLASS_ORDER}
+    if frame.empty or "desk_class" not in frame.columns:
+        return counts
+    series = frame["desk_class"].dropna().astype(str)
+    for name, value in series.value_counts().items():
+        if name in counts:
+            counts[name] = int(value)
+    return counts
+
+
+def program_b_heatmap_cells(frame: pd.DataFrame) -> pd.DataFrame:
+    """Long ``core × partner × desk_class`` grid. Absent combos are null (grey)."""
+    empty = pd.DataFrame(columns=["factor_core_level", "factor_partner_levels", "desk_class"])
+    if frame.empty:
+        return empty
+    work = frame
+    if "lens_hint" in work.columns:
+        work = work.loc[work["lens_hint"].astype(str) == "program_b"]
+    if work.empty:
+        return empty
+    cores = unique_facet_values(work, "factor_core_level")
+    partners = unique_facet_values(work, "factor_partner_levels")
+    if not cores or not partners:
+        return empty
+    by_cell: dict[tuple[Any, Any], str | None] = {}
+    ordered = work.sort_values(
+        [column for column in ("study_name", "run_name") if column in work.columns],
+        kind="mergesort",
+    )
+    for record in ordered.to_dict(orient="records"):
+        core = canonical_facet_value(record.get("factor_core_level"))
+        partner = canonical_facet_value(record.get("factor_partner_levels"))
+        if core is None or partner is None:
+            continue
+        desk = record.get("desk_class")
+        if _is_na(desk) or desk is None:
+            desk = None
+        else:
+            desk = str(desk)
+        key = (core, partner)
+        if key not in by_cell:
+            by_cell[key] = desk
+    rows: list[dict[str, Any]] = []
+    for core in cores:
+        for partner in partners:
+            rows.append(
+                {
+                    "factor_core_level": core,
+                    "factor_partner_levels": partner,
+                    "desk_class": by_cell.get((core, partner)),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _wave0_lookup(
+    frame: pd.DataFrame,
+) -> dict[tuple[str, str], tuple[float | None, float | None] | None]:
+    """``(study_name, core) → (E, n)`` when exactly one cell; else ``None``."""
+    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    if frame.empty:
+        return {}
+    for record in frame.to_dict(orient="records"):
+        if str(record.get("lens_hint") or "") != "program_b":
+            continue
+        name = str(record.get("study_name") or "")
+        if name not in {_WAVE0_SOLO, _WAVE0_VA}:
+            continue
+        core = _display_token(record.get("factor_core_level"))
+        if not core:
+            continue
+        groups.setdefault((name, core), []).append(record)
+    out: dict[tuple[str, str], tuple[float | None, float | None] | None] = {}
+    for key, rows in groups.items():
+        if len(rows) != 1:
+            out[key] = None
+            continue
+        out[key] = (
+            _coerce_number(rows[0].get("expectancy_r")),
+            _coerce_number(rows[0].get("trade_count")),
+        )
+    return out
+
+
+def _status_token(value: Any) -> str:
+    if value is None or _is_na(value):
+        return ""
+    return str(value).strip().lower()
 
 
 def apply_facets(

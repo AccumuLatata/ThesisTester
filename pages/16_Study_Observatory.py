@@ -1,7 +1,7 @@
-"""SO2 Study Observatory — corpus fact table, facets, cohort lock, Inspect drill.
+"""SO2–SO3 Study Observatory — corpus page + optional Program B lens.
 
 Read-only corpus page. Does not execute studies, write report artifacts,
-or hydrate classic research session keys. Program B heatmap / desks are SO3/SO4.
+or hydrate classic research session keys. Saved desks are SO4.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ OBSERVATORY_SORT_COLUMN_KEY = "observatory_sort_column"
 OBSERVATORY_SELECTED_RUN_KEY = "observatory_selected_run"
 OBSERVATORY_COHORT_PICK_KEY = "observatory_cohort_pick"
 OBSERVATORY_CELL_SELECT_KEY = "observatory_cell_select"
+OBSERVATORY_ACTIVE_LENS_KEY = "observatory_active_lens"
 
 # Existing Studies drill keys (same strings as pages/15_Studies.py).
 STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
@@ -71,6 +72,27 @@ _TABLE_COLUMNS: tuple[str, ...] = (
     "cohort_key",
     "study_dir",
 )
+_LENS_TABLE_COLUMNS: tuple[str, ...] = (
+    "desk_class",
+    "delta_e",
+    "thinning",
+    "useful_confluence",
+)
+_LENS_MODES: tuple[str, ...] = ("auto", "program_b", "generic")
+_HEATMAP_CLASS_INDEX: dict[str, int] = {
+    "plus_e": 6,
+    "hold": 5,
+    "dead": 4,
+    "other": 3,
+    "noisy": 2,
+    "unidentified": 1,
+    "failed": 0,
+}
+_DELTA_E_CAPTION = (
+    "ΔE mixes confirm value with zone-shape (point vs partner box) — "
+    "not a pure confluence effect. +E is not Admit. n<30 is unidentified. "
+    "Do not write these numbers onto the Program A scalp map."
+)
 
 load_observatory_frame = getattr(_observatory, "load_observatory_frame", None)
 apply_facets = getattr(_observatory, "apply_facets", None)
@@ -85,6 +107,15 @@ COHORT_FIELDS = getattr(_observatory, "COHORT_FIELDS", ())
 OBSERVATORY_HONESTY = getattr(_observatory, "OBSERVATORY_HONESTY", _HONESTY_FALLBACK)
 ObservatoryModel = getattr(_observatory, "ObservatoryModel", None)
 ObservatoryError = getattr(_observatory, "ObservatoryError", ValueError)
+attach_program_b_projections = getattr(_observatory, "attach_program_b_projections", None)
+resolve_program_b_lens = getattr(_observatory, "resolve_program_b_lens", None)
+desk_class_counts = getattr(_observatory, "desk_class_counts", None)
+program_b_heatmap_cells = getattr(_observatory, "program_b_heatmap_cells", None)
+DESK_CLASS_ORDER = getattr(
+    _observatory,
+    "DESK_CLASS_ORDER",
+    ("plus_e", "hold", "dead", "other", "noisy", "unidentified", "failed"),
+)
 
 
 def _helpers_ready() -> bool:
@@ -99,6 +130,10 @@ def _helpers_ready() -> bool:
             displayed_min_trades,
             constrain_facet_selection,
             cell_choice_labels,
+            attach_program_b_projections,
+            resolve_program_b_lens,
+            desk_class_counts,
+            program_b_heatmap_cells,
         )
     )
 
@@ -110,6 +145,8 @@ def _ensure_defaults() -> None:
         st.session_state[OBSERVATORY_BREAK_COMPARABILITY_KEY] = False
     if OBSERVATORY_SORT_COLUMN_KEY not in st.session_state:
         st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = "expectancy_r"
+    if OBSERVATORY_ACTIVE_LENS_KEY not in st.session_state:
+        st.session_state[OBSERVATORY_ACTIVE_LENS_KEY] = "auto"
 
 
 def _last_stamp_label(model: Any) -> str:
@@ -234,6 +271,77 @@ def _render_scatter(
     st.plotly_chart(fig, width="stretch")
 
 
+def _render_program_b_lens(frame: pd.DataFrame) -> None:
+    st.markdown("### Program B lens")
+    st.caption(_DELTA_E_CAPTION)
+    prog = frame
+    if "lens_hint" in frame.columns:
+        prog = frame.loc[frame["lens_hint"].astype(str) == "program_b"]
+    counts = desk_class_counts(prog)
+    count_cols = st.columns(len(DESK_CLASS_ORDER))
+    for index, name in enumerate(DESK_CLASS_ORDER):
+        count_cols[index].metric(name, int(counts.get(name, 0)))
+    grid = program_b_heatmap_cells(prog)
+    if grid.empty:
+        st.caption("No Program B cells to heat-map.")
+        return
+    cores = list(dict.fromkeys(grid["factor_core_level"].tolist()))
+    partners = list(dict.fromkeys(grid["factor_partner_levels"].tolist()))
+    z: list[list[int | None]] = []
+    hover: list[list[str]] = []
+    by_cell = {
+        (
+            record["factor_core_level"],
+            record["factor_partner_levels"],
+        ): record.get("desk_class")
+        for record in grid.to_dict(orient="records")
+    }
+    for core in cores:
+        z_row: list[int | None] = []
+        hover_row: list[str] = []
+        for partner in partners:
+            desk = by_cell.get((core, partner))
+            if desk is None or (isinstance(desk, float) and pd.isna(desk)):
+                z_row.append(None)
+                hover_row.append(f"{core} × {partner}: missing / pending")
+            else:
+                z_row.append(_HEATMAP_CLASS_INDEX.get(str(desk), 3))
+                hover_row.append(f"{core} × {partner}: {desk}")
+        z.append(z_row)
+        hover.append(hover_row)
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=z,
+            x=[str(item) if str(item).strip() else "(solo)" for item in partners],
+            y=[str(item) for item in cores],
+            text=hover,
+            hoverinfo="text",
+            colorscale=[
+                [0.0, "#bbbbbb"],
+                [0.12, "#6b2d2d"],
+                [0.28, "#9a9a9a"],
+                [0.44, "#7a7a7a"],
+                [0.60, "#4a4a4a"],
+                [0.76, "#c4a35a"],
+                [0.90, "#2f6b4f"],
+                [1.0, "#2f6b4f"],
+            ],
+            zmin=0,
+            zmax=6,
+            showscale=False,
+        )
+    )
+    fig.update_layout(
+        title="desk_class heatmap (grey = missing / pending)",
+        height=max(280, 28 * len(cores) + 80),
+        margin=dict(l=10, r=10, t=40, b=10),
+        xaxis_title="factor_partner_levels",
+        yaxis_title="factor_core_level",
+    )
+    st.plotly_chart(fig, width="stretch")
+    st.caption("Heatmap color is desk_class, not raw expectancy. Program A desk page is unchanged.")
+
+
 st.title("Study Observatory")
 st.caption(
     "Corpus readout of every local study cell under `results/studies/` and `out/`. "
@@ -256,6 +364,8 @@ studies = (
     model.studies if isinstance(getattr(model, "studies", None), pd.DataFrame) else pd.DataFrame()
 )
 frame = model.frame if isinstance(getattr(model, "frame", None), pd.DataFrame) else pd.DataFrame()
+if not frame.empty:
+    frame = attach_program_b_projections(frame)
 
 study_count = int(len(studies))
 cell_count = int(len(frame))
@@ -339,6 +449,24 @@ else:
     active_cohort = None
     st.caption("No cohort keys in the filtered set.")
 
+st.markdown("### Lens")
+if st.session_state.get(OBSERVATORY_ACTIVE_LENS_KEY) not in _LENS_MODES:
+    st.session_state[OBSERVATORY_ACTIVE_LENS_KEY] = "auto"
+lens_mode = st.radio(
+    "Lens",
+    options=list(_LENS_MODES),
+    key=OBSERVATORY_ACTIVE_LENS_KEY,
+    horizontal=True,
+    help="auto attaches Program B chrome when any filtered row is progB_*.",
+)
+lens_active = bool(resolve_program_b_lens(str(lens_mode), filtered))
+if lens_active:
+    _render_program_b_lens(filtered)
+elif str(lens_mode) == "generic":
+    st.caption("Generic lens: Program B heatmap and desk_class chrome are hidden.")
+else:
+    st.caption("No `progB_*` rows in the filtered set — Program B lens stays off.")
+
 sort_options = ["expectancy_r"] + sorted(name for name in SORT_ALLOW_LIST if name != "expectancy_r")
 if st.session_state.get(OBSERVATORY_SORT_COLUMN_KEY) not in sort_options:
     st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = "expectancy_r"
@@ -388,9 +516,12 @@ else:
                 f"Sorted inside the active cohort. {other_n} other-cohort "
                 "row(s) follow by study_name / run_name — not part of the ranked sort."
             )
-    display = shown.reindex(
-        columns=[column for column in _TABLE_COLUMNS if column in shown.columns]
-    )
+    table_columns = list(_TABLE_COLUMNS)
+    if lens_active:
+        table_columns.extend(
+            column for column in _LENS_TABLE_COLUMNS if column not in table_columns
+        )
+    display = shown.reindex(columns=[column for column in table_columns if column in shown.columns])
     st.dataframe(display, hide_index=True, width="stretch")
     records = shown.to_dict(orient="records")
     labels = cell_choice_labels(records)

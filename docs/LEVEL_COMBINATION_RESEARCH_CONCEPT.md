@@ -220,7 +220,7 @@ Primitives and the operator packet exist. Remaining work is **running** the grid
 |---|---|---|
 | `core_level` × `partner_levels` | StudySpec / Study Runner | None for the 50×22 grid |
 | Location-only (no partner) | AO1 + `progB_w0_solo.yaml` (15s) / `progB_w0_va.yaml` (VA) (`[[]]` + `min_valid: 0` → point zone `[P,P]`) | None. Do not replay Setup Builder for the solo baseline |
-| Interaction report | Cells have E, n, PF | No first-class ΔE table. Spreadsheet / research report is enough. Planned product readout (not a runbook step): Study Observatory lens SO3 — `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md` |
+| Interaction report | Cells have E, n, PF | Spreadsheet / research report remains valid. Product readout (not a runbook step): Study Observatory SO3 Program B lens shipped (`desk_class` / ΔE vs Wave 0) — `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md` |
 | Matrix | `examples/studies/program_b/` + `generate_program_b_yaml.py` | Do not hand-edit token lists. Regenerator + `validate_program_b_yaml.py` |
 | Product Admit | `study promote --admit-tod auto` | Unchanged. Do not auto-promote from this grid |
 | Desk contract | Notion *Process and roadmap* | **Leave it locked.** Program B gets its own page if it runs |
