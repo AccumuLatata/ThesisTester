@@ -44,11 +44,11 @@ thin-refuse and writes Preview YAML only. Catalog / `study list` show a
 best-effort `parent` from `study.lineage`. Promote without `--admit-tod`
 stays RS5. SAF4 (one-click child launch) is parked. Does not auto-`study run`
 and does not add ToD as a factor axis.
-**SO** (Study Observatory) — **SO4 shipped**
+**SO** (Study Observatory) — **SO7 shipped**
 `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`. Corpus fact table +
 `study observatory` CLI + `pages/16_Study_Observatory.py` + Program B
-lens + saved desks. SO5 / SO6 parked. Does not change Inspect execute
-path or promote.
+lens + saved desks + studies pane. SO5 / SO6 parked. Does not change
+Inspect execute path or promote.
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
@@ -703,7 +703,7 @@ Paste `output_dir` remains valid alongside the catalog.
 
 ## SO — Study Observatory (operator contract)
 
-**Status:** **SO4 shipped.** SO1–SO4 complete. SO5 / SO6 parked.  
+**Status:** **SO7 shipped.** SO1–SO4 + SO7 complete. SO5 / SO6 parked.  
 **Plan:** `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`.
 
 Cross-study readout of every catalog hit (`results/studies/` + `out/`, same
@@ -716,6 +716,7 @@ microscope. Execute stays CLI.
 | Page (SO2) ✅ | Facets, cohort lock (default on), n×E scatter, table, drill → Inspect | Classic hydrate; Bundles/Portfolio deep-link; global PF board without a banner |
 | Program B lens (SO3) ✅ | `desk_class`, ΔE vs Wave 0 (`w0_solo` / `w0_va`), thinning, heatmap when `progB_*` present | Manifest-as-inventory (both `manifest.yaml` and `manifest_va.yaml` are chrome only); Admit auto-promote; writing onto the Program A desk map |
 | Saved desks (SO4) ✅ | Query state under store `study_observatory/desks` (`schema_version: 1`) | Writes into `results/studies/` |
+| Studies pane (SO7) ✅ | Ledger strip + catalog-dir table + study-level Inspect drill | Invented cell rows for ledger-only dirs; SO5 watch |
 
 **Honesty.** Corpus listing is discovery. Sort is descriptive and
 multiple-testing-biased. Cohort lock keeps incomparable locks out of one

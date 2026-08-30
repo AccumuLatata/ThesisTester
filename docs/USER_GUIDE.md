@@ -1064,28 +1064,35 @@ Analysis; Focus vs Admit; Research Bundles; Validation and robustness.
 
 ## Study Observatory
 
-**What it is.** Streamlit **Study Observatory** lists every local study cell
-under `results/studies/` and `out/` as one fact table. Filter by instrument,
-setup kind, core / partners, status, sample class, SL/TP, and ingest. Sort
-inside a comparability cohort. The n×E scatter colors `sample_class`. An
-optional Program B **lens** adds `desk_class`, ΔE vs Wave 0, thinning, and a
-core × partner heatmap when `progB_*` cells are in the filtered set. **Open
-in Inspect** drills one cell into Studies. Headless: `study observatory`.
+**What it is.** Streamlit **Study Observatory** lists every local catalog
+dir and every index cell under `results/studies/` and `out/`. The corpus
+strip and **Studies** table show ledger progress (ok / failed / pending /
+skipped / running); ledger-only dirs stay there, not as invented cells.
+Filter and sort cells inside a comparability cohort; the optional Program B
+**lens** adds `desk_class` / ΔE / heatmap when `progB_*` rows are present.
+**Open study in Inspect** drills one catalog dir; **Open in Inspect** drills
+one cell. Headless: `study observatory`.
 
 **When to use it.** After many studies finish (or while some are still
 running), scan the corpus before opening one Inspect session. Use cohort lock
 when comparing expectancy / profit factor across cells that share instrument,
 dataset, costs, and lock fields.
 
-**Related terms.** Study Observatory, corpus, cell, facet, cohort lock, break
+**Related terms.** Study Observatory, corpus, cell, studies pane, ledger
+strip, ok, failed, pending, skipped, running, facet, cohort lock, break
 comparability, sample class, n×E scatter, lens, desk class, ΔE, thinning,
-heatmap, saved desk, Refresh, Open in Inspect, study observatory CLI
+heatmap, saved desk, Refresh, Open study in Inspect, Open in Inspect,
+study observatory CLI
 
 **Key settings.**
 
 | Control | Meaning | Common pitfall |
 |---|---|---|
 | Refresh | Rediscover dirs and reload index + expansion | Does not run cells or rewrite overviews |
+| Studies / Cells / Running / Last stamp | Catalog dirs, index cells, in-flight ledger cells, newest mtime | Cells ≠ pending ledger rows |
+| Ok / Failed / Pending / Skipped | Ledger sums across catalog dirs | Not a quality score. Pending dirs have no invented cell row |
+| Studies table | One row per catalog dir (error / in-flight first) | Ledger-only dirs appear here only |
+| Open study in Inspect | Writes Studies path keys, clears leftover cell, switches to Studies | Does not pick a `run_name` or hydrate classic keys |
 | Facets | Keep rows whose values are in the selected sets | Empty selection = no filter on that column |
 | Cohort lock | Sort / scatter highlight stay in one `cohort_key` | Default on. Unchecking it spans keys and shows the incomparability banner |
 | Active cohort | Majority key after facets, or operator pick | Ties break to the lexicographically first key |
@@ -1103,7 +1110,9 @@ heatmap, saved desk, Refresh, Open in Inspect, study observatory CLI
 
 1. Leave studies under `results/studies/` or `out/` (same scan as Studies).
 2. Open **Study Observatory**. Read the corpus strip (studies / cells /
-   running / last stamp). **Refresh** after new dirs finish.
+   running / last stamp, then ok / failed / pending / skipped). Use the
+   **Studies** table for in-flight or failed dirs. **Open study in
+   Inspect** for one catalog dir. **Refresh** after new dirs finish.
 3. Facet (for example Instrument = MNQ). Keep **Cohort lock** on unless you
    mean to compare incomparable locks.
 4. Read the n×E scatter and the sorted table. `sample_class` is n vs that
@@ -1128,6 +1137,7 @@ heatmap, saved desk, Refresh, Open in Inspect, study observatory CLI
   these numbers onto the Program A scalp map.
 - A saved desk is a stored query, not a validated edge. Unknown schema files
   are ignored. SO5 watch / SO6 Discuss stay parked.
+- Ledger-only dirs are catalog progress, not invented cell rows.
 - Does not mutate classic session keys or switch to Bundles / Portfolio.
 - Catalog membership is not a quality score.
 
