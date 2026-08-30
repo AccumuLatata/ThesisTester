@@ -23,6 +23,7 @@ from thesistester.study.observatory import (
     cohort_key_from_values,
     format_observatory_table,
     load_observatory_frame,
+    majority_cohort_key,
     sample_class_for,
     sort_observatory_frame,
 )
@@ -45,6 +46,7 @@ def _write_study(
     trigger: str = "touch",
     trigger_tf: str = "1min",
     mode: str = "anchor_rules",
+    min_valid: int = 1,
     lineage_admit: bool = False,
     dataset_id: str = "ds-a",
 ) -> Path:
@@ -63,7 +65,7 @@ def _write_study(
             "constants": {
                 "direction": "both",
                 "tolerance_ticks": 10,
-                "min_valid_confluences": 1,
+                "min_valid_confluences": min_valid,
                 "backtest": {
                     "stop_loss_ticks": sl,
                     "take_profit_ticks": tp,
@@ -206,6 +208,8 @@ def test_load_does_not_call_report_run_rollup_or_zip(tmp_path: Path, monkeypatch
         raise AssertionError("forbidden call")
 
     monkeypatch.setattr("thesistester.study.report.report_study", boom)
+    monkeypatch.setattr("thesistester.study.report.build_overview_frame", boom)
+    monkeypatch.setattr("thesistester.study.report._resolve_bundle_metrics", boom)
     monkeypatch.setattr("thesistester.study.execute.run_study", boom)
     monkeypatch.setattr("thesistester.study.rollup.rollup_study", boom)
 
@@ -239,6 +243,37 @@ def test_cohort_key_identity_and_instrument_split():
     assert cohort_key_from_values(left) == cohort_key_from_values(right)
     right["instrument"] = "ES"
     assert cohort_key_from_values(left) != cohort_key_from_values(right)
+    wave0 = dict(left)
+    wave0["min_valid_confluences"] = 0
+    pair = dict(left)
+    pair["min_valid_confluences"] = 1
+    assert cohort_key_from_values(wave0) != cohort_key_from_values(pair)
+
+
+def test_majority_cohort_key_lexicographic_tie():
+    frame = pd.DataFrame({"cohort_key": ["z|a", "a|z", "z|a", "a|z"]})
+    assert majority_cohort_key(frame) == "a|z"
+
+
+def test_load_splits_cohort_when_min_valid_confluences_differs(tmp_path: Path):
+    _write_study(
+        tmp_path / "results" / "studies",
+        "wave0",
+        min_valid=0,
+        cells=[{"run_name": "w0_c0", "trade_count": 40}],
+    )
+    _write_study(
+        tmp_path / "results" / "studies",
+        "pair",
+        min_valid=1,
+        cells=[{"run_name": "pair_c0", "trade_count": 40}],
+    )
+    model = load_observatory_frame(roots=(tmp_path.resolve(),))
+    keys = set(model.frame["cohort_key"])
+    assert len(keys) == 2
+    by_name = {row["run_name"]: row["min_valid_confluences"] for row in model.frame.to_dict("records")}
+    assert by_name["w0_c0"] == 0
+    assert by_name["pair_c0"] == 1
 
 
 def test_sample_class_uses_study_min_trades(tmp_path: Path):
@@ -432,6 +467,8 @@ def test_observatory_and_viewer_import_guards():
     assert "thesistester.study.tools" not in imported
     assert "thesistester.study.rollup" not in imported
     assert "report_study(" not in observatory
+    assert "build_overview_frame(" not in observatory
+    assert "_resolve_bundle_metrics(" not in observatory
     assert "rollup_study(" not in observatory
     assert "run_study(" not in observatory
     assert "thesistester.study.observatory" not in viewer

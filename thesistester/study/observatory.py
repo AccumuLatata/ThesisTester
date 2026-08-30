@@ -72,6 +72,9 @@ COHORT_FIELDS: tuple[str, ...] = (
     "trigger_timeframe",
     "tolerance_ticks",
     "flat_by_session_close",
+    "confluence_mode",
+    "min_valid_confluences",
+    "exposure_policy",
 )
 
 CLI_COLUMNS: tuple[str, ...] = (
@@ -292,13 +295,15 @@ def apply_facets(
 
 
 def majority_cohort_key(frame: pd.DataFrame) -> str | None:
-    """Most common ``cohort_key`` in *frame*, or None when empty."""
+    """Most common ``cohort_key``; ties break lexicographically (plan §4.5)."""
     if frame.empty or "cohort_key" not in frame.columns:
         return None
     counts = frame["cohort_key"].astype(str).value_counts(dropna=False)
     if counts.empty:
         return None
-    return str(counts.index[0])
+    top = int(counts.iloc[0])
+    tied = sorted(str(key) for key, count in counts.items() if int(count) == top)
+    return tied[0] if tied else None
 
 
 def sort_observatory_frame(
@@ -608,6 +613,9 @@ def _cell_row(
         "trigger_timeframe": trigger_tf,
         "tolerance_ticks": locks.get("tolerance_ticks"),
         "flat_by_session_close": locks.get("flat_by_session_close"),
+        "confluence_mode": mode,
+        "min_valid_confluences": locks.get("min_valid_confluences"),
+        "exposure_policy": locks.get("exposure_policy"),
     }
     row: dict[str, Any] = {
         "study_dir": str(entry.study_dir),
