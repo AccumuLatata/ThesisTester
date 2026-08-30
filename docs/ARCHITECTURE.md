@@ -136,6 +136,15 @@ Default promote stays RS5. The button must not call `run_study`.
 `admit_followup.py` must not import execute / launch / viewer / cli / Streamlit.
 Engine Admit remains `backtest.entry_window` / `grid.entry_window` (SW).
 No `engine/` edit.
+**SO** (Study Observatory, `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`)
+is a planned read-only corpus surface (`thesistester/study/observatory.py`,
+`pages/16_Study_Observatory.py` from SO2). It concatenates existing index +
+expansion + spec locks via SV1 `discover_study_dirs`. It must not call
+`report_study` / `rollup_study` / `run_study`, must not unzip every cell,
+must not import Streamlit/Plotly inside `observatory.py`, and must not be
+imported by `viewer.py`. Drill to Inspect may set existing
+`studies_viewer_*` keys and `st.switch_page` to `pages/15_Studies.py` only.
+SO0 is docs-only.
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
@@ -1152,7 +1161,9 @@ Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 `pages/10_Validation.py`, `pages/11_Report_Export.py`,
 `pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`,
 `pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 inspect + RS-D8 preview + RS-D9 CLI spawn + SB2/SB3 Build tab;
-not part of the classic research mutate path). Studies builder session keys
+not part of the classic research mutate path). Study Observatory is a planned
+**new** `pages/16_Study_Observatory.py` (SO) — do not grow Inspect into a
+corpus page. Studies builder session keys
 are `studies_builder_draft` and `studies_builder_pending_sync` only.
 
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
