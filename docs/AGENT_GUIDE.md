@@ -102,16 +102,16 @@ Inspect. `viewer.py` must not import `cli_study` / `thesistester.cli` /
 `st.session_state`. Do not add time-of-day as a StudySpec factor axis.
 Operator contract: `docs/STUDY_RUNNER.md` §SV.
 
-**SO (SO3 shipped):** Study Observatory —
+**SO (SO4 shipped):** Study Observatory —
 `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`.
 `load_observatory_frame` + `pages/16_Study_Observatory.py` + additive
-`python -m thesistester study observatory` + Program B lens projections.
-Reuse `discover_study_dirs`. Do not implement SO4 inside an RS/SV/SAF PR.
-Do not call `report_study` per study, `run_study()`, `rollup_study()`, or
-unzip-all. `observatory.py` must not import `cli_study` / `execute` /
-Streamlit / Plotly. `viewer.py` must not import `observatory`. Do not write
-`results/studies/`. Saved desks are SO4. Operator contract:
-`docs/STUDY_RUNNER.md` §SO.
+`python -m thesistester study observatory` + Program B lens + saved desks
+under `{store}/study_observatory/desks`. Reuse `discover_study_dirs`.
+Do not implement SO5/SO6 inside an RS/SV/SAF PR. Do not call `report_study`
+per study, `run_study()`, `rollup_study()`, or unzip-all. `observatory.py`
+must not import `cli_study` / `execute` / Streamlit / Plotly. `viewer.py`
+must not import `observatory`. Do not write `results/studies/`. Operator
+contract: `docs/STUDY_RUNNER.md` §SO.
 
 **SAF (SAF1–SAF3 shipped):** Study Admit Follow-up —
 `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`.

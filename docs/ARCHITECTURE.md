@@ -145,6 +145,8 @@ every cell, must not import Streamlit/Plotly inside `observatory.py`, and
 must not be imported by `viewer.py`. SO2 adds `pages/16_Study_Observatory.py`
 (facets, cohort lock, n×E scatter, Inspect drill). SO3 attaches the Program B
 lens (`desk_class`, ΔE vs Wave 0, heatmap) when `progB_*` cells are present.
+SO4 persists query-only desks under `{store}/study_observatory/desks`
+(`schema_version: 1`; unknown schema ignored).
 `launch.py` must not import `viewer` (trusted roots
 are inlined; the Studies page imports launch before viewer). Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
@@ -1245,7 +1247,8 @@ research state. Study Observatory SO2 adds `observatory_cached_model`,
 `observatory_cache_stamp`, `observatory_facet_state`, `observatory_cohort_lock`,
 `observatory_break_comparability`, `observatory_sort_column`, and
 `observatory_selected_run` on `pages/16_Study_Observatory.py` only. SO3 adds
-`observatory_active_lens` (`auto` / `program_b` / `generic`). Drill
+`observatory_active_lens` (`auto` / `program_b` / `generic`). SO4 adds
+`observatory_saved_desk_id`. Drill
 writes existing Studies keys (`studies_viewer_study_dir`,
 `studies_viewer_pending_path`) and pops Inspect cache; it must not write
 classic research keys.
@@ -1418,6 +1421,8 @@ Signals robustness notes:
 - Setups: `<store>/setups/<setup_id>/meta.json`
 - Execution artifacts (CAI-2/3, internal): `<store>/execution_artifacts/v1/{data,levels,source_index,locks}/`
 - UI state (active dataset, execution defaults): `<store>/ui_state.json`
+- Study Observatory desks (SO4): `<store>/study_observatory/desks/<id>.json`
+  (`schema_version: 1`; corrupt / unknown schema ignored; default unused)
 
 ### Configuring the store root
 

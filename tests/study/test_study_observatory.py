@@ -1,4 +1,4 @@
-"""SO1–SO3 Study Observatory — fact table, CLI, page AST, Program B lens."""
+"""SO1–SO4 Study Observatory — fact table, CLI, page AST, lens, saved desks."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from thesistester.cli import main as cli_main
 from thesistester.study.ledger import empty_ledger, save_ledger
 from thesistester.study.observatory import (
     CLI_COLUMNS,
+    DESK_SCHEMA_VERSION,
     HEATMAP_SOLO_PARTNER,
     HEATMAP_Z_MISSING,
     OBSERVATORY_HONESTY,
@@ -28,16 +29,20 @@ from thesistester.study.observatory import (
     cell_choice_labels,
     cohort_key_from_values,
     constrain_facet_selection,
+    delete_observatory_desk,
     desk_class_counts,
     desk_class_for,
     displayed_min_trades,
     format_observatory_table,
     heatmap_class_z,
+    list_observatory_desks,
     load_observatory_frame,
     majority_cohort_key,
+    observatory_desks_dir,
     program_b_heatmap_cells,
     resolve_program_b_lens,
     sample_class_for,
+    save_observatory_desk,
     sort_observatory_frame,
     unique_facet_values,
     useful_confluence_for,
@@ -750,7 +755,12 @@ def test_observatory_page_ast_and_contract():
     assert "thesistester.classic_record" not in imported
     assert "observatory_cached_model" in source
     assert "observatory_active_lens" in source
-    assert "observatory_saved_desk_id" not in source
+    assert "observatory_saved_desk_id" in source
+    assert "Save desk" in source
+    assert "Load desk" in source
+    assert "Delete desk" in source
+    assert "not a validated edge" in source
+    assert "not under results/studies/" in source
     assert "not a pure confluence effect" in source
     assert "+E is not Admit" in source
     assert "Program A scalp map" in source
@@ -1145,3 +1155,81 @@ def test_heatmap_wave0_only_uses_solo_column(tmp_path: Path):
     assert not grid.empty
     assert list(grid["factor_partner_levels"]) == [HEATMAP_SOLO_PARTNER]
     assert list(grid["factor_core_level"]) == ["ONH"]
+
+
+def test_saved_desk_round_trip_and_schema_v1(tmp_path: Path):
+    store = tmp_path / "store"
+    study_dir = _write_study(
+        tmp_path / "results" / "studies",
+        "alpha",
+        cells=[{"run_name": "alpha_c0", "trade_count": 40}],
+    )
+    before = {path.name: path.stat().st_mtime for path in study_dir.iterdir()}
+    assert not observatory_desks_dir(store_root=store).exists()
+    empty, ignored = list_observatory_desks(store_root=store)
+    assert empty == ()
+    assert ignored == ()
+    saved = save_observatory_desk(
+        name="MNQ 15s",
+        facets={"instrument": ["MNQ", 80, "MNQ"], "status": ["ok"]},
+        cohort_lock=True,
+        break_comparability=False,
+        active_cohort="mnq|ds-a",
+        lens="program_b",
+        sort_column="profit_factor",
+        store_root=store,
+    )
+    payload = json.loads(
+        (observatory_desks_dir(store_root=store) / f"{saved.id}.json").read_text(encoding="utf-8")
+    )
+    assert payload["schema_version"] == DESK_SCHEMA_VERSION == 1
+    assert payload["lens"] == "program_b"
+    assert payload["sort_column"] == "profit_factor"
+    assert payload["facets"]["instrument"] == ["MNQ", 80]
+    desks, ignored_after = list_observatory_desks(store_root=store)
+    assert ignored_after == ()
+    assert len(desks) == 1
+    loaded = desks[0]
+    assert loaded.facets["instrument"] == ("MNQ", 80)
+    assert loaded.lens == "program_b"
+    assert loaded.sort_column == "profit_factor"
+    assert loaded.cohort_lock is True
+    assert loaded.active_cohort == "mnq|ds-a"
+    after = {path.name: path.stat().st_mtime for path in study_dir.iterdir()}
+    assert before == after
+    assert not (study_dir / "study_observatory").exists()
+    assert delete_observatory_desk(saved.id, store_root=store) is True
+    assert list_observatory_desks(store_root=store)[0] == ()
+
+
+def test_saved_desk_ignores_corrupt_and_v2(tmp_path: Path):
+    store = tmp_path / "store"
+    desks_dir = observatory_desks_dir(store_root=store)
+    desks_dir.mkdir(parents=True)
+    (desks_dir / "broken.json").write_text("{not-json", encoding="utf-8")
+    (desks_dir / "future.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "id": "future-desk",
+                "name": "Future",
+                "facets": {"instrument": ["ES"]},
+                "lens": "auto",
+                "sort_column": "expectancy_r",
+            }
+        ),
+        encoding="utf-8",
+    )
+    valid = save_observatory_desk(
+        name="Keep",
+        facets={"instrument": ["ES"]},
+        lens="generic",
+        sort_column="win_rate",
+        store_root=store,
+    )
+    desks, ignored = list_observatory_desks(store_root=store)
+    assert valid.id in {desk.id for desk in desks}
+    assert len(desks) == 1
+    assert set(ignored) == {"broken.json", "future.json"}
+    assert desks[0].lens == "generic"
+    assert desks[0].sort_column == "win_rate"

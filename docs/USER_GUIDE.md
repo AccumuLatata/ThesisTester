@@ -1079,7 +1079,7 @@ dataset, costs, and lock fields.
 
 **Related terms.** Study Observatory, corpus, cell, facet, cohort lock, break
 comparability, sample class, n×E scatter, lens, desk class, ΔE, thinning,
-heatmap, Refresh, Open in Inspect, study observatory CLI
+heatmap, saved desk, Refresh, Open in Inspect, study observatory CLI
 
 **Key settings.**
 
@@ -1096,6 +1096,7 @@ heatmap, Refresh, Open in Inspect, study observatory CLI
 | Packet chrome | 15s packet = 23 files; parked VA = 4 | Chrome only. Not catalog membership or ingest |
 | desk_class | Runbook overlay: failed first; noisy 15≤n<30; unidentified n<15; `other` = E≥0.03 and PF<0.95 | Not Admit. `sample_class` stays the n-gate |
 | desk_class heatmap | Core × partners; color is class, grey = missing | Grey is missing/pending, not `failed`. Hidden on a generic-only corpus |
+| Saved desk | Store query (facets / cohort / lens / sort) | Not a validated edge. Not written under `results/studies/` |
 | Open in Inspect | Writes Studies path keys and switches to Studies | Does not hydrate classic session keys or Bundles |
 
 **How to use.**
@@ -1113,7 +1114,9 @@ heatmap, Refresh, Open in Inspect, study observatory CLI
    (`progB_w0_va` for prior-profile cores, else `progB_w0_solo`) on the
    same instrument / dataset lock. n<15 is unidentified; 15≤n<30 is
    noisy.
-6. Select a cell → **Open in Inspect** for briefing / peek. CLI:
+6. Optionally **Save desk** to reuse the query. Load / delete from the store
+   sidecar. A desk is not evidence.
+7. Select a cell → **Open in Inspect** for briefing / peek. CLI:
    `python -m thesistester study observatory` (`--csv` for the same columns).
 
 **What it is not.**
@@ -1122,7 +1125,9 @@ heatmap, Refresh, Open in Inspect, study observatory CLI
 - Not a second runner, job queue, or unzip-all of cell zips.
 - Not Admit. +E / `desk_class` is a Program B runbook overlay, not a promote.
 - ΔE mixes confirm value with zone-shape (point vs partner box). Do not write
-  these numbers onto the Program A scalp map. Saved desks later.
+  these numbers onto the Program A scalp map.
+- A saved desk is a stored query, not a validated edge. Unknown schema files
+  are ignored. SO5 watch / SO6 Discuss stay parked.
 - Does not mutate classic session keys or switch to Bundles / Portfolio.
 - Catalog membership is not a quality score.
 

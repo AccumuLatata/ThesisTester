@@ -1,7 +1,8 @@
-"""SO2–SO3 Study Observatory — corpus page + optional Program B lens.
+"""SO2–SO4 Study Observatory — corpus page, Program B lens, saved desks.
 
 Read-only corpus page. Does not execute studies, write report artifacts,
-or hydrate classic research session keys. Saved desks are SO4.
+or hydrate classic research session keys. Desks persist query state only
+under the ThesisTester store — never under ``results/studies/``.
 """
 
 from __future__ import annotations
@@ -27,6 +28,8 @@ OBSERVATORY_SELECTED_RUN_KEY = "observatory_selected_run"
 OBSERVATORY_COHORT_PICK_KEY = "observatory_cohort_pick"
 OBSERVATORY_CELL_SELECT_KEY = "observatory_cell_select"
 OBSERVATORY_ACTIVE_LENS_KEY = "observatory_active_lens"
+OBSERVATORY_SAVED_DESK_KEY = "observatory_saved_desk_id"
+OBSERVATORY_DESK_NAME_KEY = "observatory_desk_name"
 
 # Existing Studies drill keys (same strings as pages/15_Studies.py).
 STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
@@ -119,6 +122,9 @@ PROGRAM_B_LENS_PACKET_CHROME = getattr(
     "PROGRAM_B_LENS_PACKET_CHROME",
     _PACKET_CHROME_FALLBACK,
 )
+list_observatory_desks = getattr(_observatory, "list_observatory_desks", None)
+save_observatory_desk = getattr(_observatory, "save_observatory_desk", None)
+delete_observatory_desk = getattr(_observatory, "delete_observatory_desk", None)
 
 
 def _helpers_ready() -> bool:
@@ -138,6 +144,9 @@ def _helpers_ready() -> bool:
             desk_class_counts,
             program_b_heatmap_cells,
             heatmap_class_z,
+            list_observatory_desks,
+            save_observatory_desk,
+            delete_observatory_desk,
         )
     )
 
@@ -151,6 +160,8 @@ def _ensure_defaults() -> None:
         st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = "expectancy_r"
     if OBSERVATORY_ACTIVE_LENS_KEY not in st.session_state:
         st.session_state[OBSERVATORY_ACTIVE_LENS_KEY] = "auto"
+    if OBSERVATORY_SAVED_DESK_KEY not in st.session_state:
+        st.session_state[OBSERVATORY_SAVED_DESK_KEY] = ""
 
 
 def _last_stamp_label(model: Any) -> str:
@@ -185,6 +196,89 @@ def _open_in_inspect(study_dir: str, run_name: str | None) -> None:
     st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_KEY, None)
     st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY, None)
     st.switch_page("pages/15_Studies.py")
+
+
+def _apply_observatory_desk(desk: Any) -> None:
+    """Restore query widgets from a saved desk. Does not mutate the fact table."""
+    st.session_state[OBSERVATORY_SAVED_DESK_KEY] = str(getattr(desk, "id", "") or "")
+    st.session_state[OBSERVATORY_COHORT_LOCK_KEY] = bool(getattr(desk, "cohort_lock", True))
+    st.session_state[OBSERVATORY_BREAK_COMPARABILITY_KEY] = bool(
+        getattr(desk, "break_comparability", False)
+    )
+    st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = str(
+        getattr(desk, "sort_column", None) or "expectancy_r"
+    )
+    st.session_state[OBSERVATORY_ACTIVE_LENS_KEY] = str(getattr(desk, "lens", None) or "auto")
+    cohort = getattr(desk, "active_cohort", None)
+    if cohort:
+        st.session_state[OBSERVATORY_COHORT_PICK_KEY] = str(cohort)
+    desk_facets = dict(getattr(desk, "facets", {}) or {})
+    for column, _label in _FACET_COLUMNS:
+        key = f"observatory_facet_{column}"
+        values = desk_facets.get(column, ())
+        st.session_state[key] = list(values) if values else []
+
+
+def _render_saved_desks(
+    *,
+    facets: dict[str, list[Any]],
+    cohort_lock: bool,
+    break_comparability: bool,
+    active_cohort: str | None,
+    lens_mode: str,
+    sort_column: str,
+) -> None:
+    st.markdown("### Saved desks")
+    st.caption(
+        "A saved desk is a query (facets / cohort / lens / sort), not a validated edge. "
+        "Sidecars live under the ThesisTester store, not under results/studies/."
+    )
+    desks, ignored = list_observatory_desks()
+    if ignored:
+        st.caption(f"Ignored {len(ignored)} saved-desk file(s) (unknown schema or corrupt).")
+    by_id = {desk.id: desk for desk in desks}
+    options = [""] + [desk.id for desk in desks]
+    labels = {"": "(none)"}
+    labels.update({desk.id: f"{desk.name} ({desk.id})" for desk in desks})
+    if st.session_state.get(OBSERVATORY_SAVED_DESK_KEY) not in options:
+        st.session_state[OBSERVATORY_SAVED_DESK_KEY] = ""
+    picked = st.selectbox(
+        "Saved desk",
+        options=options,
+        format_func=lambda ident: labels.get(ident, ident),
+        key=OBSERVATORY_SAVED_DESK_KEY,
+        help="Load or delete a stored query. Empty store is normal.",
+    )
+    if OBSERVATORY_DESK_NAME_KEY not in st.session_state:
+        st.session_state[OBSERVATORY_DESK_NAME_KEY] = ""
+    name = st.text_input(
+        "Desk name",
+        key=OBSERVATORY_DESK_NAME_KEY,
+        help="Name for Save desk. Default is Desk.",
+    )
+    actions = st.columns(3)
+    load = actions[0].button("Load desk", disabled=not bool(picked))
+    delete = actions[1].button("Delete desk", disabled=not bool(picked))
+    save = actions[2].button("Save desk")
+    if load and picked and picked in by_id:
+        _apply_observatory_desk(by_id[picked])
+        st.rerun()
+    if delete and picked:
+        delete_observatory_desk(str(picked))
+        st.session_state[OBSERVATORY_SAVED_DESK_KEY] = ""
+        st.rerun()
+    if save:
+        desk = save_observatory_desk(
+            name=name,
+            facets=facets,
+            cohort_lock=cohort_lock,
+            break_comparability=break_comparability,
+            active_cohort=active_cohort,
+            lens=lens_mode,
+            sort_column=sort_column,
+        )
+        st.session_state[OBSERVATORY_SAVED_DESK_KEY] = desk.id
+        st.rerun()
 
 
 def _load_model(*, refresh: bool) -> Any:
@@ -477,6 +571,14 @@ sort_options = ["expectancy_r"] + sorted(name for name in SORT_ALLOW_LIST if nam
 if st.session_state.get(OBSERVATORY_SORT_COLUMN_KEY) not in sort_options:
     st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = "expectancy_r"
 sort_column = st.selectbox("Sort", options=sort_options, key=OBSERVATORY_SORT_COLUMN_KEY)
+_render_saved_desks(
+    facets=facets,
+    cohort_lock=bool(cohort_lock),
+    break_comparability=bool(break_comparability),
+    active_cohort=str(active_cohort) if active_cohort is not None else None,
+    lens_mode=str(lens_mode),
+    sort_column=str(sort_column),
+)
 try:
     ranked = sort_observatory_frame(
         filtered,

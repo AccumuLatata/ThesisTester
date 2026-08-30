@@ -1,10 +1,11 @@
-"""SO1–SO3 Study Observatory — fact table plus Program B lens projections.
+"""SO1–SO4 Study Observatory — fact table, Program B lens, saved desks.
 
 Concatenates existing ``results_index.csv`` ⟕ ``study.expansion.json`` plus
 StudySpec locks across SV1 catalog hits. SO3 attaches optional Program B
 projections (``desk_class``, ΔE vs Wave 0, thinning, useful-confluence).
-Does not call ``report_study``, ``rollup_study``, or ``run_study``. Does
-not unzip cell bundles.
+SO4 persists query-only desks under the ThesisTester store. Does not call
+``report_study``, ``rollup_study``, or ``run_study``. Does not unzip cell
+bundles. Does not write ``results/studies/``.
 
 This module must not import Streamlit, Plotly, ``execute``, ``cli_study``,
 ``thesistester.cli``, ``launch``, ``builder``, ``promote``, ``tools``, or
@@ -17,6 +18,7 @@ import json
 import math
 import numbers
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -26,6 +28,7 @@ import pandas as pd
 import yaml
 
 from thesistester.levels.catalog import PRIOR_PROFILE_LEVEL_NAMES
+from thesistester.persistence.local_store import get_store_root
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.report import RESULTS_INDEX, format_partner_levels, otf_canonical_key
 from thesistester.study.viewer import (
@@ -197,6 +200,23 @@ _PF_HOLD_HI = 1.05
 _PLUS_E_MIN = 0.03
 _USEFUL_DELTA_E = 0.03
 _NOISY_MIN_TRADES = 15.0
+DESK_SCHEMA_VERSION = 1
+DESK_STORE_NAMESPACE = "study_observatory"
+DESK_STORE_DIRNAME = "desks"
+DESK_LENS_MODES: frozenset[str] = frozenset({"auto", "program_b", "generic"})
+DESK_FACET_COLUMNS: tuple[str, ...] = (
+    "instrument",
+    "setup_kind",
+    "factor_core_level",
+    "factor_partner_levels",
+    "study_name",
+    "status",
+    "sample_class",
+    "stop_loss_ticks",
+    "take_profit_ticks",
+    "ingestion_mode",
+)
+_DESK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,80}$")
 
 
 class ObservatoryError(ValueError):
@@ -561,6 +581,197 @@ def program_b_heatmap_cells(frame: pd.DataFrame) -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(rows)
+
+
+@dataclass(frozen=True)
+class ObservatoryDesk:
+    """Saved Observatory query. Not a fact table and not a validated edge."""
+
+    id: str
+    name: str
+    facets: Mapping[str, tuple[Any, ...]]
+    cohort_lock: bool
+    break_comparability: bool
+    active_cohort: str | None
+    lens: str
+    sort_column: str
+    schema_version: int = DESK_SCHEMA_VERSION
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": int(self.schema_version),
+            "id": self.id,
+            "name": self.name,
+            "facets": {key: list(values) for key, values in self.facets.items()},
+            "cohort_lock": bool(self.cohort_lock),
+            "break_comparability": bool(self.break_comparability),
+            "active_cohort": self.active_cohort,
+            "lens": self.lens,
+            "sort_column": self.sort_column,
+        }
+
+
+def observatory_desks_dir(*, store_root: Path | None = None) -> Path:
+    """``{store}/study_observatory/desks``. Never a study ``output_dir``."""
+    root = Path(store_root).resolve() if store_root is not None else get_store_root()
+    return root / DESK_STORE_NAMESPACE / DESK_STORE_DIRNAME
+
+
+def list_observatory_desks(
+    *,
+    store_root: Path | None = None,
+) -> tuple[tuple[ObservatoryDesk, ...], tuple[str, ...]]:
+    """Load schema-v1 desks. Missing dir is empty. Corrupt / v2 files ignored."""
+    directory = observatory_desks_dir(store_root=store_root)
+    if not directory.is_dir():
+        return (), ()
+    desks: list[ObservatoryDesk] = []
+    ignored: list[str] = []
+    for path in sorted(directory.glob("*.json"), key=lambda item: item.name):
+        desk = parse_observatory_desk(path)
+        if desk is None:
+            ignored.append(path.name)
+            continue
+        desks.append(desk)
+    desks.sort(key=lambda item: (item.name.lower(), item.id))
+    return tuple(desks), tuple(ignored)
+
+
+def save_observatory_desk(
+    *,
+    name: str,
+    facets: Mapping[str, Sequence[Any]] | None = None,
+    cohort_lock: bool = True,
+    break_comparability: bool = False,
+    active_cohort: str | None = None,
+    lens: str = "auto",
+    sort_column: str = "expectancy_r",
+    desk_id: str | None = None,
+    store_root: Path | None = None,
+) -> ObservatoryDesk:
+    """Persist query state only. Creates the store sidecar on first save."""
+    directory = observatory_desks_dir(store_root=store_root)
+    directory.mkdir(parents=True, exist_ok=True)
+    ident = _normalize_desk_id(desk_id) if desk_id else _new_desk_id(name)
+    desk = ObservatoryDesk(
+        id=ident,
+        name=_normalize_desk_name(name),
+        facets=_normalize_desk_facets(facets),
+        cohort_lock=bool(cohort_lock),
+        break_comparability=bool(break_comparability),
+        active_cohort=_normalize_optional_token(active_cohort),
+        lens=_normalize_desk_lens(lens),
+        sort_column=_normalize_desk_sort(sort_column),
+        schema_version=DESK_SCHEMA_VERSION,
+    )
+    path = directory / f"{desk.id}.json"
+    path.write_text(
+        json.dumps(desk.to_payload(), indent=2, sort_keys=True, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return desk
+
+
+def delete_observatory_desk(desk_id: str, *, store_root: Path | None = None) -> bool:
+    """Delete one desk JSON. Unknown / unsafe ids are a no-op."""
+    ident = _normalize_desk_id(desk_id)
+    if ident is None:
+        return False
+    path = observatory_desks_dir(store_root=store_root) / f"{ident}.json"
+    if not path.is_file():
+        return False
+    path.unlink()
+    return True
+
+
+def parse_observatory_desk(path: Path) -> ObservatoryDesk | None:
+    """Return a v1 desk or ``None`` when the file is corrupt / unknown schema."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    version = payload.get("schema_version")
+    if isinstance(version, bool) or not isinstance(version, int) or version != DESK_SCHEMA_VERSION:
+        return None
+    ident = _normalize_desk_id(payload.get("id") or path.stem)
+    if ident is None:
+        return None
+    facets = payload.get("facets")
+    if facets is not None and not isinstance(facets, Mapping):
+        return None
+    return ObservatoryDesk(
+        id=ident,
+        name=_normalize_desk_name(payload.get("name") or ident),
+        facets=_normalize_desk_facets(facets if isinstance(facets, Mapping) else None),
+        cohort_lock=bool(payload.get("cohort_lock", True)),
+        break_comparability=bool(payload.get("break_comparability", False)),
+        active_cohort=_normalize_optional_token(payload.get("active_cohort")),
+        lens=_normalize_desk_lens(payload.get("lens")),
+        sort_column=_normalize_desk_sort(payload.get("sort_column")),
+        schema_version=DESK_SCHEMA_VERSION,
+    )
+
+
+def _normalize_desk_name(name: Any) -> str:
+    text = str(name or "").strip()
+    return text[:80] if text else "Desk"
+
+
+def _new_desk_id(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", _normalize_desk_name(name).lower()).strip("-")
+    token = slug[:40] or "desk"
+    return f"{token}-{uuid.uuid4().hex[:8]}"
+
+
+def _normalize_desk_id(value: Any) -> str | None:
+    token = str(value or "").strip().lower()
+    if not _DESK_ID_RE.match(token):
+        return None
+    return token
+
+
+def _normalize_optional_token(value: Any) -> str | None:
+    if value is None or _is_na(value):
+        return None
+    text = str(value).strip()
+    if not text or text in {"<NA>", "nan", "None", "null"}:
+        return None
+    return text
+
+
+def _normalize_desk_lens(value: Any) -> str:
+    token = str(value or "auto").strip().lower()
+    return token if token in DESK_LENS_MODES else "auto"
+
+
+def _normalize_desk_sort(value: Any) -> str:
+    token = str(value or "expectancy_r").strip()
+    return token if token in SORT_ALLOW_LIST else "expectancy_r"
+
+
+def _normalize_desk_facets(
+    facets: Mapping[str, Sequence[Any]] | None,
+) -> MappingProxyType:
+    cleaned: dict[str, tuple[Any, ...]] = {}
+    if not facets:
+        return MappingProxyType(cleaned)
+    for column in DESK_FACET_COLUMNS:
+        raw = facets.get(column)
+        if raw is None:
+            continue
+        values: list[Any] = []
+        seen: set[Any] = set()
+        for item in raw:
+            canonical = canonical_facet_value(item)
+            if canonical is None or canonical in seen:
+                continue
+            seen.add(canonical)
+            values.append(canonical)
+        if values:
+            cleaned[column] = tuple(values)
+    return MappingProxyType(cleaned)
 
 
 def _heatmap_partner_token(value: Any) -> str:

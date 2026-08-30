@@ -1081,7 +1081,7 @@ other than the last bar in the dataset.
   Missing Best SL/TP usually means `grid.enabled: false` or no grid row met
   the cell's grid `min_trades`.
 
-## Study Observatory (SO — SO3 shipped)
+## Study Observatory (SO — SO4 shipped)
 
 - The Study Observatory (`docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`) is
   a corpus projection of artifacts the runner already wrote. SO2 ships the
@@ -1105,6 +1105,11 @@ other than the last bar in the dataset.
   (point vs partner box). Heatmap grey is missing/pending, not `failed`.
   Packet file counts (15s 23 / parked VA 4) are lens chrome, not ingest.
   The lens is optional chrome — ingest stays generic.
+- Saved desks (SO4) persist query state only (facets / cohort / lens / sort)
+  under `{store}/study_observatory/desks` with `schema_version: 1`. A desk is
+  not a validated edge and is not written into `results/studies/`. Unknown
+  schema or corrupt files are ignored; the page still loads. No desks file
+  is required.
 - Observatory must not unzip every cell or rewrite `study.overview.*`.
 
 ## Practical interpretation
