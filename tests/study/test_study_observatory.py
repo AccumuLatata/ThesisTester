@@ -171,9 +171,9 @@ def test_two_studies_index_and_ledger_only(tmp_path: Path):
     assert list(model.frame["run_name"]) == ["alpha_c0"]
     assert str(indexed) in set(model.frame["study_dir"])
     assert str(ledger_only) in set(model.studies["study_dir"])
-    assert model.studies.loc[model.studies["study_name"] == "beta_inflight", "index_present"].iloc[
-        0
-    ] is False
+    assert not bool(
+        model.studies.loc[model.studies["study_name"] == "beta_inflight", "index_present"].iloc[0]
+    )
 
 
 def test_corrupt_index_does_not_fail_sibling(tmp_path: Path):
