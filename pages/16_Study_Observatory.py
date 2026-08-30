@@ -514,9 +514,40 @@ def _render_scatter(
     st.plotly_chart(fig, width="stretch")
 
 
+def _program_b_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty or "lens_hint" not in frame.columns:
+        return frame
+    return frame.loc[frame["lens_hint"].astype(str) == "program_b"]
+
+
+def _sync_lens_facets(prog: pd.DataFrame) -> dict[str, list[Any]]:
+    """Constrain lens widgets to pre-lens-facet Program B options (plan §6.11).
+
+    Must run before the peek ``apply_facets`` so a stale ``plus_e`` / ``True``
+    cannot empty the cohort strip on the same run that those options disappear.
+    """
+    lens_facets: dict[str, list[Any]] = {}
+    for column, _label in _LENS_FACET_COLUMNS:
+        widget_key = f"observatory_facet_{column}"
+        raw = st.session_state.get(widget_key)
+        options = unique_facet_values(prog, column)
+        if isinstance(raw, (list, tuple)):
+            constrained = constrain_facet_selection(raw, options)
+            if list(raw) != constrained:
+                st.session_state[widget_key] = constrained
+            raw = constrained
+        if isinstance(raw, (list, tuple)) and raw:
+            lens_facets[column] = list(raw)
+    return lens_facets
+
+
 def _on_heatmap_cell() -> None:
     label = st.session_state.get(OBSERVATORY_HEATMAP_CELL_KEY) or ""
-    if heatmap_focus_pending_facets is None:
+    if heatmap_focus_pending_facets is None or parse_heatmap_focus_label is None:
+        return
+    # "—" / unparseable must not wipe independently-set Core / Partner facets.
+    # Spec clears focus by clearing those widgets, not the other way around.
+    if parse_heatmap_focus_label(label) is None:
         return
     st.session_state[OBSERVATORY_PENDING_FACETS_KEY] = heatmap_focus_pending_facets(label)
     st.rerun()
@@ -540,8 +571,9 @@ def _render_heatmap_cell_picker(prog: pd.DataFrame) -> None:
     cores = list(st.session_state.get("observatory_facet_factor_core_level") or [])
     partners = list(st.session_state.get("observatory_facet_factor_partner_levels") or [])
     inferred = ""
-    if len(cores) == 1 and heatmap_focus_label is not None:
-        inferred = heatmap_focus_label(cores[0], partners[0] if len(partners) == 1 else "")
+    # One core with an empty Partner widget is "no partner filter", not Wave 0.
+    if len(cores) == 1 and len(partners) == 1 and heatmap_focus_label is not None:
+        inferred = heatmap_focus_label(cores[0], partners[0])
     if current not in options:
         st.session_state[OBSERVATORY_HEATMAP_CELL_KEY] = inferred if inferred in options else ""
     elif current and heatmap_focus_pending_facets is not None:
@@ -564,9 +596,7 @@ def _render_heatmap_cell_picker(prog: pd.DataFrame) -> None:
 def _render_program_b_lens(frame: pd.DataFrame) -> None:
     st.markdown("### Program B lens")
     st.caption(_DELTA_E_CAPTION)
-    prog = frame
-    if "lens_hint" in frame.columns:
-        prog = frame.loc[frame["lens_hint"].astype(str) == "program_b"]
+    prog = _program_b_rows(frame)
     counts = desk_class_counts(prog)
     count_cols = st.columns(len(DESK_CLASS_ORDER))
     for index, name in enumerate(DESK_CLASS_ORDER):
@@ -706,10 +736,7 @@ peek_lens_mode = str(st.session_state.get(OBSERVATORY_ACTIVE_LENS_KEY) or "auto"
 peek_lens_active = bool(resolve_program_b_lens(peek_lens_mode, generic_filtered))
 lens_facets: dict[str, list[Any]] = {}
 if peek_lens_active:
-    for column, _label in _LENS_FACET_COLUMNS:
-        raw = st.session_state.get(f"observatory_facet_{column}")
-        if isinstance(raw, (list, tuple)) and raw:
-            lens_facets[column] = list(raw)
+    lens_facets = _sync_lens_facets(_program_b_rows(generic_filtered))
 filtered = apply_facets(
     generic_filtered,
     query_facets_for_frame({}, lens_active=peek_lens_active, lens_facets=lens_facets),
@@ -785,9 +812,7 @@ carried_lens_facets = any(
 if not lens_active and carried_lens_facets:
     st.caption(_INERT_LENS_FACETS)
 if lens_active:
-    prog = generic_filtered
-    if "lens_hint" in generic_filtered.columns:
-        prog = generic_filtered.loc[generic_filtered["lens_hint"].astype(str) == "program_b"]
+    prog = _program_b_rows(generic_filtered)
     lens_cols = st.columns(2)
     for index, (column, label) in enumerate(_LENS_FACET_COLUMNS):
         with lens_cols[index % 2]:

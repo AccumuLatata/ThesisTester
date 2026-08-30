@@ -1006,6 +1006,13 @@ def _heatmap_partner_token(value: Any) -> str:
     return str(canonical)
 
 
+def _facet_canonical(column: str, value: Any) -> Any:
+    """Column-aware facet token. Empty partners are ``(solo)`` (plan §4.12)."""
+    if column == "factor_partner_levels":
+        return _heatmap_partner_token(value)
+    return canonical_facet_value(value)
+
+
 def heatmap_focus_label(core: Any, partner: Any) -> str:
     """``core × partner`` token. Empty partner → ``(solo)`` (plan §4.12)."""
     core_token = "" if core is None or _is_na(core) else str(core).strip()
@@ -1036,10 +1043,9 @@ def heatmap_focus_pending_facets(label: Any) -> dict[str, list[Any]]:
         return {"factor_core_level": [], "factor_partner_levels": []}
     core, partner = parsed
     pending: dict[str, list[Any]] = {"factor_core_level": [core] if core else []}
-    if partner:
-        pending["factor_partner_levels"] = [partner]
-    else:
-        pending["factor_partner_levels"] = []
+    # Empty partner is a real Wave 0 cell. [] would mean "no partner filter"
+    # and keep every pair that shares the core (plan §4.12 / §6.11).
+    pending["factor_partner_levels"] = [partner] if partner else [HEATMAP_SOLO_PARTNER]
     return pending
 
 
@@ -1126,6 +1132,8 @@ def apply_facets(
     Numeric tokens use :func:`canonical_facet_value` so ``80`` and ``80.0``
     match (same honesty as ``cohort_key`` integer tokens). Raw ``isin``
     would hide one lock when YAML stored an int and pandas upcast a float.
+    Empty ``factor_partner_levels`` match ``(solo)`` so a heatmap Wave 0
+    cell can write the existing Partner widget (plan §4.12).
     """
     if frame.empty or not facets:
         return frame.copy()
@@ -1133,11 +1141,15 @@ def apply_facets(
     for column, raw_values in facets.items():
         if column not in frame.columns:
             continue
-        allowed = {canonical_facet_value(value) for value in raw_values}
+
+        def _token(item: Any, *, _column: str = column) -> Any:
+            return _facet_canonical(_column, item)
+
+        allowed = {_token(value) for value in raw_values}
         allowed.discard(None)
         if not allowed:
             continue
-        mask = mask & frame[column].map(canonical_facet_value).isin(allowed)
+        mask = mask & frame[column].map(_token).isin(allowed)
     return frame.loc[mask].reset_index(drop=True)
 
 
@@ -1196,7 +1208,7 @@ def unique_facet_values(frame: pd.DataFrame, column: str) -> list[Any]:
     seen: set[Any] = set()
     values: list[Any] = []
     for value in frame[column].tolist():
-        canonical = canonical_facet_value(value)
+        canonical = _facet_canonical(column, value)
         if canonical is None or canonical in seen:
             continue
         seen.add(canonical)
@@ -1214,6 +1226,9 @@ def canonical_facet_value(value: Any) -> Any:
         return None
     if isinstance(value, bool):
         return value
+    boxed = _box_scalar(value)
+    if boxed is not value:
+        return canonical_facet_value(boxed)
     if isinstance(value, numbers.Real):
         number = float(value)
         if math.isnan(number):
@@ -1221,9 +1236,6 @@ def canonical_facet_value(value: Any) -> Any:
         if math.isfinite(number) and number.is_integer():
             return int(number)
         return number
-    boxed = _box_scalar(value)
-    if boxed is not value:
-        return canonical_facet_value(boxed)
     text = str(value).strip()
     if text in {"True", "False"}:
         return text == "True"
