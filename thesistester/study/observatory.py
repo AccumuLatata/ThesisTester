@@ -432,11 +432,11 @@ def _cell_base_label(row: Mapping[str, Any]) -> str:
     return f"{study_s} / {run_s}"
 
 
-def _facet_sort_key(value: Any) -> tuple[int, str]:
+def _facet_sort_key(value: Any) -> tuple[int, float | str]:
     if isinstance(value, bool):
         return (2, "true" if value else "false")
     if isinstance(value, numbers.Real) and not isinstance(value, bool):
-        return (0, f"{float(value):+.15e}")
+        return (0, float(value))
     return (1, str(value))
 
 
