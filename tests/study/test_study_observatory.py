@@ -38,7 +38,10 @@ from thesistester.study.observatory import (
     list_observatory_desks,
     load_observatory_frame,
     majority_cohort_key,
+    observatory_desk_from_payload,
+    observatory_desk_query_state,
     observatory_desks_dir,
+    parse_observatory_desk,
     program_b_heatmap_cells,
     resolve_program_b_lens,
     sample_class_for,
@@ -756,6 +759,10 @@ def test_observatory_page_ast_and_contract():
     assert "observatory_cached_model" in source
     assert "observatory_active_lens" in source
     assert "observatory_saved_desk_id" in source
+    assert "_observatory_pending_desk" in source
+    assert "_observatory_pending_saved_desk_id" in source
+    assert "observatory_desk_query_state" in source
+    assert "observatory_desk_from_payload" in source
     assert "Save desk" in source
     assert "Load desk" in source
     assert "Delete desk" in source
@@ -1195,6 +1202,22 @@ def test_saved_desk_round_trip_and_schema_v1(tmp_path: Path):
     assert loaded.sort_column == "profit_factor"
     assert loaded.cohort_lock is True
     assert loaded.active_cohort == "mnq|ds-a"
+    state = observatory_desk_query_state(loaded)
+    assert state["facets"]["instrument"] == ["MNQ", 80]
+    assert state["lens"] == "program_b"
+    assert state["sort_column"] == "profit_factor"
+    assert state["saved_desk_id"] == saved.id
+    assert observatory_desk_from_payload(saved.to_payload()) == loaded
+    updated = save_observatory_desk(
+        name="MNQ 15s",
+        facets={"instrument": ["ES"]},
+        lens="generic",
+        sort_column="win_rate",
+        desk_id=saved.id,
+        store_root=store,
+    )
+    assert updated.id == saved.id
+    assert len(list_observatory_desks(store_root=store)[0]) == 1
     after = {path.name: path.stat().st_mtime for path in study_dir.iterdir()}
     assert before == after
     assert not (study_dir / "study_observatory").exists()
@@ -1233,3 +1256,92 @@ def test_saved_desk_ignores_corrupt_and_v2(tmp_path: Path):
     assert set(ignored) == {"broken.json", "future.json"}
     assert desks[0].lens == "generic"
     assert desks[0].sort_column == "win_rate"
+
+
+def test_saved_desk_ignores_malformed_payloads_without_raising(tmp_path: Path):
+    store = tmp_path / "store"
+    desks_dir = observatory_desks_dir(store_root=store)
+    desks_dir.mkdir(parents=True)
+    (desks_dir / "scalar-facet.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "scalar-facet",
+                "name": "Scalar",
+                "facets": {"instrument": "MNQ", "stop_loss_ticks": 80},
+                "cohort_lock": True,
+                "lens": "auto",
+                "sort_column": "expectancy_r",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (desks_dir / "string-bool.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "string-bool",
+                "name": "String bool",
+                "facets": {"instrument": ["ES"]},
+                "cohort_lock": "false",
+                "lens": "auto",
+                "sort_column": "expectancy_r",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (desks_dir / "id-mismatch.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "other-id",
+                "name": "Mismatch",
+                "facets": {"instrument": ["ES"]},
+                "lens": "auto",
+                "sort_column": "expectancy_r",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (desks_dir / "token-object.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "token-object",
+                "name": "Token",
+                "active_cohort": {"key": "bad"},
+                "lens": "auto",
+                "sort_column": "expectancy_r",
+            }
+        ),
+        encoding="utf-8",
+    )
+    desks, ignored = list_observatory_desks(store_root=store)
+    assert desks == ()
+    assert set(ignored) == {
+        "scalar-facet.json",
+        "string-bool.json",
+        "id-mismatch.json",
+        "token-object.json",
+    }
+    assert parse_observatory_desk(desks_dir / "scalar-facet.json") is None
+    assert parse_observatory_desk(desks_dir / "id-mismatch.json") is None
+    assert observatory_desk_from_payload(["not", "an", "object"]) is None
+
+
+def test_saved_desk_rejects_invalid_id_and_does_not_write_none_json(tmp_path: Path):
+    store = tmp_path / "store"
+    with pytest.raises(ObservatoryError, match="Invalid saved-desk id"):
+        save_observatory_desk(name="Bad", desk_id="not a valid id", store_root=store)
+    with pytest.raises(ObservatoryError, match="must be a string"):
+        save_observatory_desk(name="Bad", desk_id=True, store_root=store)  # type: ignore[arg-type]
+    desks_dir = observatory_desks_dir(store_root=store)
+    assert not desks_dir.exists()
+    assert not (desks_dir / "None.json").exists()
+    with pytest.raises(ObservatoryError, match="must be a list"):
+        save_observatory_desk(
+            name="Chars",
+            facets={"instrument": "MNQ"},
+            store_root=store,
+        )
+    assert not desks_dir.exists()

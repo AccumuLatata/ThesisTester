@@ -1096,7 +1096,7 @@ heatmap, saved desk, Refresh, Open in Inspect, study observatory CLI
 | Packet chrome | 15s packet = 23 files; parked VA = 4 | Chrome only. Not catalog membership or ingest |
 | desk_class | Runbook overlay: failed first; noisy 15≤n<30; unidentified n<15; `other` = E≥0.03 and PF<0.95 | Not Admit. `sample_class` stays the n-gate |
 | desk_class heatmap | Core × partners; color is class, grey = missing | Grey is missing/pending, not `failed`. Hidden on a generic-only corpus |
-| Saved desk | Store query (facets / cohort / lens / sort) | Not a validated edge. Not written under `results/studies/` |
+| Saved desk | Store query (facets / cohort / lens / sort) | Not a validated edge. Not written under `results/studies/`. Save updates the selected desk or creates one |
 | Open in Inspect | Writes Studies path keys and switches to Studies | Does not hydrate classic session keys or Bundles |
 
 **How to use.**

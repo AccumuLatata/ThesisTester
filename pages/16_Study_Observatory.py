@@ -30,6 +30,10 @@ OBSERVATORY_CELL_SELECT_KEY = "observatory_cell_select"
 OBSERVATORY_ACTIVE_LENS_KEY = "observatory_active_lens"
 OBSERVATORY_SAVED_DESK_KEY = "observatory_saved_desk_id"
 OBSERVATORY_DESK_NAME_KEY = "observatory_desk_name"
+# One-shot keys. Applied in ``_ensure_defaults`` before any desk widgets exist.
+# Mutating a widget-bound key after ``st.selectbox`` / ``st.checkbox`` raises.
+OBSERVATORY_PENDING_DESK_KEY = "_observatory_pending_desk"
+OBSERVATORY_PENDING_SAVED_ID_KEY = "_observatory_pending_saved_desk_id"
 
 # Existing Studies drill keys (same strings as pages/15_Studies.py).
 STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
@@ -125,6 +129,8 @@ PROGRAM_B_LENS_PACKET_CHROME = getattr(
 list_observatory_desks = getattr(_observatory, "list_observatory_desks", None)
 save_observatory_desk = getattr(_observatory, "save_observatory_desk", None)
 delete_observatory_desk = getattr(_observatory, "delete_observatory_desk", None)
+observatory_desk_query_state = getattr(_observatory, "observatory_desk_query_state", None)
+observatory_desk_from_payload = getattr(_observatory, "observatory_desk_from_payload", None)
 
 
 def _helpers_ready() -> bool:
@@ -147,11 +153,25 @@ def _helpers_ready() -> bool:
             list_observatory_desks,
             save_observatory_desk,
             delete_observatory_desk,
+            observatory_desk_query_state,
+            observatory_desk_from_payload,
         )
     )
 
 
 def _ensure_defaults() -> None:
+    pending = st.session_state.pop(OBSERVATORY_PENDING_DESK_KEY, None)
+    desk = None
+    if isinstance(pending, dict) and observatory_desk_from_payload is not None:
+        desk = observatory_desk_from_payload(pending)
+    elif pending is not None:
+        desk = pending
+    if desk is not None:
+        _apply_observatory_desk(desk)
+    if OBSERVATORY_PENDING_SAVED_ID_KEY in st.session_state:
+        st.session_state[OBSERVATORY_SAVED_DESK_KEY] = str(
+            st.session_state.pop(OBSERVATORY_PENDING_SAVED_ID_KEY) or ""
+        )
     if OBSERVATORY_COHORT_LOCK_KEY not in st.session_state:
         st.session_state[OBSERVATORY_COHORT_LOCK_KEY] = True
     if OBSERVATORY_BREAK_COMPARABILITY_KEY not in st.session_state:
@@ -199,24 +219,45 @@ def _open_in_inspect(study_dir: str, run_name: str | None) -> None:
 
 
 def _apply_observatory_desk(desk: Any) -> None:
-    """Restore query widgets from a saved desk. Does not mutate the fact table."""
-    st.session_state[OBSERVATORY_SAVED_DESK_KEY] = str(getattr(desk, "id", "") or "")
-    st.session_state[OBSERVATORY_COHORT_LOCK_KEY] = bool(getattr(desk, "cohort_lock", True))
+    """Restore query widgets from a saved desk. Does not mutate the fact table.
+
+    Must run before facet / cohort / lens / sort / desk widgets are instantiated.
+    """
+    state = (
+        observatory_desk_query_state(desk)
+        if observatory_desk_query_state is not None
+        else {
+            "saved_desk_id": getattr(desk, "id", ""),
+            "name": getattr(desk, "name", ""),
+            "facets": dict(getattr(desk, "facets", {}) or {}),
+            "cohort_lock": bool(getattr(desk, "cohort_lock", True)),
+            "break_comparability": bool(getattr(desk, "break_comparability", False)),
+            "active_cohort": getattr(desk, "active_cohort", None),
+            "lens": getattr(desk, "lens", None) or "auto",
+            "sort_column": getattr(desk, "sort_column", None) or "expectancy_r",
+        }
+    )
+    st.session_state[OBSERVATORY_SAVED_DESK_KEY] = str(state.get("saved_desk_id") or "")
+    st.session_state[OBSERVATORY_COHORT_LOCK_KEY] = bool(state.get("cohort_lock", True))
     st.session_state[OBSERVATORY_BREAK_COMPARABILITY_KEY] = bool(
-        getattr(desk, "break_comparability", False)
+        state.get("break_comparability", False)
     )
     st.session_state[OBSERVATORY_SORT_COLUMN_KEY] = str(
-        getattr(desk, "sort_column", None) or "expectancy_r"
+        state.get("sort_column") or "expectancy_r"
     )
-    st.session_state[OBSERVATORY_ACTIVE_LENS_KEY] = str(getattr(desk, "lens", None) or "auto")
-    cohort = getattr(desk, "active_cohort", None)
+    st.session_state[OBSERVATORY_ACTIVE_LENS_KEY] = str(state.get("lens") or "auto")
+    name = str(state.get("name") or "").strip()
+    if name:
+        st.session_state[OBSERVATORY_DESK_NAME_KEY] = name
+    cohort = state.get("active_cohort")
     if cohort:
         st.session_state[OBSERVATORY_COHORT_PICK_KEY] = str(cohort)
-    desk_facets = dict(getattr(desk, "facets", {}) or {})
+    else:
+        st.session_state.pop(OBSERVATORY_COHORT_PICK_KEY, None)
+    desk_facets = dict(state.get("facets") or {})
     for column, _label in _FACET_COLUMNS:
-        key = f"observatory_facet_{column}"
         values = desk_facets.get(column, ())
-        st.session_state[key] = list(values) if values else []
+        st.session_state[f"observatory_facet_{column}"] = list(values) if values else []
 
 
 def _render_saved_desks(
@@ -261,24 +302,36 @@ def _render_saved_desks(
     delete = actions[1].button("Delete desk", disabled=not bool(picked))
     save = actions[2].button("Save desk")
     if load and picked and picked in by_id:
-        _apply_observatory_desk(by_id[picked])
+        # Defer widget writes until the next run — keys are already bound this run.
+        st.session_state[OBSERVATORY_PENDING_DESK_KEY] = by_id[picked].to_payload()
         st.rerun()
     if delete and picked:
-        delete_observatory_desk(str(picked))
-        st.session_state[OBSERVATORY_SAVED_DESK_KEY] = ""
-        st.rerun()
+        try:
+            delete_observatory_desk(str(picked))
+        except OSError as exc:
+            st.error(str(exc))
+        else:
+            st.session_state[OBSERVATORY_PENDING_SAVED_ID_KEY] = ""
+            st.rerun()
     if save:
-        desk = save_observatory_desk(
-            name=name,
-            facets=facets,
-            cohort_lock=cohort_lock,
-            break_comparability=break_comparability,
-            active_cohort=active_cohort,
-            lens=lens_mode,
-            sort_column=sort_column,
-        )
-        st.session_state[OBSERVATORY_SAVED_DESK_KEY] = desk.id
-        st.rerun()
+        existing = by_id.get(str(picked)) if picked else None
+        desk_name = str(name or "").strip() or (existing.name if existing is not None else "")
+        try:
+            desk = save_observatory_desk(
+                name=desk_name,
+                facets=facets,
+                cohort_lock=cohort_lock,
+                break_comparability=break_comparability,
+                active_cohort=active_cohort,
+                lens=lens_mode,
+                sort_column=sort_column,
+                desk_id=str(picked) if picked else None,
+            )
+        except (OSError, ObservatoryError) as exc:
+            st.error(str(exc))
+        else:
+            st.session_state[OBSERVATORY_PENDING_SAVED_ID_KEY] = desk.id
+            st.rerun()
 
 
 def _load_model(*, refresh: bool) -> Any:

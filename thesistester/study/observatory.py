@@ -617,6 +617,21 @@ def observatory_desks_dir(*, store_root: Path | None = None) -> Path:
     return root / DESK_STORE_NAMESPACE / DESK_STORE_DIRNAME
 
 
+def observatory_desk_query_state(desk: ObservatoryDesk) -> dict[str, Any]:
+    """Map a desk onto query fields the page restores. Not a fact table."""
+    facets = {column: list(desk.facets.get(column, ())) for column in DESK_FACET_COLUMNS}
+    return {
+        "saved_desk_id": desk.id,
+        "name": desk.name,
+        "facets": facets,
+        "cohort_lock": bool(desk.cohort_lock),
+        "break_comparability": bool(desk.break_comparability),
+        "active_cohort": desk.active_cohort,
+        "lens": desk.lens,
+        "sort_column": desk.sort_column,
+    }
+
+
 def list_observatory_desks(
     *,
     store_root: Path | None = None,
@@ -625,10 +640,18 @@ def list_observatory_desks(
     directory = observatory_desks_dir(store_root=store_root)
     if not directory.is_dir():
         return (), ()
+    try:
+        paths = sorted(directory.glob("*.json"), key=lambda item: item.name)
+    except OSError:
+        return (), ()
     desks: list[ObservatoryDesk] = []
     ignored: list[str] = []
-    for path in sorted(directory.glob("*.json"), key=lambda item: item.name):
-        desk = parse_observatory_desk(path)
+    for path in paths:
+        try:
+            desk = parse_observatory_desk(path)
+        except (OSError, TypeError, ValueError, KeyError):
+            ignored.append(path.name)
+            continue
         if desk is None:
             ignored.append(path.name)
             continue
@@ -651,8 +674,7 @@ def save_observatory_desk(
 ) -> ObservatoryDesk:
     """Persist query state only. Creates the store sidecar on first save."""
     directory = observatory_desks_dir(store_root=store_root)
-    directory.mkdir(parents=True, exist_ok=True)
-    ident = _normalize_desk_id(desk_id) if desk_id else _new_desk_id(name)
+    ident = _resolve_save_desk_id(desk_id, name)
     desk = ObservatoryDesk(
         id=ident,
         name=_normalize_desk_name(name),
@@ -664,11 +686,7 @@ def save_observatory_desk(
         sort_column=_normalize_desk_sort(sort_column),
         schema_version=DESK_SCHEMA_VERSION,
     )
-    path = directory / f"{desk.id}.json"
-    path.write_text(
-        json.dumps(desk.to_payload(), indent=2, sort_keys=True, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    _atomic_write_desk_json(directory / f"{desk.id}.json", desk.to_payload())
     return desk
 
 
@@ -677,41 +695,70 @@ def delete_observatory_desk(desk_id: str, *, store_root: Path | None = None) -> 
     ident = _normalize_desk_id(desk_id)
     if ident is None:
         return False
-    path = observatory_desks_dir(store_root=store_root) / f"{ident}.json"
-    if not path.is_file():
+    directory = observatory_desks_dir(store_root=store_root)
+    path = directory / f"{ident}.json"
+    try:
+        resolved_dir = directory.resolve()
+        resolved = path.resolve()
+    except OSError:
         return False
-    path.unlink()
+    if resolved.parent != resolved_dir or not resolved.is_file():
+        return False
+    resolved.unlink()
     return True
 
 
 def parse_observatory_desk(path: Path) -> ObservatoryDesk | None:
-    """Return a v1 desk or ``None`` when the file is corrupt / unknown schema."""
+    """Return a v1 desk or ``None`` when the file is corrupt / unknown schema.
+
+    Must not raise — a bad sidecar cannot fail Observatory page load.
+    """
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return observatory_desk_from_payload(payload, file_stem=path.stem)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ObservatoryError, TypeError, ValueError):
         return None
+
+
+def observatory_desk_from_payload(
+    payload: Any,
+    *,
+    file_stem: str | None = None,
+) -> ObservatoryDesk | None:
+    """Parse an in-memory desk payload. Filename stem must match ``id`` when given."""
     if not isinstance(payload, Mapping):
         return None
     version = payload.get("schema_version")
     if isinstance(version, bool) or not isinstance(version, int) or version != DESK_SCHEMA_VERSION:
         return None
-    ident = _normalize_desk_id(payload.get("id") or path.stem)
+    ident = _normalize_desk_id(payload.get("id") or file_stem)
     if ident is None:
+        return None
+    if file_stem is not None and file_stem != ident:
+        return None
+    raw_name = payload.get("name")
+    if raw_name is not None and not isinstance(raw_name, str):
         return None
     facets = payload.get("facets")
     if facets is not None and not isinstance(facets, Mapping):
         return None
-    return ObservatoryDesk(
-        id=ident,
-        name=_normalize_desk_name(payload.get("name") or ident),
-        facets=_normalize_desk_facets(facets if isinstance(facets, Mapping) else None),
-        cohort_lock=bool(payload.get("cohort_lock", True)),
-        break_comparability=bool(payload.get("break_comparability", False)),
-        active_cohort=_normalize_optional_token(payload.get("active_cohort")),
-        lens=_normalize_desk_lens(payload.get("lens")),
-        sort_column=_normalize_desk_sort(payload.get("sort_column")),
-        schema_version=DESK_SCHEMA_VERSION,
-    )
+    try:
+        return ObservatoryDesk(
+            id=ident,
+            name=_normalize_desk_name(raw_name or ident),
+            facets=_normalize_desk_facets(facets if isinstance(facets, Mapping) else None),
+            cohort_lock=_coerce_desk_bool(payload.get("cohort_lock", True), default=True),
+            break_comparability=_coerce_desk_bool(
+                payload.get("break_comparability", False),
+                default=False,
+            ),
+            active_cohort=_normalize_optional_token(payload.get("active_cohort")),
+            lens=_normalize_desk_lens(payload.get("lens")),
+            sort_column=_normalize_desk_sort(payload.get("sort_column")),
+            schema_version=DESK_SCHEMA_VERSION,
+        )
+    except (ObservatoryError, TypeError, ValueError):
+        return None
 
 
 def _normalize_desk_name(name: Any) -> str:
@@ -725,8 +772,21 @@ def _new_desk_id(name: str) -> str:
     return f"{token}-{uuid.uuid4().hex[:8]}"
 
 
+def _resolve_save_desk_id(desk_id: Any, name: str) -> str:
+    if desk_id is None or (isinstance(desk_id, str) and not desk_id.strip()):
+        return _new_desk_id(name)
+    if not isinstance(desk_id, str):
+        raise ObservatoryError("saved-desk id must be a string")
+    ident = _normalize_desk_id(desk_id)
+    if ident is None:
+        raise ObservatoryError(f"Invalid saved-desk id: {desk_id!r}")
+    return ident
+
+
 def _normalize_desk_id(value: Any) -> str | None:
-    token = str(value or "").strip().lower()
+    if not isinstance(value, str):
+        return None
+    token = value.strip().lower()
     if not _DESK_ID_RE.match(token):
         return None
     return token
@@ -735,20 +795,44 @@ def _normalize_desk_id(value: Any) -> str | None:
 def _normalize_optional_token(value: Any) -> str | None:
     if value is None or _is_na(value):
         return None
-    text = str(value).strip()
+    if not isinstance(value, str):
+        raise ObservatoryError("desk token field must be a string or null")
+    text = value.strip()
     if not text or text in {"<NA>", "nan", "None", "null"}:
         return None
     return text
 
 
+def _coerce_desk_bool(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    raise ObservatoryError("desk boolean field must be true, false, or omitted")
+
+
 def _normalize_desk_lens(value: Any) -> str:
-    token = str(value or "auto").strip().lower()
+    if value is None:
+        return "auto"
+    if not isinstance(value, str):
+        raise ObservatoryError("desk lens must be a string")
+    token = value.strip().lower()
     return token if token in DESK_LENS_MODES else "auto"
 
 
 def _normalize_desk_sort(value: Any) -> str:
-    token = str(value or "expectancy_r").strip()
+    if value is None:
+        return "expectancy_r"
+    if not isinstance(value, str):
+        raise ObservatoryError("desk sort_column must be a string")
+    token = value.strip()
     return token if token in SORT_ALLOW_LIST else "expectancy_r"
+
+
+def _as_facet_sequence(raw: Any) -> Sequence[Any]:
+    if isinstance(raw, (str, bytes, bytearray)) or not isinstance(raw, Sequence):
+        raise ObservatoryError("desk facet values must be a list")
+    return raw
 
 
 def _normalize_desk_facets(
@@ -757,13 +841,15 @@ def _normalize_desk_facets(
     cleaned: dict[str, tuple[Any, ...]] = {}
     if not facets:
         return MappingProxyType(cleaned)
+    if not isinstance(facets, Mapping):
+        raise ObservatoryError("desk facets must be an object")
     for column in DESK_FACET_COLUMNS:
         raw = facets.get(column)
         if raw is None:
             continue
         values: list[Any] = []
         seen: set[Any] = set()
-        for item in raw:
+        for item in _as_facet_sequence(raw):
             canonical = canonical_facet_value(item)
             if canonical is None or canonical in seen:
                 continue
@@ -772,6 +858,27 @@ def _normalize_desk_facets(
         if values:
             cleaned[column] = tuple(values)
     return MappingProxyType(cleaned)
+
+
+def _atomic_write_desk_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write ``<id>.json`` inside the desks dir. Never follows a symlink out."""
+    directory = path.parent
+    directory.mkdir(parents=True, exist_ok=True)
+    resolved_dir = directory.resolve()
+    resolved = (resolved_dir / path.name).resolve()
+    if resolved.parent != resolved_dir:
+        raise ObservatoryError("saved-desk path escaped the desks directory")
+    tmp = resolved.with_name(f".{resolved.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        tmp.replace(resolved)
+    except Exception:
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+        raise
 
 
 def _heatmap_partner_token(value: Any) -> str:
