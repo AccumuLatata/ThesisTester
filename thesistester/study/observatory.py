@@ -335,6 +335,40 @@ def sort_observatory_frame(
     return pd.concat(ordered, ignore_index=True)
 
 
+def unique_facet_values(frame: pd.DataFrame, column: str) -> list[Any]:
+    """Sorted unique non-null values for a facet column."""
+    if frame.empty or column not in frame.columns:
+        return []
+    seen: set[str] = set()
+    values: list[Any] = []
+    for value in frame[column].tolist():
+        if value is None or _is_na(value):
+            continue
+        key = str(value)
+        if key in seen:
+            continue
+        seen.add(key)
+        values.append(value)
+    return sorted(values, key=lambda item: str(item))
+
+
+def displayed_min_trades(frame: pd.DataFrame) -> float | None:
+    """Majority ``min_trades`` in *frame*; ties break to the smaller value."""
+    if frame.empty or "min_trades" not in frame.columns:
+        return None
+    counts: dict[float, int] = {}
+    for raw in frame["min_trades"].tolist():
+        number = _coerce_number(raw)
+        if number is None:
+            continue
+        counts[number] = counts.get(number, 0) + 1
+    if not counts:
+        return None
+    top = max(counts.values())
+    tied = sorted(value for value, count in counts.items() if count == top)
+    return tied[0]
+
+
 def format_observatory_table(frame: pd.DataFrame) -> str:
     """Stable text table for ``study observatory`` (no JSON schema)."""
     if frame.empty:

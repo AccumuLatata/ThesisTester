@@ -991,9 +991,9 @@ overview ranking, OTF delta, Research Study Runner
   bias). Prefer non-zero commission/slippage and held-out / walk-forward checks.
 - `study promote` does not execute cells and does not replace human confirmation.
 
-**Related pages.** Studies viewer (read-only); operator contract
-`docs/STUDY_RUNNER.md`; Research Bundles (per-cell zips); Validation and
-robustness (honest next steps after screening).
+**Related pages.** Studies viewer (read-only); Study Observatory; operator
+contract `docs/STUDY_RUNNER.md`; Research Bundles (per-cell zips); Validation
+and robustness (honest next steps after screening).
 
 ## Studies viewer (read-only)
 
@@ -1056,10 +1056,64 @@ study list, StudyDraft
 - Ranked cells ≠ SL/TP grid. `grid.enabled` writes `best_grid_*` + zip
   `grid_results.parquet` per cell — Inspect now shows those.
 - Does not mutate classic session keys or deep-link Research Bundles.
-- Cross-study **Study Observatory** CLI (`python -m thesistester study observatory`) is SO1; the Streamlit page is **not shipped**. Inspect remains one study at a time.
+- Cross-study readout lives on **Study Observatory**. Inspect remains one
+  study at a time.
 
-**Related pages.** Research Study Runner (headless); Time Analysis; Focus vs
-Admit; Research Bundles; Validation and robustness.
+**Related pages.** Study Observatory; Research Study Runner (headless); Time
+Analysis; Focus vs Admit; Research Bundles; Validation and robustness.
+
+## Study Observatory
+
+**What it is.** Streamlit **Study Observatory** lists every local study cell
+under `results/studies/` and `out/` as one fact table. Filter by instrument,
+setup kind, core / partners, status, sample class, SL/TP, and ingest. Sort
+inside a comparability cohort. The n×E scatter colors `sample_class`. **Open
+in Inspect** drills one cell into Studies. Headless: `study observatory`.
+
+**When to use it.** After many studies finish (or while some are still
+running), scan the corpus before opening one Inspect session. Use cohort lock
+when comparing expectancy / profit factor across cells that share instrument,
+dataset, costs, and lock fields.
+
+**Related terms.** Study Observatory, corpus, cell, facet, cohort lock, break
+comparability, sample class, n×E scatter, Refresh, Open in Inspect, study
+observatory CLI
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| Refresh | Rediscover dirs and reload index + expansion | Does not run cells or rewrite overviews |
+| Facets | Keep rows whose values are in the selected sets | Empty selection = no filter on that column |
+| Cohort lock | Sort / scatter highlight stay in one `cohort_key` | Default on. Two instruments do not share one rank |
+| Active cohort | Majority key after facets, or operator pick | Ties break to the lexicographically first key |
+| Break comparability | Allow sort across keys | Banner required; this is the only legal global PF/E sort |
+| Sort | Allow-list: E / PF / WR / n / max DD / name / status | `total_r` is not sortable |
+| n×E scatter | `trade_count` × `expectancy_r`; vline at displayed `min_trades` | Empty metrics → caption, not a chart |
+| Open in Inspect | Writes Studies path keys and switches to Studies | Does not hydrate classic session keys or Bundles |
+
+**How to use.**
+
+1. Leave studies under `results/studies/` or `out/` (same scan as Studies).
+2. Open **Study Observatory**. Read the corpus strip (studies / cells /
+   running / last stamp). **Refresh** after new dirs finish.
+3. Facet (for example Instrument = MNQ). Keep **Cohort lock** on unless you
+   mean to compare incomparable locks.
+4. Read the n×E scatter and the sorted table. `sample_class` is n vs that
+   study’s `min_trades`, not Program B +E / Hold / Dead.
+5. Select a cell → **Open in Inspect** for briefing / peek. CLI:
+   `python -m thesistester study observatory` (`--csv` for the same columns).
+
+**What it is not.**
+
+- Not a validated edge. Ranking many cells is multiple-testing.
+- Not a second runner, job queue, or unzip-all of cell zips.
+- Not a Program B heatmap or `desk_class` overlay (later). Saved desks later.
+- Does not mutate classic session keys or switch to Bundles / Portfolio.
+- Catalog membership is not a quality score.
+
+**Related pages.** Studies viewer (read-only); Research Study Runner
+(headless); Focus vs Admit; Validation and robustness.
 
 ## When to use Help vs Discuss results
 

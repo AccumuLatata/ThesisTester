@@ -70,6 +70,7 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
             "Research mode on classic pages",
             "Research Study Runner (headless)",
             "Studies viewer (read-only)",
+            "Study Observatory",
             "When to use Help vs Discuss results",
         }
     )
