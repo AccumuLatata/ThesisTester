@@ -1077,8 +1077,8 @@ running — scan the corpus before one Inspect session. Keep cohort lock on
 when comparing E / PF across shared instrument, dataset, costs, and locks.
 
 **Related terms.** Study Observatory, corpus, studies pane, ledger strip,
-cohort lock, sample class, n×E scatter, lens, desk class, ΔE, saved desk,
-Open study in Inspect, study observatory CLI
+cohort lock, cohort label, sample class, n×E scatter, lens, desk class, ΔE,
+saved desk, Open study in Inspect, study observatory CLI
 
 **Key settings.**
 
@@ -1089,7 +1089,7 @@ Open study in Inspect, study observatory CLI
 | Ok / Failed / Pending / Skipped | Ledger sums across dirs | Not a quality score. No invented cell row for pending dirs |
 | Studies table / Open study in Inspect | One row per catalog dir; study drill clears leftover `run_name` | Ledger-only dirs appear here only |
 | Facets | Keep selected values | Empty = no filter on that column |
-| Cohort lock / Active cohort | Sort/scatter stay in one `cohort_key`; majority or pick | Default on. Ties → lex-first key |
+| Cohort lock / Active cohort | Sort/scatter stay in one raw `cohort_key`; label is display-only | Default on. Ties → lex-first key. Labels ≠ a new lock |
 | Break comparability | Sort across keys | Banner required; only legal global PF/E sort |
 | Sort | E / PF / WR / n / max DD / name / status | `total_r` is not sortable |
 | n×E scatter | `trade_count` × `expectancy_r` | Empty metrics → caption |
@@ -1104,7 +1104,8 @@ Open study in Inspect, study observatory CLI
 2. Open Observatory. Read the strip and **Studies** table. **Open study in
    Inspect** for a dir. **Refresh** after new dirs finish.
 3. Facet (e.g. Instrument = MNQ). Keep **Cohort lock** on unless you mean
-   to mix locks.
+   to mix locks. Read the Active-cohort **label**; the stored value is still
+   the raw key. A caption lists lock fields that differ in the filtered set.
 4. Read n×E + table. `sample_class` is n vs that study’s `min_trades`.
 5. Lens `auto` when `progB_*` exist. ΔE = pair E − Wave 0 (`w0_va` for
    prior-profile cores, else `w0_solo`).
@@ -1117,8 +1118,9 @@ Open study in Inspect, study observatory CLI
 - Not Admit. `desk_class` / +E is a Program B overlay. ΔE mixes confirm
   value with zone-shape. Do not write onto the Program A desk.
 - A desk is a stored query. Ledger-only dirs are progress, not invented
-  cells. No classic-key mutate. Catalog membership is not a quality score.
-  SO5/SO6 parked.
+  cells. Cohort labels are display, not a new comparability score. No
+  classic-key mutate. Catalog membership is not a quality score. SO5/SO6
+  parked. SO9 (lens as filter) is not shipped.
 
 **Related pages.** Studies viewer (read-only); Research Study Runner
 (headless); Focus vs Admit; Validation and robustness.

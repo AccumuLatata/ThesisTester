@@ -21,7 +21,7 @@ Assistant-related contracts:
 | Study Builder (UX) | `docs/STUDY_BUILDER_IMPLEMENTATION_PLAN.md` (SB) | ✅ **SB1–SB3 complete**. Emits canonical StudySpec YAML onto the existing Studies Preview pane; no in-process execute; no new factor axes |
 | Study Ingest Alignment | `docs/STUDY_INGEST_ALIGNMENT_IMPLEMENTATION_PLAN.md` (SIA) | ✅ **SIA0–SIA3**. Studies authoring/defaults/examples only; execute stays `run_experiment`; no engine/Data edits |
 | Study Viewer (Inspect UX) | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` (SV); operator `docs/STUDY_RUNNER.md` §SV | ✅ **SV0–SV5**. Catalog + `study list` + quality panes + overview charts + cell peek + trader briefing / per-cell SL/TP grid / NY RTH ToD. No in-process execute; no classic-session hydrate |
-| Study Observatory (corpus UX) | `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md` (SO); operator `docs/STUDY_RUNNER.md` §SO | **SO7 shipped** (fact table + CLI + page 16 + Program B lens + saved desks + studies pane). **SO8/SO9 planned** (cohort literacy + lens as filter). SO5 watch / SO6 Discuss parked. Read-only concat of existing study artifacts; no execute; no classic hydrate |
+| Study Observatory (corpus UX) | `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md` (SO); operator `docs/STUDY_RUNNER.md` §SO | **SO8 shipped** (fact table + CLI + page 16 + Program B lens + saved desks + studies pane + cohort labels). **SO9 planned** (lens as filter). SO5 watch / SO6 Discuss parked. Read-only concat of existing study artifacts; no execute; no classic hydrate |
 | Audit honesty remediations | `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` (AH) | **AH0–AH6.** Flatten leak fixed; Study paths pinned; OTF-matrix train prefix-sliced; leftover bundle keys managed; `sl_first` honors 3c entry activation; `BASE_COLUMNS` rejected in setup validator. No composer collapse; no golden regen except AH5 hard-stop |
 | Study Admit Follow-up | `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md` (SAF); operator `docs/STUDY_RUNNER.md` §SAF | **SAF1–SAF3 shipped** (CLI `--admit-tod auto` + `--tod-group` / `--allow-thin` + Inspect draft → Preview + catalog `parent`). SAF4 parked. Promote without flags stays RS5. No auto-run; no ToD factor axis |
 | Level Catalog Contract | `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md` (LC) | **LC4 landed.** Series complete. Catalog completeness/correctness for already-emitted levels. No new price series; no `LEVEL_ENGINE_VERSION`; no golden regen |
@@ -1301,11 +1301,11 @@ USER_GUIDE extends H2 `Studies viewer (read-only)` (no new H2). Parked
 RS-D1 / D3 / D6 stay parked. RS-D2/D8/D9/SB/SIA behavior stays identical
 except additive Inspect panes and additive `study list`.
 
-## Study Observatory (SO0–SO7) — SO7 shipped; SO8/SO9 planned
+## Study Observatory (SO0–SO8) — SO8 shipped; SO9 planned
 
 Corpus-level read-only investigation of every local study cell (facets,
 comparability cohort, n×E scatter, optional Program B lens, saved desks,
-studies pane). SO8/SO9 (planned) add readable cohort labels and lens-as-filter only.
+studies pane, readable cohort labels). SO9 (planned) adds lens-as-filter only.
 Inspect stays the one-study microscope. Discover reuses SV1
 `discover_study_dirs`. Do **not** call `report_study` per study, unzip-all,
 or write `results/studies/`. Do **not** unpark SO5/SO6.
@@ -1322,8 +1322,8 @@ or write `results/studies/`. Do **not** unpark SO5/SO6.
 | SO5 | Parked — opt-in corpus-strip watch |
 | SO6 | Parked — grounded Discuss over the filtered frame |
 | SO7 | Corpus studies pane (ledger strip + catalog-dir table + study drill) ✅ |
-| SO8.0 | Plan lock for SO8/SO9 (this amend) |
-| SO8 | Planned — cohort literacy (display labels; raw `cohort_key` unchanged) |
+| SO8.0 | Plan lock for SO8/SO9 ✅ |
+| SO8 | Cohort literacy (display labels; raw `cohort_key` unchanged) ✅ |
 | SO9 | Planned — lens as filter (`desk_class` / `useful_confluence` + heatmap focus) |
 
 **Regression posture:** no `engine/` edits; no golden regeneration; no

@@ -102,13 +102,13 @@ Inspect. `viewer.py` must not import `cli_study` / `thesistester.cli` /
 `st.session_state`. Do not add time-of-day as a StudySpec factor axis.
 Operator contract: `docs/STUDY_RUNNER.md` §SV.
 
-**SO (SO7 shipped; SO8/SO9 planned):** Study Observatory —
+**SO (SO8 shipped; SO9 planned):** Study Observatory —
 `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`.
 `load_observatory_frame` + `pages/16_Study_Observatory.py` + additive
 `python -m thesistester study observatory` + Program B lens + saved desks
-under `{store}/study_observatory/desks` + studies pane (ledger strip +
-catalog-dir table + study-level Inspect drill). Reuse `discover_study_dirs`.
-Do not implement SO5/SO6/SO8/SO9 inside an RS/SV/SAF PR. Do not unpark
+under `{store}/study_observatory/desks` + studies pane + display-only
+cohort labels (raw `cohort_key` unchanged). Reuse `discover_study_dirs`.
+Do not implement SO5/SO6/SO9 inside an RS/SV/SAF PR. Do not unpark
 SO5/SO6. Do not call `report_study`
 per study, `run_study()`, `rollup_study()`, or unzip-all. `observatory.py`
 must not import `cli_study` / `execute` / Streamlit / Plotly. `viewer.py`

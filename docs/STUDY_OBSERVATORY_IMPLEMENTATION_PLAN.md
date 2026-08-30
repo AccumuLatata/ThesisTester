@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-30  
-**Status:** **SO7 shipped. SO8/SO9 planned. SO5/SO6 parked.**  
+**Status:** **SO8 shipped. SO9 planned. SO5/SO6 parked.**  
 **Series code:** **SO** (Study Observatory)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Depends on (already shipped):** RS1–RS5 + RS-D7 + RS-D2 + RS-D4 + RS-D8 + RS-D9; SB1–SB3; SIA0–SIA3; SV0–SV5; SAF1–SAF3; AO1; Program B operator packet (`examples/studies/program_b/`)  
@@ -11,7 +11,7 @@
 **Related but separate:** Studies Inspect (`pages/15_Studies.py`) remains the **one-study microscope**. Portfolio (`pages/13_Portfolio.py`) remains multi-setup **trade** composition. Research Bundles remains zip import into classic session. Classic thesis runs stay out until a later series joins on `dataset_id` / `research_identity`.  
 **Related follow-on (do not implement here):** SO5 opt-in watch; SO6 grounded Discuss over the observatory frame. Neither reopens SV Refresh, RQ auditor, or `STUDY.*` tools. **This amend does not unpark SO5 or SO6.**
 
-**Completeness posture:** After SO7, an operator can open one Streamlit page, see **every** local catalog dir’s ledger progress (ok / failed / pending / running / skipped) plus every index cell as a typed fact table, filter/sort by instrument, setup kind, n / E / PF / WR, keep incomparable locks out of one rank (cohort lock), apply a Program B lens when that packet is present, save a desk, and drill one **study** or one **cell** into existing Inspect — without a second runner, a new primary metric, classic `st.session_state` mutation, invented cell rows for ledger-only dirs, or writes into `results/studies/`. After **SO8**, the active-cohort control is readable without changing `cohort_key` or sort. After **SO9**, the Program B lens can keep `desk_class` / `useful_confluence` and focus a heatmap pair through existing core/partner facets. SO5 / SO6 remain parked.
+**Completeness posture:** After SO7, an operator can open one Streamlit page, see **every** local catalog dir’s ledger progress (ok / failed / pending / running / skipped) plus every index cell as a typed fact table, filter/sort by instrument, setup kind, n / E / PF / WR, keep incomparable locks out of one rank (cohort lock), apply a Program B lens when that packet is present, save a desk, and drill one **study** or one **cell** into existing Inspect — without a second runner, a new primary metric, classic `st.session_state` mutation, invented cell rows for ledger-only dirs, or writes into `results/studies/`. After **SO8**, the active-cohort control is readable without changing `cohort_key` or sort. After **SO9**, the Program B lens can keep `desk_class` / `useful_confluence` and focus a heatmap pair through existing core/partner facets. SO5 / SO6 remain parked. SO8 is **shipped**; SO9 is not.
 
 ---
 
@@ -38,7 +38,7 @@ Ship a **Study Observatory**: a corpus-level, program-agnostic investigation sur
 | Schema / expand / execute / launch / promote / report write | **No behavior edits** |
 | Assistant / MCP | Unchanged through SO4. SO6 (parked) must not add `STUDY.*` without a later RS6 amend |
 | Research Bundles / classic keys | **No** `apply_research_bundle_to_session`. Drill uses existing Studies session keys only |
-| Series complete when | **SO0–SO7** shipped. **SO8 then SO9** are the next sequenced UX amends. SO5 / SO6 stay parked |
+| Series complete when | **SO0–SO8** shipped. **SO9** is the next sequenced UX amend. SO5 / SO6 stay parked |
 
 **Feasibility:** High. Catalog discovery, index columns (`expectancy_r`, `profit_factor`, `win_rate`, `dataset_id`, `instrument`), expansion factor tags, and Inspect drill keys already exist. Missing piece is a **cached concat + comparability gate + page**, not a new aggregator or ranker.
 
@@ -359,7 +359,7 @@ Helpers (Streamlit/Plotly-free): `heatmap_focus_label(core, partner) -> str` (pa
 
 **SO0 → SO1 → SO2 → SO3 → SO4**. Do not reorder without amending this plan. Do not implement SO2–SO4 inside SO1. Do not implement observatory code in SO0. **SO7** (studies grain) is **shipped**. It does **not** implement parked SO5 / SO6.
 
-**SO8 → SO9** is the next sequenced UX pair. Do not implement SO9 inside SO8. Do not implement SO5 or SO6 in either PR. SO8 does not depend on SO7.
+**SO8** (cohort literacy) is **shipped**. **SO9** is the next sequenced UX slice. Do not implement SO5 or SO6 in SO9. SO8 does not depend on SO7.
 
 | ID | Intent | Code? |
 |---|---|---|
@@ -372,7 +372,7 @@ Helpers (Streamlit/Plotly-free): `heatmap_focus_label(core, partner) -> str` (pa
 | **SO6** | Parked — grounded Discuss over the filtered frame | — |
 | **SO7** | Corpus studies pane — ledger strip + catalog-dir table + study-level Inspect drill | `observatory.py` helpers + page 16 |
 | **SO8.0** | Plan lock for SO8 / SO9 (this amend) | Docs only |
-| **SO8** | Cohort literacy: readable labels + differ caption | `observatory.py` helpers + page 16 `format_func` |
+| **SO8** | Cohort literacy: readable labels + differ caption — **shipped** | `observatory.py` helpers + page 16 `format_func` |
 | **SO9** | Lens as filter: `desk_class` / `useful_confluence` + heatmap focus | `observatory.py` helpers + page 16 widgets |
 
 ---
@@ -673,7 +673,7 @@ edits. §4.2.
 
 ---
 
-## 7. End-to-end product acceptance (after SO7; SO8/SO9 add items 4a / 6a)
+## 7. End-to-end product acceptance (after SO8; SO9 adds item 6a)
 
 A researcher running many studies (Program B 15s packet of 23 files, parked VA packet of 4, or any later StudySpecs) can:
 
@@ -699,14 +699,14 @@ A researcher running many studies (Program B 15s packet of 23 files, parked VA p
 |---|---|---|
 | This plan | SO0; SO8.0 amend | Lock + SO8/SO9 contracts |
 | `docs/README.md` | SO0; SO8.0 planned pointer | Index row |
-| `docs/ENGINEERING_ROADMAP.md` | SO0 planned; SO4 ✅; SO7 ✅; SO8.0 planned rows | Status table + SO section |
-| `docs/STUDY_RUNNER.md` | SO0 §SO planned; SO1–SO4 / SO7 mark shipped; SO8.0 planned rows | Operator contract |
+| `docs/ENGINEERING_ROADMAP.md` | SO0 planned; SO4 ✅; SO7 ✅; SO8 ✅; SO9 planned | Status table + SO section |
+| `docs/STUDY_RUNNER.md` | SO0 §SO planned; SO1–SO4 / SO7–SO8 mark shipped; SO9 planned | Operator contract |
 | `docs/USER_GUIDE.md` H2 `Studies viewer (read-only)` | SO0 honesty (Observatory **not** shipped); SO2 Related pages | Keep Inspect-honest |
 | `docs/USER_GUIDE.md` H2 `Study Observatory` | **SO2**; extend in **SO8** and **SO9** (same H2) | New H2 + HC §6.2 shape. SO8.0 must not claim labels/facets shipped |
 | RQ §7.1.4 / HC §6.1 / `_USER_GUIDE_SECTIONS` | **SO2 same PR** | Allowlist the new H2; fail-closed if drifted |
-| `docs/ARCHITECTURE.md` | SO0 pointer; SO1 import graph; SO2 keys; SO4 store; SO7 study-select key; SO8.0 planned; SO9 pending-key | Boundary |
-| `docs/AGENT_GUIDE.md` | SO0 planned; SO4 shipped; SO7 shipped; SO8.0 planned | Do not implement SO inside an RS/SV/SAF PR; do not unpark SO5/SO6 |
-| `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | SO0 short; SO2 scatter; SO3 desk_class; SO7 studies pane; SO8.0 planned labels/facets | Corpus ≠ edge; cohort; ΔE zone-shape; labels ≠ new lock |
+| `docs/ARCHITECTURE.md` | SO0 pointer; SO1 import graph; SO2 keys; SO4 store; SO7 study-select key; SO8 no new keys; SO9 pending-key | Boundary |
+| `docs/AGENT_GUIDE.md` | SO0 planned; SO4 shipped; SO7–SO8 shipped; SO9 planned | Do not implement SO inside an RS/SV/SAF PR; do not unpark SO5/SO6 |
+| `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | SO0 short; SO2 scatter; SO3 desk_class; SO7 studies pane; SO8 labels; SO9 planned facets | Corpus ≠ edge; cohort; ΔE zone-shape; labels ≠ new lock |
 | `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md` | SO0 | Related-follow-on one-liner |
 | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` §12 | SO0 pointer; SO3 optional “lens shipped” | Spreadsheet remains valid; UI is product |
 | `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | SO0 one-liner | Runbook still CLI; Observatory is readout |

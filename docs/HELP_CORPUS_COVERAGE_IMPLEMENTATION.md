@@ -17,6 +17,8 @@ RQ §7.1.4 / `_USER_GUIDE_SECTIONS` allowlist amend.
 Open study in Inspect). No new heading.  
 **SO8.0 (2026-08-30):** SO8/SO9 planned. No new H2. Same Observatory H2
 is extended only when SO8/SO9 code ships.  
+**SO8 (2026-08-30):** same H2 extended (Active-cohort labels / differ
+caption). No new heading. SO9 still planned.  
 **RS5 (2026-08-12):** USER_GUIDE **Research Study Runner (headless)** H2 +
 §7.1.4 / `HELP_CORPUS_MANIFEST` amend (same PR as Study Runner promote/examples).
 **Owner surface:** Help corpus content + narrow `help_corpus` allowlist/tests
