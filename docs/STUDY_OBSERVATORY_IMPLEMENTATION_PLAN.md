@@ -286,7 +286,7 @@ On the page (SO2+) and CLI header (one line):
 
 > Descriptive screen of completed study cells. Ranking many cells is multiple-testing, not a validated edge. Sort is within a comparability cohort unless you break the lock. Catalog membership is not a quality score.
 
-Program B lens repeats runbook: n&lt;30 unidentified; +E is not Admit; do not write onto the Program A scalp map.
+Program B lens repeats runbook: n&lt;15 unidentified; 15≤n&lt;30 noisy; +E is not Admit; do not write onto the Program A scalp map.
 
 ---
 

@@ -1098,9 +1098,13 @@ other than the last bar in the dataset.
 - Program B `desk_class` / ΔE vs Wave 0 (SO3 shipped) are named overlays of
   the operator runbook, not a new primary metric and not Admit. `desk_class`
   covers the runbook split (`plus_e` / `hold` / `dead` / `noisy` /
-  `unidentified`) plus `failed` / `other`. ΔE looks up `progB_w0_solo`
-  or `progB_w0_va` by core; it mixes confirm value with zone-shape
-  (point vs partner box). The lens is optional chrome — ingest stays generic.
+  `unidentified`) plus `failed` / `other`. n<15 is unidentified;
+  15≤n<30 is noisy. ΔE looks up `progB_w0_solo` or `progB_w0_va` by
+  core and the shared lock (instrument / dataset / ingest / costs) except
+  `min_valid_confluences`; it mixes confirm value with zone-shape
+  (point vs partner box). Heatmap grey is missing/pending, not `failed`.
+  Packet file counts (15s 23 / parked VA 4) are lens chrome, not ingest.
+  The lens is optional chrome — ingest stays generic.
 - Observatory must not unzip every cell or rewrite `study.overview.*`.
 
 ## Practical interpretation

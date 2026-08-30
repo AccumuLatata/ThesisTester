@@ -16,7 +16,10 @@ from thesistester.cli import main as cli_main
 from thesistester.study.ledger import empty_ledger, save_ledger
 from thesistester.study.observatory import (
     CLI_COLUMNS,
+    HEATMAP_SOLO_PARTNER,
+    HEATMAP_Z_MISSING,
     OBSERVATORY_HONESTY,
+    PROGRAM_B_LENS_PACKET_CHROME,
     SORT_ALLOW_LIST,
     ObservatoryError,
     apply_facets,
@@ -29,6 +32,7 @@ from thesistester.study.observatory import (
     desk_class_for,
     displayed_min_trades,
     format_observatory_table,
+    heatmap_class_z,
     load_observatory_frame,
     majority_cohort_key,
     program_b_heatmap_cells,
@@ -751,8 +755,18 @@ def test_observatory_page_ast_and_contract():
     assert "+E is not Admit" in source
     assert "Program A scalp map" in source
     assert "desk_class heatmap" in source
+    assert "n<15 is unidentified" in source
+    assert "15≤n<30 is noisy" in source
+    assert "n<30 is unidentified" not in source
+    assert "15s operator packet: 23" in source
+    assert "Parked VA packet: 4" in source
+    assert "lens chrome, not catalog membership" in source
+    assert "heatmap_class_z" in source
+    assert "_HEATMAP_CLASS_INDEX" not in source
     assert "import plotly" not in observatory
     assert "st.fragment" not in observatory
+    assert "23 files" in PROGRAM_B_LENS_PACKET_CHROME
+    assert "4 files" in PROGRAM_B_LENS_PACKET_CHROME
 
 
 def test_delta_e_vs_wave0_solo_and_missing_solo(tmp_path: Path):
@@ -910,12 +924,48 @@ def test_desk_class_matches_section_4_7():
         expectancy_r=0.10,
         profit_factor=1.20,
     )
+    skipped = desk_class_for(
+        status="skipped",
+        sample_class="interpretable",
+        trade_count=30,
+        expectancy_r=0.10,
+        profit_factor=1.20,
+    )
+    noisy_edge = desk_class_for(
+        status="ok",
+        sample_class="below_min_trades",
+        trade_count=15,
+        expectancy_r=0.10,
+        profit_factor=1.20,
+    )
+    unidentified_edge = desk_class_for(
+        status="ok",
+        sample_class="below_min_trades",
+        trade_count=14,
+        expectancy_r=0.10,
+        profit_factor=1.20,
+    )
+    hold_pf_only = desk_class_for(
+        status="ok",
+        sample_class="interpretable",
+        trade_count=30,
+        expectancy_r=None,
+        profit_factor=1.0,
+    )
     assert plus == "plus_e"
     assert noisy == "noisy"
     assert unidentified == "unidentified"
     assert hold == "hold"
     assert other == "other"
     assert failed == "failed"
+    assert skipped == "unidentified"
+    assert noisy_edge == "noisy"
+    assert unidentified_edge == "unidentified"
+    assert hold_pf_only == "hold"
+    assert heatmap_class_z(None) == HEATMAP_Z_MISSING
+    assert heatmap_class_z("failed") != HEATMAP_Z_MISSING
+    assert heatmap_class_z("failed") == 1
+    assert heatmap_class_z("plus_e") == 7
     assert useful_confluence_for(
         sample_class="interpretable",
         delta_e=0.03,
@@ -982,3 +1032,114 @@ def test_heatmap_cartesian_marks_absent_program_b_cells(tmp_path: Path):
     assert by_cell[("ONH", "SMA")] == "plus_e"
     assert pd.isna(by_cell[("ONH", "EMA")]) or by_cell[("ONH", "EMA")] is None
     assert pd.isna(by_cell[("ONL", "SMA")]) or by_cell[("ONL", "SMA")] is None
+
+
+def test_delta_e_does_not_cross_instrument_or_null_when_each_has_wave0(tmp_path: Path):
+    studies = tmp_path / "results" / "studies"
+    _write_study(
+        studies,
+        "progB_w0_solo",
+        instrument="ES",
+        partners=[],
+        min_valid=0,
+        cells=[{"run_name": "w0_es", "trade_count": 40, "expectancy_r": 0.00, "instrument": "ES"}],
+    )
+    _write_study(
+        studies,
+        "progB_w1_mnq",
+        instrument="MNQ",
+        core="ONH",
+        partners=["SMA"],
+        cells=[
+            {
+                "run_name": "pair_mnq",
+                "trade_count": 40,
+                "expectancy_r": 0.10,
+                "instrument": "MNQ",
+            }
+        ],
+        dataset_id="ds-mnq",
+    )
+    crossed = attach_program_b_projections(
+        load_observatory_frame(roots=(tmp_path.resolve(),)).frame
+    )
+    mnq = crossed.loc[crossed["run_name"] == "pair_mnq"].iloc[0]
+    assert pd.isna(mnq["delta_e"])
+
+    both = tmp_path / "both" / "results" / "studies"
+    _write_study(
+        both,
+        "progB_w0_solo_es",
+        study_name="progB_w0_solo",
+        instrument="ES",
+        partners=[],
+        min_valid=0,
+        cells=[{"run_name": "w0_es", "trade_count": 40, "expectancy_r": 0.00, "instrument": "ES"}],
+        dataset_id="ds-es",
+    )
+    _write_study(
+        both,
+        "progB_w0_solo_mnq",
+        study_name="progB_w0_solo",
+        instrument="MNQ",
+        partners=[],
+        min_valid=0,
+        cells=[{"run_name": "w0_mnq", "trade_count": 40, "expectancy_r": 0.02, "instrument": "MNQ"}],
+        dataset_id="ds-mnq",
+    )
+    _write_study(
+        both,
+        "progB_w1_es",
+        instrument="ES",
+        core="ONH",
+        partners=["SMA"],
+        cells=[
+            {
+                "run_name": "pair_es",
+                "trade_count": 40,
+                "expectancy_r": 0.10,
+                "instrument": "ES",
+            }
+        ],
+        dataset_id="ds-es",
+    )
+    _write_study(
+        both,
+        "progB_w1_mnq",
+        instrument="MNQ",
+        core="ONH",
+        partners=["SMA"],
+        cells=[
+            {
+                "run_name": "pair_mnq_own",
+                "trade_count": 40,
+                "expectancy_r": 0.12,
+                "instrument": "MNQ",
+            }
+        ],
+        dataset_id="ds-mnq",
+    )
+    attached = attach_program_b_projections(
+        load_observatory_frame(roots=((tmp_path / "both").resolve(),)).frame
+    )
+    es_pair = attached.loc[attached["run_name"] == "pair_es"].iloc[0]
+    mnq_pair = attached.loc[attached["run_name"] == "pair_mnq_own"].iloc[0]
+    assert es_pair["delta_e"] == pytest.approx(0.10)
+    assert mnq_pair["delta_e"] == pytest.approx(0.10)
+
+
+def test_heatmap_wave0_only_uses_solo_column(tmp_path: Path):
+    _write_study(
+        tmp_path / "results" / "studies",
+        "progB_w0_solo",
+        partners=[],
+        min_valid=0,
+        cells=[{"run_name": "w0_onh", "trade_count": 40, "expectancy_r": 0.00}],
+    )
+    attached = attach_program_b_projections(
+        load_observatory_frame(roots=(tmp_path.resolve(),)).frame
+    )
+    grid = program_b_heatmap_cells(attached)
+    assert not grid.empty
+    assert list(grid["factor_partner_levels"]) == [HEATMAP_SOLO_PARTNER]
+    assert list(grid["factor_core_level"]) == ["ONH"]

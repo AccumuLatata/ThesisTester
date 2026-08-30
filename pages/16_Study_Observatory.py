@@ -79,19 +79,15 @@ _LENS_TABLE_COLUMNS: tuple[str, ...] = (
     "useful_confluence",
 )
 _LENS_MODES: tuple[str, ...] = ("auto", "program_b", "generic")
-_HEATMAP_CLASS_INDEX: dict[str, int] = {
-    "plus_e": 6,
-    "hold": 5,
-    "dead": 4,
-    "other": 3,
-    "noisy": 2,
-    "unidentified": 1,
-    "failed": 0,
-}
 _DELTA_E_CAPTION = (
     "ΔE mixes confirm value with zone-shape (point vs partner box) — "
-    "not a pure confluence effect. +E is not Admit. n<30 is unidentified. "
+    "not a pure confluence effect. +E is not Admit. "
+    "n<15 is unidentified; 15≤n<30 is noisy (not +E). "
     "Do not write these numbers onto the Program A scalp map."
+)
+_PACKET_CHROME_FALLBACK = (
+    "15s operator packet: 23 files. Parked VA packet: 4 files. "
+    "These counts are lens chrome, not catalog membership."
 )
 
 load_observatory_frame = getattr(_observatory, "load_observatory_frame", None)
@@ -111,10 +107,17 @@ attach_program_b_projections = getattr(_observatory, "attach_program_b_projectio
 resolve_program_b_lens = getattr(_observatory, "resolve_program_b_lens", None)
 desk_class_counts = getattr(_observatory, "desk_class_counts", None)
 program_b_heatmap_cells = getattr(_observatory, "program_b_heatmap_cells", None)
+heatmap_class_z = getattr(_observatory, "heatmap_class_z", None)
 DESK_CLASS_ORDER = getattr(
     _observatory,
     "DESK_CLASS_ORDER",
     ("plus_e", "hold", "dead", "other", "noisy", "unidentified", "failed"),
+)
+HEATMAP_Z_MAX = getattr(_observatory, "HEATMAP_Z_MAX", 7)
+PROGRAM_B_LENS_PACKET_CHROME = getattr(
+    _observatory,
+    "PROGRAM_B_LENS_PACKET_CHROME",
+    _PACKET_CHROME_FALLBACK,
 )
 
 
@@ -134,6 +137,7 @@ def _helpers_ready() -> bool:
             resolve_program_b_lens,
             desk_class_counts,
             program_b_heatmap_cells,
+            heatmap_class_z,
         )
     )
 
@@ -281,13 +285,14 @@ def _render_program_b_lens(frame: pd.DataFrame) -> None:
     count_cols = st.columns(len(DESK_CLASS_ORDER))
     for index, name in enumerate(DESK_CLASS_ORDER):
         count_cols[index].metric(name, int(counts.get(name, 0)))
+    st.caption(PROGRAM_B_LENS_PACKET_CHROME)
     grid = program_b_heatmap_cells(prog)
     if grid.empty:
         st.caption("No Program B cells to heat-map.")
         return
     cores = list(dict.fromkeys(grid["factor_core_level"].tolist()))
     partners = list(dict.fromkeys(grid["factor_partner_levels"].tolist()))
-    z: list[list[int | None]] = []
+    z: list[list[int]] = []
     hover: list[list[str]] = []
     by_cell = {
         (
@@ -297,15 +302,15 @@ def _render_program_b_lens(frame: pd.DataFrame) -> None:
         for record in grid.to_dict(orient="records")
     }
     for core in cores:
-        z_row: list[int | None] = []
+        z_row: list[int] = []
         hover_row: list[str] = []
         for partner in partners:
             desk = by_cell.get((core, partner))
-            if desk is None or (isinstance(desk, float) and pd.isna(desk)):
-                z_row.append(None)
+            z_value = heatmap_class_z(desk)
+            z_row.append(z_value)
+            if z_value == 0:
                 hover_row.append(f"{core} × {partner}: missing / pending")
             else:
-                z_row.append(_HEATMAP_CLASS_INDEX.get(str(desk), 3))
                 hover_row.append(f"{core} × {partner}: {desk}")
         z.append(z_row)
         hover.append(hover_row)
@@ -318,16 +323,17 @@ def _render_program_b_lens(frame: pd.DataFrame) -> None:
             hoverinfo="text",
             colorscale=[
                 [0.0, "#bbbbbb"],
-                [0.12, "#6b2d2d"],
+                [0.06, "#bbbbbb"],
+                [0.14, "#6b2d2d"],
                 [0.28, "#9a9a9a"],
-                [0.44, "#7a7a7a"],
-                [0.60, "#4a4a4a"],
-                [0.76, "#c4a35a"],
-                [0.90, "#2f6b4f"],
+                [0.43, "#7a7a7a"],
+                [0.57, "#4a4a4a"],
+                [0.71, "#8b3a3a"],
+                [0.86, "#c4a35a"],
                 [1.0, "#2f6b4f"],
             ],
             zmin=0,
-            zmax=6,
+            zmax=int(HEATMAP_Z_MAX),
             showscale=False,
         )
     )

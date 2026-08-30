@@ -171,6 +171,27 @@ DESK_CLASS_ORDER: tuple[str, ...] = (
     "unidentified",
     "failed",
 )
+# Heatmap z: 0 = missing/pending (grey). failed is 1 so it is not grey.
+HEATMAP_Z_MISSING = 0
+HEATMAP_CLASS_Z: dict[str, int] = {
+    "failed": 1,
+    "unidentified": 2,
+    "noisy": 3,
+    "other": 4,
+    "dead": 5,
+    "hold": 6,
+    "plus_e": 7,
+}
+HEATMAP_Z_MAX = 7
+HEATMAP_SOLO_PARTNER = "(solo)"
+# Lens chrome only — not ingest inventory (plan §4.6 / §6.4).
+PROGRAM_B_LENS_PACKET_CHROME = (
+    "15s operator packet: 23 files. Parked VA packet: 4 files. "
+    "These counts are lens chrome, not catalog membership."
+)
+_WAVE0_LOCK_FIELDS: tuple[str, ...] = tuple(
+    field for field in COHORT_FIELDS if field != "min_valid_confluences"
+)
 _PF_HOLD_LO = 0.95
 _PF_HOLD_HI = 1.05
 _PLUS_E_MIN = 0.03
@@ -325,10 +346,9 @@ def desk_class_for(
         and profit > _PF_HOLD_HI
     ):
         return "plus_e"
-    if expectancy is not None and (
-        abs(expectancy) < _PLUS_E_MIN
-        or (profit is not None and _PF_HOLD_LO <= profit <= _PF_HOLD_HI)
-    ):
+    hold_by_e = expectancy is not None and abs(expectancy) < _PLUS_E_MIN
+    hold_by_pf = profit is not None and _PF_HOLD_LO <= profit <= _PF_HOLD_HI
+    if hold_by_e or hold_by_pf:
         return "hold"
     if expectancy is not None and expectancy < 0:
         return "dead"
@@ -435,7 +455,11 @@ def attach_program_b_projections(frame: pd.DataFrame) -> pd.DataFrame:
         thinning = None
         if is_program_b_pair_row(record):
             core = _display_token(record.get("factor_core_level"))
-            key = (wave0_study_name_for_core(core), core)
+            key = _wave0_identity(
+                record,
+                study_name=wave0_study_name_for_core(core),
+                core=core,
+            )
             found = wave0.get(key)
             if found is not None:
                 solo_e, solo_n = found
@@ -474,16 +498,36 @@ def desk_class_counts(frame: pd.DataFrame) -> dict[str, int]:
     return counts
 
 
+def heatmap_class_z(desk: Any) -> int:
+    """Heatmap color index. ``0`` is missing/pending (grey); ``failed`` is ``1``."""
+    if desk is None or _is_na(desk):
+        return HEATMAP_Z_MISSING
+    token = str(desk).strip()
+    if token in {"", "<NA>", "nan", "None", "null"}:
+        return HEATMAP_Z_MISSING
+    return HEATMAP_CLASS_Z.get(token, HEATMAP_Z_MISSING)
+
+
 def program_b_heatmap_cells(frame: pd.DataFrame) -> pd.DataFrame:
-    """Long ``core × partner × desk_class`` grid. Absent combos are null (grey)."""
+    """Long ``core × partner × desk_class`` grid. Absent combos are null (grey).
+
+    Empty Wave 0 partners become ``(solo)`` so a Wave-0-only corpus still
+    heat-maps. Not an ingest inventory — axes come from observed cells.
+    """
     empty = pd.DataFrame(columns=["factor_core_level", "factor_partner_levels", "desk_class"])
     if frame.empty:
         return empty
-    work = frame
+    work = frame.copy()
     if "lens_hint" in work.columns:
         work = work.loc[work["lens_hint"].astype(str) == "program_b"]
     if work.empty:
         return empty
+    if "factor_partner_levels" in work.columns:
+        work["factor_partner_levels"] = [
+            _heatmap_partner_token(value) for value in work["factor_partner_levels"].tolist()
+        ]
+    else:
+        work["factor_partner_levels"] = HEATMAP_SOLO_PARTNER
     cores = unique_facet_values(work, "factor_core_level")
     partners = unique_facet_values(work, "factor_partner_levels")
     if not cores or not partners:
@@ -519,11 +563,34 @@ def program_b_heatmap_cells(frame: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _heatmap_partner_token(value: Any) -> str:
+    """Empty Wave 0 partners stay on the heatmap as ``(solo)``."""
+    canonical = canonical_facet_value(value)
+    if canonical is None:
+        return HEATMAP_SOLO_PARTNER
+    return str(canonical)
+
+
+def _wave0_identity(record: Mapping[str, Any], *, study_name: str, core: str) -> tuple[str, ...]:
+    """Wave 0 match key: study + core + lock fields except ``min_valid_confluences``.
+
+    Pair rows use ``min_valid=1`` so they never share a full ``cohort_key``
+    with Wave 0. Instrument / dataset / ingest (and the rest of the lock)
+    must still match — otherwise ΔE would mix books. Two dirs with the
+    same identity still fail closed.
+    """
+    return (
+        study_name,
+        core,
+        *(_cohort_token(record.get(field)) for field in _WAVE0_LOCK_FIELDS),
+    )
+
+
 def _wave0_lookup(
     frame: pd.DataFrame,
-) -> dict[tuple[str, str], tuple[float | None, float | None] | None]:
-    """``(study_name, core) → (E, n)`` when exactly one cell; else ``None``."""
-    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+) -> dict[tuple[str, ...], tuple[float | None, float | None] | None]:
+    """``identity → (E, n)`` when exactly one Wave 0 cell; else ``None``."""
+    groups: dict[tuple[str, ...], list[Mapping[str, Any]]] = {}
     if frame.empty:
         return {}
     for record in frame.to_dict(orient="records"):
@@ -532,11 +599,13 @@ def _wave0_lookup(
         name = str(record.get("study_name") or "")
         if name not in {_WAVE0_SOLO, _WAVE0_VA}:
             continue
+        if is_program_b_pair_row(record):
+            continue
         core = _display_token(record.get("factor_core_level"))
         if not core:
             continue
-        groups.setdefault((name, core), []).append(record)
-    out: dict[tuple[str, str], tuple[float | None, float | None] | None] = {}
+        groups.setdefault(_wave0_identity(record, study_name=name, core=core), []).append(record)
+    out: dict[tuple[str, ...], tuple[float | None, float | None] | None] = {}
     for key, rows in groups.items():
         if len(rows) != 1:
             out[key] = None
