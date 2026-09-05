@@ -415,3 +415,26 @@ def test_report_missing_index_fails(tmp_path: Path):
     (study_dir / "results_index.csv").unlink()
     with pytest.raises(StudyReportError, match="results_index"):
         report_study(study_dir)
+
+
+def test_report_rank_stays_primary_metric_not_null(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path)
+    index = pd.read_csv(study_dir / "results_index.csv")
+    ranked_names = list(
+        index.loc[index["trade_count"] >= 30].sort_values("expectancy_r", ascending=False)[
+            "run_name"
+        ]
+    )
+    better_e, worse_e = ranked_names[0], ranked_names[-1]
+    index.loc[index["run_name"] == worse_e, "random_p_value_ge"] = 0.01
+    index.loc[index["run_name"] == worse_e, "expectancy_minus_null_r"] = 0.40
+    index.loc[index["run_name"] == better_e, "random_p_value_ge"] = 0.40
+    index.loc[index["run_name"] == better_e, "expectancy_minus_null_r"] = 0.01
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    result = report_study(study_dir)
+    assert result.ranked.iloc[0]["run_name"] == better_e
+    assert float(result.ranked.iloc[0]["expectancy_r"]) > float(
+        result.ranked.loc[result.ranked["run_name"] == worse_e, "expectancy_r"].iloc[0]
+    )
+    assert "expectancy_minus_null_r" in result.markdown
+    assert "random_p_value_ge" in result.markdown

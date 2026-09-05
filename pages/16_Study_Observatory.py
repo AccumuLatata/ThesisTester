@@ -74,6 +74,7 @@ _FACET_COLUMNS: tuple[tuple[str, str], ...] = (
     ("take_profit_ticks", "Take profit (ticks)"),
     ("ingestion_mode", "Ingestion"),
     ("directional_integrity", "Directional integrity"),
+    ("drift_class", "Drift class"),
 )
 _TABLE_COLUMNS: tuple[str, ...] = (
     "study_name",
@@ -85,6 +86,11 @@ _TABLE_COLUMNS: tuple[str, ...] = (
     "short_trade_count",
     "long_share",
     "expectancy_r",
+    "random_null_expectancy_r",
+    "random_null_std_r",
+    "random_p_value_ge",
+    "expectancy_minus_null_r",
+    "drift_class",
     "profit_factor",
     "win_rate",
     "status",
@@ -158,6 +164,7 @@ observatory_desk_query_state = getattr(_observatory, "observatory_desk_query_sta
 observatory_desk_from_payload = getattr(_observatory, "observatory_desk_from_payload", None)
 corpus_progress_counts = getattr(_observatory, "corpus_progress_counts", None)
 directional_integrity_counts = getattr(_observatory, "directional_integrity_counts", None)
+drift_class_counts = getattr(_observatory, "drift_class_counts", None)
 format_heatmap_direction_count = getattr(_observatory, "format_heatmap_direction_count", None)
 sort_observatory_studies = getattr(_observatory, "sort_observatory_studies", None)
 observatory_studies_table = getattr(_observatory, "observatory_studies_table", None)
@@ -200,6 +207,7 @@ def _helpers_ready() -> bool:
             observatory_desk_from_payload,
             corpus_progress_counts,
             directional_integrity_counts,
+            drift_class_counts,
             format_heatmap_direction_count,
             sort_observatory_studies,
             observatory_studies_table,
@@ -729,6 +737,13 @@ if callable(directional_integrity_counts):
         f"{integrity.get('long_only', 0)} cells long_only · "
         f"{integrity.get('short_only', 0)} short_only · "
         f"{integrity.get('mixed', 0)} mixed"
+    )
+if callable(drift_class_counts):
+    drift = drift_class_counts(frame)
+    st.caption(
+        f"{drift.get('above_null', 0)} cells above_null · "
+        f"{drift.get('at_null', 0)} at_null · "
+        f"{drift.get('unknown', 0)} unknown"
     )
 
 if studies.empty and frame.empty:

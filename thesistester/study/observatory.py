@@ -138,6 +138,11 @@ LOCKED_FRAME_COLUMNS: tuple[str, ...] = (
     "collision_pairs",
     "collision_resolved_long",
     "expectancy_r",
+    "random_null_expectancy_r",
+    "random_null_std_r",
+    "random_p_value_ge",
+    "expectancy_minus_null_r",
+    "drift_class",
     "profit_factor",
     "win_rate",
     "max_drawdown_r",
@@ -237,6 +242,7 @@ DESK_FACET_COLUMNS: tuple[str, ...] = (
     "status",
     "sample_class",
     "directional_integrity",
+    "drift_class",
     "stop_loss_ticks",
     "take_profit_ticks",
     "ingestion_mode",
@@ -1357,6 +1363,30 @@ def directional_integrity_counts(frame: pd.DataFrame) -> dict[str, int]:
     return counts
 
 
+def classify_drift_class(p_value: Any) -> str:
+    """DA5 desk facet. Derived at load; not persisted on the study index."""
+    number = _coerce_number(p_value)
+    if number is None:
+        return "unknown"
+    if number < 0.05:
+        return "above_null"
+    return "at_null"
+
+
+def drift_class_counts(frame: pd.DataFrame) -> dict[str, int]:
+    """Count DA5 drift classes on the fact table. Missing column → zeros."""
+    counts = {"above_null": 0, "at_null": 0, "unknown": 0}
+    if frame.empty or "drift_class" not in frame.columns:
+        return counts
+    for value in frame["drift_class"].tolist():
+        if value is None or _is_na(value):
+            continue
+        token = str(value)
+        if token in counts:
+            counts[token] += 1
+    return counts
+
+
 def format_heatmap_direction_count(value: Any) -> str:
     """``L n / S n`` tooltip token. Missing / non-finite → ``—`` (never ``nan``)."""
     number = _coerce_number(value)
@@ -1807,6 +1837,11 @@ def _cell_row(
         "collision_pairs": _coerce_number(index_row.get("collision_pairs")),
         "collision_resolved_long": _coerce_number(index_row.get("collision_resolved_long")),
         "expectancy_r": _coerce_number(index_row.get("expectancy_r")),
+        "random_null_expectancy_r": _coerce_number(index_row.get("random_null_expectancy_r")),
+        "random_null_std_r": _coerce_number(index_row.get("random_null_std_r")),
+        "random_p_value_ge": _coerce_number(index_row.get("random_p_value_ge")),
+        "expectancy_minus_null_r": _coerce_number(index_row.get("expectancy_minus_null_r")),
+        "drift_class": classify_drift_class(index_row.get("random_p_value_ge")),
         "profit_factor": pf,
         "win_rate": wr,
         "max_drawdown_r": _coerce_number(index_row.get("max_drawdown_r")),

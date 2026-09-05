@@ -117,6 +117,8 @@ def test_minimal_study_normalizes_stably():
     again = validate_study_spec(normalize_study_spec(validated))
     assert again["study"]["output_dir"] == validated["study"]["output_dir"]
     assert again["study"]["report"]["multiple_testing"] == "warn"
+    assert "random_baseline" not in validated["study"]["report"]
+    assert "random_baseline" not in again["study"]["report"]
 
 
 def test_default_report_group_by_intersects_factors():
@@ -870,4 +872,51 @@ def test_same_bar_opposite_direction_null_rejected():
     raw = _minimal_study()
     raw["study"]["constants"]["backtest"]["same_bar_opposite_direction"] = None
     with pytest.raises(StudySpecError, match="same_bar_opposite_direction"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_random_baseline_omitted_stays_absent():
+    raw = _minimal_study()
+    del raw["study"]["report"]
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert "random_baseline" not in validated["study"]["report"]
+
+
+def test_random_baseline_valid_block_accepts():
+    raw = _minimal_study()
+    raw["study"]["report"]["random_baseline"] = {
+        "enabled": True,
+        "n_replicas": 50,
+        "random_state": 42,
+    }
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["report"]["random_baseline"]["enabled"] is True
+    assert validated["study"]["report"]["random_baseline"]["n_replicas"] == 50
+
+
+def test_random_baseline_unknown_nested_key_fails():
+    raw = _minimal_study()
+    raw["study"]["report"]["random_baseline"] = {
+        "enabled": True,
+        "n_replicas": 50,
+        "replica_expectancies": True,
+    }
+    with pytest.raises(StudySpecError, match="Unknown study.report.random_baseline"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+@pytest.mark.parametrize(
+    "block, match",
+    [
+        ({"enabled": True, "n_replicas": 0}, "n_replicas"),
+        ({"enabled": True, "n_replicas": 1.5}, "n_replicas"),
+        ({"enabled": "true"}, "enabled"),
+        ({"enabled": True, "random_state": True}, "random_state"),
+        ({"n_replicas": 50}, "enabled"),
+    ],
+)
+def test_random_baseline_invalid_values_fail(block, match):
+    raw = _minimal_study()
+    raw["study"]["report"]["random_baseline"] = block
+    with pytest.raises(StudySpecError, match=match):
         validate_study_spec(normalize_study_spec(raw))

@@ -47,6 +47,13 @@ _DIRECTION_COLUMNS: tuple[str, ...] = (
     "collision_pairs",
     "collision_resolved_long",
 )
+# Mirrors execute.DA_RANDOM_INDEX_KEYS. Display only — never a ranking key.
+_RANDOM_COLUMNS: tuple[str, ...] = (
+    "random_null_expectancy_r",
+    "random_null_std_r",
+    "random_p_value_ge",
+    "expectancy_minus_null_r",
+)
 
 _HIGHER_IS_BETTER = frozenset({"expectancy_r", "total_r", "profit_factor", "trade_count"})
 _LOWER_IS_BETTER = frozenset({"max_drawdown_r"})
@@ -371,6 +378,7 @@ def build_overview_frame(
         "collision_pairs",
         "collision_resolved_long",
         "expectancy_r",
+        *_RANDOM_COLUMNS,
         "total_r",
         "max_drawdown_r",
         "profit_factor",
@@ -688,6 +696,7 @@ def _md_table(frame: pd.DataFrame, columns: list[str], *, limit: int = 50) -> li
                     "profit_factor",
                     "win_rate",
                     "trade_count",
+                    "random_p_value_ge",
                 }
                 or col.startswith("mean_")
                 or col.startswith("median_")
@@ -774,6 +783,8 @@ def render_overview_markdown(
         "best_grid_stop_loss_ticks",
         "best_grid_take_profit_ticks",
         "profit_factor_source",
+        "expectancy_minus_null_r",
+        "random_p_value_ge",
     ]
     lines.extend(_md_table(ranked, rank_cols))
 
@@ -851,7 +862,10 @@ def render_overview_markdown(
             "- Index columns: `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, "
             "`profit_factor`, `win_rate`, `best_grid_stop_loss_ticks`, "
             "`best_grid_take_profit_ticks`, `bundle_hash`, `bundle_path`, `status` "
-            "(PF/WR additive since RS-D7; older indexes may omit them).",
+            "(PF/WR additive since RS-D7; older indexes may omit them). "
+            "DA5 `random_null_*` / `random_p_value_ge` / `expectancy_minus_null_r` "
+            "are additive when `report.random_baseline.enabled`; they never "
+            "re-rank the table.",
             "- `profit_factor` / `win_rate`: each field prefers the study index when "
             "present, else bundle `trade_summary.json` "
             "(`profit_factor_source` tracks PF only: `index` | `bundle` | `missing`).",

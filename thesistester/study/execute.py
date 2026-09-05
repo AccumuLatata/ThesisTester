@@ -32,7 +32,10 @@ except ImportError:  # pragma: no cover - POSIX
 import pandas as pd
 
 from thesistester.analytics.metrics import direction_split_index_values
-from thesistester.api import run_experiment
+from thesistester.analytics.overfitting import vs_random_benchmark
+from thesistester.api import _BACKTEST_DEFAULTS, run_experiment
+from thesistester.config import INSTRUMENTS
+from thesistester.entry_window_policy import normalize_entry_window
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.study.briefing import read_zip_parquet, resolve_cell_bundle
 from thesistester.levels.tick_vap import (
@@ -98,8 +101,49 @@ DA_DIRECTION_INDEX_KEYS: tuple[str, ...] = (
     "collision_resolved_long",
 )
 
+# Study-owned DA5 keys. Not on R18_INDEX_METRIC_KEYS (CLI RS-D7 ordered parity).
+DA_RANDOM_INDEX_KEYS: tuple[str, ...] = (
+    "random_null_expectancy_r",
+    "random_null_std_r",
+    "random_p_value_ge",
+    "expectancy_minus_null_r",
+)
+
 STUDY_INDEX_KEYS: tuple[str, ...] = (
-    R18_INDEX_METRIC_KEYS + DA_DIRECTION_INDEX_KEYS + ("bundle_path", "status")
+    R18_INDEX_METRIC_KEYS
+    + DA_DIRECTION_INDEX_KEYS
+    + DA_RANDOM_INDEX_KEYS
+    + ("bundle_path", "status")
+)
+
+# Injected onto the cell task spec only; stripped before run_experiment.
+_DA5_RANDOM_BASELINE_KEY = "_da5_random_baseline"
+
+# simulate_trades kwargs forwarded into vs_random_benchmark. Excludes SL/TP
+# (passed as explicit args) and unknown backtest keys (ranking_metric, enabled).
+_DA5_SIMULATION_KWARGS = frozenset(
+    {
+        "max_holding_bars",
+        "allow_same_bar_exit",
+        "commission_per_side",
+        "slippage_ticks",
+        "flat_by_session_close",
+        "session_close_time",
+        "session_timezone",
+        "no_new_entries_after",
+        "exposure_policy",
+        "cooldown_bars_after_exit",
+        "intrabar_model",
+        "subtimeframe_data",
+        "parent_interval",
+        "sub_interval",
+        "entry_window",
+        "entry_window_exchange_tz",
+        "breakeven_after_r",
+        "trailing_after_r",
+        "trailing_distance_ticks",
+        "same_bar_opposite_direction",
+    }
 )
 STUDY_PRIOR_PROFILE_PARQUET = "study.prior_profile.parquet"
 
@@ -270,9 +314,191 @@ def direction_index_fields(
     }
 
 
+def _empty_random_baseline_fields() -> dict[str, Any]:
+    return {key: None for key in DA_RANDOM_INDEX_KEYS}
+
+
+def _random_baseline_cfg(raw: Any) -> dict[str, Any]:
+    """Execute-time defaults. Omitted / non-mapping → disabled (legacy)."""
+    if not isinstance(raw, Mapping):
+        return {"enabled": False, "n_replicas": 50, "random_state": 42}
+    n_replicas = raw.get("n_replicas", 50)
+    random_state = raw.get("random_state", 42)
+    if isinstance(n_replicas, bool) or not isinstance(n_replicas, int) or n_replicas < 1:
+        n_replicas = 50
+    if isinstance(random_state, bool) or not isinstance(random_state, int):
+        random_state = 42
+    return {
+        "enabled": bool(raw.get("enabled", False)),
+        "n_replicas": n_replicas,
+        "random_state": random_state,
+    }
+
+
+def _merged_backtest_settings(run_spec: Mapping[str, Any]) -> dict[str, Any]:
+    """``run_backtest`` defaults ⊕ cell backtest. Unknown keys dropped (fail-soft)."""
+    raw = dict(run_spec.get("backtest") or {})
+    known = {key: value for key, value in raw.items() if key in _BACKTEST_DEFAULTS}
+    return {**_BACKTEST_DEFAULTS, **known}
+
+
+def _cell_stop_take(
+    settings: Mapping[str, Any],
+    trades: pd.DataFrame,
+) -> tuple[float, float] | None:
+    """SL/TP from accepted trades (R15) else merged backtest defaults."""
+    sl = None
+    tp = None
+    if "stop_loss_ticks" in trades.columns and not trades.empty:
+        sl = _coerce_index_float(trades["stop_loss_ticks"].iloc[0])
+    if "take_profit_ticks" in trades.columns and not trades.empty:
+        tp = _coerce_index_float(trades["take_profit_ticks"].iloc[0])
+    if sl is None:
+        sl = _coerce_index_float(settings.get("stop_loss_ticks"))
+    if tp is None:
+        tp = _coerce_index_float(settings.get("take_profit_ticks"))
+    if sl is None or tp is None or sl <= 0 or tp <= 0:
+        return None
+    return sl, tp
+
+
+def _cell_bars(state: Mapping[str, Any]) -> pd.DataFrame | None:
+    """OHLCV used by the cell backtest (``levels``), else ``data``."""
+    for key in ("levels", "data"):
+        frame = state.get(key)
+        if isinstance(frame, pd.DataFrame) and len(frame) >= 2:
+            return frame
+    return None
+
+
+def _cell_execution_kwargs(
+    run_spec: Mapping[str, Any],
+    state: Mapping[str, Any],
+    *,
+    instrument: str,
+) -> dict[str, Any]:
+    """Lock-fidelity ``simulate_trades`` kwargs mirroring ``run_backtest``.
+
+    ``session_timezone`` is passed only when ``flat_by_session_close`` is on
+    (same as ``run_backtest``). A YAML timezone must not leak onto a
+    flatten-off null — that would re-localize ``no_new_entries_after``.
+    """
+    settings = _merged_backtest_settings(run_spec)
+    inst = INSTRUMENTS.get(instrument)
+    flatten = bool(settings.get("flat_by_session_close"))
+    session_timezone = None
+    if flatten:
+        session_timezone = settings.get("session_timezone")
+        if not session_timezone and inst is not None:
+            session_timezone = inst.exchange_tz
+    cooldown = settings.get("cooldown_bars_after_exit")
+    try:
+        cooldown_bars = 0 if cooldown is None else int(cooldown)
+    except (TypeError, ValueError):
+        cooldown_bars = 0
+    kwargs: dict[str, Any] = {
+        "max_holding_bars": settings.get("max_holding_bars"),
+        "allow_same_bar_exit": bool(settings.get("allow_same_bar_exit")),
+        "commission_per_side": settings.get("commission_per_side"),
+        "slippage_ticks": settings.get("slippage_ticks"),
+        "flat_by_session_close": flatten,
+        "session_close_time": settings.get("session_close_time"),
+        "session_timezone": session_timezone,
+        "no_new_entries_after": settings.get("no_new_entries_after"),
+        "exposure_policy": str(settings.get("exposure_policy")),
+        "cooldown_bars_after_exit": cooldown_bars,
+        "intrabar_model": str(settings.get("intrabar_model")),
+        "breakeven_after_r": settings.get("breakeven_after_r"),
+        "trailing_after_r": settings.get("trailing_after_r"),
+        "trailing_distance_ticks": settings.get("trailing_distance_ticks"),
+        "same_bar_opposite_direction": settings.get("same_bar_opposite_direction")
+        or "legacy",
+    }
+    if inst is not None:
+        try:
+            entry_window = normalize_entry_window(
+                settings.get("entry_window"),
+                exchange_tz=inst.exchange_tz,
+            )
+        except (TypeError, ValueError):
+            kwargs["entry_window"] = None
+        else:
+            kwargs["entry_window"] = entry_window if entry_window.get("enabled") else None
+        kwargs["entry_window_exchange_tz"] = inst.exchange_tz
+    if state.get("subtimeframe_data") is not None:
+        kwargs["subtimeframe_data"] = state["subtimeframe_data"]
+    provenance = state.get("ingestion_provenance")
+    if isinstance(provenance, Mapping):
+        if provenance.get("derived_parent_interval") is not None:
+            kwargs["parent_interval"] = provenance.get("derived_parent_interval")
+        if provenance.get("source_interval") is not None:
+            kwargs["sub_interval"] = provenance.get("source_interval")
+    return {key: value for key, value in kwargs.items() if key in _DA5_SIMULATION_KWARGS}
+
+
+def random_baseline_fields(
+    *,
+    cfg: Mapping[str, Any],
+    state: Mapping[str, Any],
+    run_spec: Mapping[str, Any],
+    expectancy_r: Any,
+) -> dict[str, Any]:
+    """Study-index DA5 fields from ``vs_random_benchmark``. Failures → nulls.
+
+    Computed after the research bundle is written and hashed. Never persists
+    ``replica_expectancies``. Soft-resume / ``--rebuild-direction`` leave these
+    keys ``None`` (the null needs OHLCV + execution kwargs, not just trades).
+    """
+    parsed = _random_baseline_cfg(cfg)
+    empty = _empty_random_baseline_fields()
+    if not parsed["enabled"]:
+        return empty
+    trades = state.get("trades")
+    bars = _cell_bars(state)
+    if not isinstance(trades, pd.DataFrame) or trades.empty:
+        return empty
+    if bars is None:
+        return empty
+    instrument = str(state.get("instrument") or "")
+    inst = INSTRUMENTS.get(instrument)
+    if inst is None:
+        return empty
+    settings = _merged_backtest_settings(run_spec)
+    brackets = _cell_stop_take(settings, trades)
+    if brackets is None:
+        return empty
+    sl, tp = brackets
+    try:
+        result = vs_random_benchmark(
+            bars,
+            trades,
+            tick_size=inst.tick_size,
+            point_value=inst.point_value,
+            stop_loss_ticks=sl,
+            take_profit_ticks=tp,
+            execution_kwargs=_cell_execution_kwargs(run_spec, state, instrument=instrument),
+            n_replicas=int(parsed["n_replicas"]),
+            random_state=int(parsed["random_state"]),
+        )
+    except Exception:  # noqa: BLE001 — null must not fail a successful cell
+        return empty
+    if not isinstance(result, Mapping) or not result.get("available"):
+        return empty
+    null_mean = _coerce_index_float(result.get("null_expectancy_mean"))
+    observed = _coerce_index_float(expectancy_r)
+    minus = None if null_mean is None or observed is None else observed - null_mean
+    return {
+        "random_null_expectancy_r": null_mean,
+        "random_null_std_r": _coerce_index_float(result.get("null_expectancy_std")),
+        "random_p_value_ge": _coerce_index_float(result.get("p_value_greater_or_equal")),
+        "expectancy_minus_null_r": minus,
+    }
+
+
 def _failed_index_row(name: str) -> dict[str, Any]:
     row = {key: None for key in R18_INDEX_METRIC_KEYS}
     row.update({key: None for key in DA_DIRECTION_INDEX_KEYS})
+    row.update({key: None for key in DA_RANDOM_INDEX_KEYS})
     row["run_name"] = name
     row["execution_origin"] = "study"
     return row
@@ -287,7 +513,8 @@ def rebuild_direction_index(study_dir: str | Path) -> Path:
     """Fill DA2 keys on ``results_index.csv`` from bundle ``trades.parquet``.
 
     Never rewrites existing metric values. Collision fields stay ``None``
-    (DA1 diagnostic is not persisted in bundles). Idempotent. Atomic replace.
+    (DA1 diagnostic is not persisted in bundles). DA5 random-baseline keys
+    are left as-is (not recomputed). Idempotent. Atomic replace.
     """
     root = Path(study_dir)
     path = root / "results_index.csv"
@@ -387,6 +614,7 @@ def _index_row_from_existing_bundle(
     from ``prior_row`` / ``dataset_meta.json`` so soft-resume does not wipe
     ``dataset_id`` / ``instrument``. DA2 keys come from ``trades.parquet`` when
     present; collision copies stay ``None`` (DA1 diagnostic is in-memory only).
+    DA5 random-baseline keys stay ``None`` (null needs OHLCV + execution kwargs).
     """
     row = _failed_index_row(name)
     if prior_row is not None:
@@ -502,9 +730,11 @@ def execute_study_cell(
     """Execute one cell; always return ok/failed payload (never raise to pool)."""
     run_spec, base_directory = task
     name = str(run_spec["name"])
+    baseline_cfg = _random_baseline_cfg(run_spec.get(_DA5_RANDOM_BASELINE_KEY))
+    engine_spec = {key: value for key, value in run_spec.items() if key != _DA5_RANDOM_BASELINE_KEY}
     try:
         state = run_experiment(
-            run_spec,
+            engine_spec,
             base_directory=base_directory,
             execution_origin="study",
             cache_policy="read_write",
@@ -519,6 +749,17 @@ def execute_study_cell(
                 collision=state.get("direction_collision_diagnostic"),
             )
         )
+        try:
+            index_row.update(
+                random_baseline_fields(
+                    cfg=baseline_cfg,
+                    state=state,
+                    run_spec=engine_spec,
+                    expectancy_r=index_row.get("expectancy_r"),
+                )
+            )
+        except Exception:  # noqa: BLE001 — null must not fail a successful cell
+            index_row.update(_empty_random_baseline_fields())
         return {
             "status": "ok",
             "name": name,
@@ -973,7 +1214,17 @@ def run_study(
         )
         runs_by_name = {str(run["name"]): dict(run) for run in expansion.experiment["runs"]}
         executor_fn = cell_executor or execute_study_cell
-        tasks = [(runs_by_name[name], str(base_directory)) for name in todo]
+        report_cfg = (
+            spec.get("study", {}).get("report") if isinstance(spec.get("study"), Mapping) else None
+        )
+        baseline_cfg = _random_baseline_cfg(
+            report_cfg.get("random_baseline") if isinstance(report_cfg, Mapping) else None
+        )
+        tasks = []
+        for name in todo:
+            task_spec = dict(runs_by_name[name])
+            task_spec[_DA5_RANDOM_BASELINE_KEY] = baseline_cfg
+            tasks.append((task_spec, str(base_directory)))
 
         # Mark running before dispatch.
         ledger = load_ledger(out) or ledger

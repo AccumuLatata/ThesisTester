@@ -131,8 +131,10 @@ _REPORT_KEYS = frozenset(
         "group_by",
         "otf_baseline",
         "multiple_testing",
+        "random_baseline",
     }
 )
+_RANDOM_BASELINE_KEYS = frozenset({"enabled", "n_replicas", "random_state"})
 _STAGE_KEYS = frozenset({"mode", "include", "cells"})
 _MODE_RULE_TOP_KEYS = frozenset({"global_cluster", "anchor_rules"})
 _INDEX_PRIMARY_METRICS = frozenset(
@@ -766,6 +768,21 @@ def _validate_report(report: Mapping[str, Any], *, factor_keys: set[str]) -> Non
             raise StudySpecError("study.report.otf_baseline must include explicit enabled")
         if not isinstance(baseline_map["enabled"], bool):
             raise StudySpecError("study.report.otf_baseline.enabled must be a boolean")
+
+    random_baseline = report.get("random_baseline")
+    if random_baseline is not None:
+        random_map = _require_mapping(random_baseline, section="study.report.random_baseline")
+        _unknown_keys(random_map, _RANDOM_BASELINE_KEYS, section="study.report.random_baseline")
+        if "enabled" not in random_map:
+            raise StudySpecError("study.report.random_baseline must include explicit enabled")
+        if not isinstance(random_map["enabled"], bool):
+            raise StudySpecError("study.report.random_baseline.enabled must be a boolean")
+        if "n_replicas" in random_map:
+            _positive_int(random_map["n_replicas"], field="study.report.random_baseline.n_replicas")
+        if "random_state" in random_map:
+            seed = random_map["random_state"]
+            if isinstance(seed, bool) or not isinstance(seed, int):
+                raise StudySpecError("study.report.random_baseline.random_state must be an integer")
 
 
 def _require_nonempty_str(value: Any, *, field: str) -> str:
