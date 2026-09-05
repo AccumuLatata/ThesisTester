@@ -22,6 +22,7 @@ from thesistester.study.execute import (
     DA_RANDOM_INDEX_KEYS,
     R18_INDEX_METRIC_KEYS,
     STUDY_INDEX_KEYS,
+    _cell_execution_kwargs,
     _failed_index_row,
     _index_row_from_existing_bundle,
     _study_dir_lock,
@@ -29,6 +30,7 @@ from thesistester.study.execute import (
     direction_index_fields,
     execute_study_cell,
     prepare_study_expansion,
+    random_baseline_fields,
     rebuild_direction_index,
     run_study,
 )
@@ -1175,3 +1177,142 @@ def test_execute_study_cell_random_baseline_exception_leaves_ok(monkeypatch):
     assert payload["bundle"] is not None
     for key in DA_RANDOM_INDEX_KEYS:
         assert payload["index_row"][key] is None
+
+
+def test_cell_execution_kwargs_session_tz_only_when_flatten():
+    """YAML session_timezone must not leak when flatten is off (run_backtest)."""
+    leaked = _cell_execution_kwargs(
+        {
+            "backtest": {
+                "flat_by_session_close": False,
+                "session_timezone": "America/Chicago",
+                "no_new_entries_after": "15:00",
+                "exposure_policy": "single_position",
+            }
+        },
+        {},
+        instrument="ES",
+    )
+    assert leaked["session_timezone"] is None
+    assert leaked["flat_by_session_close"] is False
+    assert leaked["no_new_entries_after"] == "15:00"
+    assert leaked["exposure_policy"] == "single_position"
+
+    flattened = _cell_execution_kwargs(
+        {
+            "backtest": {
+                "flat_by_session_close": True,
+                "session_close_time": "16:00",
+            }
+        },
+        {},
+        instrument="ES",
+    )
+    assert flattened["session_timezone"] == "America/New_York"
+    assert flattened["session_close_time"] == "16:00"
+    assert flattened["entry_window_exchange_tz"] == "America/New_York"
+
+
+def test_execute_study_cell_random_baseline_uses_backtest_defaults(monkeypatch):
+    """Omitted SL/TP still compute a null — same 8/16 defaults as run_backtest."""
+    state = _da5_cell_state(expectancy_r=0.25)
+    monkeypatch.setattr("thesistester.study.execute.run_experiment", lambda *_a, **_k: state)
+    monkeypatch.setattr(
+        "thesistester.study.execute.build_research_bundle",
+        lambda _state: _fake_bundle_bytes("cell_defaults"),
+    )
+    captured: dict = {}
+
+    def fake_vs_random(df, trades, **kwargs):
+        captured["kwargs"] = kwargs
+        return {
+            "available": True,
+            "null_expectancy_mean": 0.05,
+            "null_expectancy_std": 0.01,
+            "p_value_greater_or_equal": 0.20,
+        }
+
+    monkeypatch.setattr("thesistester.study.execute.vs_random_benchmark", fake_vs_random)
+    payload = execute_study_cell(
+        (
+            {
+                "name": "cell_defaults",
+                "backtest": {"exposure_policy": "single_position"},
+                "_da5_random_baseline": {"enabled": True, "n_replicas": 8, "random_state": 7},
+            },
+            ".",
+        )
+    )
+    assert payload["status"] == "ok"
+    assert payload["index_row"]["random_null_expectancy_r"] == pytest.approx(0.05)
+    assert captured["kwargs"]["stop_loss_ticks"] == pytest.approx(8.0)
+    assert captured["kwargs"]["take_profit_ticks"] == pytest.approx(16.0)
+    assert captured["kwargs"]["execution_kwargs"]["exposure_policy"] == "single_position"
+
+
+def test_random_baseline_prefers_trade_brackets_over_spec(monkeypatch):
+    state = _da5_cell_state()
+    state["trades"] = _trades_df(directions=["long", "long"], r_values=[0.4, 0.1])
+    state["trades"]["stop_loss_ticks"] = [40.0, 40.0]
+    state["trades"]["take_profit_ticks"] = [80.0, 80.0]
+    captured: dict = {}
+
+    def fake_vs_random(df, trades, **kwargs):
+        captured["kwargs"] = kwargs
+        return {
+            "available": True,
+            "null_expectancy_mean": 0.0,
+            "null_expectancy_std": 0.1,
+            "p_value_greater_or_equal": 0.5,
+        }
+
+    monkeypatch.setattr("thesistester.study.execute.vs_random_benchmark", fake_vs_random)
+    fields = random_baseline_fields(
+        cfg={"enabled": True, "n_replicas": 8, "random_state": 1},
+        state=state,
+        run_spec={"backtest": {"stop_loss_ticks": 8, "take_profit_ticks": 16}},
+        expectancy_r=0.25,
+    )
+    assert fields["random_null_expectancy_r"] == pytest.approx(0.0)
+    assert captured["kwargs"]["stop_loss_ticks"] == pytest.approx(40.0)
+    assert captured["kwargs"]["take_profit_ticks"] == pytest.approx(80.0)
+
+
+def test_random_baseline_falls_back_to_state_data():
+    state = _da5_cell_state()
+    state["data"] = state.pop("levels")
+    fields = random_baseline_fields(
+        cfg={"enabled": True, "n_replicas": 8, "random_state": 2},
+        state=state,
+        run_spec={"backtest": {"stop_loss_ticks": 8, "take_profit_ticks": 16}},
+        expectancy_r=0.25,
+    )
+    assert fields["random_null_expectancy_r"] is not None
+    assert fields["random_p_value_ge"] is not None
+    assert 0.0 < float(fields["random_p_value_ge"]) <= 1.0
+    assert fields["expectancy_minus_null_r"] == pytest.approx(
+        0.25 - float(fields["random_null_expectancy_r"])
+    )
+
+
+def test_random_baseline_fields_real_vs_random_is_available():
+    state = _da5_cell_state(expectancy_r=0.25)
+    fields = random_baseline_fields(
+        cfg={"enabled": True, "n_replicas": 8, "random_state": 3},
+        state=state,
+        run_spec={
+            "backtest": {
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "exposure_policy": "single_position",
+                "session_timezone": "America/Chicago",
+                "flat_by_session_close": False,
+            }
+        },
+        expectancy_r=0.25,
+    )
+    assert fields["random_null_expectancy_r"] is not None
+    assert fields["random_null_std_r"] is not None
+    assert fields["random_p_value_ge"] is not None
+    assert 0.0 < float(fields["random_p_value_ge"]) <= 1.0
+    assert "replica_expectancies" not in fields

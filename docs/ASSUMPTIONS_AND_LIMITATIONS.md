@@ -315,7 +315,8 @@ This engine is for **research screening**, not proof of a durable edge.
   `random_null_expectancy_r` / `random_null_std_r` / `random_p_value_ge` /
   `expectancy_minus_null_r` to `results_index.csv` (not R18). The null is
   direction-matched random next-open entry on the same bars, same SL/TP, same
-  costs. `random_p_value_ge` is a diagnostic percentile, not a significance
+  costs (`run_backtest` defaults; `session_timezone` only when flatten is on).
+  `random_p_value_ge` is a diagnostic percentile, not a significance
   claim. Rank stays `primary_metric`. Soft-resume and
   `--rebuild-direction` leave DA5 keys null. Observatory derives `drift_class`
   at load (`above_null` / `at_null` / `unknown`).

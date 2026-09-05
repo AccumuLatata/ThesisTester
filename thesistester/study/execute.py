@@ -33,7 +33,7 @@ import pandas as pd
 
 from thesistester.analytics.metrics import direction_split_index_values
 from thesistester.analytics.overfitting import vs_random_benchmark
-from thesistester.api import run_experiment
+from thesistester.api import _BACKTEST_DEFAULTS, run_experiment
 from thesistester.config import INSTRUMENTS
 from thesistester.entry_window_policy import normalize_entry_window
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
@@ -262,7 +262,9 @@ def classify_directional_integrity(
     short_trade_count: int,
 ) -> str:
     """Label a cell from accepted-trade counts. Empty when ``trade_count == 0``."""
-    n = _direction_n(trade_count, long_n=int(long_trade_count), short_n=int(short_trade_count))
+    n = _direction_n(
+        trade_count, long_n=int(long_trade_count), short_n=int(short_trade_count)
+    )
     if n == 0:
         return "empty"
     if int(short_trade_count) == 0:
@@ -333,30 +335,96 @@ def _random_baseline_cfg(raw: Any) -> dict[str, Any]:
     }
 
 
+def _merged_backtest_settings(run_spec: Mapping[str, Any]) -> dict[str, Any]:
+    """``run_backtest`` defaults ⊕ cell backtest. Unknown keys dropped (fail-soft)."""
+    raw = dict(run_spec.get("backtest") or {})
+    known = {key: value for key, value in raw.items() if key in _BACKTEST_DEFAULTS}
+    return {**_BACKTEST_DEFAULTS, **known}
+
+
+def _cell_stop_take(
+    settings: Mapping[str, Any],
+    trades: pd.DataFrame,
+) -> tuple[float, float] | None:
+    """SL/TP from accepted trades (R15) else merged backtest defaults."""
+    sl = None
+    tp = None
+    if "stop_loss_ticks" in trades.columns and not trades.empty:
+        sl = _coerce_index_float(trades["stop_loss_ticks"].iloc[0])
+    if "take_profit_ticks" in trades.columns and not trades.empty:
+        tp = _coerce_index_float(trades["take_profit_ticks"].iloc[0])
+    if sl is None:
+        sl = _coerce_index_float(settings.get("stop_loss_ticks"))
+    if tp is None:
+        tp = _coerce_index_float(settings.get("take_profit_ticks"))
+    if sl is None or tp is None or sl <= 0 or tp <= 0:
+        return None
+    return sl, tp
+
+
+def _cell_bars(state: Mapping[str, Any]) -> pd.DataFrame | None:
+    """OHLCV used by the cell backtest (``levels``), else ``data``."""
+    for key in ("levels", "data"):
+        frame = state.get(key)
+        if isinstance(frame, pd.DataFrame) and len(frame) >= 2:
+            return frame
+    return None
+
+
 def _cell_execution_kwargs(
     run_spec: Mapping[str, Any],
     state: Mapping[str, Any],
     *,
     instrument: str,
 ) -> dict[str, Any]:
-    """Lock-fidelity simulate_trades kwargs from the cell backtest + state."""
-    backtest = dict(run_spec.get("backtest") or {})
-    kwargs: dict[str, Any] = {}
-    for key in _DA5_SIMULATION_KWARGS:
-        if key in backtest:
-            kwargs[key] = backtest[key]
+    """Lock-fidelity ``simulate_trades`` kwargs mirroring ``run_backtest``.
+
+    ``session_timezone`` is passed only when ``flat_by_session_close`` is on
+    (same as ``run_backtest``). A YAML timezone must not leak onto a
+    flatten-off null — that would re-localize ``no_new_entries_after``.
+    """
+    settings = _merged_backtest_settings(run_spec)
     inst = INSTRUMENTS.get(instrument)
-    raw_window = backtest.get("entry_window")
-    if raw_window is not None and inst is not None:
+    flatten = bool(settings.get("flat_by_session_close"))
+    session_timezone = None
+    if flatten:
+        session_timezone = settings.get("session_timezone")
+        if not session_timezone and inst is not None:
+            session_timezone = inst.exchange_tz
+    cooldown = settings.get("cooldown_bars_after_exit")
+    try:
+        cooldown_bars = 0 if cooldown is None else int(cooldown)
+    except (TypeError, ValueError):
+        cooldown_bars = 0
+    kwargs: dict[str, Any] = {
+        "max_holding_bars": settings.get("max_holding_bars"),
+        "allow_same_bar_exit": bool(settings.get("allow_same_bar_exit")),
+        "commission_per_side": settings.get("commission_per_side"),
+        "slippage_ticks": settings.get("slippage_ticks"),
+        "flat_by_session_close": flatten,
+        "session_close_time": settings.get("session_close_time"),
+        "session_timezone": session_timezone,
+        "no_new_entries_after": settings.get("no_new_entries_after"),
+        "exposure_policy": str(settings.get("exposure_policy")),
+        "cooldown_bars_after_exit": cooldown_bars,
+        "intrabar_model": str(settings.get("intrabar_model")),
+        "breakeven_after_r": settings.get("breakeven_after_r"),
+        "trailing_after_r": settings.get("trailing_after_r"),
+        "trailing_distance_ticks": settings.get("trailing_distance_ticks"),
+        "same_bar_opposite_direction": settings.get("same_bar_opposite_direction")
+        or "legacy",
+    }
+    if inst is not None:
         try:
-            entry_window = normalize_entry_window(raw_window, exchange_tz=inst.exchange_tz)
+            entry_window = normalize_entry_window(
+                settings.get("entry_window"),
+                exchange_tz=inst.exchange_tz,
+            )
         except (TypeError, ValueError):
-            kwargs.pop("entry_window", None)
+            kwargs["entry_window"] = None
         else:
             kwargs["entry_window"] = entry_window if entry_window.get("enabled") else None
-            kwargs["entry_window_exchange_tz"] = inst.exchange_tz
-    if bool(kwargs.get("flat_by_session_close")) and inst is not None:
-        kwargs["session_timezone"] = backtest.get("session_timezone") or inst.exchange_tz
+        kwargs["entry_window_exchange_tz"] = inst.exchange_tz
     if state.get("subtimeframe_data") is not None:
         kwargs["subtimeframe_data"] = state["subtimeframe_data"]
     provenance = state.get("ingestion_provenance")
@@ -386,28 +454,28 @@ def random_baseline_fields(
     if not parsed["enabled"]:
         return empty
     trades = state.get("trades")
-    levels = state.get("levels")
+    bars = _cell_bars(state)
     if not isinstance(trades, pd.DataFrame) or trades.empty:
         return empty
-    if not isinstance(levels, pd.DataFrame) or len(levels) < 2:
+    if bars is None:
         return empty
     instrument = str(state.get("instrument") or "")
     inst = INSTRUMENTS.get(instrument)
     if inst is None:
         return empty
-    backtest = dict(run_spec.get("backtest") or {})
-    sl = backtest.get("stop_loss_ticks")
-    tp = backtest.get("take_profit_ticks")
-    if sl is None or tp is None:
+    settings = _merged_backtest_settings(run_spec)
+    brackets = _cell_stop_take(settings, trades)
+    if brackets is None:
         return empty
+    sl, tp = brackets
     try:
         result = vs_random_benchmark(
-            levels,
+            bars,
             trades,
             tick_size=inst.tick_size,
             point_value=inst.point_value,
-            stop_loss_ticks=float(sl),
-            take_profit_ticks=float(tp),
+            stop_loss_ticks=sl,
+            take_profit_ticks=tp,
             execution_kwargs=_cell_execution_kwargs(run_spec, state, instrument=instrument),
             n_replicas=int(parsed["n_replicas"]),
             random_state=int(parsed["random_state"]),
