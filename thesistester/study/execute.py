@@ -203,6 +203,14 @@ def build_index_row_from_state(
     }
 
 
+def _direction_n(trade_count: Any, *, long_n: int, short_n: int) -> int:
+    """Accepted-trade N for DA2 share / class. Non-finite → long+short."""
+    count = _coerce_index_float(trade_count)
+    if count is None or not math.isfinite(count):
+        count = float(int(long_n) + int(short_n))
+    return int(count)
+
+
 def classify_directional_integrity(
     *,
     trade_count: Any,
@@ -210,10 +218,9 @@ def classify_directional_integrity(
     short_trade_count: int,
 ) -> str:
     """Label a cell from accepted-trade counts. Empty when ``trade_count == 0``."""
-    count = _coerce_index_float(trade_count)
-    if count is None:
-        count = float(int(long_trade_count) + int(short_trade_count))
-    n = int(count)
+    n = _direction_n(
+        trade_count, long_n=int(long_trade_count), short_n=int(short_trade_count)
+    )
     if n == 0:
         return "empty"
     if int(short_trade_count) == 0:
@@ -238,10 +245,7 @@ def direction_index_fields(
     split = direction_split_index_values(trades)
     long_n = int(split["long_trade_count"] or 0)
     short_n = int(split["short_trade_count"] or 0)
-    count = _coerce_index_float(trade_count)
-    if count is None:
-        count = float(long_n + short_n)
-    n = int(count)
+    n = _direction_n(trade_count, long_n=long_n, short_n=short_n)
     long_share = (long_n / n) if n else None
     pairs: Any = None
     resolved_long: Any = None
@@ -293,27 +297,28 @@ def rebuild_direction_index(study_dir: str | Path) -> Path:
     if "run_name" not in frame.columns:
         raise StudySpecError(f"{path} must include a run_name column")
     existing_columns = list(frame.columns)
-    for key in DA_DIRECTION_INDEX_KEYS:
-        if key not in frame.columns:
-            frame[key] = None
+    filled: dict[str, list[Any]] = {key: [] for key in DA_DIRECTION_INDEX_KEYS}
+    none_fields = {key: None for key in DA_DIRECTION_INDEX_KEYS}
     for idx in frame.index:
         bundle_rel = frame.at[idx, "bundle_path"] if "bundle_path" in frame.columns else None
         if _metric_missing(bundle_rel):
-            for key in DA_DIRECTION_INDEX_KEYS:
-                frame.at[idx, key] = None
+            for key, value in none_fields.items():
+                filled[key].append(value)
             continue
         resolved = resolve_cell_bundle(root, str(bundle_rel).strip())
         trades = _read_bundle_trades(resolved) if resolved is not None else None
         if trades is None:
-            for key in DA_DIRECTION_INDEX_KEYS:
-                frame.at[idx, key] = None
+            for key, value in none_fields.items():
+                filled[key].append(value)
             continue
         trade_count = frame.at[idx, "trade_count"] if "trade_count" in frame.columns else None
         fields = direction_index_fields(trades, trade_count=trade_count, collision=None)
         fields["collision_pairs"] = None
         fields["collision_resolved_long"] = None
         for key in DA_DIRECTION_INDEX_KEYS:
-            frame.at[idx, key] = fields[key]
+            filled[key].append(fields[key])
+    for key, values in filled.items():
+        frame[key] = values
     extras = [column for column in existing_columns if column not in STUDY_INDEX_KEYS]
     ordered = [column for column in STUDY_INDEX_KEYS if column in frame.columns] + extras
     frame = frame.loc[:, ordered]
@@ -380,7 +385,8 @@ def _index_row_from_existing_bundle(
     Rehydrate core trade metrics from ``trade_summary.json`` so report ranking
     stays honest without re-running the cell. Preserve non-null identity fields
     from ``prior_row`` / ``dataset_meta.json`` so soft-resume does not wipe
-    ``dataset_id`` / ``instrument``.
+    ``dataset_id`` / ``instrument``. DA2 keys come from ``trades.parquet`` when
+    present; collision copies stay ``None`` (DA1 diagnostic is in-memory only).
     """
     row = _failed_index_row(name)
     if prior_row is not None:
@@ -405,6 +411,15 @@ def _index_row_from_existing_bundle(
             row[key] = summary.get(key)
     row["profit_factor"] = _coerce_index_float(summary.get("profit_factor"))
     row["win_rate"] = _coerce_index_float(summary.get("win_rate"))
+    trades = _read_bundle_trades(bundle_path)
+    if trades is not None:
+        row.update(
+            direction_index_fields(
+                trades,
+                trade_count=row.get("trade_count"),
+                collision=None,
+            )
+        )
     return row
 
 

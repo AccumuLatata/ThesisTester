@@ -22,6 +22,7 @@ from thesistester.study.execute import (
     R18_INDEX_METRIC_KEYS,
     STUDY_INDEX_KEYS,
     _failed_index_row,
+    _index_row_from_existing_bundle,
     _study_dir_lock,
     build_index_row_from_state,
     direction_index_fields,
@@ -496,8 +497,6 @@ def test_soft_resume_rehydrates_metrics_when_index_row_missing(tmp_path: Path):
 
 
 def test_soft_resume_rehydrate_preserves_identity_from_prior_and_bundle(tmp_path: Path):
-    from thesistester.study.execute import _index_row_from_existing_bundle
-
     name = "cell_id"
     bundle_name = f"{name}.research.zip"
     (tmp_path / bundle_name).write_bytes(_fake_bundle_bytes(name))
@@ -522,11 +521,16 @@ def test_soft_resume_rehydrate_preserves_identity_from_prior_and_bundle(tmp_path
     assert row["instrument"] == "NQ"
     assert row["cache_outcome"] == "hit"
     assert float(row["profit_factor"]) == pytest.approx(1.5)
+    # No trades.parquet → DA keys stay the failed-row None seed (not invented).
+    for key in DA_DIRECTION_INDEX_KEYS:
+        assert row[key] is None
 
     # No prior row → fall back to dataset_meta.json inside the zip.
     row2 = _index_row_from_existing_bundle(name, output_dir=tmp_path, bundle_rel=bundle_name)
     assert row2["dataset_id"] == "ds-test"
     assert row2["instrument"] == "ES"
+    for key in DA_DIRECTION_INDEX_KEYS:
+        assert row2[key] is None
 
 
 def test_soft_resume_repairs_poisoned_null_metric_ok_row(tmp_path: Path):
@@ -860,6 +864,13 @@ def test_direction_index_fields_mixed_and_long_only():
     assert empty["directional_integrity"] == "empty"
     assert empty["long_share"] is None
 
+    nonfinite = direction_index_fields(
+        _trades_df(directions=["long", "long"], r_values=[1.0, 0.5]),
+        trade_count=float("inf"),
+    )
+    assert nonfinite["directional_integrity"] == "long_only"
+    assert nonfinite["long_share"] == pytest.approx(1.0)
+
 
 def test_failed_index_row_seeds_da_keys_as_none():
     row = _failed_index_row("cell_x")
@@ -995,5 +1006,21 @@ def test_rebuild_direction_index_fills_only_da_keys(tmp_path: Path):
     assert int(rebuilt.iloc[0]["long_trade_count"]) == 2
     assert int(rebuilt.iloc[0]["short_trade_count"]) == 1
     assert pd.isna(rebuilt.iloc[0]["collision_pairs"])
+    assert rebuilt.iloc[0]["directional_integrity"] == "mixed"
+    assert rebuilt["directional_integrity"].dtype == object
     again = pd.read_csv(rebuild_direction_index(study_dir))
     assert again.to_csv(index=False) == rebuilt.to_csv(index=False)
+
+
+def test_soft_resume_rehydrate_fills_da_keys_from_trades_parquet(tmp_path: Path):
+    name = "cell_dir"
+    bundle_name = f"{name}.research.zip"
+    trades = _trades_df(directions=["long", "long", "short"], r_values=[1.0, 0.5, -0.2])
+    (tmp_path / bundle_name).write_bytes(_zip_with_trades(trades))
+    row = _index_row_from_existing_bundle(name, output_dir=tmp_path, bundle_rel=bundle_name)
+    assert row["directional_integrity"] == "mixed"
+    assert row["long_trade_count"] == 2
+    assert row["short_trade_count"] == 1
+    assert row["long_share"] == pytest.approx(2 / 3)
+    assert row["collision_pairs"] is None
+    assert row["collision_resolved_long"] is None
