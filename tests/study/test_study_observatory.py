@@ -1328,9 +1328,7 @@ def test_directional_integrity_counts_and_heatmap_ls(tmp_path: Path):
     index["long_share"] = 1.0
     index["directional_integrity"] = "long_only"
     index.to_csv(study_dir / "results_index.csv", index=False)
-    frame = attach_program_b_projections(
-        load_observatory_frame(roots=(tmp_path.resolve(),)).frame
-    )
+    frame = attach_program_b_projections(load_observatory_frame(roots=(tmp_path.resolve(),)).frame)
     assert frame.iloc[0]["directional_integrity"] == "long_only"
     assert int(frame.iloc[0]["long_trade_count"]) == 40
     assert int(frame.iloc[0]["short_trade_count"]) == 0

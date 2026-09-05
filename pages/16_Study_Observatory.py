@@ -636,9 +636,7 @@ def _render_program_b_lens(frame: pd.DataFrame) -> None:
             else:
                 long_n = rec.get("long_trade_count")
                 short_n = rec.get("short_trade_count")
-                hover_row.append(
-                    f"{core} × {partner}: {desk} · L {long_n} / S {short_n}"
-                )
+                hover_row.append(f"{core} × {partner}: {desk} · L {long_n} / S {short_n}")
         z.append(z_row)
         hover.append(hover_row)
     fig = go.Figure(

@@ -907,9 +907,14 @@ def test_execute_study_cell_attaches_direction_split(monkeypatch):
     assert row["collision_pairs"] == 2
     assert row["collision_resolved_long"] == 1
     assert "bundle_path" not in row
-    assert tuple(build_index_row_from_state(
-        name="cell_mixed", state=state, bundle=_fake_bundle_bytes("cell_mixed")
-    ).keys()) == R18_INDEX_METRIC_KEYS
+    assert (
+        tuple(
+            build_index_row_from_state(
+                name="cell_mixed", state=state, bundle=_fake_bundle_bytes("cell_mixed")
+            ).keys()
+        )
+        == R18_INDEX_METRIC_KEYS
+    )
 
 
 def test_execute_study_cell_long_only_state(monkeypatch):
