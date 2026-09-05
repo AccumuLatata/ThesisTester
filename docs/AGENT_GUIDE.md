@@ -741,5 +741,5 @@ When OTF is enabled in walk-forward:
 - **Developing week/month VWAP (WMV):** `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV0–WMV2 complete).
 - **Anchor-only (AO):** `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO1 implemented; empty rules + `min_valid=0` only).
 - **Tick VAP (TV):** `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV1–TV4 landed; series complete). Tick-last ingest for prior VA only; attach paths on Data / Studies Build; no ticks → those nine columns absent; do not retick VWAP / OR / 3c.
-- **A-period POC parity (AP):** `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP0 locked). APOC remains a 1-minute typical-price proxy until AP1's reproducible Quantower evidence selects a source; do not bundle APOC work with TV prior-VA changes.
+- **A-period POC parity (AP):** `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP0 locked). Product APOC is derived-1m typical-price, even when the file is 15s HE; do not pass raw 15s bars into `compute_apoc_levels` and call that the product object. AP2 is opt-in; `apoc_enabled=True` (product default) is not a license to change math. Goldens do not cover APOC. Do not bundle APOC work with TV prior-VA or rolling-POC VAP.
 - **Voice sidecar ops:** `docs/VOICE_SIDECAR_OPS.md`.
