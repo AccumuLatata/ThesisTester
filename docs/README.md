@@ -23,6 +23,7 @@ research snapshots live under [`research/`](research/README.md).
 | [PROGRAM_B_OPERATOR_RUNBOOK.md](PROGRAM_B_OPERATOR_RUNBOOK.md) | Bot-facing Program B run list + CLI (YAMLs in `examples/studies/program_b/`) |
 | [LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md) | Program A: desk product funnel (token inventory + staged studies; promote/Admit/L2 power locks; executed) |
 | [ANCHOR_ONLY_IMPLEMENTATION_PLAN.md](ANCHOR_ONLY_IMPLEMENTATION_PLAN.md) | AO — opt-in `anchor_rules` with no partners (`min_valid_confluences: 0`); **AO1 implemented** |
+| [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) | AP — Quantower A-period POC parity; **AP0 locked**; evidence + opt-in source before any default APOC math change |
 | [LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md](LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) | Handoff: rewrite Notion desk contract without losing logging/roadmap |
 | [ANCHOR_CONFLUENCE.md](ANCHOR_CONFLUENCE.md) | Anchor-confluence workflow guide |
 | [VOICE_SIDECAR_OPS.md](VOICE_SIDECAR_OPS.md) | Localhost realtime voice sidecar ops |
@@ -63,7 +64,7 @@ Engine / data contracts:
 - [LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md](LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md) (LC — catalog completeness/correctness for already-emitted levels; LC0–LC4 landed; no new price series)
 - [WVWAP_MVWAP_IMPLEMENTATION_PLAN.md](WVWAP_MVWAP_IMPLEMENTATION_PLAN.md) (WMV — developing `wVWAP` / `mVWAP`; **WMV0–WMV2 complete**; same `session_vwap_enabled` gate as `dVWAP`)
 - [TICK_VAP_IMPLEMENTATION_PLAN.md](TICK_VAP_IMPLEMENTATION_PLAN.md) (TV — Quantower tick-last ingest for prior VA/POC only; **TV1–TV4 landed**; series complete; fail-closed without ticks; no golden regen)
-- [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) (AP — Quantower A-period POC parity investigation; **AP0 locked**; evidence collection and candidate comparison precede any APOC engine change)
+- [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) (AP — Quantower A-period POC parity; **AP0 locked**, series not complete; production default stays 1m typical until a later versioned cutover)
 
 ## Research (demoted snapshots)
 

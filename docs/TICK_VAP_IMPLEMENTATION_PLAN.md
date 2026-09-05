@@ -10,7 +10,7 @@
 
 **Does not reopen:** R9–R22 milestone text; AH / RS execute semantics; SIA ingest defaults; SW clocks; WMV `dVWAP*` math; AO detector; LC catalog token *names*; kill-list / fresh-round StudySpec; Help-corpus *path* moves; `simulate_trades` / R12 / 3c / touch.
 
-**Amends:** LC locked contract #3 (prior-profile allocation) — TV3 added the one-line pointer on the LC plan. This file is the living SoT for `pd*` / `pw*` / `pm*` VA allocation. Living honesty docs (`ASSUMPTIONS_AND_LIMITATIONS.md`, `POINT_IN_TIME_GUARANTEES.md`, `METRICS_GLOSSARY.md`) were updated in TV3; Help/UI copy landed in TV4.
+**Amends:** LC locked contract #3 (prior-profile allocation) — TV3 added the one-line pointer on the LC plan. This file is the living SoT for `pd*` / `pw*` / `pm*` VA allocation. Living honesty docs (`ASSUMPTIONS_AND_LIMITATIONS.md`, `POINT_IN_TIME_GUARANTEES.md`, `METRICS_GLOSSARY.md`) were updated in TV3; Help/UI copy landed in TV4. APOC allocation investigation is `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP); this TV series still does not rewrite APOC.
 
 **Related living docs (amend only the sentence that is newly true, in the PR that makes it true):**  
 `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/POINT_IN_TIME_GUARANTEES.md`, `docs/METRICS_GLOSSARY.md`, `docs/STUDY_RUNNER.md`, `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/AGENT_GUIDE.md`.
@@ -64,7 +64,7 @@ Series complete when:
 | Fail-closed: no ticks → no VA columns → named-VA refuse / `failed` | Silent 1m-typical fallback under `pdVA*` / `pw*` / `pm*` |
 | Product day aggregation 4 → 1 | Treating 8-tick weekly as a substitute for tick allocation |
 | `LEVEL_ENGINE_VERSION` 11 | Developing `dVAH` / `dVAL` / `dPOC` |
-| Honesty docs + optional env-gated session-20 hook | APOC / rolling-POC VAP rewrite |
+| Honesty docs + optional env-gated session-20 hook | APOC VAP rewrite (follow-on: `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md`; AP0 locked). Rolling-POC VAP rewrite remains parked |
 | | Bid/ask / aggressor VAP; TPO letters |
 | | `OR_High` 4.00 15s-vs-chart gap; `prevSettlement` ≠ CME settle |
 | | Kill-list / fresh-round / flatten / OTF matrix |
@@ -724,7 +724,7 @@ Keep Help paths unchanged. Mark this plan series complete.
 - Tick `dVWAP*` / `wVWAP` / `mVWAP`
 - Touch / 3c / R12 on ticks
 - Developing `dVAH` / `dVAL` / `dPOC`
-- APOC / rolling-POC allocation change
+- APOC allocation change (follow-on AP series; rolling-POC VAP still parked here)
 - Bid/ask / aggressor VAP; TPO
 - `va_source: typical_mvp` same-name alias
 - 8-tick weekly as a substitute for tick allocation
