@@ -322,9 +322,9 @@ skipped signals, blocking trade, exposure_group_key
 | Control / value | Meaning | Common pitfall |
 |---|---|---|
 | `allow_all` (default) | Every executable signal may trade; overlapping signals are independent | Inflates trade count vs a real one-position book; cooldown is a no-op here |
-| `single_position` | At most one open trade at a time (any direction/setup) | Later signals skip as `overlapping_position` |
-| `single_direction` | At most one open trade per direction (`long` / `short`) | Opposite side can still overlap |
-| `single_setup` | At most one open trade per setup group. Backtest key order: `setup_name` → `zone_id` → `level_source_label` → `level_names` → else `trigger\|direction` | Shared `level_names` can collide even when zone labels differ; trigger/direction is last resort |
+| `single_position` | At most one open trade at a time (any direction/setup) | Later signals skip as `overlapping_position`. **`touch` + `direction: both` is long-only** — the same-bar short is always skipped (`docs/ASSUMPTIONS_AND_LIMITATIONS.md` §4b) |
+| `single_direction` | At most one open trade per direction (`long` / `short`) | Opposite side can still overlap; `touch` + `both` still opens a hedged pair on the same bar |
+| `single_setup` | At most one open trade per setup group. Backtest key order: `setup_name` → `zone_id` → `level_source_label` → `level_names` → else `trigger\|direction` | Shared `level_names` can collide even when zone labels differ; skip reason is `overlapping_setup`. Same `touch`+`both` long-only artefact when the group key is shared; the fallback key includes direction and would hedge |
 | `Cooldown bars after exit` | Under `single_*` only: after a blocking trade exits, wait this many bars before admitting another in the same exposure group | No-op under `allow_all`; skip reason is `cooldown_active` when entry is after exit but inside cooldown |
 
 **How admission works (Backtest).**

@@ -235,6 +235,39 @@ This engine is for **research screening**, not proof of a durable edge.
   converted — never localized directly as the bucket/display TZ. Invalid IANA
   timezone keys fail closed at normalize.
 
+### 4b) Direction attribution under `direction: both` (verified 2026-09-05)
+- `touch` is direction-agnostic (`bar.low <= zone_high and bar.high >= zone_low`).
+  With `direction: both` the loop is zone-then-`["long", "short"]`, so every
+  touched zone emits a **long and a short candidate** with the same `bar_index`,
+  next-bar `entry_bar_index`, and entry price; the long has the lower `signal_id`.
+- Restrictive policies sort candidates by `(entry_bar_index, bar_idx, signal_id)`.
+  Under `single_position` the long is admitted and the same-entry-bar short is
+  skipped as `overlapping_position`. Under `single_setup` **with a shared group
+  key** (typical: same `level_names`) the same long-only admission happens and
+  the skip reason is `overlapping_setup`, not `overlapping_position`. The
+  fallback group key includes `direction` and would hedge. **Accepted trades
+  are long-only** under the Program A/B lock (`single_position`). Occupancy
+  still skips later touches while that long is open.
+- Under `allow_all` and `single_direction` both sides fill on the same bar at
+  the same price (a hedged pair). There is no exposure policy under which
+  `touch` + `both` is a long-vs-short test of a level.
+- Specific to `touch`. `reject`, `break`, `reclaim`, and `3c` arrival condition
+  on `close` vs zone edge or tested level, so long and short are mutually
+  exclusive on a bar **within one zone**; measured trade sets under the same
+  lock are ≈50/50. Rare cross-zone same-bar pairs remain possible for
+  `reject` / `reclaim` and are resolved by `signal_id` order.
+- Consequence: Program A L1 **scalp** (`touch`;
+  `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` §6.0) and Program B Run 1
+  (`touch`; `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` §1) are **long-only samples**.
+  Their verdicts describe buying a level touch only. The Program A `3c` swing
+  product is two-sided and unaffected. Classic Backtest / Setup Builder with
+  the same lock is the same object.
+- Remediation series: `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md`
+  (**DA**, not Discuss Intelligence DI). Legacy behaviour is unchanged and
+  stays the default; DA adds a diagnostic, a direction split, an opt-in
+  same-bar policy, and approach-side triggers (`fade` / `continuation`)
+  behind new tokens.
+
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
 - When `trigger_timeframe` is non-base, trigger evaluation is performed on resampled trigger candles, and `trigger_timestamp` stores trigger-candle completion/actionability time.

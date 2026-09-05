@@ -302,6 +302,12 @@ L7  Transfer                    ES/MES survivors only; re-audit dollars; then WF
 
 Do not skip ahead because a cell is green. Do not put a killed scalp name back on the scalp map because a 30m ToD slice was green.
 
+> **L1 scalp (`touch`) is a long-only sample.** `touch` + `direction: both` +
+> `single_position` admits the long and skips the same-bar short on every touch
+> (`docs/ASSUMPTIONS_AND_LIMITATIONS.md` §4b). The scalp kill list and the ONH
+> survivor describe buying a touch only. Remediation:
+> `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA).
+
 ### 6.0 Locks (L0)
 
 | Lock | Scalp | Swing |

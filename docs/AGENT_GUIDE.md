@@ -742,4 +742,5 @@ When OTF is enabled in walk-forward:
 - **Anchor-only (AO):** `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO1 implemented; empty rules + `min_valid=0` only).
 - **Tick VAP (TV):** `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV1–TV4 landed; series complete). Tick-last ingest for prior VA only; attach paths on Data / Studies Build; no ticks → those nine columns absent; do not retick VWAP / OR / 3c.
 - **A-period POC parity (AP):** `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP1 implemented — evidence collection pending). APOC remains a 1-minute typical-price proxy until AP1's reproducible Quantower evidence selects a source; do not import `apoc_candidates` from production APOC; do not bundle APOC work with TV prior-VA changes.
+- **Directional attribution (DA):** `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA0 locked). `touch` + `direction: both` + `single_position` is a long-only sample. Series code is **DA**; **DI is Discuss Intelligence**. Do not edit `_check_touch` or the candidate sort key. Do not rerun Program B on `touch` expecting shorts.
 - **Voice sidecar ops:** `docs/VOICE_SIDECAR_OPS.md`.
