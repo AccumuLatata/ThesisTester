@@ -315,7 +315,8 @@ screening every signal independently (legacy default).
 **Related terms.** exposure, exposure policy, Policy, allow_all, single_position,
 single_direction, single_setup, cooldown, cooldown bars after exit,
 overlapping_position, overlapping_direction, overlapping_setup, cooldown_active,
-skipped signals, blocking trade, exposure_group_key
+direction_conflict, same_bar_opposite_direction, skipped signals, blocking trade,
+exposure_group_key
 
 **Key settings.**
 
@@ -326,6 +327,7 @@ skipped signals, blocking trade, exposure_group_key
 | `single_direction` | At most one open trade per direction (`long` / `short`) | Opposite side can still overlap; `touch` + `both` still opens a hedged pair on the same bar |
 | `single_setup` | At most one open trade per setup group. Backtest key order: `setup_name` → `zone_id` → `level_source_label` → `level_names` → else `trigger\|direction` | Shared `level_names` can collide even when zone labels differ; skip reason is `overlapping_setup`. Same `touch`+`both` long-only artefact when the group key is shared; the fallback key includes direction and would hedge |
 | `Cooldown bars after exit` | Under `single_*` only: after a blocking trade exits, wait this many bars before admitting another in the same exposure group | No-op under `allow_all`; skip reason is `cooldown_active` when entry is after exit but inside cooldown |
+| `same_bar_opposite_direction` (`legacy`) | Opt-in same-bar guard: `skip_both` / `raise` | Default unchanged; no-op under `allow_all`/`single_direction` |
 
 **How admission works (Backtest).**
 

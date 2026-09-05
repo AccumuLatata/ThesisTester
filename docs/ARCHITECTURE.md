@@ -921,8 +921,9 @@ the facade. The session-state contract below is therefore unchanged.
 `thesistester/engine/intrabar.py` owns deterministic event ordering only.
 `simulate_trades()` retains trade admission, bracket prices, costs, bar-count
 holding limits, forced exits, and parent-bar MAE/MFE. Its new keyword-only
-inputs are `intrabar_model`, optional `subtimeframe_data`, and
-`return_result`.
+inputs are `intrabar_model`, optional `subtimeframe_data`,
+`return_result`, and DA3 `same_bar_opposite_direction` (`legacy` /
+`skip_both` / `raise`; default `legacy`).
 
 The default `sl_first` branch preserves the historical DataFrame schema and
 return types exactly. `return_result=True` returns `SimulationResult` with
@@ -934,8 +935,14 @@ after admission from `ordered_candidates` + accepted trades +
 rows). It is **not** a `_BACKTEST_META_KEYS` / `trade_summary.json`
 member and is not hashed.
 `api.run_backtest` / `run_experiment` copy it onto the in-memory result/state
-under `direction_collision_diagnostic`. Non-legacy trades append audit
+under `direction_collision_diagnostic`. DA3 reports the active
+`same_bar_opposite_direction` token in `policy`. `skip_both` collisions
+appear as `resolved_none` without a second pass; conflicted candidates stay
+in `ordered_candidates`. The policy is a no-op under `allow_all` and
+`single_direction`. Non-legacy trades append audit
 columns; existing columns are neither removed nor retyped.
+Study `constants.backtest.same_bar_opposite_direction` is optional (omit =
+legacy) and expand deep-copies the whole `backtest` mapping onto each run.
 
 `path_open_proximity` is a pure OHLC heuristic. `subtimeframe` has a strict
 dual-resolution boundary: lower rows must be sorted, duplicate-free, strictly
@@ -1345,7 +1352,8 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `backtest_intrabar_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R12 schema-versioned both-hit/ambiguity diagnostic |
 | `backtest_exit_management_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R13 schema-versioned BE/trailing parameter snapshot |
 | `backtest_exit_management_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R13 schema-versioned BE/TRAIL counts and adjustment diagnostics |
-| `direction_collision_diagnostic` | `run_backtest` / `run_experiment` (DA1) | in-memory only | Same-bar opposite-direction pair counts. **Not** in `_BACKTEST_META_KEYS` / hashed `session_keys`. |
+| `direction_collision_diagnostic` | `run_backtest` / `run_experiment` (DA1) | in-memory only | Same-bar opposite-direction pair counts. **Not** in `_BACKTEST_META_KEYS` / hashed `session_keys`. DA3 `policy` reports `legacy` / `skip_both` / `raise`. |
+| `backtest_same_bar_opposite_direction` | Backtest (`pages/7_Backtest.py`) advanced expander | Backtest `simulate_trades`; save/reset via `execution_defaults` | Widget token `legacy` (default) / `skip_both` / `raise`. Not a hashed bundle key. |
 | DA2 study-index keys (`long_trade_count`, `short_trade_count`, `long_expectancy_r`, `short_expectancy_r`, `long_share`, `directional_integrity`, `collision_pairs`, `collision_resolved_long`) | `execute_study_cell` / `_index_row_from_existing_bundle` / `study report --rebuild-direction` | `results_index.csv` (`STUDY_INDEX_KEYS` only; not R18 / not hashed) | Long/short n and E plus integrity class. Collision copies are live-cell only. |
 | `grid_results` | Grid (`pages/8_Grid_Search.py`) | Validation/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` one row per SL/TP cell |
 | `best_grid_result` | Grid (`pages/8_Grid_Search.py`) | Report artifact (`thesistester/reporting.py`) | `dict` best ranked cell |
@@ -1362,7 +1370,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `entry_window_armed` | Time Analysis Promote (SW4) | Backtest / Time Analysis | `bool` — pending re-sim after Promote |
 | `entry_window_promote_provenance` | Time Analysis Promote (SW4) | banners / audit | Promote source, counts, `sample_warning`, status |
 | `grid_entry_window` | Grid Search (SW5) | Validation inherit / artifacts | Normalized window used for last grid run |
-| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window` + `after_entry_cutoff`) |
+| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window` + `after_entry_cutoff` + DA3 `direction_conflict`) |
 | `validation_summary` | Validation (`pages/10_Validation.py`) | Validation display/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
 | `walk_forward_results` | Validation/R18 API | Validation display, Report, Research Bundles | R14 per-fold `pd.DataFrame` with bar/session boundaries and IS/OOS metrics |
 | `walk_forward_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R14 schema-version-2 summary including retention and stitched OOS status |

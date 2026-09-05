@@ -285,6 +285,19 @@ This engine is for **research screening**, not proof of a durable edge.
   `_execute_run` keys are unchanged. Observatory shows the split and a
   corpus banner; heatmap colours are unchanged. Failed / pending rows
   leave DA keys null.
+- **DA3 (landed):** `simulate_trades(..., same_bar_opposite_direction=...)` is
+  keyword-only and defaults to `legacy` (today's `signal_id` tie-break;
+  diagnostic `policy: legacy`). Opt-in `skip_both` skips both sides of a
+  same-bar opposite pair under `single_position` / `single_setup` (same
+  group key) with `skip_reason="direction_conflict"` and
+  `blocking_trade_id` NA. Opt-in `raise` refuses the run, naming the first
+  colliding `(entry_bar_index, signal_ids)`. Under `allow_all` and
+  `single_direction` the policy is a no-op — those policies have no
+  collision resolution. `constants.backtest.same_bar_opposite_direction` is
+  optional on a StudySpec; omitted = legacy. If the key is present it must be
+  one of the three tokens (`null` is rejected). The new skip reason is emitted
+  only when the policy is not `legacy`. Sort key and `_check_touch` are
+  unchanged.
 
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.

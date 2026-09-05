@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from .backtest import SimulationResult, simulate_trades
+from .backtest import (
+    VALID_SAME_BAR_OPPOSITE_DIRECTION,
+    SimulationResult,
+    simulate_trades,
+)
 from .anchor_confluence import detect_anchor_confluence_zones
 from .candidate_level import CandidateLevel, from_anchor_zones, from_global_cluster_zones
 from .confluence import detect_confluence_zones
@@ -30,5 +34,6 @@ __all__ = [
     "simulate_trades",
     "SimulationResult",
     "VALID_INTRABAR_MODELS",
+    "VALID_SAME_BAR_OPPOSITE_DIRECTION",
     "validate_exit_management_config",
 ]

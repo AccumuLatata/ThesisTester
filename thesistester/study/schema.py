@@ -36,6 +36,7 @@ from thesistester.setup import (
 STUDY_SCHEMA_VERSION = 1
 RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 STUDY_INGESTION_MODES = frozenset({"primary", INGESTION_MODE_15S_PRIMARY_DERIVE_1M})
+_VALID_SAME_BAR_OPPOSITE_DIRECTION = frozenset({"legacy", "skip_both", "raise"})
 
 # Static session/profile names; rolling VWAP/POC are not in
 # STATIC_STUDY_LEVEL_NAMES — they come only from study.levels windows.
@@ -534,7 +535,14 @@ def _validate_constants(constants: Mapping[str, Any]) -> None:
             raise StudySpecError("study.constants.entry_window must be a mapping or null")
 
     if "backtest" in constants:
-        _require_mapping(constants.get("backtest"), section="study.constants.backtest")
+        backtest = _require_mapping(constants.get("backtest"), section="study.constants.backtest")
+        if "same_bar_opposite_direction" in backtest:
+            policy = backtest.get("same_bar_opposite_direction")
+            if policy not in _VALID_SAME_BAR_OPPOSITE_DIRECTION:
+                raise StudySpecError(
+                    "study.constants.backtest.same_bar_opposite_direction must be one of "
+                    f"{sorted(_VALID_SAME_BAR_OPPOSITE_DIRECTION)}; got {policy!r}"
+                )
 
     for section in _ENABLED_SECTIONS:
         if section not in constants:

@@ -50,6 +50,7 @@ from thesistester.data.sessions import tag_session
 from thesistester.engine.intrabar import prepare_subtimeframe_conservative_context
 from thesistester.engine import (
     VALID_INTRABAR_MODELS,
+    VALID_SAME_BAR_OPPOSITE_DIRECTION,
     apply_configured_otf_filter,
     detect_anchor_confluence_zones,
     detect_confluence_zones,
@@ -244,6 +245,7 @@ _BACKTEST_DEFAULTS: dict[str, Any] = {
     "trailing_after_r": None,
     "trailing_distance_ticks": None,
     "entry_window": None,
+    "same_bar_opposite_direction": "legacy",
 }
 _GRID_DEFAULTS: dict[str, Any] = {
     "stop_loss_ticks_values": [4.0, 8.0, 12.0],
@@ -413,6 +415,16 @@ def _require_mapping(value: Any, *, section: str) -> Mapping[str, Any]:
 def _validate_random_state(value: Any, *, section: str) -> None:
     if isinstance(value, bool) or not isinstance(value, Integral) or value < 0:
         raise ValueError(f"{section}.random_state must be an integer >= 0")
+
+
+def _require_same_bar_opposite_direction(value: Any) -> str:
+    """Return a DA3 policy token or raise. Rejects ``None`` / non-tokens."""
+    if value not in VALID_SAME_BAR_OPPOSITE_DIRECTION:
+        raise ValueError(
+            "backtest.same_bar_opposite_direction must be one of "
+            f"{sorted(VALID_SAME_BAR_OPPOSITE_DIRECTION)}"
+        )
+    return str(value)
 
 
 def _validate_bool_fields(
@@ -862,12 +874,16 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             "no_new_entries_after",
             "exposure_policy",
             "intrabar_model",
+            "same_bar_opposite_direction",
         },
         section="backtest",
         nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
     )
     if backtest.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
         raise ValueError(f"backtest.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
+    _require_same_bar_opposite_direction(
+        backtest.get("same_bar_opposite_direction", "legacy")
+    )
     validate_exit_management_config(
         breakeven_after_r=backtest.get("breakeven_after_r"),
         trailing_after_r=backtest.get("trailing_after_r"),
@@ -1793,6 +1809,9 @@ def run_backtest(
         trailing_distance_ticks=settings["trailing_distance_ticks"],
         entry_window=simulate_entry_window,
         entry_window_exchange_tz=inst.exchange_tz,
+        same_bar_opposite_direction=_require_same_bar_opposite_direction(
+            settings["same_bar_opposite_direction"]
+        ),
         return_result=True,
     )
     trades = simulation.trades

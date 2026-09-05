@@ -430,7 +430,7 @@ hashed bundle member.
 
 | Field | Definition |
 |---|---|
-| `policy` | Active same-bar opposite-direction rule. DA1 always reports `legacy`. |
+| `policy` | Active `same_bar_opposite_direction` token (`legacy` / `skip_both` / `raise`). Omitted / default is `legacy`. Under `allow_all` and `single_direction` the requested token is still reported even though the guard is a no-op. |
 | `candidate_pairs` | Count of `(entry_bar_index, bar_idx)` groups that contain both a long and a short candidate. Built from `ordered_candidates` plus skip-capture rows, so cutoff/window pairs that never entered the admission loop still count. Bar-level, not per-zone. |
 | `resolved_long` | Pairs in which at least one long was accepted. Not exclusive of `resolved_short`. |
 | `resolved_short` | Pairs in which at least one short was accepted. Not exclusive of `resolved_long`. |
