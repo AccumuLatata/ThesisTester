@@ -9,6 +9,7 @@ from thesistester.analytics.metrics import (
     equity_curve,
     summarize_by_group,
     summarize_trades,
+    direction_split_index_values,
     summarize_trades_by_direction,
 )
 
@@ -118,6 +119,11 @@ def test_summarize_trades_by_direction_mixed_long_short():
     assert out["short"]["trade_count"] == 2
     assert out["long"]["total_r"] == pytest.approx(0.5)
     assert out["short"]["total_r"] == pytest.approx(1.0)
+    split = direction_split_index_values(t)
+    assert split["long_trade_count"] == 2
+    assert split["short_trade_count"] == 2
+    assert split["long_expectancy_r"] == pytest.approx(out["long"]["expectancy_r"])
+    assert split["short_expectancy_r"] == pytest.approx(out["short"]["expectancy_r"])
 
 
 def test_summarize_trades_by_direction_only_long():

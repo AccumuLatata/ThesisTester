@@ -507,6 +507,16 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
             raise AssertionError(f"Expected invalid experiment {index} to be rejected")
 
 
+def test_study_report_rebuild_direction_flag():
+    from thesistester.cli import _parser
+
+    parser = _parser()
+    flagged = parser.parse_args(["study", "report", "/tmp/x", "--rebuild-direction"])
+    assert flagged.rebuild_direction is True
+    default = parser.parse_args(["study", "report", "/tmp/x"])
+    assert default.rebuild_direction is False
+
+
 def test_programmatic_batch_rejects_unsafe_and_duplicate_names(tmp_path):
     _write_dataset(tmp_path / "bars.csv")
     for runs, message in (

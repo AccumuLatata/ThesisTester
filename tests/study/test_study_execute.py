@@ -18,12 +18,16 @@ from thesistester.cli import main as cli_main
 from thesistester.research_bundle import canonical_bundle_hash
 from thesistester.research_identity import normalize_execution_origin
 from thesistester.study.execute import (
+    DA_DIRECTION_INDEX_KEYS,
     R18_INDEX_METRIC_KEYS,
     STUDY_INDEX_KEYS,
+    _failed_index_row,
     _study_dir_lock,
     build_index_row_from_state,
+    direction_index_fields,
     execute_study_cell,
     prepare_study_expansion,
+    rebuild_direction_index,
     run_study,
 )
 from thesistester.study.ledger import load_ledger
@@ -244,9 +248,12 @@ def test_one_failing_cell_leaves_prior_ok_intact(tmp_path: Path):
     assert len(index) == 4
     assert (index["status"] == "ok").sum() == 3
     assert (index["status"] == "failed").sum() == 1
+    assert list(index.columns) == list(STUDY_INDEX_KEYS)
     failed_row = index.loc[index["run_name"] == names[1]].iloc[0]
     assert pd.isna(failed_row["profit_factor"])
     assert pd.isna(failed_row["win_rate"])
+    for key in DA_DIRECTION_INDEX_KEYS:
+        assert pd.isna(failed_row[key])
     ok_row = index.loc[index["run_name"] == names[0]].iloc[0]
     assert float(ok_row["profit_factor"]) == pytest.approx(1.5)
     assert float(ok_row["win_rate"]) == pytest.approx(0.6)
@@ -821,3 +828,167 @@ def test_failed_cell_error_lines_dedupes_and_caps():
     ]
     assert len(examples) == 5
     assert default_lines[-1] == "  … +1 more unique error(s) in study.ledger.json"
+
+
+def _trades_df(*, directions: list[str], r_values: list[float]) -> pd.DataFrame:
+    return pd.DataFrame({"direction": directions, "r_multiple": r_values})
+
+
+def test_direction_index_fields_mixed_and_long_only():
+    mixed = direction_index_fields(
+        _trades_df(directions=["long", "short"], r_values=[1.0, -0.5]),
+        trade_count=2,
+        collision={"candidate_pairs": 3, "resolved_long": 2},
+    )
+    assert mixed["directional_integrity"] == "mixed"
+    assert mixed["long_trade_count"] == 1
+    assert mixed["short_trade_count"] == 1
+    assert mixed["long_share"] == pytest.approx(0.5)
+    assert mixed["collision_pairs"] == 3
+    assert mixed["collision_resolved_long"] == 2
+
+    long_only = direction_index_fields(
+        _trades_df(directions=["long", "long"], r_values=[1.0, 0.5]),
+        trade_count=2,
+    )
+    assert long_only["directional_integrity"] == "long_only"
+    assert long_only["short_trade_count"] == 0
+    assert long_only["long_share"] == pytest.approx(1.0)
+    assert long_only["collision_pairs"] is None
+
+    empty = direction_index_fields(pd.DataFrame(), trade_count=0)
+    assert empty["directional_integrity"] == "empty"
+    assert empty["long_share"] is None
+
+
+def test_failed_index_row_seeds_da_keys_as_none():
+    row = _failed_index_row("cell_x")
+    for key in DA_DIRECTION_INDEX_KEYS:
+        assert key in row
+        assert row[key] is None
+    assert row["run_name"] == "cell_x"
+
+
+def test_execute_study_cell_attaches_direction_split(monkeypatch):
+    trades = _trades_df(directions=["long", "short", "long"], r_values=[1.0, -0.5, 0.25])
+    state = {
+        "dataset_id": "ds-test",
+        "instrument": "ES",
+        "execution_origin": "study",
+        "cache_provenance": {"outcome": "miss"},
+        "trade_summary": {
+            "trade_count": 3,
+            "expectancy_r": 0.25,
+            "total_r": 0.75,
+            "max_drawdown_r": -0.5,
+            "profit_factor": 1.5,
+            "win_rate": 0.6,
+        },
+        "trades": trades,
+        "direction_collision_diagnostic": {
+            "candidate_pairs": 2,
+            "resolved_long": 1,
+        },
+        "best_grid_result": {},
+        "validation_summary": {},
+        "walk_forward_summary": {},
+    }
+    monkeypatch.setattr("thesistester.study.execute.run_experiment", lambda *_a, **_k: state)
+    monkeypatch.setattr(
+        "thesistester.study.execute.build_research_bundle",
+        lambda _state: _fake_bundle_bytes("cell_mixed"),
+    )
+    payload = execute_study_cell(({"name": "cell_mixed"}, "."))
+    assert payload["status"] == "ok"
+    row = payload["index_row"]
+    assert row["directional_integrity"] == "mixed"
+    assert row["long_trade_count"] == 2
+    assert row["short_trade_count"] == 1
+    assert row["collision_pairs"] == 2
+    assert row["collision_resolved_long"] == 1
+    assert "bundle_path" not in row
+    assert tuple(build_index_row_from_state(
+        name="cell_mixed", state=state, bundle=_fake_bundle_bytes("cell_mixed")
+    ).keys()) == R18_INDEX_METRIC_KEYS
+
+
+def test_execute_study_cell_long_only_state(monkeypatch):
+    trades = _trades_df(directions=["long", "long"], r_values=[0.2, -0.1])
+    state = {
+        "dataset_id": "ds-test",
+        "instrument": "ES",
+        "execution_origin": "study",
+        "cache_provenance": {"outcome": "miss"},
+        "trade_summary": {
+            "trade_count": 2,
+            "expectancy_r": 0.05,
+            "total_r": 0.1,
+            "max_drawdown_r": -0.1,
+            "profit_factor": 1.1,
+            "win_rate": 0.5,
+        },
+        "trades": trades,
+        "best_grid_result": {},
+        "validation_summary": {},
+        "walk_forward_summary": {},
+    }
+    monkeypatch.setattr("thesistester.study.execute.run_experiment", lambda *_a, **_k: state)
+    monkeypatch.setattr(
+        "thesistester.study.execute.build_research_bundle",
+        lambda _state: _fake_bundle_bytes("cell_long"),
+    )
+    row = execute_study_cell(({"name": "cell_long"}, "."))["index_row"]
+    assert row["directional_integrity"] == "long_only"
+    assert row["short_trade_count"] == 0
+    assert row["collision_pairs"] is None
+
+
+def _zip_with_trades(trades: pd.DataFrame) -> bytes:
+    parquet_buf = io.BytesIO()
+    trades.to_parquet(parquet_buf, index=False)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("trades.parquet", parquet_buf.getvalue())
+        archive.writestr(
+            "trade_summary.json",
+            json.dumps({"trade_summary": {"trade_count": int(len(trades))}}),
+        )
+    return buffer.getvalue()
+
+
+def test_rebuild_direction_index_fills_only_da_keys(tmp_path: Path):
+    study_dir = tmp_path / "study_out"
+    study_dir.mkdir()
+    trades = _trades_df(directions=["long", "long", "short"], r_values=[1.0, 0.5, -0.2])
+    (study_dir / "a.research.zip").write_bytes(_zip_with_trades(trades))
+    prior = pd.DataFrame(
+        [
+            {
+                "run_name": "a",
+                "bundle_hash": "abc",
+                "dataset_id": "ds",
+                "instrument": "ES",
+                "execution_origin": "study",
+                "cache_outcome": "miss",
+                "trade_count": 3,
+                "expectancy_r": 0.1,
+                "total_r": 0.3,
+                "max_drawdown_r": 1.0,
+                "profit_factor": 1.2,
+                "win_rate": 0.5,
+                "bundle_path": "a.research.zip",
+                "status": "ok",
+            }
+        ]
+    )
+    prior.to_csv(study_dir / "results_index.csv", index=False)
+    before = pd.read_csv(study_dir / "results_index.csv")
+    before_cols = list(before.columns)
+    rebuilt = pd.read_csv(rebuild_direction_index(study_dir))
+    assert rebuilt.loc[:, before_cols].to_csv(index=False) == before.to_csv(index=False)
+    assert rebuilt.iloc[0]["directional_integrity"] == "mixed"
+    assert int(rebuilt.iloc[0]["long_trade_count"]) == 2
+    assert int(rebuilt.iloc[0]["short_trade_count"]) == 1
+    assert pd.isna(rebuilt.iloc[0]["collision_pairs"])
+    again = pd.read_csv(rebuild_direction_index(study_dir))
+    assert again.to_csv(index=False) == rebuilt.to_csv(index=False)

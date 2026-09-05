@@ -129,6 +129,14 @@ LOCKED_FRAME_COLUMNS: tuple[str, ...] = (
     "factor_core_level",
     "factor_partner_levels",
     "trade_count",
+    "long_trade_count",
+    "short_trade_count",
+    "long_share",
+    "long_expectancy_r",
+    "short_expectancy_r",
+    "directional_integrity",
+    "collision_pairs",
+    "collision_resolved_long",
     "expectancy_r",
     "profit_factor",
     "win_rate",
@@ -228,6 +236,7 @@ DESK_FACET_COLUMNS: tuple[str, ...] = (
     "study_name",
     "status",
     "sample_class",
+    "directional_integrity",
     "stop_loss_ticks",
     "take_profit_ticks",
     "ingestion_mode",
@@ -642,7 +651,15 @@ def program_b_heatmap_cells(frame: pd.DataFrame) -> pd.DataFrame:
     Empty Wave 0 partners become ``(solo)`` so a Wave-0-only corpus still
     heat-maps. Not an ingest inventory — axes come from observed cells.
     """
-    empty = pd.DataFrame(columns=["factor_core_level", "factor_partner_levels", "desk_class"])
+    empty = pd.DataFrame(
+        columns=[
+            "factor_core_level",
+            "factor_partner_levels",
+            "desk_class",
+            "long_trade_count",
+            "short_trade_count",
+        ]
+    )
     if frame.empty:
         return empty
     work = frame.copy()
@@ -660,7 +677,7 @@ def program_b_heatmap_cells(frame: pd.DataFrame) -> pd.DataFrame:
     partners = unique_facet_values(work, "factor_partner_levels")
     if not cores or not partners:
         return empty
-    by_cell: dict[tuple[Any, Any], str | None] = {}
+    by_cell: dict[tuple[Any, Any], dict[str, Any]] = {}
     ordered = work.sort_values(
         [column for column in ("study_name", "run_name") if column in work.columns],
         kind="mergesort",
@@ -677,15 +694,22 @@ def program_b_heatmap_cells(frame: pd.DataFrame) -> pd.DataFrame:
             desk = str(desk)
         key = (core, partner)
         if key not in by_cell:
-            by_cell[key] = desk
+            by_cell[key] = {
+                "desk_class": desk,
+                "long_trade_count": record.get("long_trade_count"),
+                "short_trade_count": record.get("short_trade_count"),
+            }
     rows: list[dict[str, Any]] = []
     for core in cores:
         for partner in partners:
+            payload = by_cell.get((core, partner), {})
             rows.append(
                 {
                     "factor_core_level": core,
                     "factor_partner_levels": partner,
-                    "desk_class": by_cell.get((core, partner)),
+                    "desk_class": payload.get("desk_class"),
+                    "long_trade_count": payload.get("long_trade_count"),
+                    "short_trade_count": payload.get("short_trade_count"),
                 }
             )
     return pd.DataFrame(rows)
@@ -1319,6 +1343,20 @@ def corpus_progress_counts(studies: pd.DataFrame) -> dict[str, int]:
     return counts
 
 
+def directional_integrity_counts(frame: pd.DataFrame) -> dict[str, int]:
+    """Count DA2 integrity classes on the fact table. Missing column → zeros."""
+    counts = {"long_only": 0, "short_only": 0, "mixed": 0, "empty": 0}
+    if frame.empty or "directional_integrity" not in frame.columns:
+        return counts
+    for value in frame["directional_integrity"].tolist():
+        if value is None or _is_na(value):
+            continue
+        token = str(value)
+        if token in counts:
+            counts[token] += 1
+    return counts
+
+
 def sort_observatory_studies(studies: pd.DataFrame) -> pd.DataFrame:
     """Parse errors and in-flight dirs before completed names.
 
@@ -1745,6 +1783,19 @@ def _cell_row(
         "factor_core_level": flat.get("factor_core_level"),
         "factor_partner_levels": flat.get("factor_partner_levels"),
         "trade_count": trade_count,
+        "long_trade_count": _coerce_number(index_row.get("long_trade_count")),
+        "short_trade_count": _coerce_number(index_row.get("short_trade_count")),
+        "long_share": _coerce_number(index_row.get("long_share")),
+        "long_expectancy_r": _coerce_number(index_row.get("long_expectancy_r")),
+        "short_expectancy_r": _coerce_number(index_row.get("short_expectancy_r")),
+        "directional_integrity": (
+            None
+            if _is_na(index_row.get("directional_integrity"))
+            or index_row.get("directional_integrity") is None
+            else str(index_row.get("directional_integrity"))
+        ),
+        "collision_pairs": _coerce_number(index_row.get("collision_pairs")),
+        "collision_resolved_long": _coerce_number(index_row.get("collision_resolved_long")),
         "expectancy_r": _coerce_number(index_row.get("expectancy_r")),
         "profit_factor": pf,
         "win_rate": wr,

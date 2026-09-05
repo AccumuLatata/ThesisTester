@@ -10,6 +10,7 @@ from pathlib import Path
 from thesistester.study.execute import (
     cost_hint_lines,
     prepare_study_expansion,
+    rebuild_direction_index,
     run_study,
 )
 from thesistester.study.promote import StudyPromoteError, promote_study
@@ -89,6 +90,15 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         "study_dir",
         type=Path,
         help="Completed study output directory (contains expansion + results_index)",
+    )
+    report_parser.add_argument(
+        "--rebuild-direction",
+        action="store_true",
+        help=(
+            "Fill DA2 long/short keys on results_index.csv from trades.parquet. "
+            "Does not rewrite existing metrics. Default report does not rewrite "
+            "the index."
+        ),
     )
 
     promote_parser = study_sub.add_parser(
@@ -301,6 +311,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
+    if bool(getattr(args, "rebuild_direction", False)):
+        rebuilt = rebuild_direction_index(args.study_dir)
+        print(f"Rebuilt direction keys: {rebuilt}")
     result = report_study(args.study_dir)
     print(
         f"Study report: {result.study_name} — "
@@ -313,6 +326,8 @@ def _cmd_report(args: argparse.Namespace) -> int:
     print(f"Artifacts: {result.paths['study.overview.csv']}")
     print(f"           {result.paths['study.overview.md']}")
     print(f"           {result.paths['study.otf_delta.csv']}")
+    if "study.direction.csv" in result.paths:
+        print(f"           {result.paths['study.direction.csv']}")
     return os.EX_OK
 
 

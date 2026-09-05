@@ -376,11 +376,38 @@ def test_group_summaries_present(tmp_path: Path):
 
 def test_cli_study_report(tmp_path: Path):
     study_dir = _write_report_fixture(tmp_path)
+    index_before = (study_dir / "results_index.csv").read_bytes()
     code = cli_main(["study", "report", str(study_dir)])
     assert code == 0
     assert (study_dir / "study.overview.csv").is_file()
     assert (study_dir / "study.overview.md").is_file()
     assert (study_dir / "study.otf_delta.csv").is_file()
+    assert (study_dir / "study.direction.csv").is_file()
+    assert (study_dir / "results_index.csv").read_bytes() == index_before
+    direction = pd.read_csv(study_dir / "study.direction.csv")
+    assert "run_name" in direction.columns
+    assert "directional_integrity" in direction.columns
+
+
+def test_rebuild_direction_via_study_report_cli(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path)
+    trades = pd.DataFrame({"direction": ["long", "long"], "r_multiple": [0.2, 0.1]})
+    parquet_buf = io.BytesIO()
+    trades.to_parquet(parquet_buf, index=False)
+    for bundle in study_dir.glob("*.research.zip"):
+        with zipfile.ZipFile(bundle, "a") as archive:
+            archive.writestr("trades.parquet", parquet_buf.getvalue())
+    before = pd.read_csv(study_dir / "results_index.csv")
+    before_cols = list(before.columns)
+    code = cli_main(["study", "report", str(study_dir), "--rebuild-direction"])
+    assert code == 0
+    after = pd.read_csv(study_dir / "results_index.csv")
+    assert after.loc[:, before_cols].to_csv(index=False) == before.to_csv(index=False)
+    assert (after["directional_integrity"] == "long_only").all()
+    assert (after["short_trade_count"] == 0).all()
+    assert after["collision_pairs"].isna().all()
+    direction = pd.read_csv(study_dir / "study.direction.csv")
+    assert (direction["directional_integrity"] == "long_only").all()
 
 
 def test_report_missing_index_fails(tmp_path: Path):

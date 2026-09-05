@@ -441,6 +441,24 @@ Under `allow_all` / `single_direction` a `touch` pair typically fills both
 sides, so `resolved_long == resolved_short == candidate_pairs`. Under
 `single_position` the legacy tie-break yields `resolved_short == 0`.
 
+## DA2 study direction split
+
+Study-index fields (not R18 / CLI `_execute_run`). Reuse
+`summarize_trades_by_direction` — no new expectancy math. Older
+`results_index.csv` files without these keys still load; values are null
+until `study report --rebuild-direction` or a new `study run`.
+
+| Field | Definition |
+|---|---|
+| `long_trade_count` / `short_trade_count` | Accepted trades with `direction` long / short. |
+| `long_expectancy_r` / `short_expectancy_r` | Same `expectancy_r` formula on that side. `None` when the side is empty. |
+| `long_share` | `long_trade_count / trade_count`. `None` when `trade_count == 0`. |
+| `directional_integrity` | `empty` when `trade_count == 0`; `long_only` when `short_trade_count == 0` and `trade_count > 0`; `short_only` symmetric; else `mixed`. |
+| `collision_pairs` / `collision_resolved_long` | Copied from the in-memory DA1 diagnostic on a live cell. `None` on `--rebuild-direction` and on older bundles. |
+
+These are descriptive counts, not a claim that `touch` + `both` is two-sided.
+Program B Run 1 cells are expected to read `long_only` after rebuild.
+
 ## R13 break-even and trailing exits
 
 | Field / reason | Definition |
