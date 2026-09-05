@@ -35,9 +35,7 @@ def test_typical_candidate_matches_production_apoc_helper_without_routing():
             (101.00, 100.50, 100.75, 200.0),
         ]
     )
-    candidate = compute_bar_candidate_profile(
-        bars, candidate=TYPICAL_MVP_V1, tick_size=0.25
-    )
+    candidate = compute_bar_candidate_profile(bars, candidate=TYPICAL_MVP_V1, tick_size=0.25)
 
     assert candidate.poc == pytest.approx(100.75)
     assert candidate.poc == pytest.approx(_compute_a_period_poc(bars, tick_size=0.25))
@@ -167,12 +165,12 @@ def test_select_a_period_rows_uses_exchange_timezone_and_half_open_window():
         }
     )
 
-    selected = select_a_period_rows(
-        rows, session_date="2026-09-04", exchange_tz="America/New_York"
-    )
+    selected = select_a_period_rows(rows, session_date="2026-09-04", exchange_tz="America/New_York")
 
     assert selected["volume"].tolist() == [2.0, 3.0]
-    assert selected["timestamp"].dt.tz_convert("America/New_York").dt.strftime("%H:%M:%S").tolist() == [
+    assert selected["timestamp"].dt.tz_convert("America/New_York").dt.strftime(
+        "%H:%M:%S"
+    ).tolist() == [
         "09:30:00",
         "09:59:59",
     ]
