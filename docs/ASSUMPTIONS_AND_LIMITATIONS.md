@@ -197,9 +197,17 @@ This engine is for **research screening**, not proof of a durable edge.
   `single_direction` both sides fill on the same bar at the same price (a hedged
   pair). There is no exposure policy under which `touch` + `both` is a
   directional test of a level.
-- Consequence: Program A L1 (`docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`
-  §6.0) and Program B Run 1 (`docs/PROGRAM_B_OPERATOR_RUNBOOK.md` §1) are
-  **long-only samples**. Their verdicts describe buying a level touch only.
+- Specific to `touch`. `reject`, `break`, `reclaim`, and the `3c` arrival
+  condition on `close` being on one side of the zone/level, so long and short
+  are mutually exclusive on a bar within one zone; measured trade sets under
+  the same lock are ≈50/50. Rare cross-zone same-bar pairs (one wide bar
+  closing between two zones) remain possible for `reject` / `reclaim` and are
+  resolved by `signal_id` order.
+- Consequence: Program A L1 **scalp** (`touch`;
+  `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` §6.0) and Program B Run 1
+  (`touch`; `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` §1) are **long-only samples**.
+  Their verdicts describe buying a level touch only. The Program A `3c` swing
+  product is two-sided and unaffected.
 - Remediation series and evidence: `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md`
   (DI). Legacy behaviour is unchanged and stays the default; DI adds a
   diagnostic, a direction split, an opt-in same-bar policy, and approach-side

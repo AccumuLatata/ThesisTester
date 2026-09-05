@@ -51,9 +51,25 @@ Corroboration inside the Run 1 corpus itself (Notion *Run 1 results — Edge Fin
 
 - Not a `simulate_trades` bug. The engine does what the exposure contract says. The tie-break is deterministic and documented by the sort key.
 - Not a reason to discard the corpus. The 944 bundles are valid **long-side** measurements. DI2 makes that readable without a rerun.
-- Not a Program A vs Program B issue. Both inherit the same lock.
+- Not a Program A vs Program B issue. Both `touch` products inherit the same lock. The Program A `3c` swing product does not (§0.5).
 
-### 0.5 Golden fixtures encode the artefact
+### 0.5 Trigger coverage — the artefact is specific to `touch`
+
+Every trigger was run under the same lock (`direction: both`, `single_position`, 80/80) on a 6000-bar OU series with **two** confluence zones so cross-zone same-bar collisions could also appear:
+
+| trigger | candidates L / S | same-bar opposite-direction pairs | trades L / S | long share |
+|---|---|---:|---|---:|
+| `touch` | 1654 / 1654 | 1546 (every touch bar) | 306 / 0 | **1.000** |
+| `reject` | 776 / 835 | 58 (cross-zone only) | 149 / 155 | 0.490 |
+| `break` | 428 / 431 | 0 | 132 / 127 | 0.510 |
+| `reclaim` | 738 / 799 | 46 (cross-zone only) | 147 / 151 | 0.493 |
+| `3c` (filled) | 386 / 470 | 0 | 120 / 140 | 0.462 |
+
+Why: `reject`, `break`, `reclaim`, and the `3c` arrival all condition on `close` being on one side of the zone/level (long needs `close > zone_high` or `> level`, short needs `close < zone_low` or `< level`), so within one zone the two directions are mutually exclusive on a bar. `touch` conditions on overlap only. The residual `reject` / `reclaim` pairs (≈3–4 % of candidates) are a different object — one wide bar closing *between* two zones, long-rejecting the lower and short-rejecting the upper — and are still resolved by `signal_id` order. DI1 reports them; DI3 lets a study refuse them.
+
+Consequences for existing corpora: the Program A **swing** product (`3c` @ 1min) is two-sided and is **not** affected. The Program A **scalp** L1 (`touch`) and all of Program B Run 1 (`touch`) are.
+
+### 0.6 Golden fixtures encode the artefact
 
 `tests/fixtures/study/golden/study.spec.yaml` is `touch` + `both` + `single_position`. `tests/fixtures/golden/pipeline.py` is `allow_all`. Every DI change must leave both goldens byte-identical under default flags. No `GOLDEN_REGEN` in this series.
 
