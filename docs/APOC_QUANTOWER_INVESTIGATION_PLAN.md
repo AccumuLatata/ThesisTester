@@ -162,12 +162,19 @@ AP2 implements exactly one AP1-selected source.
 | Forbidden | `apoc.py` production cutover, defaults, `LEVEL_ENGINE_VERSION`, Program B, golden regeneration |
 
 **AP1 implementation record:** `apoc_candidates.py` provides deterministic
-typical, uniform-range, TPO-range, and tick Last×Volume histograms. It rejects
-off-grid or malformed profile inputs rather than snapping them. The optional
-`THESISTESTER_APOC_QT_BARS` / `THESISTESTER_APOC_QT_EXPECTED` test accepts an
-externally stored, already A-period-filtered bar CSV and reports candidate error
-in MNQ ticks. It is skipped in CI because the proprietary desk oracle is not
-committed.
+typical, uniform-range, TPO-range, and tick Last×Volume histograms. Locked
+contracts: off-grid high/low/close and tick Last reject (no silent snap);
+inclusive range bins with zero-range = one bin; volume candidates conserve
+input volume within `VOLUME_CONSERVATION_RTOL` / `VOLUME_CONSERVATION_ATOL`;
+POC ties use ThesisTester lowest-price (`np.argmax` on an ascending grid;
+Quantower is not assumed); sparse coverage is observed-rows only with no
+imputation. Volume candidates allocate strictly positive volume;
+`bar_range_tpo_v1` counts every syntactically valid bar, including
+zero-volume bars. Empty usable observations return `NaN` POC with no
+typical-price fallback. The optional `THESISTESTER_APOC_QT_BARS` /
+`THESISTESTER_APOC_QT_EXPECTED` test accepts an externally stored, already
+A-period-filtered bar CSV and reports candidate error in MNQ ticks. It is
+skipped in CI because the proprietary desk oracle is not committed.
 
 ### AP2 — selected-source implementation
 

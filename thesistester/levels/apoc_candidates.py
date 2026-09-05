@@ -5,6 +5,21 @@ It supports AP1 evidence collection only and cannot change production APOC or
 pAPOC output.  Candidates use a fixed lowest-price POC tie rule so their
 histograms are deterministic; Quantower's tie behavior remains an empirical
 question for the desk oracle.
+
+AP1 locks (§3.2)
+----------------
+* Range endpoints and tick Last prices that are off the instrument grid are
+  rejected.  The harness never silently snaps unsound input.
+* Range allocation is inclusive of both endpoints.  A zero-range bar is one
+  inclusive bin.
+* Volume candidates must conserve input volume within
+  ``VOLUME_CONSERVATION_RTOL`` / ``VOLUME_CONSERVATION_ATOL``.
+* Equal-bin POC ties resolve to the lowest price (ThesisTester).  Quantower's
+  rule is not assumed.
+* Sparse coverage is observed-rows only: missing bars/ticks are never imputed.
+  Volume candidates allocate strictly positive volume.  ``bar_range_tpo_v1``
+  counts every syntactically valid bar, including zero-volume bars.  Zero
+  usable observations return ``NaN`` POC with no typical-price fallback.
 """
 
 from __future__ import annotations
@@ -25,6 +40,20 @@ BAR_CANDIDATES: Final[tuple[str, ...]] = (
     BAR_RANGE_UNIFORM_VOLUME_V1,
     BAR_RANGE_TPO_V1,
 )
+VOLUME_PROFILE_CANDIDATES: Final[frozenset[str]] = frozenset(
+    {
+        TYPICAL_MVP_V1,
+        BAR_RANGE_UNIFORM_VOLUME_V1,
+        TICK_LAST_VOLUME_V1,
+    }
+)
+
+# Locked AP1 numeric contracts.  Grid atol is in tick-count units so a price
+# must sit on an integer multiple of ``tick_size``.  Conservation uses a tight
+# absolute floor plus relative slack for multi-bin uniform splits.
+TICK_GRID_ATOL: Final[float] = 1e-8
+VOLUME_CONSERVATION_RTOL: Final[float] = 1e-12
+VOLUME_CONSERVATION_ATOL: Final[float] = 1e-9
 
 APOCProfileCandidate = Literal[
     "typical_mvp_v1",
@@ -68,14 +97,16 @@ def select_a_period_rows(
 
     The input ``timestamp`` column must be timezone-aware.  This helper makes
     no assumption about bar cadence: sparse trade-only bar sources remain
-    eligible evidence, with their observed rows retained.
+    eligible evidence, with their observed rows retained.  Missing timestamps
+    inside the window are not imputed.
     """
     if "timestamp" not in rows.columns:
         raise APOCProfileInputError("A-period rows require a 'timestamp' column.")
     if period_minutes <= 0:
         raise APOCProfileInputError("period_minutes must be positive.")
 
-    timestamps = pd.to_datetime(rows["timestamp"], errors="coerce")
+    work = rows.copy().reset_index(drop=True)
+    timestamps = pd.to_datetime(work["timestamp"], errors="coerce")
     if timestamps.isna().any():
         raise APOCProfileInputError("A-period rows contain unparseable timestamps.")
     if timestamps.dt.tz is None:
@@ -94,7 +125,7 @@ def select_a_period_rows(
         tz=exchange_tz,
     )
     end = start + pd.Timedelta(minutes=period_minutes)
-    selected = rows.loc[(local >= start) & (local < end)].copy()
+    selected = work.loc[(local >= start) & (local < end)].copy()
     selected["timestamp"] = timestamps.loc[selected.index]
     return selected.sort_values("timestamp").reset_index(drop=True)
 
@@ -137,27 +168,37 @@ def compute_bar_candidate_profile(
         return _empty_result(candidate)
 
     if candidate == TYPICAL_MVP_V1:
-        prices = (bars["high"] + bars["low"] + bars["close"]) / 3.0
-        volumes = bars["volume"]
+        usable = bars.loc[bars["volume"] > 0]
+        if usable.empty:
+            return _empty_result(candidate)
+        prices = (usable["high"] + usable["low"] + usable["close"]) / 3.0
+        volumes = usable["volume"]
         histogram = _histogram(prices, volumes, tick_size=tick_size)
-        source_volume = float(volumes.sum())
-    else:
-        parts: list[pd.Series] = []
-        for row in bars.itertuples(index=False):
-            prices = _inclusive_tick_range(row.low, row.high, tick_size=tick_size)
-            if candidate == BAR_RANGE_UNIFORM_VOLUME_V1:
-                allocation = pd.Series(float(row.volume) / len(prices), index=prices)
-            else:
-                allocation = pd.Series(1.0, index=prices)
-            parts.append(allocation)
-        histogram = _merge_histogram_parts(parts)
-        source_volume = float(bars["volume"].sum())
+        return _result(
+            candidate,
+            histogram,
+            source_rows=len(usable),
+            source_volume=float(volumes.sum()),
+        )
 
+    usable = bars if candidate == BAR_RANGE_TPO_V1 else bars.loc[bars["volume"] > 0]
+    if usable.empty:
+        return _empty_result(candidate)
+
+    parts: list[pd.Series] = []
+    for row in usable.itertuples(index=False):
+        prices = _inclusive_tick_range(row.low, row.high, tick_size=tick_size)
+        if candidate == BAR_RANGE_UNIFORM_VOLUME_V1:
+            allocation = pd.Series(float(row.volume) / len(prices), index=prices)
+        else:
+            allocation = pd.Series(1.0, index=prices)
+        parts.append(allocation)
+    histogram = _merge_histogram_parts(parts)
     return _result(
         candidate,
         histogram,
-        source_rows=len(bars),
-        source_volume=source_volume,
+        source_rows=len(usable),
+        source_volume=float(usable["volume"].sum()),
     )
 
 
@@ -175,8 +216,10 @@ def compute_tick_last_volume_profile(
     ticks = a_period_ticks.loc[:, list(required)].copy()
     for column in required:
         ticks[column] = pd.to_numeric(ticks[column], errors="coerce")
-    if ticks.isna().any().any():
-        raise APOCProfileInputError("Tick candidate contains missing or non-numeric price/volume.")
+    if ticks.empty:
+        return _empty_result(TICK_LAST_VOLUME_V1)
+    if not np.isfinite(ticks.to_numpy(dtype="float64")).all():
+        raise APOCProfileInputError("Tick candidate contains missing or non-finite price/volume.")
     if (ticks["volume"] <= 0).any():
         raise APOCProfileInputError("Tick candidate requires strictly positive volume.")
     _require_tick_grid(ticks["price"], tick_size=tick_size, field="tick price")
@@ -197,8 +240,10 @@ def _validated_bars(a_period_bars: pd.DataFrame, *, tick_size: float) -> pd.Data
     bars = a_period_bars.loc[:, list(required)].copy()
     for column in required:
         bars[column] = pd.to_numeric(bars[column], errors="coerce")
-    if bars.isna().any().any():
-        raise APOCProfileInputError("Bar candidate contains missing or non-numeric OHLCV values.")
+    if bars.empty:
+        return bars.reset_index(drop=True)
+    if not np.isfinite(bars.to_numpy(dtype="float64")).all():
+        raise APOCProfileInputError("Bar candidate contains missing or non-finite OHLCV values.")
     if (bars["volume"] < 0).any():
         raise APOCProfileInputError("Bar candidate volume cannot be negative.")
     if (bars["high"] < bars["low"]).any():
@@ -207,7 +252,8 @@ def _validated_bars(a_period_bars: pd.DataFrame, *, tick_size: float) -> pd.Data
         raise APOCProfileInputError("Bar candidate close must be inside high/low.")
     _require_tick_grid(bars["high"], tick_size=tick_size, field="bar high")
     _require_tick_grid(bars["low"], tick_size=tick_size, field="bar low")
-    return bars.loc[bars["volume"] > 0].reset_index(drop=True)
+    _require_tick_grid(bars["close"], tick_size=tick_size, field="bar close")
+    return bars.reset_index(drop=True)
 
 
 def _result(
@@ -223,6 +269,16 @@ def _result(
     # price. np.argmax therefore makes the tie rule explicit: lowest bin wins.
     poc = float(histogram.index[int(np.argmax(histogram.to_numpy(dtype="float64")))])
     allocated = float(histogram.sum())
+    if candidate in VOLUME_PROFILE_CANDIDATES and not np.isclose(
+        allocated,
+        source_volume,
+        rtol=VOLUME_CONSERVATION_RTOL,
+        atol=VOLUME_CONSERVATION_ATOL,
+    ):
+        raise APOCProfileInputError(
+            f"{candidate} failed volume conservation: "
+            f"allocated={allocated} source={source_volume}."
+        )
     return APOCProfileCandidateResult(
         candidate=candidate,
         poc=float(poc),
@@ -247,12 +303,17 @@ def _empty_result(candidate: APOCProfileCandidate) -> APOCProfileCandidateResult
 def _histogram(prices: pd.Series, volumes: pd.Series, *, tick_size: float) -> pd.Series:
     bins = np.round(prices.to_numpy(dtype="float64") / tick_size) * tick_size
     frame = pd.DataFrame({"bin": bins.round(10), "allocation": volumes.to_numpy(dtype="float64")})
-    return frame.groupby("bin", sort=True)["allocation"].sum().astype("float64")
+    histogram = frame.groupby("bin", sort=True)["allocation"].sum().astype("float64")
+    histogram.index.name = "bin"
+    histogram.name = "allocation"
+    return histogram
 
 
 def _inclusive_tick_range(low: float, high: float, *, tick_size: float) -> np.ndarray:
     low_tick = int(round(low / tick_size))
     high_tick = int(round(high / tick_size))
+    if high_tick < low_tick:
+        raise APOCProfileInputError("Inclusive tick range is empty after grid validation.")
     return (np.arange(low_tick, high_tick + 1, dtype="float64") * tick_size).round(10)
 
 
@@ -266,7 +327,11 @@ def _merge_histogram_parts(parts: list[pd.Series]) -> pd.Series:
 
 
 def _validate_tick_size(tick_size: float) -> None:
-    if not isinstance(tick_size, (int, float, np.floating)) or not np.isfinite(tick_size):
+    if isinstance(tick_size, bool):
+        raise APOCProfileInputError("tick_size must be a finite positive number.")
+    if not isinstance(tick_size, (int, float, np.integer, np.floating)) or not np.isfinite(
+        tick_size
+    ):
         raise APOCProfileInputError("tick_size must be a finite positive number.")
     if tick_size <= 0:
         raise APOCProfileInputError("tick_size must be a finite positive number.")
@@ -274,5 +339,5 @@ def _validate_tick_size(tick_size: float) -> None:
 
 def _require_tick_grid(values: pd.Series, *, tick_size: float, field: str) -> None:
     ticks = values.to_numpy(dtype="float64") / tick_size
-    if not np.isclose(ticks, np.round(ticks), rtol=0.0, atol=1e-8).all():
+    if not np.isclose(ticks, np.round(ticks), rtol=0.0, atol=TICK_GRID_ATOL).all():
         raise APOCProfileInputError(f"{field} must lie on the {tick_size:g} tick grid.")
