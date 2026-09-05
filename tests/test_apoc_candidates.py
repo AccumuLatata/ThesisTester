@@ -139,6 +139,16 @@ def test_tpo_counts_zero_volume_bars_as_time():
     assert uniform.histogram.to_dict() == {100.25: 4.0}
 
 
+def test_tpo_zero_volume_only_still_emits_poc_without_typical_fallback():
+    bars = _bars([(100.25, 100.25, 100.25, 0.0)])
+    tpo = compute_bar_candidate_profile(bars, candidate=BAR_RANGE_TPO_V1, tick_size=0.25)
+    typical = compute_bar_candidate_profile(bars, candidate=TYPICAL_MVP_V1, tick_size=0.25)
+
+    assert tpo.poc == pytest.approx(100.25)
+    assert tpo.allocated_volume == pytest.approx(1.0)
+    assert math.isnan(typical.poc)
+
+
 def test_zero_range_bar_is_one_inclusive_bin_for_range_candidates():
     bars = _bars([(100.25, 100.25, 100.25, 7.0)])
     uniform = compute_bar_candidate_profile(
@@ -265,9 +275,7 @@ def test_select_a_period_rows_uses_exchange_timezone_and_half_open_window():
 def test_select_a_period_rows_keeps_sparse_observed_rows_without_imputing():
     rows = pd.DataFrame(
         {
-            "timestamp": pd.to_datetime(
-                ["2026-09-04 13:30:00+00:00", "2026-09-04 13:45:00+00:00"]
-            ),
+            "timestamp": pd.to_datetime(["2026-09-04 13:30:00+00:00", "2026-09-04 13:45:00+00:00"]),
             "volume": [1.0, 2.0],
         }
     )
@@ -290,9 +298,7 @@ def test_select_a_period_rows_rejects_naive_timestamps():
 def test_select_a_period_rows_is_stable_with_duplicate_index():
     rows = pd.DataFrame(
         {
-            "timestamp": pd.to_datetime(
-                ["2026-09-04 13:30:00+00:00", "2026-09-04 13:31:00+00:00"]
-            ),
+            "timestamp": pd.to_datetime(["2026-09-04 13:30:00+00:00", "2026-09-04 13:31:00+00:00"]),
             "volume": [1.0, 2.0],
         },
         index=[7, 7],

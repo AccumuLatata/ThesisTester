@@ -276,8 +276,7 @@ def _result(
         atol=VOLUME_CONSERVATION_ATOL,
     ):
         raise APOCProfileInputError(
-            f"{candidate} failed volume conservation: "
-            f"allocated={allocated} source={source_volume}."
+            f"{candidate} failed volume conservation: allocated={allocated} source={source_volume}."
         )
     return APOCProfileCandidateResult(
         candidate=candidate,
