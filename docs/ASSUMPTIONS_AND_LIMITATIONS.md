@@ -270,7 +270,9 @@ This engine is for **research screening**, not proof of a durable edge.
   (`policy`, `candidate_pairs`, `resolved_long`, `resolved_short`,
   `resolved_none`, `accepted_trade_share_from_pairs`). Grouping is
   `(entry_bar_index, bar_idx)` — bar-level, not per-zone. `resolved_long` and
-  `resolved_short` are not a partition (both sides of a pair may fill). The
+  `resolved_short` are not a partition (both sides of a pair may fill).
+  `resolved_none` includes pairs eaten by cutoff/window as well as occupancy
+  / cooldown. The
   diagnostic is **not** written to `trade_summary.json` / `_BACKTEST_META_KEYS`
   and does not enter `canonical_bundle_hash`. Default return shapes
   (`DataFrame` / skip tuple) are unchanged. See `docs/METRICS_GLOSSARY.md`.

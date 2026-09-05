@@ -242,33 +242,38 @@ def _direction_collision_diagnostic(
     *,
     ordered_candidates: list[dict[str, Any]],
     accepted_trades: list[dict[str, Any]],
+    skipped_signals: list[dict[str, Any]] | None = None,
     policy: str = "legacy",
 ) -> dict[str, Any]:
     """Count same-entry-bar opposite-direction candidate groups and their admission.
 
     Grouping is ``(entry_bar_index, bar_idx)`` (bar-level, not per-zone).
+    Built after admission from ``ordered_candidates`` + accepted trades +
+    skip-capture rows. Window/cutoff rejects never enter
+    ``ordered_candidates``; they are recovered from ``skipped_signals`` so
+    those pairs appear as ``resolved_none``. Occupancy / cooldown / later
+    DA3 ``skip_both`` already sit in ``ordered_candidates``.
     ``resolved_long`` and ``resolved_short`` are not a partition: both sides
     of a pair may fill under ``allow_all`` / ``single_direction``.
-    Computed from candidates + accepted trades so the counts do not depend
-    on skip-capture flags.
     """
     empty = _empty_direction_collision_diagnostic(policy=policy)
-    if not ordered_candidates:
-        return empty
-
     groups: dict[tuple[int, int], set[str]] = defaultdict(set)
     candidate_key_by_signal: dict[int, tuple[int, int]] = {}
     for row in ordered_candidates:
         key = (int(row["entry_bar_index"]), int(row["bar_idx"]))
         groups[key].add(str(row["direction"]))
         candidate_key_by_signal[int(row["sig"]["signal_id"])] = key
+    for skip in skipped_signals or ():
+        key = (int(skip["entry_bar_index"]), int(skip["bar_index"]))
+        groups[key].add(str(skip["direction"]))
+        candidate_key_by_signal[int(skip["signal_id"])] = key
+
+    if not groups:
+        return empty
 
     pair_keys = {key for key, directions in groups.items() if {"long", "short"} <= directions}
     if not pair_keys:
-        return {
-            **empty,
-            "accepted_trade_share_from_pairs": 0.0,
-        }
+        return empty
 
     accepted_dirs_by_pair: dict[tuple[int, int], set[str]] = defaultdict(set)
     accepted_from_pairs = 0
@@ -1258,6 +1263,7 @@ def simulate_trades(
             direction_collision_diagnostic=_direction_collision_diagnostic(
                 ordered_candidates=ordered_candidates,
                 accepted_trades=trades,
+                skipped_signals=skipped_signals,
                 policy="legacy",
             ),
         )

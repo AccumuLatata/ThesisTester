@@ -920,8 +920,10 @@ return types exactly. `return_result=True` returns `SimulationResult` with
 trades, skipped signals, and schema-versioned diagnostics. DA1 adds
 `direction_collision_diagnostic` as a defaulted dataclass field (legacy
 four-field positional construction still works). The diagnostic is computed
-after admission from `ordered_candidates` + accepted trades; it is **not**
-a `_BACKTEST_META_KEYS` / `trade_summary.json` member and is not hashed.
+after admission from `ordered_candidates` + accepted trades +
+`skipped_signals` (cutoff/window pairs are recovered from skip-capture
+rows). It is **not** a `_BACKTEST_META_KEYS` / `trade_summary.json`
+member and is not hashed.
 `api.run_backtest` / `run_experiment` copy it onto the in-memory result/state
 under `direction_collision_diagnostic`. Non-legacy trades append audit
 columns; existing columns are neither removed nor retyped.

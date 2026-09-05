@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import io
+import json
+import zipfile
 from dataclasses import fields
 
 import pandas as pd
 
-from thesistester.engine.backtest import SimulationResult, simulate_trades
+from thesistester.api import run_backtest
+from thesistester.engine.backtest import (
+    _SKIPPED_SIGNAL_COLUMNS,
+    _TRADE_COLUMNS,
+    SimulationResult,
+    simulate_trades,
+)
 from thesistester.research_bundle import (
+    MANIFEST_FILENAME,
     _BACKTEST_META_KEYS,
     build_research_bundle,
     canonical_bundle_hash,
@@ -197,6 +207,149 @@ def test_simulation_result_four_field_positional_construction_still_works():
     assert constructed.direction_collision_diagnostic == {}
 
 
+def test_cutoff_pairs_count_as_resolved_none():
+    """Window/cutoff rejects never enter ordered_candidates; recover from skips."""
+    df, signals = _three_touch_pairs()
+    result = simulate_trades(
+        df,
+        signals,
+        tick_size=TICK,
+        point_value=POINT_VALUE,
+        stop_loss_ticks=8,
+        take_profit_ticks=8,
+        exposure_policy="single_position",
+        session_timezone=TZ,
+        no_new_entries_after="09:00",
+        return_result=True,
+    )
+    diagnostic = result.direction_collision_diagnostic
+    assert result.trades.empty
+    assert set(result.skipped_signals["skip_reason"]) == {"after_entry_cutoff"}
+    assert diagnostic["candidate_pairs"] == 3
+    assert diagnostic["resolved_long"] == 0
+    assert diagnostic["resolved_short"] == 0
+    assert diagnostic["resolved_none"] == 3
+    assert diagnostic["accepted_trade_share_from_pairs"] == 0.0
+
+
+def test_occupancy_eaten_pair_is_resolved_none():
+    """Second same-bar pair skipped while the first long is still open."""
+    df = pd.DataFrame(
+        [
+            _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
+            _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.0),
+            _bar("2026-01-02 09:32", 100.0, 101.0, 99.0, 100.0),
+            _bar("2026-01-02 09:33", 100.0, 101.0, 99.0, 100.0),
+            _bar("2026-01-02 09:34", 100.0, 101.0, 99.0, 100.0),
+        ]
+    )
+    signals = pd.DataFrame(
+        [
+            _signal(0, direction="long", signal_id=0),
+            _signal(0, direction="short", signal_id=1),
+            _signal(2, direction="long", signal_id=2),
+            _signal(2, direction="short", signal_id=3),
+        ]
+    )
+    result = simulate_trades(
+        df,
+        signals,
+        tick_size=TICK,
+        point_value=POINT_VALUE,
+        stop_loss_ticks=40,
+        take_profit_ticks=40,
+        exposure_policy="single_position",
+        return_result=True,
+    )
+    diagnostic = result.direction_collision_diagnostic
+    assert list(result.trades["direction"]) == ["long"]
+    assert diagnostic["candidate_pairs"] == 2
+    assert diagnostic["resolved_long"] == 1
+    assert diagnostic["resolved_short"] == 0
+    assert diagnostic["resolved_none"] == 1
+    assert diagnostic["accepted_trade_share_from_pairs"] == 1.0
+
+
+def test_cross_zone_same_bar_is_one_pair():
+    """Two zones on one bar (L/S + L/S) group as one bar-level pair."""
+    df, _ = _three_touch_pairs()
+    signals = pd.DataFrame(
+        [
+            _signal(0, direction="long", signal_id=0),
+            _signal(0, direction="short", signal_id=1),
+            _signal(0, direction="long", signal_id=2),
+            _signal(0, direction="short", signal_id=3),
+        ]
+    )
+    result = simulate_trades(
+        df,
+        signals,
+        tick_size=TICK,
+        point_value=POINT_VALUE,
+        stop_loss_ticks=8,
+        take_profit_ticks=8,
+        exposure_policy="single_position",
+        return_result=True,
+    )
+    diagnostic = result.direction_collision_diagnostic
+    assert diagnostic["candidate_pairs"] == 1
+    assert diagnostic["resolved_long"] == 1
+    assert diagnostic["resolved_short"] == 0
+    assert diagnostic["resolved_none"] == 0
+    assert list(result.trades["direction"]) == ["long"]
+
+
+def test_unpaired_trade_lowers_accepted_share_from_pairs():
+    df, _ = _three_touch_pairs()
+    signals = pd.DataFrame(
+        [
+            _signal(0, direction="long", signal_id=0),
+            _signal(3, direction="long", signal_id=1),
+            _signal(3, direction="short", signal_id=2),
+        ]
+    )
+    result = simulate_trades(
+        df,
+        signals,
+        tick_size=TICK,
+        point_value=POINT_VALUE,
+        stop_loss_ticks=8,
+        take_profit_ticks=8,
+        exposure_policy="single_position",
+        return_result=True,
+    )
+    diagnostic = result.direction_collision_diagnostic
+    assert diagnostic["candidate_pairs"] == 1
+    assert diagnostic["resolved_long"] == 1
+    assert diagnostic["resolved_short"] == 0
+    assert len(result.trades) == 2
+    assert diagnostic["accepted_trade_share_from_pairs"] == 0.5
+
+
+def test_run_backtest_exposes_diagnostic_and_does_not_add_frame_columns():
+    df, signals = _three_touch_pairs()
+    result = run_backtest(
+        df,
+        signals,
+        instrument="ES",
+        config={
+            "stop_loss_ticks": 8,
+            "take_profit_ticks": 8,
+            "exposure_policy": "single_position",
+        },
+    )
+    diagnostic = result["direction_collision_diagnostic"]
+    assert diagnostic["policy"] == "legacy"
+    assert diagnostic["candidate_pairs"] == 3
+    assert diagnostic["resolved_long"] == 3
+    assert diagnostic["resolved_short"] == 0
+    assert set(result["trades"].columns).issuperset(_TRADE_COLUMNS)
+    extra_trade_cols = set(result["trades"].columns) - set(_TRADE_COLUMNS)
+    assert "direction_collision" not in "".join(extra_trade_cols)
+    if not result["skipped_signals"].empty:
+        assert list(result["skipped_signals"].columns) == _SKIPPED_SIGNAL_COLUMNS
+
+
 def test_direction_collision_is_not_a_hashed_bundle_meta_key():
     assert "direction_collision_diagnostic" not in _BACKTEST_META_KEYS
     assert "backtest_direction_collision_diagnostic" not in _BACKTEST_META_KEYS
@@ -225,18 +378,25 @@ def test_direction_collision_is_not_a_hashed_bundle_meta_key():
         "backtest_intrabar_diagnostic": {"same_bar_both_hit_count": 0},
         "backtest_exit_management_diagnostic": {"be_exit_count": 0},
     }
+    diagnostic = {
+        "policy": "legacy",
+        "candidate_pairs": 3,
+        "resolved_long": 3,
+        "resolved_short": 0,
+        "resolved_none": 0,
+        "accepted_trade_share_from_pairs": 1.0,
+    }
     baseline = build_research_bundle(base_state)
     with_collision = build_research_bundle(
-        {
-            **base_state,
-            "direction_collision_diagnostic": {
-                "policy": "legacy",
-                "candidate_pairs": 3,
-                "resolved_long": 3,
-                "resolved_short": 0,
-                "resolved_none": 0,
-                "accepted_trade_share_from_pairs": 1.0,
-            },
-        }
+        {**base_state, "direction_collision_diagnostic": diagnostic}
     )
     assert canonical_bundle_hash(baseline) == canonical_bundle_hash(with_collision)
+
+    with zipfile.ZipFile(io.BytesIO(with_collision)) as archive:
+        names = archive.namelist()
+        assert all("direction_collision" not in name for name in names)
+        summary = json.loads(archive.read("trade_summary.json"))
+        assert "direction_collision_diagnostic" not in summary
+        assert "backtest_direction_collision_diagnostic" not in summary
+        manifest = json.loads(archive.read(MANIFEST_FILENAME))
+        assert "direction_collision_diagnostic" not in manifest["session_keys"]
