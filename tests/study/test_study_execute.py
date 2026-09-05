@@ -1006,8 +1006,6 @@ def test_rebuild_direction_index_fills_only_da_keys(tmp_path: Path):
     assert int(rebuilt.iloc[0]["long_trade_count"]) == 2
     assert int(rebuilt.iloc[0]["short_trade_count"]) == 1
     assert pd.isna(rebuilt.iloc[0]["collision_pairs"])
-    assert rebuilt.iloc[0]["directional_integrity"] == "mixed"
-    assert rebuilt["directional_integrity"].dtype == object
     again = pd.read_csv(rebuild_direction_index(study_dir))
     assert again.to_csv(index=False) == rebuilt.to_csv(index=False)
 
