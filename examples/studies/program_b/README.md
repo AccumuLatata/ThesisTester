@@ -12,6 +12,11 @@ Do not hand-edit token lists. `validate_program_b_yaml.py` expand-checks the
 cores, no `dVWAP` partner, Wave 0 `[[]]`). A failed file is not printed as
 `ok`.
 
+Run 2 (`fade` packet) is a **different directory**:
+[`examples/studies/program_b_run2/`](../program_b_run2/). Default generate
+flags still write this Run 1 `touch` packet. `--trigger fade` (and any other
+Run 2 lock) **refuses** this folder — pass `--output-dir` elsewhere.
+
 ```bash
 python3 examples/studies/program_b/generate_program_b_yaml.py
 PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py

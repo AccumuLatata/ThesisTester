@@ -97,6 +97,8 @@ Default confirms (**22**). Widget-maximal (**48**) is a second pass. Exact spell
 
 Cell: `core_level=L`, `partner_levels=[X]`, `from_partners: required`, `min_valid_confluences: 1`, `anchor_rules`. One extra. No `dVWAP` partner.
 
+**Factor C / trigger (DA6):** `fade` @ 1min is the level-test trigger (Run 2). `touch` is retained for continuation-agnostic frequency studies only — it is not a long-vs-short test of a level under `direction: both` + `single_position`.
+
 Two MAs in one set = negative control only. `dVWAP`+`VWAP_rolling_*` as partners is not this grid (`dVWAP` is a core in wave 5). Level+level pairs (`ONH`+`pdPOC`) are a different program; not this list.
 
 ---

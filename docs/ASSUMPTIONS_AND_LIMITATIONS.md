@@ -320,6 +320,11 @@ This engine is for **research screening**, not proof of a durable edge.
   claim. Rank stays `primary_metric`. Soft-resume and
   `--rebuild-direction` leave DA5 keys null. Observatory derives `drift_class`
   at load (`above_null` / `at_null` / `unknown`).
+- **DA6 (landed):** Program B Run 2 packet lives in
+  `examples/studies/program_b_run2/` (`fade` @ 1min,
+  `same_bar_opposite_direction: raise`, `report.random_baseline` 50 replicas).
+  Generator defaults still emit the Run 1 `touch` packet. Run 1 YAMLs are
+  historical. Run 1 vs Run 2 is not a paired ΔE.
 
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
