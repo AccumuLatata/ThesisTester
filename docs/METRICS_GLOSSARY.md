@@ -446,7 +446,8 @@ sides, so `resolved_long == resolved_short == candidate_pairs`. Under
 Study-index fields (not R18 / CLI `_execute_run`). Reuse
 `summarize_trades_by_direction` — no new expectancy math. Older
 `results_index.csv` files without these keys still load; values are null
-until `study report --rebuild-direction` or a new `study run`.
+until `study report --rebuild-direction`, a new `study run`, or
+soft-resume rehydrate from `trades.parquet`.
 
 | Field | Definition |
 |---|---|

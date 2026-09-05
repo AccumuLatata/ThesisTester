@@ -62,8 +62,10 @@ OTF Δ, honesty; PF from bundle `trade_summary` unless present on the index).
 `directional_integrity`, plus optional in-memory collision copies. Default
 `study report` does not rewrite `results_index.csv`;
 `--rebuild-direction` fills the new keys from `trades.parquet` and leaves
-existing metrics untouched. Observatory fact table / cells table / facet
-and corpus banner read the keys and tolerate older indexes (nulls).
+existing metrics untouched. Soft-resume bundle rehydrate fills the same
+keys from `trades.parquet` (collision stays null). Observatory fact table /
+cells table / facet and corpus banner read the keys and tolerate older
+indexes (nulls). heatmap `L n / S n` tooltips render missing counts as `—`.
 RS5 adds `study promote` (draft `explicit_cells` survivors; no auto-run) plus
 stage-first examples under `examples/studies/`. RS-D7 adds additive index
 `profit_factor` / `win_rate`; RS6 adds default-off `STUDY.*` assistant
@@ -1344,7 +1346,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `backtest_exit_management_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R13 schema-versioned BE/trailing parameter snapshot |
 | `backtest_exit_management_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R13 schema-versioned BE/TRAIL counts and adjustment diagnostics |
 | `direction_collision_diagnostic` | `run_backtest` / `run_experiment` (DA1) | in-memory only | Same-bar opposite-direction pair counts. **Not** in `_BACKTEST_META_KEYS` / hashed `session_keys`. |
-| DA2 study-index keys (`long_trade_count`, `short_trade_count`, `long_expectancy_r`, `short_expectancy_r`, `long_share`, `directional_integrity`, `collision_pairs`, `collision_resolved_long`) | `execute_study_cell` / `study report --rebuild-direction` | `results_index.csv` (`STUDY_INDEX_KEYS` only; not R18 / not hashed) | Long/short n and E plus integrity class. Collision copies are live-cell only. |
+| DA2 study-index keys (`long_trade_count`, `short_trade_count`, `long_expectancy_r`, `short_expectancy_r`, `long_share`, `directional_integrity`, `collision_pairs`, `collision_resolved_long`) | `execute_study_cell` / `_index_row_from_existing_bundle` / `study report --rebuild-direction` | `results_index.csv` (`STUDY_INDEX_KEYS` only; not R18 / not hashed) | Long/short n and E plus integrity class. Collision copies are live-cell only. |
 | `grid_results` | Grid (`pages/8_Grid_Search.py`) | Validation/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` one row per SL/TP cell |
 | `best_grid_result` | Grid (`pages/8_Grid_Search.py`) | Report artifact (`thesistester/reporting.py`) | `dict` best ranked cell |
 | `grid_intrabar_policy` | Grid/R18 API | Validation walk-forward, Report, Research Bundles | R12 schema-versioned fixed grid model snapshot |

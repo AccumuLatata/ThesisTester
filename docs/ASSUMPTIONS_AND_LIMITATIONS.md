@@ -278,11 +278,13 @@ This engine is for **research screening**, not proof of a durable edge.
   (`DataFrame` / skip tuple) are unchanged. See `docs/METRICS_GLOSSARY.md`.
 - **DA2 (landed):** study `results_index.csv` may carry additive long/short n,
   E, `long_share`, and `directional_integrity` (`long_only` / `short_only` /
-  `mixed` / `empty`). Attached after the R18 row on a live cell, or filled
-  later by `study report --rebuild-direction` from `trades.parquet`. Default
-  `study report` does not rewrite older indexes. R18 / CLI `_execute_run`
-  keys are unchanged. Observatory shows the split and a corpus banner;
-  heatmap colours are unchanged. Failed / pending rows leave DA keys null.
+  `mixed` / `empty`). Attached after the R18 row on a live cell, filled by
+  soft-resume rehydrate from `trades.parquet` (collision stays null), or
+  filled later by `study report --rebuild-direction` from `trades.parquet`.
+  Default `study report` does not rewrite older indexes. R18 / CLI
+  `_execute_run` keys are unchanged. Observatory shows the split and a
+  corpus banner; heatmap colours are unchanged. Failed / pending rows
+  leave DA keys null.
 
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
