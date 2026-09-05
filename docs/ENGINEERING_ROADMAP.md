@@ -30,7 +30,7 @@ Assistant-related contracts:
 | Level-combination research concept | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` · inventory `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` · runbook `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | **Program B** (operator packet). Wave 0 solo (AO1) + 50 × MA / rolling VWAP / pivot, split 15s (`manifest.yaml`, 23/944) vs tick-gated VA (`manifest_va.yaml`, 4/207). `dVWAP` is an optional core, not a required partner. Does not amend the Notion desk lock page |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
-| A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP0 locked.** Current APOC is a 1-minute typical-price proxy. Establish a reproducible Quantower oracle and discriminate profile allocation before a versioned, point-in-time-safe source change. |
+| A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP1 implemented — evidence collection pending.** Current APOC is a 1-minute typical-price proxy. The comparison harness is isolated from production APOC. A versioned source change still requires a reproducible Quantower oracle. |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1483,7 +1483,7 @@ named-VA). Product day key is `prior_day_profile_aggregation_ticks`;
 Parked: `typical_mvp` same-name alias, developing `dVAH`, APOC/rolling-POC
 VAP, tick VWAP, bid/ask VAP.
 
-## A-Period POC Quantower parity (AP0–AP3) — AP0 locked
+## A-Period POC Quantower parity (AP0–AP3) — AP1 implemented, evidence pending
 
 The desk observed a mismatch between Quantower A-period POC and ThesisTester's
 one-minute typical-price APOC. Current code confirms the ThesisTester
@@ -1497,7 +1497,7 @@ algorithm from one matching bar-range reconstruction.
 | Milestone | Intent |
 |---|---|
 | AP0 | Evidence contract, candidate-selection gate, and scoped PR sequence ✅ |
-| AP1 | Pure candidate comparator and optional desk-oracle test; no production output change |
+| AP1 | Pure candidate comparator and optional desk-oracle test; no production output change ✅ |
 | AP2 | Implement one AP1-selected, versioned APOC source with PIT and failure-to-NaN contracts |
 | AP3 | Stamp Program B Wave 7 APOC provenance; do not rewrite historical results |
 
