@@ -1497,7 +1497,7 @@ algorithm from one matching bar-range reconstruction.
 | Milestone | Intent |
 |---|---|
 | AP0 | Evidence contract, candidate-selection gate, and scoped PR sequence ✅ |
-| AP1 | Pure candidate comparator and optional desk-oracle test; no production output change |
+| AP1 | Pure candidate comparator and optional desk-oracle test; no production output change ✅ |
 | AP2 | Implement one AP1-selected, versioned APOC source with PIT and failure-to-NaN contracts |
 | AP3 | Stamp Program B Wave 7 APOC provenance; do not rewrite historical results |
 

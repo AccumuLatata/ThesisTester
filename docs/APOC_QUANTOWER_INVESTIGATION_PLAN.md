@@ -2,7 +2,8 @@
 
 **Document type:** Focused investigation plan  
 **Date:** 2026-09-05  
-**Status:** **AP0 locked — evidence collection pending.** No engine behavior has changed.  
+**Status:** **AP1 implemented — external evidence collection pending.** No production
+APOC behavior has changed.
 **Series code:** **AP** (A-Period POC)  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including the
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).
@@ -159,6 +160,14 @@ AP2 implements exactly one AP1-selected source.
 | Behavior | Compute candidate profiles and auditable histograms without modifying `compute_apoc_levels` output |
 | Acceptance | Hand-computed allocation, conservation, bin-edge, zero-range, tie, timezone, sparse-input, and candidate-isolation tests; optional desk test records per-session error |
 | Forbidden | `apoc.py` production cutover, defaults, `LEVEL_ENGINE_VERSION`, Program B, golden regeneration |
+
+**AP1 implementation record:** `apoc_candidates.py` provides deterministic
+typical, uniform-range, TPO-range, and tick Last×Volume histograms. It rejects
+off-grid or malformed profile inputs rather than snapping them. The optional
+`THESISTESTER_APOC_QT_BARS` / `THESISTESTER_APOC_QT_EXPECTED` test accepts an
+externally stored, already A-period-filtered bar CSV and reports candidate error
+in MNQ ticks. It is skipped in CI because the proprietary desk oracle is not
+committed.
 
 ### AP2 — selected-source implementation
 
