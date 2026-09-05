@@ -63,6 +63,7 @@ Engine / data contracts:
 - [LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md](LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md) (LC — catalog completeness/correctness for already-emitted levels; LC0–LC4 landed; no new price series)
 - [WVWAP_MVWAP_IMPLEMENTATION_PLAN.md](WVWAP_MVWAP_IMPLEMENTATION_PLAN.md) (WMV — developing `wVWAP` / `mVWAP`; **WMV0–WMV2 complete**; same `session_vwap_enabled` gate as `dVWAP`)
 - [TICK_VAP_IMPLEMENTATION_PLAN.md](TICK_VAP_IMPLEMENTATION_PLAN.md) (TV — Quantower tick-last ingest for prior VA/POC only; **TV1–TV4 landed**; series complete; fail-closed without ticks; no golden regen)
+- [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) (AP — Quantower A-period POC parity investigation; **AP0 locked**; evidence collection and candidate comparison precede any APOC engine change)
 
 ## Research (demoted snapshots)
 
