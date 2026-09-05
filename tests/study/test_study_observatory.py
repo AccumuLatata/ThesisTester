@@ -37,6 +37,7 @@ from thesistester.study.observatory import (
     constrain_facet_selection,
     corpus_progress_counts,
     directional_integrity_counts,
+    format_heatmap_direction_count,
     delete_observatory_desk,
     desk_class_counts,
     desk_class_for,
@@ -984,6 +985,7 @@ def test_observatory_page_ast_and_contract():
     assert "pop(STUDIES_VIEWER_SELECTED_RUN_KEY" not in source
     assert "corpus_progress_counts" in source
     assert "directional_integrity_counts" in source
+    assert "format_heatmap_direction_count" in source
     assert "Directional integrity" in source
     assert "cells long_only" in source
     assert "long_trade_count" in source
@@ -1339,6 +1341,11 @@ def test_directional_integrity_counts_and_heatmap_ls(tmp_path: Path):
     ].iloc[0]
     assert int(hit["long_trade_count"]) == 40
     assert int(hit["short_trade_count"]) == 0
+    assert format_heatmap_direction_count(40) == "40"
+    assert format_heatmap_direction_count(0) == "0"
+    assert format_heatmap_direction_count(None) == "—"
+    assert format_heatmap_direction_count(float("nan")) == "—"
+    assert format_heatmap_direction_count(pd.NA) == "—"
 
 
 def test_delta_e_does_not_cross_instrument_or_null_when_each_has_wave0(tmp_path: Path):

@@ -158,6 +158,7 @@ observatory_desk_query_state = getattr(_observatory, "observatory_desk_query_sta
 observatory_desk_from_payload = getattr(_observatory, "observatory_desk_from_payload", None)
 corpus_progress_counts = getattr(_observatory, "corpus_progress_counts", None)
 directional_integrity_counts = getattr(_observatory, "directional_integrity_counts", None)
+format_heatmap_direction_count = getattr(_observatory, "format_heatmap_direction_count", None)
 sort_observatory_studies = getattr(_observatory, "sort_observatory_studies", None)
 observatory_studies_table = getattr(_observatory, "observatory_studies_table", None)
 study_choice_labels = getattr(_observatory, "study_choice_labels", None)
@@ -199,6 +200,7 @@ def _helpers_ready() -> bool:
             observatory_desk_from_payload,
             corpus_progress_counts,
             directional_integrity_counts,
+            format_heatmap_direction_count,
             sort_observatory_studies,
             observatory_studies_table,
             study_choice_labels,
@@ -616,6 +618,11 @@ def _render_program_b_lens(frame: pd.DataFrame) -> None:
     partners = list(dict.fromkeys(grid["factor_partner_levels"].tolist()))
     z: list[list[int]] = []
     hover: list[list[str]] = []
+    format_ls = (
+        format_heatmap_direction_count
+        if callable(format_heatmap_direction_count)
+        else (lambda value: "—" if value is None else str(value))
+    )
     by_cell = {
         (
             record["factor_core_level"],
@@ -634,8 +641,8 @@ def _render_program_b_lens(frame: pd.DataFrame) -> None:
             if z_value == 0:
                 hover_row.append(f"{core} × {partner}: missing / pending")
             else:
-                long_n = rec.get("long_trade_count")
-                short_n = rec.get("short_trade_count")
+                long_n = format_ls(rec.get("long_trade_count"))
+                short_n = format_ls(rec.get("short_trade_count"))
                 hover_row.append(f"{core} × {partner}: {desk} · L {long_n} / S {short_n}")
         z.append(z_row)
         hover.append(hover_row)

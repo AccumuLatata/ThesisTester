@@ -1357,6 +1357,16 @@ def directional_integrity_counts(frame: pd.DataFrame) -> dict[str, int]:
     return counts
 
 
+def format_heatmap_direction_count(value: Any) -> str:
+    """``L n / S n`` tooltip token. Missing / non-finite → ``—`` (never ``nan``)."""
+    number = _coerce_number(value)
+    if number is None or not math.isfinite(number):
+        return "—"
+    if float(number).is_integer():
+        return str(int(number))
+    return f"{number:g}"
+
+
 def sort_observatory_studies(studies: pd.DataFrame) -> pd.DataFrame:
     """Parse errors and in-flight dirs before completed names.
 
