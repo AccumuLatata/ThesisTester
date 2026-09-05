@@ -917,8 +917,16 @@ inputs are `intrabar_model`, optional `subtimeframe_data`, and
 
 The default `sl_first` branch preserves the historical DataFrame schema and
 return types exactly. `return_result=True` returns `SimulationResult` with
-trades, skipped signals, and schema-versioned diagnostics. Non-legacy trades
-append audit columns; existing columns are neither removed nor retyped.
+trades, skipped signals, and schema-versioned diagnostics. DA1 adds
+`direction_collision_diagnostic` as a defaulted dataclass field (legacy
+four-field positional construction still works). The diagnostic is computed
+after admission from `ordered_candidates` + accepted trades +
+`skipped_signals` (cutoff/window pairs are recovered from skip-capture
+rows). It is **not** a `_BACKTEST_META_KEYS` / `trade_summary.json`
+member and is not hashed.
+`api.run_backtest` / `run_experiment` copy it onto the in-memory result/state
+under `direction_collision_diagnostic`. Non-legacy trades append audit
+columns; existing columns are neither removed nor retyped.
 
 `path_open_proximity` is a pure OHLC heuristic. `subtimeframe` has a strict
 dual-resolution boundary: lower rows must be sorted, duplicate-free, strictly
@@ -1328,6 +1336,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `backtest_intrabar_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R12 schema-versioned both-hit/ambiguity diagnostic |
 | `backtest_exit_management_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R13 schema-versioned BE/trailing parameter snapshot |
 | `backtest_exit_management_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R13 schema-versioned BE/TRAIL counts and adjustment diagnostics |
+| `direction_collision_diagnostic` | `run_backtest` / `run_experiment` (DA1) | in-memory only | Same-bar opposite-direction pair counts. **Not** in `_BACKTEST_META_KEYS` / hashed `session_keys`. |
 | `grid_results` | Grid (`pages/8_Grid_Search.py`) | Validation/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` one row per SL/TP cell |
 | `best_grid_result` | Grid (`pages/8_Grid_Search.py`) | Report artifact (`thesistester/reporting.py`) | `dict` best ranked cell |
 | `grid_intrabar_policy` | Grid/R18 API | Validation walk-forward, Report, Research Bundles | R12 schema-versioned fixed grid model snapshot |

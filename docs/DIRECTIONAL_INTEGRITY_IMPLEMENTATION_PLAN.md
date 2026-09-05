@@ -1,6 +1,6 @@
 # Directional Integrity & Edge Attribution — implementation plan (DA)
 
-**Status:** **DA0 locked** (this document). DA1–DA6 not started.
+**Status:** **DA0 locked.** **DA1 landed.** DA2–DA6 not started.
 **Series prefix:** **DA** (Directional Attribution, DA0–DA6). **DI is taken** by
 Discuss Intelligence (`docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md`, DI-0…DI-3).
 Do not title PRs `DI1` / `DI2`.
@@ -128,7 +128,7 @@ Forbidden in this series: editing `_check_touch`; reordering the `["long", "shor
 
 ```
 DA0  docs freeze + honesty callouts                (docs only)            ← this PR
-DA1  engine: direction-collision diagnostic         (engine, additive)
+DA1  engine: direction-collision diagnostic         (engine, additive)  ← landed
 DA2  direction split: summary → index → Observatory (analytics/study/UI)   ← unlocks Run 1 re-read
 DA3  engine: same_bar_opposite_direction policy     (engine, opt-in)       (needs DA1)
 DA4  engine: fade / continuation triggers           (engine/setup/schema/UI, opt-in)
