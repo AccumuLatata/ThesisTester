@@ -390,6 +390,25 @@ def test_missing_backtest_fails_closed():
         expand_study(raw)
 
 
+def test_same_bar_opposite_direction_copied_onto_expanded_runs():
+    raw = _base_study(
+        factors={
+            "core_level": ["ONH"],
+            "partner_levels": [["SMA_50_1min"]],
+            "confluence_mode": ["global_cluster"],
+            "trigger": ["touch"],
+            "trigger_timeframe": ["base"],
+            "otf": [{"enabled": False}],
+        }
+    )
+    raw["study"]["constants"]["backtest"]["same_bar_opposite_direction"] = "skip_both"
+    expansion = expand_study(raw)
+    assert expansion.run_count == 1
+    run = expansion.experiment["runs"][0]
+    assert run["backtest"]["same_bar_opposite_direction"] == "skip_both"
+    validate_run_spec(run)
+
+
 def test_anchor_emits_placeholder_min_max_confluences():
     expansion = expand_study(
         yaml.safe_load((FIXTURES / "golden_study.yaml").read_text(encoding="utf-8"))

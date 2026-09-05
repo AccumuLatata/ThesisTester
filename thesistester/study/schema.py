@@ -536,12 +536,13 @@ def _validate_constants(constants: Mapping[str, Any]) -> None:
 
     if "backtest" in constants:
         backtest = _require_mapping(constants.get("backtest"), section="study.constants.backtest")
-        policy = backtest.get("same_bar_opposite_direction")
-        if policy is not None and policy not in _VALID_SAME_BAR_OPPOSITE_DIRECTION:
-            raise StudySpecError(
-                "study.constants.backtest.same_bar_opposite_direction must be one of "
-                f"{sorted(_VALID_SAME_BAR_OPPOSITE_DIRECTION)}; got {policy!r}"
-            )
+        if "same_bar_opposite_direction" in backtest:
+            policy = backtest.get("same_bar_opposite_direction")
+            if policy not in _VALID_SAME_BAR_OPPOSITE_DIRECTION:
+                raise StudySpecError(
+                    "study.constants.backtest.same_bar_opposite_direction must be one of "
+                    f"{sorted(_VALID_SAME_BAR_OPPOSITE_DIRECTION)}; got {policy!r}"
+                )
 
     for section in _ENABLED_SECTIONS:
         if section not in constants:

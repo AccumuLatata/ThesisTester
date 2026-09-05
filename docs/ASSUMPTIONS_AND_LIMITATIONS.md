@@ -294,7 +294,8 @@ This engine is for **research screening**, not proof of a durable edge.
   colliding `(entry_bar_index, signal_ids)`. Under `allow_all` and
   `single_direction` the policy is a no-op — those policies have no
   collision resolution. `constants.backtest.same_bar_opposite_direction` is
-  optional on a StudySpec; omitted = legacy. The new skip reason is emitted
+  optional on a StudySpec; omitted = legacy. If the key is present it must be
+  one of the three tokens (`null` is rejected). The new skip reason is emitted
   only when the policy is not `legacy`. Sort key and `_check_touch` are
   unchanged.
 

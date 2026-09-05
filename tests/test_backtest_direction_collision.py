@@ -47,6 +47,7 @@ def _signal(
     direction: str,
     signal_id: int,
     entry_ref: float = 100.0,
+    level_names: str = "A|B",
 ) -> dict:
     return {
         "signal_id": signal_id,
@@ -58,7 +59,7 @@ def _signal(
         "zone_high": 100.5,
         "zone_mid": 100.0,
         "level_count": 2,
-        "level_names": "A|B",
+        "level_names": level_names,
         "entry_reference_price": entry_ref,
         "entry_model": "candidate_next_bar_open",
         "status": "candidate",
@@ -512,3 +513,82 @@ def test_run_backtest_skip_both_passthrough():
     assert set(result["skipped_signals"]["skip_reason"]) == {"direction_conflict"}
     extra_skip_cols = set(result["skipped_signals"].columns) - set(_SKIPPED_SIGNAL_COLUMNS)
     assert "direction_conflict" not in "".join(extra_skip_cols)
+
+
+def test_run_backtest_rejects_null_same_bar_policy():
+    df, signals = _three_touch_pairs()
+    with pytest.raises(ValueError, match="same_bar_opposite_direction"):
+        run_backtest(
+            df,
+            signals,
+            instrument="ES",
+            config={
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 8,
+                "same_bar_opposite_direction": None,
+            },
+        )
+
+
+def test_skip_both_does_not_occupy_book_for_later_unpaired():
+    """Collision pair is refused; a later unpaired long can still fill."""
+    df = pd.DataFrame(
+        [
+            _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
+            _bar("2026-01-02 09:31", 100.0, 100.5, 99.5, 100.0),
+            _bar("2026-01-02 09:32", 100.0, 100.5, 99.5, 100.0),
+            _bar("2026-01-02 09:33", 100.0, 100.5, 99.5, 100.0),
+            _bar("2026-01-02 09:34", 100.0, 100.5, 99.5, 100.0),
+        ]
+    )
+    signals = pd.DataFrame(
+        [
+            _signal(0, direction="long", signal_id=0),
+            _signal(0, direction="short", signal_id=1),
+            _signal(2, direction="long", signal_id=2),
+        ]
+    )
+    kwargs = dict(
+        df=df,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT_VALUE,
+        stop_loss_ticks=40,
+        take_profit_ticks=40,
+        exposure_policy="single_position",
+        return_result=True,
+    )
+    legacy = simulate_trades(**kwargs)
+    skip_both = simulate_trades(**kwargs, same_bar_opposite_direction="skip_both")
+    assert list(legacy.trades["signal_id"]) == [0]
+    assert list(legacy.skipped_signals["signal_id"]) == [1, 2]
+    assert list(skip_both.trades["signal_id"]) == [2]
+    assert list(skip_both.skipped_signals["signal_id"]) == [0, 1]
+    assert set(skip_both.skipped_signals["skip_reason"]) == {"direction_conflict"}
+    assert skip_both.direction_collision_diagnostic["resolved_none"] == 1
+
+
+def test_skip_both_single_setup_skips_only_shared_key_pair():
+    df, _ = _three_touch_pairs()
+    signals = pd.DataFrame(
+        [
+            _signal(0, direction="long", signal_id=0, level_names="A|B"),
+            _signal(0, direction="short", signal_id=1, level_names="A|B"),
+            _signal(0, direction="long", signal_id=2, level_names="C|D"),
+        ]
+    )
+    result = simulate_trades(
+        df,
+        signals,
+        tick_size=TICK,
+        point_value=POINT_VALUE,
+        stop_loss_ticks=8,
+        take_profit_ticks=8,
+        exposure_policy="single_setup",
+        same_bar_opposite_direction="skip_both",
+        return_result=True,
+    )
+    assert list(result.trades["signal_id"]) == [2]
+    assert list(result.trades["direction"]) == ["long"]
+    assert set(result.skipped_signals["signal_id"]) == {0, 1}
+    assert set(result.skipped_signals["skip_reason"]) == {"direction_conflict"}

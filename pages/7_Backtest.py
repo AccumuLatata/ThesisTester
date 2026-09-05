@@ -809,9 +809,10 @@ if isinstance(skipped_signals, pd.DataFrame) and not skipped_signals.empty:
     st.subheader("Skipped signals")
     st.caption(
         "Skip reasons include exposure-policy rejects, `after_entry_cutoff` "
-        "(when `no_new_entries_after` rejects with skip capture on), and "
-        "`outside_entry_window` when Admit is enabled. Distinct from OTF rejects "
-        "and 3c voids."
+        "(when `no_new_entries_after` rejects with skip capture on), "
+        "`outside_entry_window` when Admit is enabled, and DA3 "
+        "`direction_conflict` when `same_bar_opposite_direction=skip_both`. "
+        "Distinct from OTF rejects and 3c voids."
     )
     skip_cols = [
         c

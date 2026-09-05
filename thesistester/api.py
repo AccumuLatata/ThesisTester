@@ -417,6 +417,16 @@ def _validate_random_state(value: Any, *, section: str) -> None:
         raise ValueError(f"{section}.random_state must be an integer >= 0")
 
 
+def _require_same_bar_opposite_direction(value: Any) -> str:
+    """Return a DA3 policy token or raise. Rejects ``None`` / non-tokens."""
+    if value not in VALID_SAME_BAR_OPPOSITE_DIRECTION:
+        raise ValueError(
+            "backtest.same_bar_opposite_direction must be one of "
+            f"{sorted(VALID_SAME_BAR_OPPOSITE_DIRECTION)}"
+        )
+    return str(value)
+
+
 def _validate_bool_fields(
     config: Mapping[str, Any],
     fields: set[str],
@@ -871,12 +881,9 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     )
     if backtest.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
         raise ValueError(f"backtest.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
-    same_bar_policy = backtest.get("same_bar_opposite_direction", "legacy")
-    if same_bar_policy not in VALID_SAME_BAR_OPPOSITE_DIRECTION:
-        raise ValueError(
-            "backtest.same_bar_opposite_direction must be one of "
-            f"{sorted(VALID_SAME_BAR_OPPOSITE_DIRECTION)}"
-        )
+    _require_same_bar_opposite_direction(
+        backtest.get("same_bar_opposite_direction", "legacy")
+    )
     validate_exit_management_config(
         breakeven_after_r=backtest.get("breakeven_after_r"),
         trailing_after_r=backtest.get("trailing_after_r"),
@@ -1802,7 +1809,9 @@ def run_backtest(
         trailing_distance_ticks=settings["trailing_distance_ticks"],
         entry_window=simulate_entry_window,
         entry_window_exchange_tz=inst.exchange_tz,
-        same_bar_opposite_direction=str(settings["same_bar_opposite_direction"]),
+        same_bar_opposite_direction=_require_same_bar_opposite_direction(
+            settings["same_bar_opposite_direction"]
+        ),
         return_result=True,
     )
     trades = simulation.trades

@@ -857,3 +857,10 @@ def test_same_bar_opposite_direction_invalid_token_rejected():
     raw["study"]["constants"]["backtest"]["same_bar_opposite_direction"] = "flip_coin"
     with pytest.raises(StudySpecError, match="same_bar_opposite_direction"):
         validate_study_spec(normalize_study_spec(raw))
+
+
+def test_same_bar_opposite_direction_null_rejected():
+    raw = _minimal_study()
+    raw["study"]["constants"]["backtest"]["same_bar_opposite_direction"] = None
+    with pytest.raises(StudySpecError, match="same_bar_opposite_direction"):
+        validate_study_spec(normalize_study_spec(raw))

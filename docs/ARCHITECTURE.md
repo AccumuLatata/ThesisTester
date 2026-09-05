@@ -1370,7 +1370,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `entry_window_armed` | Time Analysis Promote (SW4) | Backtest / Time Analysis | `bool` — pending re-sim after Promote |
 | `entry_window_promote_provenance` | Time Analysis Promote (SW4) | banners / audit | Promote source, counts, `sample_warning`, status |
 | `grid_entry_window` | Grid Search (SW5) | Validation inherit / artifacts | Normalized window used for last grid run |
-| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window` + `after_entry_cutoff`) |
+| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window` + `after_entry_cutoff` + DA3 `direction_conflict`) |
 | `validation_summary` | Validation (`pages/10_Validation.py`) | Validation display/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
 | `walk_forward_results` | Validation/R18 API | Validation display, Report, Research Bundles | R14 per-fold `pd.DataFrame` with bar/session boundaries and IS/OOS metrics |
 | `walk_forward_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R14 schema-version-2 summary including retention and stitched OOS status |

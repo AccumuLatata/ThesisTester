@@ -430,6 +430,15 @@ def _same_bar_collision_groups(
     return collisions
 
 
+def _candidate_conflict_id(row: dict[str, Any]) -> tuple[int, int, int]:
+    """Stable identity for a DA3 conflicted candidate (not ``id(row)``)."""
+    return (
+        int(row["entry_bar_index"]),
+        int(row["bar_idx"]),
+        int(row["sig"]["signal_id"]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -870,7 +879,7 @@ def simulate_trades(
         )
 
     collision_groups: list[list[dict[str, Any]]] = []
-    conflict_candidate_ids: set[int] = set()
+    conflict_candidate_ids: set[tuple[int, int, int]] = set()
     if same_bar_opposite_direction != "legacy":
         collision_groups = _same_bar_collision_groups(
             ordered_candidates, exposure_policy=exposure_policy
@@ -878,14 +887,16 @@ def simulate_trades(
         if collision_groups and same_bar_opposite_direction == "raise":
             first_group = collision_groups[0]
             first_entry = int(first_group[0]["entry_bar_index"])
-            signal_ids = [int(row["sig"]["signal_id"]) for row in first_group]
+            signal_ids = sorted(int(row["sig"]["signal_id"]) for row in first_group)
             raise ValueError(
                 "same_bar_opposite_direction='raise' refused the run: "
                 f"opposite-direction collision at entry_bar_index={first_entry} "
                 f"with signal_ids={signal_ids}"
             )
         if same_bar_opposite_direction == "skip_both":
-            conflict_candidate_ids = {id(row) for group in collision_groups for row in group}
+            conflict_candidate_ids = {
+                _candidate_conflict_id(row) for group in collision_groups for row in group
+            }
 
     accepted_for_blocking: list[dict] = []
     for candidate in ordered_candidates:
@@ -901,7 +912,10 @@ def simulate_trades(
         entry_model = str(candidate["entry_model"])
         exposure_group_key = str(candidate["exposure_group_key"])
 
-        if same_bar_opposite_direction == "skip_both" and id(candidate) in conflict_candidate_ids:
+        if (
+            same_bar_opposite_direction == "skip_both"
+            and _candidate_conflict_id(candidate) in conflict_candidate_ids
+        ):
             if return_skipped_signals or return_result:
                 skipped_signals.append(
                     {
