@@ -231,7 +231,7 @@ Until that hash-safe persist exists, DA2 `collision_pairs` is `None` on older bu
 **Files**
 
 - `thesistester/analytics/metrics.py` (reuse `summarize_trades_by_direction`; no new math)
-- `thesistester/study/execute.py` — new `DA_DIRECTION_INDEX_KEYS`; `STUDY_INDEX_KEYS` extended; direction keys attached in `execute_study_cell` / `--rebuild-direction`, **not** inside `build_index_row_from_state` (that helper stays R18-shaped); bundle rehydrate
+- `thesistester/study/execute.py` — new `DA_DIRECTION_INDEX_KEYS`; `STUDY_INDEX_KEYS` extended; direction keys attached in `execute_study_cell` / `--rebuild-direction`, **not** inside `build_index_row_from_state` (that helper stays R18-shaped); bundle rehydrate. **`_failed_index_row` must seed `DA_DIRECTION_INDEX_KEYS` as `None`** (it currently seeds only `R18_INDEX_METRIC_KEYS` and is used for failed / pending / soft-resume rows at the six call sites). Without that, any study with a failed cell writes a parquet whose columns ≠ `STUDY_INDEX_KEYS`.
 - `thesistester/study/report.py` — `study.direction.csv`; overview columns
 - `thesistester/study/observatory.py` — fact-table columns; facet; banner counts
 - `pages/16_Study_Observatory.py` — cells table columns, `directional_integrity` facet, corpus banner line
@@ -252,7 +252,7 @@ DA_DIRECTION_INDEX_KEYS =
   collision_pairs, collision_resolved_long   # from DA1 in-memory/state when present, else None
 ```
 
-Do **not** append these to `R18_INDEX_METRIC_KEYS`. That tuple is the CLI `_execute_run` contract (`tests/study/test_study_execute.py` ordered-parity). Direction split is a study-index concern. `build_index_row_from_state` stays R18-only so `tuple(study_row.keys()) == R18_INDEX_METRIC_KEYS` remains true.
+Do **not** append these to `R18_INDEX_METRIC_KEYS`. That tuple is the CLI `_execute_run` contract (`tests/study/test_study_execute.py` ordered-parity). Direction split is a study-index concern. `build_index_row_from_state` stays R18-only so `tuple(study_row.keys()) == R18_INDEX_METRIC_KEYS` remains true. `_failed_index_row` is the study-index writer for non-ok rows — extend it, or parquet column alignment breaks.
 
 Classification: `long_only` if `short_trade_count == 0 and trade_count > 0`; `short_only` symmetric; `mixed` otherwise; `empty` when `trade_count == 0`.
 
@@ -272,6 +272,7 @@ Classification: `long_only` if `short_trade_count == 0 and trade_count > 0`; `sh
 - Older index parquet without the new keys loads in `load_observatory_frame` (keys filled with `None`).
 - `--rebuild-direction` on the RS2 golden study output: fills keys; all pre-existing columns byte-equal before/after.
 - `STUDY_INDEX_KEYS` column assertion updated; `tuple(cli_row.keys()) == R18_INDEX_METRIC_KEYS` unchanged.
+- Failed / pending / soft-resume rows from `_failed_index_row` contain every `DA_DIRECTION_INDEX_KEYS` key as `None`; a mixed ok+failed study writes `list(index.columns) == list(STUDY_INDEX_KEYS)`.
 
 **Acceptance:** `python -m thesistester study report results/studies/progB_w1_ext_ma --rebuild-direction` on the operator machine yields `long_only` on every cell (this is the expected, confirming result). Observatory banner shows the count.
 
@@ -352,7 +353,7 @@ continuation:  approach "above" → short  (price fell into the level, sell the 
 - **Emit-once:** do not drop `_check_fade` / `_check_continuation` inside `for d in directions` unless the checker returns `None` when `d` ≠ implied side. If the checker ignores `d` and emits the approach side, the loop would write **two duplicate same-side candidates**. Prefer one call per zone (outside the direction loop), then filter on `direction`.
 - Optional `trigger_params`: `require_close_confirmation: bool = False` — for `fade`, also require `bar.close` back on the approach side of the zone (mirrors `_check_reject` geometry); for `continuation`, require `bar.close` through the far edge. Default off so the base trigger is the exact directional analogue of `touch`.
 - `entry_model` stays `candidate_next_bar_open`; `entry_ref = bar.close`. All existing exposure/cost/intrabar logic applies unchanged.
-- `_make_signal` is the schema writer: add `approach_side: str | None = None` there so empty frames and every legacy trigger get the column. Do not special-case only the fade checker. Adding the column changes frame width for **every** trigger, including `touch`. Update any exact-column assertions in the same PR. Downstream OTF/attribution select by name and must tolerate the extra key. Enabled-OTF / entry-window goldens project a **column subset** (`_SIGNAL_PROJECTION_COLUMNS`) — do **not** add `approach_side` to that projection (those CSVs stay byte-identical). If any golden serialises the full signals frame, add the column **only via a new fixture**, never by regenerating an existing golden.
+- **`approach_side` is fade/continuation-only.** Do **not** add it to `_SIGNAL_COLUMNS`, `_empty_signals_df`, or `_make_signal`. Those frames are written to hashed `signals.parquet` (`_hash_dataframe` includes column names and dtypes); widening every trigger — including `touch` — would change `canonical_bundle_hash` of every future default run vs the recorded Run 1 bundles, and no existing golden pins that (legacy pipeline builds signals by hand; RS2 is an expansion golden). Attach `approach_side` in `generate_signals` **after** `_make_signal`, and only on rows whose `trigger` is `fade` or `continuation`. Empty frames and all legacy triggers keep today's column set. Downstream OTF/attribution already select by name and must tolerate a missing key. Enabled-OTF / entry-window goldens project a **column subset** (`_SIGNAL_PROJECTION_COLUMNS`) — do **not** add `approach_side` there. If a new golden serialises a fade signals frame, it is a new fixture, never a regen.
 - Multi-timeframe: reuses `_prepare_trigger_dataframe`; `prev_close` is the previous **trigger-timeframe** bar close.
 
 **PIT:** `prev_close` is strictly in the past; appending future bars cannot change any emitted signal. Test asserts frame equality after appending 50 bars.
@@ -364,9 +365,10 @@ continuation:  approach "above" → short  (price fell into the level, sell the 
 - `both` never yields two directions **for one zone** on one bar. Property test: single-zone OU series `groupby(bar_index).direction.nunique().max() == 1`. A separate two-zone fixture documents that cross-zone opposite pairs remain possible.
 - `require_close_confirmation` cases.
 - Through `simulate_trades` with `single_position` **and one zone**: `direction_collision_diagnostic.candidate_pairs == 0`.
-- New golden recorded and asserted; existing goldens unchanged. Exact `signals.columns` assertions updated in the same PR.
+- New golden recorded and asserted; existing goldens unchanged.
+- `generate_signals(..., trigger="touch")` column set equals pre-PR `_SIGNAL_COLUMNS` (no `approach_side`). A `touch` `run_experiment` bundle has `canonical_bundle_hash` identical to a pre-PR capture of the same fixture.
 
-**Regression safety:** new tokens only; `touch` semantics untouched; new column is `None` for all legacy triggers but **is present**; new golden instead of regen.
+**Regression safety:** new tokens only; `touch` semantics and `_SIGNAL_COLUMNS` untouched; `approach_side` never appears on legacy-trigger frames; `canonical_bundle_hash` of a default `touch` bundle identical to pre-PR; new golden instead of regen.
 
 ---
 
@@ -446,9 +448,9 @@ continuation:  approach "above" → short  (price fell into the level, sell the 
 | PR | New tests | Goldens |
 |---|---|---|
 | DA1 | collision diagnostic × 3 policies; legacy return shapes | unchanged |
-| DA2 | index split; integrity classes; rebuild idempotence; tolerant load | unchanged |
+| DA2 | index split; integrity classes; rebuild idempotence; tolerant load; `_failed_index_row` seeds DA keys | unchanged |
 | DA3 | `skip_both`, `raise`, `legacy` equality | unchanged |
-| DA4 | fade/continuation geometry; one-per-zone filter; two-zone cross-zone doc; PIT; exact column-set updates; through-engine zero collisions on one zone | **+1 new** (`fade_enabled_*`) |
+| DA4 | fade/continuation geometry; one-per-zone filter; two-zone cross-zone doc; PIT; touch column-set + bundle-hash identity; through-engine zero collisions on one zone | **+1 new** (`fade_enabled_*`) |
 | DA5 | baseline keys; off-by-default; rank unaffected | unchanged |
 | DA6 | Run 2 manifest expand + lock validation | unchanged |
 
