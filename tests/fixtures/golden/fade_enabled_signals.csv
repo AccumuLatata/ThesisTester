@@ -1,0 +1,3 @@
+signal_id,bar_index,trigger,direction,approach_side,entry_model
+0,1,fade,long,above,candidate_next_bar_open
+1,5,fade,short,below,candidate_next_bar_open

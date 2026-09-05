@@ -771,6 +771,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 "arrival_tolerance_ticks",
                 "entry_retrace_ticks",
                 "max_entry_wait_bars_after_reversal",
+                "require_close_confirmation",
             },
             section="setup.trigger_params",
         )
@@ -784,6 +785,11 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             {"max_entry_wait_bars_after_reversal"},
             section="setup.trigger_params",
             integer=True,
+        )
+        _validate_bool_fields(
+            trigger_params,
+            {"require_close_confirmation"},
+            section="setup.trigger_params",
         )
         for key in (
             "arrival_tolerance_ticks",

@@ -84,6 +84,31 @@ Regenerate with:
 python -m tests.fixtures.golden.record_entry_window_enabled_golden --confirm-regenerate
 ```
 
+### 2.4 Enabled fade family (DA4)
+
+Additive drift gate for the new `fade` trigger. Isolated from legacy, OTF,
+and entry_window families: these files never rewrite those artifacts.
+
+| File | Role |
+|---|---|
+| `generate_fade_enabled.py` | One-zone 1m NQ fixture + `generate_signals(trigger="fade")` |
+| `pipeline_fade_enabled.py` | `simulate_trades(..., exposure_policy="single_position", return_result=True)` |
+| `record_fade_enabled_golden.py` | Recorder (`--confirm-regenerate` required) |
+| `fade_enabled_dataset.parquet` | Recorded 1m source frame |
+| `fade_enabled_signals.csv` | Canonical fade-signal projection (includes `approach_side`; new family only) |
+| `fade_enabled_trades.csv` | Canonical accepted-trade projection |
+| `fade_enabled_projection.json` | Reviewable IDs / directions / collision_pairs |
+| `fade_enabled_manifest.json` | Provenance |
+
+Do **not** add `approach_side` to OTF / entry-window `_SIGNAL_PROJECTION_COLUMNS`.
+Existing goldens stay byte-identical under default `touch`.
+
+Regenerate with:
+
+```bash
+python -m tests.fixtures.golden.record_fade_enabled_golden --confirm-regenerate
+```
+
 ## 3. Determinism contract (measured, not assumed)
 
 Two properties were verified on this repository before writing this spec. Both shape the

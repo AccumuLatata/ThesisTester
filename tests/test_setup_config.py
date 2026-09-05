@@ -209,6 +209,41 @@ def test_missing_trigger_timeframe_normalizes_to_base():
     assert config["trigger_timeframe"] == "base"
 
 
+def test_fade_config_normalizes_require_close_confirmation():
+    config = build_setup_config(
+        name="fade",
+        description="",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="fade",
+        direction="both",
+    )
+    assert config["trigger_params"] == {"require_close_confirmation": False}
+    assert validate_setup_config(config) == []
+
+    confirmed = build_setup_config(
+        name="fade-confirm",
+        description="",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="continuation",
+        direction="both",
+        trigger_params={"require_close_confirmation": "yes"},
+    )
+    assert confirmed["trigger_params"] == {"require_close_confirmation": True}
+    assert validate_setup_config(confirmed) == []
+
+
 def test_3c_config_includes_expected_trigger_params():
     # arrival_tolerance_ticks is deprecated; it is accepted in input for backward
     # compat but normalized to 0.0 in the stored config.

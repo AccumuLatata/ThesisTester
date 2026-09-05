@@ -460,6 +460,12 @@ soft-resume rehydrate from `trades.parquet`.
 These are descriptive counts, not a claim that `touch` + `both` is two-sided.
 Program B Run 1 cells are expected to read `long_only` after rebuild.
 
+## DA4 approach-side column
+
+| Field | Definition |
+|---|---|
+| `approach_side` | `above` / `below` on `fade` / `continuation` rows only. Previous trigger-timeframe close vs the zone. **Not** on `_SIGNAL_COLUMNS` or legacy-trigger frames; missing on `touch` / empty signals. Not hashed into default `touch` bundles. |
+
 ## R13 break-even and trailing exits
 
 | Field / reason | Definition |

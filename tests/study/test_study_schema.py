@@ -302,6 +302,13 @@ def test_invalid_trigger_rejected():
         validate_study_spec(normalize_study_spec(raw))
 
 
+def test_fade_and_continuation_triggers_accepted():
+    raw = _minimal_study()
+    raw["study"]["factors"]["trigger"] = ["fade", "continuation"]
+    raw["study"]["stage"]["include"]["trigger"] = ["fade", "continuation"]
+    validate_study_spec(normalize_study_spec(raw))
+
+
 def test_invalid_trigger_timeframe_30min_rejected():
     raw = _minimal_study()
     raw["study"]["factors"]["trigger_timeframe"] = ["30min"]

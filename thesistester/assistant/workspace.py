@@ -112,7 +112,15 @@ RESEARCH_WORKFLOW_STEPS: tuple[str, ...] = (
     "Open a Confirmed specification and click Run confirmed research.",
 )
 
-SETUP_TRIGGER_OPTIONS: tuple[str, ...] = ("touch", "reject", "break", "reclaim", "3c")
+SETUP_TRIGGER_OPTIONS: tuple[str, ...] = (
+    "touch",
+    "reject",
+    "break",
+    "reclaim",
+    "3c",
+    "fade",
+    "continuation",
+)
 EXPOSURE_POLICIES: tuple[str, ...] = (
     "allow_all",
     "single_position",
