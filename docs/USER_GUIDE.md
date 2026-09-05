@@ -323,11 +323,11 @@ exposure_group_key
 | Control / value | Meaning | Common pitfall |
 |---|---|---|
 | `allow_all` (default) | Every executable signal may trade; overlapping signals are independent | Inflates trade count vs a real one-position book; cooldown is a no-op here |
-| `single_position` | At most one open trade at a time (any direction/setup) | Later signals skip as `overlapping_position`. **Default `legacy`: `touch` + `direction: both` is long-only** — the same-bar short is skipped (`docs/ASSUMPTIONS_AND_LIMITATIONS.md` §4b). Opt-in `skip_both` refuses both sides (`direction_conflict`) |
+| `single_position` | At most one open trade at a time (any direction/setup) | Later signals skip as `overlapping_position`. **`touch` + `direction: both` is long-only** — the same-bar short is always skipped (`docs/ASSUMPTIONS_AND_LIMITATIONS.md` §4b) |
 | `single_direction` | At most one open trade per direction (`long` / `short`) | Opposite side can still overlap; `touch` + `both` still opens a hedged pair on the same bar |
 | `single_setup` | At most one open trade per setup group. Backtest key order: `setup_name` → `zone_id` → `level_source_label` → `level_names` → else `trigger\|direction` | Shared `level_names` can collide even when zone labels differ; skip reason is `overlapping_setup`. Same `touch`+`both` long-only artefact when the group key is shared; the fallback key includes direction and would hedge |
 | `Cooldown bars after exit` | Under `single_*` only: after a blocking trade exits, wait this many bars before admitting another in the same exposure group | No-op under `allow_all`; skip reason is `cooldown_active` when entry is after exit but inside cooldown |
-| `same_bar_opposite_direction` (`legacy`) | Opt-in same-bar guard: `skip_both` / `raise` | Default unchanged; no-op under `allow_all` and `single_direction` |
+| `same_bar_opposite_direction` (`legacy`) | Opt-in same-bar guard: `skip_both` / `raise` | Default unchanged; no-op under `allow_all`/`single_direction` |
 
 **How admission works (Backtest).**
 
@@ -335,17 +335,12 @@ exposure_group_key
    evaluated **before** exposure — rejected candidates never compete for a slot.
 2. Under restrictive policies, candidates are ordered by entry bar, signal bar,
    then `signal_id` (deterministic).
-3. When `same_bar_opposite_direction=skip_both`, each same-bar opposite pair
-   under `single_position` / `single_setup` (same group key) is skipped as
-   `direction_conflict` (`blocking_trade_id` NA) **before** occupancy. `raise`
-   refuses the run on the first such pair. Both tokens are no-ops under
-   `allow_all` and `single_direction`.
-4. A candidate is blocked when any relevant prior trade still covers
+3. A candidate is blocked when any relevant prior trade still covers
    `entry_bar_index` through `exit_bar_index + cooldown_bars_after_exit`.
-5. Skips appear in **Skipped signals** with `skip_reason`, `blocking_trade_id`,
+4. Skips appear in **Skipped signals** with `skip_reason`, `blocking_trade_id`,
    and `exposure_group_key`. These are **not** OTF rejects and **not** `3c` voids.
-6. Backtest captions split skip counts: outside entry window / after entry
-   cutoff / exposure-other (`direction_conflict` is in exposure-other).
+5. Backtest captions split skip counts: outside entry window / after entry
+   cutoff / exposure-other.
 
 **Portfolio note.** Portfolio uses the same four policy **names** after merging
 completed per-setup trades (diagnostic merge — not a live margin engine), but
