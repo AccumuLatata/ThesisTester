@@ -264,9 +264,16 @@ This engine is for **research screening**, not proof of a durable edge.
   the same lock is the same object.
 - Remediation series: `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md`
   (**DA**, not Discuss Intelligence DI). Legacy behaviour is unchanged and
-  stays the default; DA adds a diagnostic, a direction split, an opt-in
-  same-bar policy, and approach-side triggers (`fade` / `continuation`)
-  behind new tokens.
+  stays the default.
+- **DA1 (landed):** `simulate_trades(..., return_result=True)` and
+  `api.run_backtest` emit an in-memory `direction_collision_diagnostic`
+  (`policy`, `candidate_pairs`, `resolved_long`, `resolved_short`,
+  `resolved_none`, `accepted_trade_share_from_pairs`). Grouping is
+  `(entry_bar_index, bar_idx)` — bar-level, not per-zone. `resolved_long` and
+  `resolved_short` are not a partition (both sides of a pair may fill). The
+  diagnostic is **not** written to `trade_summary.json` / `_BACKTEST_META_KEYS`
+  and does not enter `canonical_bundle_hash`. Default return shapes
+  (`DataFrame` / skip tuple) are unchanged. See `docs/METRICS_GLOSSARY.md`.
 
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.

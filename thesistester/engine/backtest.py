@@ -19,7 +19,8 @@ Design notes
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import time
 from typing import Any
 from zoneinfo import ZoneInfoNotFoundError
@@ -147,6 +148,7 @@ class SimulationResult:
     skipped_signals: pd.DataFrame
     intrabar_diagnostic: dict[str, Any]
     exit_management_diagnostic: dict[str, Any]
+    direction_collision_diagnostic: dict[str, Any] = field(default_factory=dict)
 
 
 def _empty_trades_df() -> pd.DataFrame:
@@ -221,6 +223,74 @@ def _exit_management_diagnostic(
         "stop_adjustment_count": int(stop_adjustment_count),
         "average_stop_adjustments_per_trade": (
             float(stop_adjustment_count / trade_count) if trade_count > 0 else 0.0
+        ),
+    }
+
+
+def _empty_direction_collision_diagnostic(*, policy: str = "legacy") -> dict[str, Any]:
+    return {
+        "policy": policy,
+        "candidate_pairs": 0,
+        "resolved_long": 0,
+        "resolved_short": 0,
+        "resolved_none": 0,
+        "accepted_trade_share_from_pairs": 0.0,
+    }
+
+
+def _direction_collision_diagnostic(
+    *,
+    ordered_candidates: list[dict[str, Any]],
+    accepted_trades: list[dict[str, Any]],
+    policy: str = "legacy",
+) -> dict[str, Any]:
+    """Count same-entry-bar opposite-direction candidate groups and their admission.
+
+    Grouping is ``(entry_bar_index, bar_idx)`` (bar-level, not per-zone).
+    ``resolved_long`` and ``resolved_short`` are not a partition: both sides
+    of a pair may fill under ``allow_all`` / ``single_direction``.
+    Computed from candidates + accepted trades so the counts do not depend
+    on skip-capture flags.
+    """
+    empty = _empty_direction_collision_diagnostic(policy=policy)
+    if not ordered_candidates:
+        return empty
+
+    groups: dict[tuple[int, int], set[str]] = defaultdict(set)
+    candidate_key_by_signal: dict[int, tuple[int, int]] = {}
+    for row in ordered_candidates:
+        key = (int(row["entry_bar_index"]), int(row["bar_idx"]))
+        groups[key].add(str(row["direction"]))
+        candidate_key_by_signal[int(row["sig"]["signal_id"])] = key
+
+    pair_keys = {key for key, directions in groups.items() if {"long", "short"} <= directions}
+    if not pair_keys:
+        return {
+            **empty,
+            "accepted_trade_share_from_pairs": 0.0,
+        }
+
+    accepted_dirs_by_pair: dict[tuple[int, int], set[str]] = defaultdict(set)
+    accepted_from_pairs = 0
+    for trade in accepted_trades:
+        key = candidate_key_by_signal.get(int(trade["signal_id"]))
+        if key is None or key not in pair_keys:
+            continue
+        accepted_dirs_by_pair[key].add(str(trade["direction"]))
+        accepted_from_pairs += 1
+
+    resolved_long = sum(1 for key in pair_keys if "long" in accepted_dirs_by_pair[key])
+    resolved_short = sum(1 for key in pair_keys if "short" in accepted_dirs_by_pair[key])
+    resolved_none = sum(1 for key in pair_keys if not accepted_dirs_by_pair[key])
+    trade_count = len(accepted_trades)
+    return {
+        "policy": policy,
+        "candidate_pairs": len(pair_keys),
+        "resolved_long": resolved_long,
+        "resolved_short": resolved_short,
+        "resolved_none": resolved_none,
+        "accepted_trade_share_from_pairs": (
+            float(accepted_from_pairs / trade_count) if trade_count > 0 else 0.0
         ),
     }
 
@@ -441,8 +511,9 @@ def simulate_trades(
         Required when ``trailing_after_r`` is provided. Distance from the
         best favorable parent-bar extreme, in ticks.
     return_result:
-        Return :class:`SimulationResult` with skipped signals and a run-level
-        intrabar diagnostic. Default ``False`` preserves the legacy return API.
+        Return :class:`SimulationResult` with skipped signals, a run-level
+        intrabar diagnostic, and an in-memory direction-collision diagnostic.
+        Default ``False`` preserves the legacy return API.
 
     Returns
     -------
@@ -541,6 +612,7 @@ def simulate_trades(
                     trail_exit_count=0,
                     stop_adjustment_count=0,
                 ),
+                direction_collision_diagnostic=_empty_direction_collision_diagnostic(),
             )
         if return_skipped_signals:
             return empty_trades, empty_skipped
@@ -1182,6 +1254,11 @@ def simulate_trades(
                 be_exit_count=be_exit_count,
                 trail_exit_count=trail_exit_count,
                 stop_adjustment_count=total_stop_adjustment_count,
+            ),
+            direction_collision_diagnostic=_direction_collision_diagnostic(
+                ordered_candidates=ordered_candidates,
+                accepted_trades=trades,
+                policy="legacy",
             ),
         )
     if return_skipped_signals:

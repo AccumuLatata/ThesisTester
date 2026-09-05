@@ -139,6 +139,7 @@ class BacktestResult(TypedDict):
     otf_filter_summary: dict[str, Any]
     intrabar_diagnostic: dict[str, Any]
     exit_management_diagnostic: dict[str, Any]
+    direction_collision_diagnostic: dict[str, Any]
     entry_window: dict[str, Any]
 
 
@@ -1806,6 +1807,7 @@ def run_backtest(
         "otf_filter_summary": otf.to_summary_dict(),
         "intrabar_diagnostic": simulation.intrabar_diagnostic,
         "exit_management_diagnostic": simulation.exit_management_diagnostic,
+        "direction_collision_diagnostic": simulation.direction_collision_diagnostic,
         "entry_window": entry_window,
     }
 
@@ -2935,6 +2937,7 @@ def run_experiment(
             "trailing_distance_ticks": backtest_config.get("trailing_distance_ticks"),
         },
         "backtest_exit_management_diagnostic": backtest_result["exit_management_diagnostic"],
+        "direction_collision_diagnostic": backtest_result["direction_collision_diagnostic"],
         "backtest_execution_costs": {
             "commission_per_side": float(backtest_config.get("commission_per_side", 0.0)),
             "slippage_ticks": float(backtest_config.get("slippage_ticks", 0.0)),

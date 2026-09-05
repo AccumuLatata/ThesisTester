@@ -422,6 +422,25 @@ Counts are execution-model diagnostics, not performance metrics. A lower
 ambiguity count does not prove fill realism; it only states how often the
 selected data/model could distinguish event order.
 
+## DA1 direction-collision diagnostic
+
+In-memory only (`SimulationResult.direction_collision_diagnostic`,
+`run_backtest` / `run_experiment` state). Not a performance metric and not a
+hashed bundle member.
+
+| Field | Definition |
+|---|---|
+| `policy` | Active same-bar opposite-direction rule. DA1 always reports `legacy`. |
+| `candidate_pairs` | Count of `(entry_bar_index, bar_idx)` groups that contain both a long and a short candidate after cutoff/window filters. Bar-level, not per-zone. |
+| `resolved_long` | Pairs in which at least one long was accepted. Not exclusive of `resolved_short`. |
+| `resolved_short` | Pairs in which at least one short was accepted. Not exclusive of `resolved_long`. |
+| `resolved_none` | Pairs in which neither side was accepted (occupancy / cooldown / later DA3 `skip_both`). |
+| `accepted_trade_share_from_pairs` | Accepted trades whose signal belonged to a collision pair / all accepted trades. `0.0` when no trades. |
+
+Under `allow_all` / `single_direction` a `touch` pair typically fills both
+sides, so `resolved_long == resolved_short == candidate_pairs`. Under
+`single_position` the legacy tie-break yields `resolved_short == 0`.
+
 ## R13 break-even and trailing exits
 
 | Field / reason | Definition |
