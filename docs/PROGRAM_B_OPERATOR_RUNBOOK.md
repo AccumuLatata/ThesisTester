@@ -1,7 +1,8 @@
 # Program B — operator / bot runbook
 
 **Give this file to the bot that will run the studies.**  
-**YAMLs:** `examples/studies/program_b/`  
+**Run 1 YAMLs (historical, long-only):** `examples/studies/program_b/`  
+**Run 2 YAMLs (current product):** `examples/studies/program_b_run2/`  
 **Inventory / locks:** `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md`  
 **Concept:** `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md`  
 **AO1 (solo cells):** `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (must be on `main` / a tree that includes AO1)
@@ -33,10 +34,12 @@ Catalog is still 50 anchors. VA and non-VA are different objects (TV3 tick VAP).
 > **Run 1 is a long-only sample.** Under `touch` + `direction: both` + `single_position`
 > the same-bar short candidate is always skipped as `overlapping_position`; only longs
 > fill (`docs/ASSUMPTIONS_AND_LIMITATIONS.md` §4b). Read Run 1 cells as
-> "buy the touch" only. Do **not** start Run 2 on this table — wait for the Run 2 lock
-> in `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA6).
+> "buy the touch" only. **Run 2** (`examples/studies/program_b_run2/`) is the
+> corrected product (`fade` @ 1min). Do not rerun Run 1 on `touch`.
 
 ## 1. Locks (do not edit)
+
+### Run 1 (historical)
 
 | Lock | Value |
 |---|---|
@@ -62,7 +65,25 @@ Catalog is still 50 anchors. VA and non-VA are different objects (TV3 tick VAP).
 | Rank | `expectancy_r` only. Never `total_r` |
 | Workers | `1` until smoke is ok; POSIX only to raise |
 
-All generated YAMLs already stamp these. If a YAML disagrees with this table, **stop** — do not “fix” tokens by hand. Re-run `generate_program_b_yaml.py`.
+All generated Run 1 YAMLs already stamp these. If a YAML disagrees with this table, **stop** — do not “fix” tokens by hand. Re-run `generate_program_b_yaml.py` with default flags (do not pass `--trigger fade` onto the Run 1 directory).
+
+### Run 2 (current)
+
+Delta vs Run 1 only. Everything else (MNQ, `both`, `single_position`, 80/80, costs, flatten 16:00, 15s ingest, `min_trades` 30) is identical.
+
+| Lock | Run 2 |
+|---|---|
+| Trigger | **`fade`** @ `1min` (`require_close_confirmation: false`) |
+| `same_bar_opposite_direction` | **`raise`** — a collision is a spec error. Valid because each Run 2 cell is **one zone** (`anchor_rules`, one partner or solo point). Do not use `raise` on multi-zone `global_cluster` studies. |
+| `report.random_baseline` | `enabled: true`, `n_replicas: 50` |
+| Study `name` / `output_dir` | `progB_r2_*` so results do not collide with Run 1 |
+
+```bash
+PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py \
+  examples/studies/program_b_run2/manifest.yaml
+```
+
+Expect: `ok 23 studies / 944 cells`. Smoke should finish `collision_pairs == 0` and `directional_integrity == mixed` (or a documented reason, e.g. a directional-by-construction core).
 
 ---
 
@@ -116,6 +137,8 @@ Cross-study UI readout is a **separate** planned series (Study Observatory, `doc
 
 ## 4. Run list (do in this order)
 
+### Run 1 (historical, `examples/studies/program_b/`)
+
 | # | File | Cells | `min_valid` |
 |---|---|---:|---:|
 | 0 | `progB_smoke_ONH_SMA50_5min.yaml` | 1 | 1 |
@@ -155,6 +178,45 @@ missing Tick–Tick–Last file:
 
 Smoke must finish `status=ok` before Wave 0. Wave 0 (15s) answers “which non-VA levels have +E alone.” Pair waves 1–3 and 5–8 still run for **every** 15s name. Wave 4 / `w0_va` wait for ticks.
 
+### Run 2 (current, `examples/studies/program_b_run2/`)
+
+Same 23 files / 944 cells / same order. Paths are under `examples/studies/program_b_run2/`. Study names are `progB_r2_*`; write `results/studies/progB_r2_*`. Tick-gated VA is **not** in the Run 2 packet (15s only).
+
+| # | File | Cells | `min_valid` |
+|---|---|---:|---:|
+| 0 | `progB_smoke_ONH_SMA50_5min.yaml` | 1 | 1 |
+| 1 | `progB_w0_solo.yaml` | 41 | 0 |
+| 2 | `progB_w1_ext_ma.yaml` | 144 | 1 |
+| 3 | `progB_w1_ext_rvwap.yaml` | 24 | 1 |
+| 4 | `progB_w1_ext_pivot.yaml` | 96 | 1 |
+| 5 | `progB_w2_open_ma.yaml` | 96 | 1 |
+| 6 | `progB_w2_open_rvwap.yaml` | 16 | 1 |
+| 7 | `progB_w2_open_pivot.yaml` | 64 | 1 |
+| 8 | `progB_w3_range_ma.yaml` | 120 | 1 |
+| 9 | `progB_w3_range_rvwap.yaml` | 20 | 1 |
+| 10 | `progB_w3_range_pivot.yaml` | 80 | 1 |
+| 11 | `progB_w5_svwap_ma.yaml` | 48 | 1 |
+| 12 | `progB_w5_svwap_rvwap.yaml` | 8 | 1 |
+| 13 | `progB_w5_svwap_pivot.yaml` | 32 | 1 |
+| 14 | `progB_w6_sp_ma.yaml` | 48 | 1 |
+| 15 | `progB_w6_sp_rvwap.yaml` | 8 | 1 |
+| 16 | `progB_w6_sp_pivot.yaml` | 32 | 1 |
+| 17 | `progB_w7_apoc_ma.yaml` | 24 | 1 |
+| 18 | `progB_w7_apoc_rvwap.yaml` | 4 | 1 |
+| 19 | `progB_w7_apoc_pivot.yaml` | 16 | 1 |
+| 20 | `progB_w8_prev30m_ma.yaml` | 12 | 1 |
+| 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
+| 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
+
+```bash
+SPEC=examples/studies/program_b_run2/progB_smoke_ONH_SMA50_5min.yaml
+NAME=progB_r2_smoke_ONH_SMA50_5min
+OUT=results/studies/$NAME
+python -m thesistester study expand "$SPEC" --output-dir "$OUT"
+python -m thesistester study run "$SPEC" --output-dir "$OUT"
+python -m thesistester study report "$OUT"
+```
+
 ---
 
 ## 5. How to read a cell
@@ -168,6 +230,13 @@ Smoke must finish `status=ok` before Wave 0. Wave 0 (15s) answers “which non-V
 | n<15 | Unidentified |
 
 Wave 0 vs a pair on the same core: ΔE mixes confirm value with **zone-shape** (point vs partner box). Report both. Do not call ΔE a pure confluence effect.
+
+**Run 2 readout lock (additive):**
+
+- A cell is **unreadable** if `directional_integrity != "mixed"` **and** the core is not a directional-by-construction level (e.g. `dSP_Above` may legitimately be short-heavy). Record the reason.
+- Report `long_expectancy_r` / `short_expectancy_r` with their `n`. A cell is **+E** only if the pooled E qualifies **and** neither side has `n ≥ 30` with `E < −0.03` (a one-sided edge must be named as such, not pooled).
+- Report `expectancy_minus_null_r`. A cell whose pooled E qualifies but `random_p_value_ge ≥ 0.05` is **hold**, not +E.
+- Run 1 vs Run 2 on the same cell is **not** a paired comparison (different trigger). Report both rows; do not compute ΔE.
 
 Do not `study promote` unless the human names a cell. Promote writes a draft only — never auto-run it. Do not `--admit-tod` from a green 30m pocket.
 

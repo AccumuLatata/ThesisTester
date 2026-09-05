@@ -13,6 +13,7 @@ from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.study.schema import closed_level_token_set
 
 PROGRAM_B = Path("examples/studies/program_b")
+PROGRAM_B_RUN2 = Path("examples/studies/program_b_run2")
 
 
 def _load_module(name: str):
@@ -181,3 +182,71 @@ def test_program_b_validator_rejects_dvwap_partner_and_optional_from_partners(tm
         optional, {"file": optional.name, "cells": 1, "min_valid": 1}
     )
     assert any("from_partners" in item for item in failures)
+
+
+def test_program_b_run2_manifest_expands_944_with_run2_locks():
+    validate = _validator()
+    ok_lines, failures, n_studies, n_cells = validate.validate_manifest(
+        PROGRAM_B_RUN2, manifest_name="manifest.yaml"
+    )
+    assert failures == []
+    assert n_studies == 23
+    assert n_cells == 944
+    assert len(ok_lines) == 23
+    manifest = yaml.safe_load((PROGRAM_B_RUN2 / "manifest.yaml").read_text(encoding="utf-8"))
+    assert manifest["packet"] == "15s"
+    assert manifest["locks"] == "run2"
+    for row in manifest["studies"]:
+        spec = yaml.safe_load((PROGRAM_B_RUN2 / row["file"]).read_text(encoding="utf-8"))
+        study = spec["study"]
+        assert study["factors"]["trigger"] == ["fade"], row["file"]
+        assert study["constants"]["trigger_params"]["require_close_confirmation"] is False
+        assert study["constants"]["backtest"]["same_bar_opposite_direction"] == "raise"
+        baseline = study["report"]["random_baseline"]
+        assert baseline["enabled"] is True
+        assert baseline["n_replicas"] == 50
+        assert study["name"].startswith("progB_r2_")
+        assert "tick_paths" not in study["dataset"]
+
+
+def test_program_b_run1_yamls_keep_touch_legacy_and_no_null():
+    spec = yaml.safe_load((PROGRAM_B / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    assert spec["study"]["factors"]["trigger"] == ["touch"]
+    assert "same_bar_opposite_direction" not in spec["study"]["constants"]["backtest"]
+    assert "random_baseline" not in spec["study"]["report"]
+    assert spec["study"]["constants"]["trigger_params"] == {}
+
+
+def test_program_b_default_generate_keeps_run1_locks(tmp_path):
+    gen = _generate()
+    gen.generate_packet(tmp_path)
+    spec = yaml.safe_load((tmp_path / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    assert spec["study"]["name"] == "progB_smoke_ONH_SMA50_5min"
+    assert spec["study"]["factors"]["trigger"] == ["touch"]
+    assert "same_bar_opposite_direction" not in spec["study"]["constants"]["backtest"]
+    assert "random_baseline" not in spec["study"]["report"]
+    manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
+    assert "locks" not in manifest
+    assert manifest["total_cells"] == 944
+
+
+def test_program_b_validator_accepts_manifest_path():
+    validate = _validator()
+    ok_lines, failures, n_studies, n_cells = validate.validate_manifest(
+        PROGRAM_B_RUN2, manifest_name="manifest.yaml"
+    )
+    assert failures == []
+    assert n_studies == 23
+    assert n_cells == 944
+    assert all(line.startswith("ok ") for line in ok_lines)
+
+
+def test_program_b_validator_rejects_run2_yaml_under_run1_locks(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B_RUN2 / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    drifted = tmp_path / "progB_smoke_ONH_SMA50_5min.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 1, "min_valid": 1}, packet="15s", locks="run1"
+    )
+    assert any("trigger drifted" in item for item in failures)

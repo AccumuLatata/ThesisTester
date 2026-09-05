@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 from pathlib import Path
 from typing import Any, Mapping
@@ -18,7 +19,11 @@ ROOT = Path(__file__).resolve().parent
 
 LOCKED_INSTRUMENT = "MNQ"
 LOCKED_TRIGGER = "touch"
+LOCKED_TRIGGER_RUN2 = "fade"
 LOCKED_TRIGGER_TF = "1min"
+LOCKED_SAME_BAR_RUN2 = "raise"
+LOCKED_RANDOM_REPLICAS = 50
+VALID_LOCKS = frozenset({"run1", "run2"})
 LOCKED_MODE = "anchor_rules"
 LOCKED_FROM_PARTNERS = "required"
 LOCKED_TIMEZONE = "America/New_York"
@@ -106,7 +111,7 @@ def _check_packet_locks(
     return failures
 
 
-def _check_backtest(bt: Mapping[str, Any], label: str) -> list[str]:
+def _check_backtest(bt: Mapping[str, Any], label: str, *, locks: str = "run1") -> list[str]:
     if (
         float(bt.get("stop_loss_ticks", 0)) != 80
         or float(bt.get("take_profit_ticks", 0)) != 80
@@ -119,6 +124,12 @@ def _check_backtest(bt: Mapping[str, Any], label: str) -> list[str]:
         or str(bt.get("intrabar_model")) != "subtimeframe_conservative"
     ):
         return [f"{label}: backtest locks drifted"]
+    policy = bt.get("same_bar_opposite_direction")
+    if locks == "run2":
+        if policy != LOCKED_SAME_BAR_RUN2:
+            return [f"{label}: Run 2 same_bar_opposite_direction must be {LOCKED_SAME_BAR_RUN2!r}"]
+    elif policy not in (None, "legacy"):
+        return [f"{label}: Run 1 same_bar_opposite_direction must be omitted or legacy"]
     return []
 
 
@@ -128,6 +139,7 @@ def validate_study_file(
     *,
     generate: Any | None = None,
     packet: str | None = None,
+    locks: str = "run1",
 ) -> list[str]:
     """Return lock/expand failures for one Program B YAML. Empty list means pass."""
     gen = generate if generate is not None else _load_generate()
@@ -166,12 +178,21 @@ def validate_study_file(
             generate=gen,
         )
     )
+    expected_trigger = LOCKED_TRIGGER_RUN2 if locks == "run2" else LOCKED_TRIGGER
     if list(factors.get("confluence_mode") or []) != [LOCKED_MODE]:
         failures.append(f"{path.name}: confluence_mode must be exclusive [{LOCKED_MODE}]")
-    if list(factors.get("trigger") or []) != [LOCKED_TRIGGER]:
+    if list(factors.get("trigger") or []) != [expected_trigger]:
         failures.append(f"{path.name}: trigger drifted")
     if list(factors.get("trigger_timeframe") or []) != [LOCKED_TRIGGER_TF]:
         failures.append(f"{path.name}: trigger_timeframe drifted")
+    trigger_params = constants.get("trigger_params") or {}
+    if locks == "run2":
+        if not isinstance(trigger_params, Mapping):
+            failures.append(f"{path.name}: Run 2 trigger_params must be a mapping")
+        elif trigger_params.get("require_close_confirmation") is not False:
+            failures.append(
+                f"{path.name}: Run 2 trigger_params.require_close_confirmation must be false"
+            )
     if "otf" in factors:
         failures.append(f"{path.name}: factors.otf must be omitted")
     if from_partners != LOCKED_FROM_PARTNERS:
@@ -212,7 +233,7 @@ def validate_study_file(
             if cores != ["ONH"] or partners != [["SMA_50_5min"]]:
                 failures.append(f"{path.name}: smoke cell must be ONH x SMA_50_5min")
 
-    failures.extend(_check_backtest(constants.get("backtest") or {}, path.name))
+    failures.extend(_check_backtest(constants.get("backtest") or {}, path.name, locks=locks))
     for section in ("grid", "validation", "walk_forward"):
         if (constants.get(section) or {}).get("enabled") is not False:
             failures.append(f"{path.name}: constants.{section}.enabled must be false")
@@ -223,6 +244,24 @@ def validate_study_file(
         failures.append(f"{path.name}: report.min_trades must be 30")
     if report.get("primary_metric") != "expectancy_r":
         failures.append(f"{path.name}: primary_metric must be expectancy_r")
+    baseline = report.get("random_baseline")
+    if locks == "run2":
+        if not isinstance(baseline, Mapping):
+            failures.append(f"{path.name}: Run 2 report.random_baseline is required")
+        elif (
+            baseline.get("enabled") is not True
+            or int(baseline.get("n_replicas") or 0) != LOCKED_RANDOM_REPLICAS
+        ):
+            failures.append(
+                f"{path.name}: Run 2 random_baseline must be enabled with "
+                f"n_replicas={LOCKED_RANDOM_REPLICAS}"
+            )
+    elif (
+        baseline not in (None, {})
+        and isinstance(baseline, Mapping)
+        and baseline.get("enabled") is True
+    ):
+        failures.append(f"{path.name}: Run 1 report.random_baseline must be omitted or disabled")
 
     try:
         expansion = expand_study(spec)
@@ -246,7 +285,7 @@ def validate_study_file(
             )
             break
         if (
-            setup.get("trigger") != LOCKED_TRIGGER
+            setup.get("trigger") != expected_trigger
             or setup.get("trigger_timeframe") != LOCKED_TRIGGER_TF
         ):
             failures.append(f"{path.name}: expanded trigger drifted")
@@ -266,7 +305,7 @@ def validate_study_file(
             if any(rule.get("level") == FORBIDDEN_PARTNER for rule in rules):
                 failures.append(f"{path.name}: expanded dVWAP partner")
                 break
-        bt_fail = _check_backtest(run["backtest"], path.name)
+        bt_fail = _check_backtest(run["backtest"], path.name, locks=locks)
         if bt_fail:
             failures.extend(bt_fail)
             break
@@ -296,6 +335,10 @@ def validate_manifest(
     if packet not in {"15s", "tick"}:
         failures.append(f"{manifest_name}: packet must be 15s or tick")
         packet = None
+    locks = manifest.get("locks") or "run1"
+    if locks not in VALID_LOCKS:
+        failures.append(f"{manifest_name}: locks must be run1 or run2 (or omitted)")
+        locks = "run1"
     rows = list(manifest.get("studies") or [])
     if int(manifest.get("total_studies") or 0) != len(rows):
         failures.append(
@@ -308,7 +351,9 @@ def validate_manifest(
         )
     for row in rows:
         path = base / str(row["file"])
-        file_failures = validate_study_file(path, row, generate=generate, packet=packet)
+        file_failures = validate_study_file(
+            path, row, generate=generate, packet=packet, locks=str(locks)
+        )
         if file_failures:
             failures.extend(file_failures)
             continue
@@ -316,8 +361,25 @@ def validate_manifest(
     return ok_lines, failures, int(manifest["total_studies"]), int(manifest["total_cells"])
 
 
-def main() -> None:
-    ok_lines, failures, n_studies, n_cells = validate_manifest()
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "manifest",
+        nargs="?",
+        default=None,
+        help="Path to a Program B manifest.yaml (default: this directory's 15s packet).",
+    )
+    args = parser.parse_args(argv)
+    if args.manifest:
+        manifest_path = Path(args.manifest)
+        if not manifest_path.is_file():
+            raise SystemExit(f"missing manifest: {manifest_path}")
+        root = manifest_path.parent
+        name = manifest_path.name
+    else:
+        root = ROOT
+        name = "manifest.yaml"
+    ok_lines, failures, n_studies, n_cells = validate_manifest(root, manifest_name=name)
     for line in ok_lines:
         print(line)
     if failures:
