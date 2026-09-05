@@ -1,6 +1,6 @@
 # Directional Integrity & Edge Attribution — implementation plan (DA)
 
-**Status:** **DA0 locked.** **DA1 landed.** **DA2 landed.** DA3–DA6 not started.
+**Status:** **DA0 locked.** **DA1 landed.** **DA2 landed.** **DA3 landed.** DA4–DA6 not started.
 **Series prefix:** **DA** (Directional Attribution, DA0–DA6). **DI is taken** by
 Discuss Intelligence (`docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md`, DI-0…DI-3).
 Do not title PRs `DI1` / `DI2`.

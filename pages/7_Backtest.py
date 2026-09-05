@@ -496,6 +496,20 @@ with st.sidebar:
             key="backtest_cooldown_bars",
         )
     )
+    with st.expander("Same-bar opposite direction (advanced)", expanded=False):
+        same_bar_opposite_direction = st.selectbox(
+            "Same-bar opposite-direction policy",
+            options=["legacy", "skip_both", "raise"],
+            index=0,
+            key="backtest_same_bar_opposite_direction",
+            help=(
+                "Opt-in DA3 guard. Default `legacy` keeps today's signal_id "
+                "tie-break. `skip_both` refuses both sides of a same-bar "
+                "opposite pair under single_position / single_setup (same "
+                "group key). `raise` fails the run on the first collision. "
+                "No-op under allow_all and single_direction."
+            ),
+        )
 
     st.divider()
     _save_col, _reset_col = st.columns(2)
@@ -597,6 +611,7 @@ if run_btn:
                 trailing_distance_ticks=trailing_distance_ticks,
                 entry_window=simulate_entry_window,
                 entry_window_exchange_tz=exchange_tz,
+                same_bar_opposite_direction=same_bar_opposite_direction,
                 return_result=True,
             )
             trades = simulation.trades
@@ -614,6 +629,7 @@ if run_btn:
             st.session_state["exposure_policy"] = {
                 "exposure_policy": exposure_policy,
                 "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                "same_bar_opposite_direction": same_bar_opposite_direction,
             }
             st.session_state["backtest_execution_costs"] = {
                 "commission_per_side": float(commission_per_side),

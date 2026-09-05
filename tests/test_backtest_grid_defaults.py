@@ -20,6 +20,7 @@ from thesistester.execution_defaults import (
     EXPOSURE_POLICY_OPTIONS,
     RANKING_METRIC_OPTIONS,
     DIRECTIONAL_METRIC_OPTIONS,
+    SAME_BAR_OPPOSITE_DIRECTION_OPTIONS,
     sanitize_backtest_defaults,
     sanitize_grid_defaults,
     apply_backtest_defaults,
@@ -407,6 +408,14 @@ def test_sanitize_all_exposure_policies_accepted():
         gr = sanitize_grid_defaults(raw)
         assert bt.get("backtest_exposure_policy") == policy
         assert gr.get("grid_exposure_policy_widget") == policy
+
+
+def test_sanitize_same_bar_opposite_direction_tokens():
+    for token in SAME_BAR_OPPOSITE_DIRECTION_OPTIONS:
+        sanitized = sanitize_backtest_defaults({"same_bar_opposite_direction": token})
+        assert sanitized["backtest_same_bar_opposite_direction"] == token
+    invalid = sanitize_backtest_defaults({"same_bar_opposite_direction": "flip_coin"})
+    assert "backtest_same_bar_opposite_direction" not in invalid
 
 
 def test_intrabar_model_defaults_are_validated_and_scoped():

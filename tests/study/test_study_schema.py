@@ -837,3 +837,23 @@ def test_anchor_level_must_be_nonempty_string():
     raw["study"]["mode_rules"]["anchor_rules"]["anchor_level"] = ""
     with pytest.raises(StudySpecError, match="anchor_level must be a non-empty string"):
         validate_study_spec(normalize_study_spec(raw))
+
+
+def test_same_bar_opposite_direction_tokens_accepted():
+    for token in ("legacy", "skip_both", "raise"):
+        raw = _minimal_study()
+        raw["study"]["constants"]["backtest"]["same_bar_opposite_direction"] = token
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_same_bar_opposite_direction_omitted_is_ok():
+    raw = _minimal_study()
+    assert "same_bar_opposite_direction" not in raw["study"]["constants"]["backtest"]
+    validate_study_spec(normalize_study_spec(raw))
+
+
+def test_same_bar_opposite_direction_invalid_token_rejected():
+    raw = _minimal_study()
+    raw["study"]["constants"]["backtest"]["same_bar_opposite_direction"] = "flip_coin"
+    with pytest.raises(StudySpecError, match="same_bar_opposite_direction"):
+        validate_study_spec(normalize_study_spec(raw))

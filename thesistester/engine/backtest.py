@@ -117,6 +117,8 @@ _VALID_EXPOSURE_POLICIES = {
     "single_setup",
 }
 
+VALID_SAME_BAR_OPPOSITE_DIRECTION = frozenset({"legacy", "skip_both", "raise"})
+
 _INTRABAR_TRADE_COLUMNS = [
     "intrabar_model",
     "intrabar_resolution",
@@ -387,6 +389,47 @@ def _exposure_group_key(
     return "allow_all"
 
 
+def _same_bar_collision_groups(
+    ordered_candidates: list[dict[str, Any]],
+    *,
+    exposure_policy: str,
+) -> list[list[dict[str, Any]]]:
+    """Opposite-direction groups that restrictive policies would collide on.
+
+    ``allow_all`` and ``single_direction`` never collide, so this returns [].
+    ``single_position`` groups by ``(entry_bar_index, bar_idx)`` (bar-level,
+    matching DA1). ``single_setup`` additionally requires the same
+    ``exposure_group_key`` so only same-setup opposite pairs are collisions.
+    Groups are returned in first-seen ``ordered_candidates`` order.
+    """
+    if exposure_policy not in {"single_position", "single_setup"}:
+        return []
+
+    groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    order: list[tuple[Any, ...]] = []
+    for row in ordered_candidates:
+        if exposure_policy == "single_setup":
+            key: tuple[Any, ...] = (
+                int(row["entry_bar_index"]),
+                int(row["bar_idx"]),
+                str(row["exposure_group_key"]),
+            )
+        else:
+            key = (int(row["entry_bar_index"]), int(row["bar_idx"]))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(row)
+
+    collisions: list[list[dict[str, Any]]] = []
+    for key in order:
+        members = groups[key]
+        directions = {str(member["direction"]) for member in members}
+        if "long" in directions and "short" in directions:
+            collisions.append(members)
+    return collisions
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -421,6 +464,7 @@ def simulate_trades(
     trailing_after_r: float | None = None,
     trailing_distance_ticks: float | None = None,
     return_result: bool = False,
+    same_bar_opposite_direction: str = "legacy",
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame] | SimulationResult:
     """Simulate bar-by-bar trades from Phase 4 candidate signals.
 
@@ -519,6 +563,14 @@ def simulate_trades(
         Return :class:`SimulationResult` with skipped signals, a run-level
         intrabar diagnostic, and an in-memory direction-collision diagnostic.
         Default ``False`` preserves the legacy return API.
+    same_bar_opposite_direction:
+        Opt-in DA3 guard for same-bar opposite-direction candidates.
+        ``legacy`` (default) keeps today's ``signal_id`` tie-break.
+        ``skip_both`` skips every member of a colliding group under
+        ``single_position`` / ``single_setup`` (same group key) with
+        ``skip_reason="direction_conflict"``. ``raise`` refuses the run
+        with the first colliding ``(entry_bar_index, signal_ids)``.
+        No-op under ``allow_all`` and ``single_direction``.
 
     Returns
     -------
@@ -532,7 +584,8 @@ def simulate_trades(
     ValueError
         If ``stop_loss_ticks <= 0``, price/risk inputs are invalid, cost inputs
         are negative, time/session policy inputs are invalid, exposure policy
-        is invalid, or cooldown is negative.
+        is invalid, cooldown is negative, ``same_bar_opposite_direction`` is
+        invalid, or the policy is ``raise`` and a collision is present.
 
     Notes
     -----
@@ -558,6 +611,12 @@ def simulate_trades(
         raise ValueError(
             f"exposure_policy must be one of {sorted(_VALID_EXPOSURE_POLICIES)!r}, "
             f"got {exposure_policy!r}"
+        )
+    if same_bar_opposite_direction not in VALID_SAME_BAR_OPPOSITE_DIRECTION:
+        raise ValueError(
+            "same_bar_opposite_direction must be one of "
+            f"{sorted(VALID_SAME_BAR_OPPOSITE_DIRECTION)!r}, "
+            f"got {same_bar_opposite_direction!r}"
         )
     if cooldown_bars_after_exit < 0:
         raise ValueError(f"cooldown_bars_after_exit must be >= 0, got {cooldown_bars_after_exit!r}")
@@ -617,7 +676,9 @@ def simulate_trades(
                     trail_exit_count=0,
                     stop_adjustment_count=0,
                 ),
-                direction_collision_diagnostic=_empty_direction_collision_diagnostic(),
+                direction_collision_diagnostic=_empty_direction_collision_diagnostic(
+                    policy=same_bar_opposite_direction
+                ),
             )
         if return_skipped_signals:
             return empty_trades, empty_skipped
@@ -808,6 +869,24 @@ def simulate_trades(
             ),
         )
 
+    collision_groups: list[list[dict[str, Any]]] = []
+    conflict_candidate_ids: set[int] = set()
+    if same_bar_opposite_direction != "legacy":
+        collision_groups = _same_bar_collision_groups(
+            ordered_candidates, exposure_policy=exposure_policy
+        )
+        if collision_groups and same_bar_opposite_direction == "raise":
+            first_group = collision_groups[0]
+            first_entry = int(first_group[0]["entry_bar_index"])
+            signal_ids = [int(row["sig"]["signal_id"]) for row in first_group]
+            raise ValueError(
+                "same_bar_opposite_direction='raise' refused the run: "
+                f"opposite-direction collision at entry_bar_index={first_entry} "
+                f"with signal_ids={signal_ids}"
+            )
+        if same_bar_opposite_direction == "skip_both":
+            conflict_candidate_ids = {id(row) for group in collision_groups for row in group}
+
     accepted_for_blocking: list[dict] = []
     for candidate in ordered_candidates:
         sig = candidate["sig"]
@@ -821,6 +900,25 @@ def simulate_trades(
         entry_price = float(candidate["entry_price"])
         entry_model = str(candidate["entry_model"])
         exposure_group_key = str(candidate["exposure_group_key"])
+
+        if same_bar_opposite_direction == "skip_both" and id(candidate) in conflict_candidate_ids:
+            if return_skipped_signals or return_result:
+                skipped_signals.append(
+                    {
+                        "signal_id": int(sig["signal_id"]),
+                        "bar_index": bar_idx,
+                        "entry_bar_index": entry_bar_index,
+                        "trigger": trigger,
+                        "direction": direction,
+                        "exposure_policy": exposure_policy,
+                        "exposure_group_key": exposure_group_key,
+                        "skip_reason": "direction_conflict",
+                        "blocking_trade_id": pd.NA,
+                        "blocking_exit_bar_index": pd.NA,
+                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                    }
+                )
+            continue
 
         if exposure_policy == "single_position":
             relevant_prior = accepted_for_blocking
@@ -1264,7 +1362,7 @@ def simulate_trades(
                 ordered_candidates=ordered_candidates,
                 accepted_trades=trades,
                 skipped_signals=skipped_signals,
-                policy="legacy",
+                policy=same_bar_opposite_direction,
             ),
         )
     if return_skipped_signals:

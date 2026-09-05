@@ -58,6 +58,12 @@ INTRABAR_MODEL_OPTIONS: tuple[str, ...] = (
     "subtimeframe_conservative",
 )
 
+SAME_BAR_OPPOSITE_DIRECTION_OPTIONS: tuple[str, ...] = (
+    "legacy",
+    "skip_both",
+    "raise",
+)
+
 _TIME_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
 
 
@@ -169,6 +175,13 @@ def _valid_intrabar_model(value: Any) -> str | None:
     return value if value in INTRABAR_MODEL_OPTIONS else None
 
 
+def _valid_same_bar_opposite_direction(value: Any) -> str | None:
+    """Return a supported DA3 same-bar policy token, else None."""
+    if not isinstance(value, str):
+        return None
+    return value if value in SAME_BAR_OPPOSITE_DIRECTION_OPTIONS else None
+
+
 def _valid_optional_positive_float(value: Any) -> float | None:
     if value in (None, ""):
         return None
@@ -232,6 +245,11 @@ _BACKTEST_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
     ("backtest_session_timezone", "session_timezone", _valid_timezone),
     ("backtest_no_new_entries_after", "no_new_entries_after", _valid_optional_time_str),
     ("backtest_exposure_policy", "exposure_policy", _valid_exposure_policy),
+    (
+        "backtest_same_bar_opposite_direction",
+        "same_bar_opposite_direction",
+        _valid_same_bar_opposite_direction,
+    ),
     ("backtest_intrabar_model", "intrabar_model", _valid_intrabar_model),
     ("backtest_enable_be", "enable_breakeven", _valid_bool),
     ("backtest_breakeven_after_r", "breakeven_after_r", _valid_optional_positive_float),

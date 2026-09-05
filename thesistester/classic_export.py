@@ -296,6 +296,11 @@ def _backtest_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExpor
         for dest, widget_key, snap_key in (
             ("exposure_policy", "backtest_exposure_policy", "exposure_policy"),
             ("cooldown_bars_after_exit", "backtest_cooldown_bars", "cooldown_bars_after_exit"),
+            (
+                "same_bar_opposite_direction",
+                "backtest_same_bar_opposite_direction",
+                "same_bar_opposite_direction",
+            ),
         ):
             value = _widget_or_snapshot(
                 state, widget_key=widget_key, snapshot=exposure, snapshot_key=snap_key
