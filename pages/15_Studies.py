@@ -1322,7 +1322,7 @@ def _render_preview() -> None:
     )
 
 
-_TRIGGER_OPTIONS = ("touch", "reject", "break", "reclaim", "3c")
+_TRIGGER_OPTIONS = ("touch", "reject", "break", "reclaim", "3c", "fade", "continuation")
 _DIRECTION_VALUES = ("long", "short", "both")
 _NAKED_REQUIREMENTS = ("any", "all")
 _FROM_PARTNERS_OPTIONS = ("required", "optional")

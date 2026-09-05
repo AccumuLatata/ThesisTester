@@ -71,6 +71,7 @@ WIDGET_KEY_TRIGGER = "_setup_builder_trigger"
 WIDGET_KEY_TRIGGER_TIMEFRAME = "_setup_builder_trigger_timeframe"
 WIDGET_KEY_DIRECTION = "_setup_builder_direction"
 WIDGET_KEY_ENTRY_RETRACE_TICKS = "_setup_builder_entry_retrace_ticks"
+WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION = "_setup_builder_require_close_confirmation"
 WIDGET_KEY_MAX_ENTRY_WAIT_BARS = "_setup_builder_max_entry_wait_bars"
 WIDGET_KEY_ALLOW_MISSING_LEVEL_REMOVAL = "_setup_builder_allow_missing_level_removal"
 WIDGET_KEY_OTF_ENABLED = "_setup_builder_otf_enabled"
@@ -150,7 +151,7 @@ def _safe_selectbox_index_fallback(
 
 
 def _safe_trigger_fallback(value: object) -> tuple[str, bool]:
-    options = ["touch", "reject", "break", "reclaim", "3c"]
+    options = ["touch", "reject", "break", "reclaim", "3c", "fade", "continuation"]
     if isinstance(value, str) and value in options:
         return value, False
     return "touch", True
@@ -235,6 +236,16 @@ def _render_setup_summary(config: dict) -> None:
         st.markdown(
             f"- Entry retrace ticks: {params.get('entry_retrace_ticks', 4.0)}\n"
             f"- Max entry wait bars after reversal: {params.get('max_entry_wait_bars_after_reversal', 5)}"
+        )
+    elif trigger in {"fade", "continuation"}:
+        params = (
+            config.get("trigger_params", {})
+            if isinstance(config.get("trigger_params"), dict)
+            else {}
+        )
+        st.markdown("**Trigger params:**")
+        st.markdown(
+            f"- Require close confirmation: {bool(params.get('require_close_confirmation', False))}"
         )
     otf_config, otf_resolve_warning = _resolve_otf_for_ui(config)
     if otf_resolve_warning:
@@ -586,6 +597,10 @@ def _sync_editor_widget_state(
             warnings.append("Loaded max entry wait bars is invalid; using a safe value.")
     _assign(WIDGET_KEY_ENTRY_RETRACE_TICKS, entry_retrace_default)
     _assign(WIDGET_KEY_MAX_ENTRY_WAIT_BARS, max_wait_default)
+    require_close_default = False
+    if trigger in {"fade", "continuation"} and isinstance(trigger_params_seed, dict):
+        require_close_default = bool(trigger_params_seed.get("require_close_confirmation", False))
+    _assign(WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION, require_close_default)
 
     try:
         otf_config = normalize_otf_filter_config(config.get("otf_filter"))
@@ -1051,7 +1066,7 @@ naked_requirement = st.radio(
 )
 
 st.subheader("Trigger settings")
-trigger_options = ["touch", "reject", "break", "reclaim", "3c"]
+trigger_options = ["touch", "reject", "break", "reclaim", "3c", "fade", "continuation"]
 trigger_index, _, trigger_fallback = _safe_selectbox_index_fallback(
     st.session_state.get(WIDGET_KEY_TRIGGER),
     options=trigger_options,
@@ -1159,6 +1174,18 @@ if trigger == "3c":
         "entry_retrace_ticks": entry_retrace_ticks,
         "max_entry_wait_bars_after_reversal": int(max_entry_wait_bars),
     }
+elif trigger in {"fade", "continuation"}:
+    require_close_confirmation = st.checkbox(
+        "Require close confirmation",
+        value=bool(st.session_state.get(WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION, False)),
+        key=WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION,
+        help=(
+            "Default off: fade/continuation are the directional analogue of touch. "
+            "On: fade also requires close back on the approach side of the zone "
+            "(reject geometry); continuation requires close through the far edge."
+        ),
+    )
+    trigger_params = {"require_close_confirmation": bool(require_close_confirmation)}
 
 st.subheader("OTF filter configuration")
 st.caption(

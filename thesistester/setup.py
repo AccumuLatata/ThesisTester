@@ -29,7 +29,7 @@ NON_LEVEL_OUTPUT_COLUMNS = frozenset(
     }
 )
 
-VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c"})
+VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c", "fade", "continuation"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
 VALID_CONFLUENCE_MODES = frozenset({"global_cluster", "anchor_rules"})
 TRIGGER_TIMEFRAME_CHOICES = ("base", "1min", "5min", "15min")
@@ -53,6 +53,10 @@ SUGGESTED_DEFAULT_LEVELS = [
     "pdPOC",
     "VWAP_rolling_30min",
 ]
+
+DEFAULT_APPROACH_SIDE_PARAMS: dict[str, Any] = {
+    "require_close_confirmation": False,
+}
 
 DEFAULT_3C_PARAMS: dict[str, Any] = {
     # arrival_tolerance_ticks is deprecated and no longer user-configurable.
@@ -261,6 +265,19 @@ def get_effective_entry_window_config(
     return normalize_entry_window(raw, exchange_tz=tz)
 
 
+def _normalize_approach_side_params(params: dict[str, Any] | None) -> dict[str, Any]:
+    trigger_params = params or {}
+    raw = trigger_params.get(
+        "require_close_confirmation",
+        DEFAULT_APPROACH_SIDE_PARAMS["require_close_confirmation"],
+    )
+    if isinstance(raw, str):
+        require = raw.strip().lower() in {"true", "1", "yes"}
+    else:
+        require = bool(raw)
+    return {"require_close_confirmation": require}
+
+
 def _normalize_3c_params(params: dict[str, Any] | None) -> dict[str, Any]:
     trigger_params = params or {}
     return {
@@ -353,6 +370,8 @@ def build_setup_config(
     normalized_params = {}
     if trigger == "3c":
         normalized_params = _normalize_3c_params(trigger_params)
+    elif trigger in {"fade", "continuation"}:
+        normalized_params = _normalize_approach_side_params(trigger_params)
     normalized_otf_filter = normalize_otf_filter_config(otf_filter)
     exchange_tz = _resolve_setup_exchange_tz({"instrument": instrument}, None)
     normalized_entry_window = normalize_entry_window(entry_window, exchange_tz=exchange_tz)
@@ -538,6 +557,14 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
 
             if not _is_boolean_compatible(rule.get("required")):
                 errors.append(f"Confluence rule {index} required must be boolean-compatible.")
+
+    if trigger in {"fade", "continuation"}:
+        trigger_params = config.get("trigger_params", {}) or {}
+        if trigger_params and not isinstance(trigger_params, dict):
+            errors.append("trigger_params must be a dictionary for fade/continuation.")
+        elif isinstance(trigger_params, dict) and "require_close_confirmation" in trigger_params:
+            if not _is_boolean_compatible(trigger_params.get("require_close_confirmation")):
+                errors.append("require_close_confirmation must be boolean-compatible.")
 
     if trigger == "3c":
         trigger_params = config.get("trigger_params", {}) or {}

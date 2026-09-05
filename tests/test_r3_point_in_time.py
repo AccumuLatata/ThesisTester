@@ -795,6 +795,38 @@ def test_signals_touch_future_shock():
             )
 
 
+def test_signals_fade_future_shock():
+    """Fade signals at or before T must not change when 50 future bars are appended."""
+    bars = []
+    ts0 = pd.Timestamp("2026-06-02 09:30:00", tz=TZ)
+    # bar 0 close above zone; bar 2 touches [4004.5, 4005.5] from above.
+    specs = [
+        (4006.0, 4006.4, 4005.8, 4006.1),
+        (4006.0, 4006.3, 4005.7, 4006.0),
+        (4005.8, 4006.0, 4004.6, 4005.0),
+        (4005.0, 4005.2, 4004.8, 4004.9),
+        (4004.9, 4005.1, 4004.7, 4004.8),
+    ]
+    for i, (o, h, l, c) in enumerate(specs):
+        bars.append(_ohlcv_bar(ts0 + pd.Timedelta(minutes=i), o, h, l, c, 100.0))
+
+    df = _build_df(bars)
+    zones = _make_zones_df([2], [ts0 + pd.Timedelta(minutes=2)])
+    sigs_before = generate_signals(df, zones, trigger="fade", direction="both", tick_size=TICK)
+    assert not sigs_before.empty
+    assert list(sigs_before["direction"]) == ["long"]
+    assert list(sigs_before["approach_side"]) == ["above"]
+
+    T = df["timestamp"].iloc[-1]
+    future = _extreme_future_bars(T, n=50)
+    extended = pd.concat([df, _build_df(future)], ignore_index=True)
+    sigs_after = generate_signals(extended, zones, trigger="fade", direction="both", tick_size=TICK)
+    before_T = sigs_before[sigs_before["bar_index"] < len(bars)].reset_index(drop=True)
+    after_T = sigs_after[sigs_after["bar_index"] < len(bars)].reset_index(drop=True)
+    compare_cols = ["bar_index", "trigger", "direction", "approach_side", "entry_reference_price"]
+    pd.testing.assert_frame_equal(before_T[compare_cols], after_T[compare_cols], check_exact=True)
+
+
 def test_confirm_3bar_not_backdated():
     """_check_confirm_3bar signals must be timestamped at bar 3, not at bar 1 (arrival).
 

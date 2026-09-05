@@ -1120,7 +1120,7 @@ with st.sidebar:
 
         trigger = st.selectbox(
             "Trigger",
-            options=["touch", "reject", "break", "reclaim", "3c"],
+            options=["touch", "reject", "break", "reclaim", "3c", "fade", "continuation"],
             index=0,
         )
 
@@ -1192,6 +1192,17 @@ with st.sidebar:
                 "entry_retrace_ticks": entry_retrace,
                 "max_entry_wait_bars_after_reversal": int(max_wait_bars),
             }
+        elif trigger in {"fade", "continuation"}:
+            require_close_confirmation = st.checkbox(
+                "Require close confirmation",
+                value=False,
+                help=(
+                    "Default off: directional analogue of touch. "
+                    "On: fade requires close back on the approach side; "
+                    "continuation requires close through the far edge."
+                ),
+            )
+            trigger_params = {"require_close_confirmation": bool(require_close_confirmation)}
         else:
             trigger_params = {}
 

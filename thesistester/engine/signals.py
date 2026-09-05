@@ -18,8 +18,9 @@ from .candidate_level import (
 from .signals_3c import detect_3c_setups, detect_3c_setups_with_trigger_timeframe
 
 
-VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c"})
+VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c", "fade", "continuation"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
+_APPROACH_SIDE_TRIGGERS = frozenset({"fade", "continuation"})
 
 _DEFAULT_3BAR_PARAMS: dict = {
     "arrival_tolerance_ticks": 0,
@@ -262,6 +263,16 @@ def _normalize_confirm_3bar_params(trigger_params: dict | None) -> dict:
             _DEFAULT_3BAR_PARAMS["allow_equal_close"],
         ),
     }
+
+
+def _normalize_approach_side_params(trigger_params: dict | None) -> dict:
+    """Normalize fade / continuation ``trigger_params`` (DA4)."""
+    raw = (trigger_params or {}).get("require_close_confirmation", False)
+    if isinstance(raw, str):
+        require = raw.strip().lower() in {"true", "1", "yes"}
+    else:
+        require = bool(raw)
+    return {"require_close_confirmation": require}
 
 
 def _normalize_3c_params(trigger_params: dict | None) -> dict:
@@ -638,6 +649,155 @@ def _check_reclaim(
     )
 
 
+def _approach_side(
+    df: pd.DataFrame,
+    zone: pd.Series,
+    trigger_bar_idx: int,
+) -> str | None:
+    """Previous trigger-bar close vs zone edges: ``above``, ``below``, or None.
+
+    ``None`` when there is no previous bar or ``prev_close`` is inside the zone.
+    """
+    if trigger_bar_idx < 1:
+        return None
+    prev_close = float(df.iloc[trigger_bar_idx - 1]["close"])
+    zone_high = float(zone["zone_high"])
+    zone_low = float(zone["zone_low"])
+    if prev_close > zone_high:
+        return "above"
+    if prev_close < zone_low:
+        return "below"
+    return None
+
+
+def _zone_touched(bar: pd.Series, zone: pd.Series) -> bool:
+    return float(bar["low"]) <= float(zone["zone_high"]) and float(bar["high"]) >= float(
+        zone["zone_low"]
+    )
+
+
+def _implied_approach_direction(trigger: str, approach: str) -> str:
+    if trigger == "fade":
+        return "long" if approach == "above" else "short"
+    return "short" if approach == "above" else "long"
+
+
+def _close_confirmation_ok(
+    bar: pd.Series,
+    zone: pd.Series,
+    *,
+    trigger: str,
+    implied_direction: str,
+) -> bool:
+    close = float(bar["close"])
+    zone_high = float(zone["zone_high"])
+    zone_low = float(zone["zone_low"])
+    if trigger == "fade":
+        if implied_direction == "long":
+            return close > zone_high
+        return close < zone_low
+    if implied_direction == "short":
+        return close < zone_low
+    return close > zone_high
+
+
+def _check_approach_side_trigger(
+    df: pd.DataFrame,
+    zone: pd.Series,
+    trigger_bar_idx: int,
+    base_bar_idx: int,
+    trigger_timeframe: str,
+    trigger: str,
+    signal_id: int,
+    naked_count: int,
+    naked_req: str,
+    *,
+    require_close_confirmation: bool,
+) -> dict | None:
+    """Emit one fade / continuation candidate; attach ``approach_side`` after ``_make_signal``."""
+    approach = _approach_side(df, zone, trigger_bar_idx)
+    if approach is None:
+        return None
+    bar = df.iloc[trigger_bar_idx]
+    if not _zone_touched(bar, zone):
+        return None
+    implied = _implied_approach_direction(trigger, approach)
+    if require_close_confirmation and not _close_confirmation_ok(
+        bar, zone, trigger=trigger, implied_direction=implied
+    ):
+        return None
+    sig = _make_signal(
+        signal_id=signal_id,
+        ts=bar["base_end_timestamp"],
+        bar_idx=base_bar_idx,
+        trigger_bar_index=trigger_bar_idx,
+        trigger_timeframe=trigger_timeframe,
+        trigger_timestamp=bar["trigger_bar_end_timestamp"],
+        trigger=trigger,
+        direction=implied,
+        zone=zone,
+        entry_ref=float(bar["close"]),
+        entry_model="candidate_next_bar_open",
+        status="candidate",
+        naked_count=naked_count,
+        naked_req=naked_req,
+    )
+    sig["approach_side"] = approach
+    return sig
+
+
+def _check_fade(
+    df: pd.DataFrame,
+    zone: pd.Series,
+    trigger_bar_idx: int,
+    base_bar_idx: int,
+    trigger_timeframe: str,
+    signal_id: int,
+    naked_count: int,
+    naked_req: str,
+    *,
+    require_close_confirmation: bool = False,
+) -> dict | None:
+    return _check_approach_side_trigger(
+        df,
+        zone,
+        trigger_bar_idx,
+        base_bar_idx,
+        trigger_timeframe,
+        "fade",
+        signal_id,
+        naked_count,
+        naked_req,
+        require_close_confirmation=require_close_confirmation,
+    )
+
+
+def _check_continuation(
+    df: pd.DataFrame,
+    zone: pd.Series,
+    trigger_bar_idx: int,
+    base_bar_idx: int,
+    trigger_timeframe: str,
+    signal_id: int,
+    naked_count: int,
+    naked_req: str,
+    *,
+    require_close_confirmation: bool = False,
+) -> dict | None:
+    return _check_approach_side_trigger(
+        df,
+        zone,
+        trigger_bar_idx,
+        base_bar_idx,
+        trigger_timeframe,
+        "continuation",
+        signal_id,
+        naked_count,
+        naked_req,
+        require_close_confirmation=require_close_confirmation,
+    )
+
+
 def _check_confirm_3bar(
     df: pd.DataFrame,
     zone: pd.Series,
@@ -784,7 +944,8 @@ def generate_signals(
     zones:
         Output of :func:`~thesistester.engine.confluence.detect_confluence_zones`.
     trigger:
-        One of ``touch``, ``reject``, ``break``, ``reclaim``, ``3c``.
+        One of ``touch``, ``reject``, ``break``, ``reclaim``, ``3c``,
+        ``fade``, ``continuation``.
     direction:
         ``long``, ``short``, or ``both``.
     tick_size:
@@ -815,9 +976,11 @@ def generate_signals(
     -----
     - Signals are **candidates only** in Phase 4; trade simulation (SL/TP,
       fills, P&L) is deferred to Phase 5.
-    - For simple triggers (touch / reject / break / reclaim), ``timestamp``
-      stays aligned to the canonical/base bar referenced by ``bar_index``.
-      ``trigger_timestamp`` stores trigger-candle completion time.
+    - For simple triggers (touch / reject / break / reclaim / fade /
+      continuation), ``timestamp`` stays aligned to the canonical/base bar
+      referenced by ``bar_index``. ``trigger_timestamp`` stores trigger-candle
+      completion time. ``fade`` / ``continuation`` attach ``approach_side``
+      after ``_make_signal`` on those rows only.
     - For ``3c`` one resolved setup row is emitted (``filled``/``void``).
     """
     if trigger not in VALID_TRIGGERS:
@@ -829,7 +992,12 @@ def generate_signals(
     if zones is None or zones.empty:
         return _empty_signals_df()
 
-    params = _normalize_3c_params(trigger_params) if trigger == "3c" else {}
+    if trigger == "3c":
+        params = _normalize_3c_params(trigger_params)
+    elif trigger in _APPROACH_SIDE_TRIGGERS:
+        params = _normalize_approach_side_params(trigger_params)
+    else:
+        params = {}
     requested_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
     if requested_trigger_timeframe not in VALID_TRIGGER_TIMEFRAMES:
         raise ValueError(
@@ -1247,6 +1415,33 @@ def generate_signals(
                     )
                 )
                 signal_id += 1
+    elif trigger in _APPROACH_SIDE_TRIGGERS:
+        require_close = bool(params.get("require_close_confirmation", False))
+        checker = _check_fade if trigger == "fade" else _check_continuation
+        for zone, ncount in filtered_zones:
+            bar_idx = int(zone["bar_index"])
+            trigger_row = trigger_rows_by_base_end.get(bar_idx)
+            if trigger_row is None:
+                continue
+            trigger_bar_idx = int(trigger_row["trigger_bar_index"])
+            base_bar_idx = int(trigger_row["base_end_bar_index"])
+            sig = checker(
+                trigger_df,
+                zone,
+                trigger_bar_idx,
+                base_bar_idx,
+                effective_trigger_timeframe,
+                signal_id,
+                ncount,
+                naked_req,
+                require_close_confirmation=require_close,
+            )
+            if sig is None:
+                continue
+            if direction != "both" and str(sig["direction"]) != direction:
+                continue
+            signals.append(sig)
+            signal_id += 1
     else:
         directions = ["long", "short"] if direction == "both" else [direction]
         for zone, ncount in filtered_zones:

@@ -169,8 +169,8 @@ simulation pages.
 want a saved/active setup instead of one-off manual signal config.
 
 **Related terms.** setup, confluence, tolerance ticks, naked, trigger, touch,
-reject, break, reclaim, 3c, trigger timeframe, direction, OTF filter, active
-setup, save setup, thesis link
+reject, break, reclaim, 3c, fade, continuation, approach_side, trigger timeframe,
+direction, OTF filter, active setup, save setup, thesis link
 
 **Key settings.**
 
@@ -181,7 +181,7 @@ setup, save setup, thesis link
 | `Tolerance ticks` / per-level tolerances | How close levels must be | Too wide → noisy zones |
 | `Minimum` / `Maximum confluences` | Cluster size bounds | Max < min yields nothing useful |
 | `Naked only` + `Naked requirement` | Untested-level filter (`any` / `all`) | — |
-| `Trigger` | `touch`, `reject`, `break`, `reclaim`, `3c` | 3c adds retrace / wait-bar params |
+| `Trigger` | `touch`, `reject`, `break`, `reclaim`, `3c`, `fade`, `continuation` | 3c adds retrace / wait-bar params. `fade` / `continuation` derive side from approach; optional close confirmation |
 | `Trigger timeframe` | Base or higher TF for trigger logic | Non-base 3c splits work across TFs |
 | `Direction` | `long`, `short`, or `both` | — |
 | `Enable OTF filter` + OTF TFs / min bars | Higher-TF one-timeframing gate | Default off; applied later, not on Signals |

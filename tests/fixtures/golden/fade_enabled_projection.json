@@ -1,0 +1,20 @@
+{
+  "accepted_signal_ids": [
+    0,
+    1
+  ],
+  "accepted_trade_count": 2,
+  "candidate_approach_sides": [
+    "above",
+    "below"
+  ],
+  "candidate_directions": [
+    "long",
+    "short"
+  ],
+  "candidate_signal_count": 2,
+  "collision_pairs": 0,
+  "direction": "both",
+  "exposure_policy": "single_position",
+  "trigger": "fade"
+}
