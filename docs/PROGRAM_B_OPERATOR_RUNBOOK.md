@@ -34,7 +34,7 @@ Catalog is still 50 anchors. VA and non-VA are different objects (TV3 tick VAP).
 > the same-bar short candidate is always skipped as `overlapping_position`; only longs
 > fill (`docs/ASSUMPTIONS_AND_LIMITATIONS.md` §4b). Read Run 1 cells as
 > "buy the touch" only. Do **not** start Run 2 on this table — wait for the Run 2 lock
-> in `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DI6).
+> in `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA6).
 
 ## 1. Locks (do not edit)
 
