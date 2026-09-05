@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from tests.fixtures.assistant_parity import parity_run_spec, write_parity_bars
-from thesistester.api import run_experiment
+from thesistester.api import build_setup, run_experiment, validate_run_spec
 from thesistester.engine.backtest import simulate_trades
 from thesistester.engine.signals import (
     _SIGNAL_COLUMNS,
@@ -291,3 +291,65 @@ def test_touch_run_experiment_bundle_hash_matches_pre_da4_capture():
         assert "approach_side" not in state["signals"].columns
         digest = canonical_bundle_hash(build_research_bundle(state))
         assert digest == _PRE_DA4_TOUCH_BUNDLE_HASH
+
+
+def _fade_run_spec(*, trigger_params: dict) -> dict:
+    setup = build_setup(
+        {
+            "name": "fade-da4",
+            "description": "DA4 validate_run_spec fixture",
+            "instrument": "ES",
+            "selected_levels": ["dOpen", "RTH_Open"],
+            "tolerance_ticks": 0,
+            "min_confluences": 2,
+            "max_confluences": 2,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "trigger": "fade",
+            "trigger_timeframe": "base",
+            "direction": "both",
+            "confluence_mode": "global_cluster",
+            "anchor_level": None,
+            "confluence_rules": [],
+            "min_valid_confluences": 1,
+            "trigger_params": trigger_params,
+            "otf_filter": None,
+        }
+    )
+    return {
+        "name": "fade-da4",
+        "dataset": {
+            "path": "unused.csv",
+            "instrument": "ES",
+            "source_timezone": "America/New_York",
+            "format_profile": "canonical",
+        },
+        "levels": {
+            "sma_lengths": [2],
+            "ema_lengths": [2],
+            "sma_timeframes": ["1min"],
+            "ema_timeframes": ["1min"],
+            "vwap_windows": [],
+            "poc_windows": [],
+        },
+        "setup": setup,
+        "backtest": {"stop_loss_ticks": 8, "take_profit_ticks": 16},
+        "grid": {"enabled": False},
+        "validation": {"enabled": False},
+    }
+
+
+def test_validate_run_spec_accepts_fade_require_close_confirmation():
+    validate_run_spec(_fade_run_spec(trigger_params={"require_close_confirmation": False}))
+    validate_run_spec(_fade_run_spec(trigger_params={"require_close_confirmation": True}))
+
+
+def test_validate_run_spec_rejects_unknown_and_non_bool_close_confirmation():
+    spec = _fade_run_spec(trigger_params={"require_close_confirmation": False})
+    spec["setup"]["trigger_params"] = {"require_close_confirmation": False, "not_a_param": 1}
+    with pytest.raises(ValueError, match="Unknown setup.trigger_params"):
+        validate_run_spec(spec)
+
+    spec["setup"]["trigger_params"] = {"require_close_confirmation": "yes"}
+    with pytest.raises(ValueError, match="require_close_confirmation must be a boolean"):
+        validate_run_spec(spec)

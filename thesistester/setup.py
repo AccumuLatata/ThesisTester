@@ -302,7 +302,7 @@ def _is_boolean_compatible(value: Any) -> bool:
     if value in {0, 1}:
         return True
     if isinstance(value, str):
-        return value.strip().lower() in {"true", "false", "1", "0"}
+        return value.strip().lower() in {"true", "false", "1", "0", "yes", "no"}
     return False
 
 

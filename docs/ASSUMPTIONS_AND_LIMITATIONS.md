@@ -584,8 +584,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   retroactively clear a prior bar's naked status.
 - Confluence zones (global and anchor) operate on level values already in the
   DataFrame at each bar; causality inherits from the underlying level columns.
-- All signal triggers (`touch`, `reject`, `break`, `reclaim`, `3c`) emit signals
-  at the bar where the setup becomes knowable, never backdated to the arrival bar.
+- All signal triggers (`touch`, `reject`, `break`, `reclaim`, `3c`, `fade`,
+  `continuation`) emit signals at the bar where the setup becomes knowable,
+  never backdated to the arrival bar.
 
 **Remaining limitations (see full detail in `docs/POINT_IN_TIME_GUARANTEES.md`):**
 - Prior day/week/month VAH/VAL/POC (`pdVAH`/`pdVAL`/`pdPOC`, `pw*`, `pm*`) are

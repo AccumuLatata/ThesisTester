@@ -516,6 +516,18 @@ def _anchor_only_study():
     }
 
 
+def test_expand_fade_require_close_confirmation_passes_validate_run_spec():
+    raw = _anchor_only_study()
+    raw["study"]["factors"]["trigger"] = ["fade"]
+    raw["study"]["constants"]["trigger_params"] = {"require_close_confirmation": True}
+    expansion = expand_study(raw)
+    assert expansion.run_count == 1
+    setup = expansion.experiment["runs"][0]["setup"]
+    assert setup["trigger"] == "fade"
+    assert setup["trigger_params"]["require_close_confirmation"] is True
+    validate_run_spec(expansion.experiment["runs"][0])
+
+
 def test_expand_anchor_only_empty_partner_set():
     expansion = expand_study(_anchor_only_study())
     assert expansion.run_count == 1

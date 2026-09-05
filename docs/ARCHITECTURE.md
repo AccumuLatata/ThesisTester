@@ -951,7 +951,8 @@ filters. `approach_side` is attached after `_make_signal` on those rows only
 and is **not** part of `_SIGNAL_COLUMNS`. Legacy triggers and empty frames
 keep today's column set so `canonical_bundle_hash` of a default `touch`
 bundle is unchanged. Optional `trigger_params.require_close_confirmation`
-defaults false.
+defaults false. `validate_run_spec` allows that key (bool) on
+`setup.trigger_params` so Setup Builder / study fade configs are executable.
 
 `path_open_proximity` is a pure OHLC heuristic. `subtimeframe` has a strict
 dual-resolution boundary: lower rows must be sorted, duplicate-free, strictly
