@@ -180,6 +180,10 @@ Unknown tokens fail at validate time with an actionable error.
 - `schema_version` must be the integer `1` (reject `true` / `1.0`).
 - `group_by` keys must be axes present on **this** study’s `factors` (not merely
   any supported axis name).
+- Optional DA5 `report.random_baseline`: `{enabled: bool, n_replicas: int>=1,
+  random_state: int}`. Omitted = disabled (legacy). Normalize does **not**
+  inject the key (identity hash of existing studies stays unchanged). Unknown
+  nested keys fail closed. Off by default; Program B Run 2 turns it on at 50.
 
 ### Mode rules
 
@@ -298,7 +302,7 @@ loads the **same dataset bytes** when the expand-time file still exists. It is
 | `study.spec.yaml` / `study.expansion.json` / `experiment.yaml` | From expand |
 | `study.ledger.json` | Per-cell status (`pending`/`running`/`ok`/`failed`) + confirm record + `error` |
 | `*.research.zip` | Per-ok-cell bundles |
-| `results_index.csv` | R18 metric columns + DA2 direction-split keys + `bundle_path` + study `status` |
+| `results_index.csv` | R18 metric columns + DA2 direction-split keys + DA5 random-baseline keys + `bundle_path` + study `status` |
 
 `study run` prints `Cell status: ok=… failed=…` and, when any cell failed, the
 unique `cells.*.error` strings (capped) so a shared ingest/config fault is
@@ -329,13 +333,16 @@ Reads a completed study directory (does not re-run backtests). Default
 `study report` does **not** rewrite `results_index.csv`. `--rebuild-direction`
 fills DA2 long/short keys from each cell's `trades.parquet` and leaves every
 pre-existing metric value unchanged. Collision fields stay null on rebuild
-(DA1 diagnostic is in-memory only).
+(DA1 diagnostic is in-memory only). DA5 random-baseline keys are **not**
+recomputed by rebuild (the null needs OHLCV + the cell's execution kwargs);
+soft-resume also leaves them null. Rank stays `primary_metric` — the null
+never re-sorts the ranked table.
 
 ### Artifacts written
 
 | File | Role |
 |---|---|
-| `study.overview.csv` | `results_index.csv` ⟕ `study.expansion.json` on `run_name` + resolved PF/win_rate + DA2 keys when present |
+| `study.overview.csv` | `results_index.csv` ⟕ `study.expansion.json` on `run_name` + resolved PF/win_rate + DA2 keys + DA5 null keys when present |
 | `study.overview.md` | Ranked / low-N / group summaries / OTF Δ + honesty block |
 | `study.otf_delta.csv` | metric(OTF variant) − metric(`report.otf_baseline`) per non-OTF factor tuple |
 | `study.direction.csv` | `run_name` + DA2 direction-split keys (`long_only` / `short_only` / `mixed` / `empty`) |

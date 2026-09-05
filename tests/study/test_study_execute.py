@@ -19,6 +19,7 @@ from thesistester.research_bundle import canonical_bundle_hash
 from thesistester.research_identity import normalize_execution_origin
 from thesistester.study.execute import (
     DA_DIRECTION_INDEX_KEYS,
+    DA_RANDOM_INDEX_KEYS,
     R18_INDEX_METRIC_KEYS,
     STUDY_INDEX_KEYS,
     _failed_index_row,
@@ -254,6 +255,8 @@ def test_one_failing_cell_leaves_prior_ok_intact(tmp_path: Path):
     assert pd.isna(failed_row["profit_factor"])
     assert pd.isna(failed_row["win_rate"])
     for key in DA_DIRECTION_INDEX_KEYS:
+        assert pd.isna(failed_row[key])
+    for key in DA_RANDOM_INDEX_KEYS:
         assert pd.isna(failed_row[key])
     ok_row = index.loc[index["run_name"] == names[0]].iloc[0]
     assert float(ok_row["profit_factor"]) == pytest.approx(1.5)
@@ -524,12 +527,16 @@ def test_soft_resume_rehydrate_preserves_identity_from_prior_and_bundle(tmp_path
     # No trades.parquet → DA keys stay the failed-row None seed (not invented).
     for key in DA_DIRECTION_INDEX_KEYS:
         assert row[key] is None
+    for key in DA_RANDOM_INDEX_KEYS:
+        assert row[key] is None
 
     # No prior row → fall back to dataset_meta.json inside the zip.
     row2 = _index_row_from_existing_bundle(name, output_dir=tmp_path, bundle_rel=bundle_name)
     assert row2["dataset_id"] == "ds-test"
     assert row2["instrument"] == "ES"
     for key in DA_DIRECTION_INDEX_KEYS:
+        assert row2[key] is None
+    for key in DA_RANDOM_INDEX_KEYS:
         assert row2[key] is None
 
 
@@ -877,6 +884,9 @@ def test_failed_index_row_seeds_da_keys_as_none():
     for key in DA_DIRECTION_INDEX_KEYS:
         assert key in row
         assert row[key] is None
+    for key in DA_RANDOM_INDEX_KEYS:
+        assert key in row
+        assert row[key] is None
     assert row["run_name"] == "cell_x"
 
 
@@ -1006,6 +1016,8 @@ def test_rebuild_direction_index_fills_only_da_keys(tmp_path: Path):
     assert int(rebuilt.iloc[0]["long_trade_count"]) == 2
     assert int(rebuilt.iloc[0]["short_trade_count"]) == 1
     assert pd.isna(rebuilt.iloc[0]["collision_pairs"])
+    for key in DA_RANDOM_INDEX_KEYS:
+        assert key not in rebuilt.columns
     again = pd.read_csv(rebuild_direction_index(study_dir))
     assert again.to_csv(index=False) == rebuilt.to_csv(index=False)
 
@@ -1022,3 +1034,144 @@ def test_soft_resume_rehydrate_fills_da_keys_from_trades_parquet(tmp_path: Path)
     assert row["long_share"] == pytest.approx(2 / 3)
     assert row["collision_pairs"] is None
     assert row["collision_resolved_long"] is None
+    for key in DA_RANDOM_INDEX_KEYS:
+        assert row[key] is None
+
+
+def _da5_cell_state(*, expectancy_r: float = 0.25) -> dict:
+    return {
+        "dataset_id": "ds-test",
+        "instrument": "ES",
+        "execution_origin": "study",
+        "cache_provenance": {"outcome": "miss"},
+        "trade_summary": {
+            "trade_count": 2,
+            "expectancy_r": expectancy_r,
+            "total_r": expectancy_r * 2,
+            "max_drawdown_r": -0.1,
+            "profit_factor": 1.2,
+            "win_rate": 0.5,
+        },
+        "trades": _trades_df(directions=["long", "long"], r_values=[0.4, 0.1]),
+        "levels": pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2024-01-02 09:30", periods=8, freq="min"),
+                "open": [100.0] * 8,
+                "high": [101.0] * 8,
+                "low": [99.0] * 8,
+                "close": [100.5] * 8,
+                "volume": [10] * 8,
+            }
+        ),
+        "best_grid_result": {},
+        "validation_summary": {},
+        "walk_forward_summary": {},
+    }
+
+
+def test_execute_study_cell_random_baseline_off_by_default(monkeypatch):
+    state = _da5_cell_state()
+    monkeypatch.setattr("thesistester.study.execute.run_experiment", lambda *_a, **_k: state)
+    monkeypatch.setattr(
+        "thesistester.study.execute.build_research_bundle",
+        lambda _state: _fake_bundle_bytes("cell_off"),
+    )
+
+    def boom(*_a, **_k):
+        raise AssertionError("vs_random_benchmark must not run when disabled")
+
+    monkeypatch.setattr("thesistester.study.execute.vs_random_benchmark", boom)
+    payload = execute_study_cell(({"name": "cell_off"}, "."))
+    assert payload["status"] == "ok"
+    row = payload["index_row"]
+    for key in DA_RANDOM_INDEX_KEYS:
+        assert row[key] is None
+
+
+def test_execute_study_cell_random_baseline_maps_keys(monkeypatch):
+    state = _da5_cell_state(expectancy_r=0.25)
+    monkeypatch.setattr("thesistester.study.execute.run_experiment", lambda *_a, **_k: state)
+    monkeypatch.setattr(
+        "thesistester.study.execute.build_research_bundle",
+        lambda _state: _fake_bundle_bytes("cell_on"),
+    )
+    captured: dict = {}
+
+    def fake_vs_random(df, trades, **kwargs):
+        captured["df"] = df
+        captured["trades"] = trades
+        captured["kwargs"] = kwargs
+        return {
+            "available": True,
+            "n_replicas": 50,
+            "observed_expectancy_r": 0.25,
+            "null_expectancy_mean": 0.10,
+            "null_expectancy_std": 0.02,
+            "percentile": 80.0,
+            "p_value_greater_or_equal": 0.04,
+            "replica_expectancies": [0.1] * 50,
+        }
+
+    monkeypatch.setattr("thesistester.study.execute.vs_random_benchmark", fake_vs_random)
+    payload = execute_study_cell(
+        (
+            {
+                "name": "cell_on",
+                "backtest": {
+                    "stop_loss_ticks": 40,
+                    "take_profit_ticks": 40,
+                    "exposure_policy": "single_position",
+                    "commission_per_side": 0.5,
+                },
+                "_da5_random_baseline": {
+                    "enabled": True,
+                    "n_replicas": 50,
+                    "random_state": 42,
+                },
+            },
+            ".",
+        )
+    )
+    assert payload["status"] == "ok"
+    row = payload["index_row"]
+    assert row["random_null_expectancy_r"] == pytest.approx(0.10)
+    assert row["random_null_std_r"] == pytest.approx(0.02)
+    assert row["random_p_value_ge"] == pytest.approx(0.04)
+    assert row["expectancy_minus_null_r"] == pytest.approx(0.15)
+    assert "replica_expectancies" not in row
+    assert captured["kwargs"]["n_replicas"] == 50
+    assert captured["kwargs"]["random_state"] == 42
+    assert captured["kwargs"]["stop_loss_ticks"] == pytest.approx(40)
+    exec_kw = captured["kwargs"]["execution_kwargs"]
+    assert exec_kw["exposure_policy"] == "single_position"
+    assert exec_kw["commission_per_side"] == 0.5
+    assert "stop_loss_ticks" not in exec_kw
+    assert "enabled" not in exec_kw
+
+
+def test_execute_study_cell_random_baseline_exception_leaves_ok(monkeypatch):
+    state = _da5_cell_state()
+    monkeypatch.setattr("thesistester.study.execute.run_experiment", lambda *_a, **_k: state)
+    monkeypatch.setattr(
+        "thesistester.study.execute.build_research_bundle",
+        lambda _state: _fake_bundle_bytes("cell_boom"),
+    )
+
+    def boom(*_a, **_k):
+        raise RuntimeError("null boom")
+
+    monkeypatch.setattr("thesistester.study.execute.vs_random_benchmark", boom)
+    payload = execute_study_cell(
+        (
+            {
+                "name": "cell_boom",
+                "backtest": {"stop_loss_ticks": 8, "take_profit_ticks": 16},
+                "_da5_random_baseline": {"enabled": True, "n_replicas": 50, "random_state": 42},
+            },
+            ".",
+        )
+    )
+    assert payload["status"] == "ok"
+    assert payload["bundle"] is not None
+    for key in DA_RANDOM_INDEX_KEYS:
+        assert payload["index_row"][key] is None

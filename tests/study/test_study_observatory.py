@@ -36,7 +36,9 @@ from thesistester.study.observatory import (
     cohort_key_from_values,
     constrain_facet_selection,
     corpus_progress_counts,
+    classify_drift_class,
     directional_integrity_counts,
+    drift_class_counts,
     format_heatmap_direction_count,
     delete_observatory_desk,
     desk_class_counts,
@@ -280,6 +282,15 @@ def test_two_studies_index_and_ledger_only(tmp_path: Path):
         "short_only": 0,
         "mixed": 0,
         "empty": 0,
+    }
+    assert "random_p_value_ge" in model.frame.columns
+    assert "drift_class" in model.frame.columns
+    assert model.frame["random_p_value_ge"].isna().all()
+    assert (model.frame["drift_class"] == "unknown").all()
+    assert drift_class_counts(model.frame) == {
+        "above_null": 0,
+        "at_null": 0,
+        "unknown": 1,
     }
     assert progress["studies"] == 2
     assert progress["ok"] == 1
@@ -985,8 +996,13 @@ def test_observatory_page_ast_and_contract():
     assert "pop(STUDIES_VIEWER_SELECTED_RUN_KEY" not in source
     assert "corpus_progress_counts" in source
     assert "directional_integrity_counts" in source
+    assert "drift_class_counts" in source
     assert "format_heatmap_direction_count" in source
     assert "Directional integrity" in source
+    assert "Drift class" in source
+    assert "above_null" in source
+    assert "at_null" in source
+    assert "unknown" in source
     assert "cells long_only" in source
     assert "long_trade_count" in source
     assert "L {" in source and "/ S {" in source
@@ -1348,6 +1364,30 @@ def test_directional_integrity_counts_and_heatmap_ls(tmp_path: Path):
     assert format_heatmap_direction_count(pd.NA) == "—"
 
 
+def test_drift_class_derived_at_load_not_persisted(tmp_path: Path):
+    studies = tmp_path / "results" / "studies"
+    study_dir = _write_study(
+        studies,
+        "progB_w1_onh_sma",
+        core="ONH",
+        partners=["SMA"],
+        cells=[{"run_name": "onh_sma", "trade_count": 40, "expectancy_r": 0.10}],
+    )
+    index = pd.read_csv(study_dir / "results_index.csv")
+    index["random_p_value_ge"] = 0.01
+    index["random_null_expectancy_r"] = 0.02
+    index["expectancy_minus_null_r"] = 0.08
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    frame = load_observatory_frame(roots=(tmp_path.resolve(),)).frame
+    assert frame.iloc[0]["drift_class"] == "above_null"
+    assert float(frame.iloc[0]["random_p_value_ge"]) == pytest.approx(0.01)
+    assert "drift_class" not in pd.read_csv(study_dir / "results_index.csv").columns
+    assert classify_drift_class(0.05) == "at_null"
+    assert classify_drift_class(None) == "unknown"
+    assert classify_drift_class(float("nan")) == "unknown"
+    assert drift_class_counts(frame)["above_null"] == 1
+
+
 def test_delta_e_does_not_cross_instrument_or_null_when_each_has_wave0(tmp_path: Path):
     studies = tmp_path / "results" / "studies"
     _write_study(
@@ -1500,6 +1540,9 @@ def test_saved_desk_round_trip_and_schema_v1(tmp_path: Path):
     assert "desk_class" in DESK_FACET_COLUMNS
     assert "useful_confluence" in DESK_FACET_COLUMNS
     assert "directional_integrity" in DESK_FACET_COLUMNS
+    assert "drift_class" in DESK_FACET_COLUMNS
+    assert "drift_class" not in LENS_FACET_COLUMNS
+    assert "drift_class" not in SORT_ALLOW_LIST
     assert LENS_FACET_COLUMNS == ("desk_class", "useful_confluence")
     desks, ignored_after = list_observatory_desks(store_root=store)
     assert ignored_after == ()

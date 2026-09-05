@@ -460,6 +460,29 @@ soft-resume rehydrate from `trades.parquet`.
 These are descriptive counts, not a claim that `touch` + `both` is two-sided.
 Program B Run 1 cells are expected to read `long_only` after rebuild.
 
+## DA5 study drift null
+
+Study-index fields (not R18 / CLI `_execute_run`). Opt-in via
+`study.report.random_baseline` (`enabled` default false / omitted). After the
+cell bundle is written and hashed, execute calls `vs_random_benchmark` with
+the cell's execution kwargs (same exposure, flatten, costs, intrabar, SL/TP).
+`random_entry_signals` samples directions from the accepted trades, so a
+long-only cell gets a long-only null. Soft-resume and
+`study report --rebuild-direction` leave these keys null. Rank stays
+`primary_metric`; the null never re-sorts.
+
+Distinct from the R15 grid **Vs-random p-value** (selected replayed grid cell
+vs random next-open replicas). This study field is a cell-level diagnostic on
+the accepted-trade sample.
+
+| Field | Definition |
+|---|---|
+| `random_null_expectancy_r` | Mean replica `expectancy_r` (`null_expectancy_mean`). |
+| `random_null_std_r` | Sample std of replica expectancies (`null_expectancy_std`). |
+| `random_p_value_ge` | Percentile of observed E among seeded random-entry replicas; diagnostic. One-sided `P(null ≥ observed)` with the +1 correction. **Not** a significance claim. |
+| `expectancy_minus_null_r` | `expectancy_r − random_null_expectancy_r`. |
+| `drift_class` | Observatory-only (derived at load, not on the index): `above_null` if `random_p_value_ge < 0.05`; `at_null` otherwise; `unknown` when the p-value is null (disabled / failed / older index). |
+
 ## DA4 approach-side column
 
 | Field | Definition |

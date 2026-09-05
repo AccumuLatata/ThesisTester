@@ -309,6 +309,16 @@ This engine is for **research screening**, not proof of a durable edge.
   only — not on `_SIGNAL_COLUMNS`, empty frames, or `touch` / `reject` /
   `break` / `reclaim` / `3c`. `_check_touch` and the `["long","short"]` loop
   are unchanged. Cross-zone opposite pairs remain possible.
+- **DA5 (landed):** opt-in study `report.random_baseline` (`enabled` default
+  false / omitted — normalize does not inject the key). After the cell bundle
+  is written and hashed, execute may attach
+  `random_null_expectancy_r` / `random_null_std_r` / `random_p_value_ge` /
+  `expectancy_minus_null_r` to `results_index.csv` (not R18). The null is
+  direction-matched random next-open entry on the same bars, same SL/TP, same
+  costs. `random_p_value_ge` is a diagnostic percentile, not a significance
+  claim. Rank stays `primary_metric`. Soft-resume and
+  `--rebuild-direction` leave DA5 keys null. Observatory derives `drift_class`
+  at load (`above_null` / `at_null` / `unknown`).
 
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.

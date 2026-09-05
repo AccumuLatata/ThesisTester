@@ -954,6 +954,14 @@ bundle is unchanged. Optional `trigger_params.require_close_confirmation`
 defaults false. `validate_run_spec` allows that key (bool) on
 `setup.trigger_params` so Setup Builder / study fade configs are executable.
 
+DA5 adds optional `study.report.random_baseline` (omit = disabled; normalize
+does not inject the key). When enabled, `execute_study_cell` calls
+`vs_random_benchmark` **after** `build_research_bundle` and attaches four
+mapped keys to `STUDY_INDEX_KEYS` only — not `R18_INDEX_METRIC_KEYS`, not
+`trade_summary.json` / `_BACKTEST_META_KEYS`. Soft-resume and
+`--rebuild-direction` leave those keys null. Observatory derives
+`drift_class` at load; rank stays `primary_metric`.
+
 `path_open_proximity` is a pure OHLC heuristic. `subtimeframe` has a strict
 dual-resolution boundary: lower rows must be sorted, duplicate-free, strictly
 finer, exactly divide the parent interval, completely cover every parent bar,
