@@ -14,8 +14,8 @@ cores, no `dVWAP` partner, Wave 0 `[[]]`). A failed file is not printed as
 
 Run 2 (`fade` packet) is a **different directory**:
 [`examples/studies/program_b_run2/`](../program_b_run2/). Default generate
-flags still write this Run 1 `touch` packet. Do not pass `--trigger fade`
-onto this folder.
+flags still write this Run 1 `touch` packet. `--trigger fade` (and any other
+Run 2 lock) **refuses** this folder — pass `--output-dir` elsewhere.
 
 ```bash
 python3 examples/studies/program_b/generate_program_b_yaml.py

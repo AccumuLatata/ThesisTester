@@ -2,8 +2,9 @@
 """Emit Program B StudySpec YAML from the locked inventory. Do not hand-edit the YAML.
 
 Defaults reproduce the Run 1 packet in this directory (touch, implicit legacy
-same-bar policy, random baseline omitted). Opt-in flags write a Run 2 packet
-elsewhere — they never rewrite Run 1 files unless ``--output-dir`` points here.
+same-bar policy, random baseline omitted). ``--trigger fade`` fills the rest of
+the Run 2 lock table (raise, baseline 50, packet 15s, prefix r2) and **refuses**
+this directory — pass ``--output-dir`` elsewhere.
 """
 
 from __future__ import annotations
@@ -301,13 +302,31 @@ def _run2_readme(*, trigger: str, same_bar_policy: str, n_replicas: int) -> str:
         "\n"
         "```bash\n"
         "python3 examples/studies/program_b/generate_program_b_yaml.py \\\n"
-        "  --trigger fade --same-bar-policy raise --random-baseline 50 \\\n"
-        "  --output-dir examples/studies/program_b_run2 --packet 15s\n"
+        "  --trigger fade --output-dir examples/studies/program_b_run2\n"
+        "# fade defaults the rest of the Run 2 lock table: raise, baseline 50, "
+        "packet 15s, prefix r2.\n"
         "PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py \\\n"
         "  examples/studies/program_b_run2/manifest.yaml\n"
         "```\n"
         "\n"
         "Expect: `ok 23 studies / 944 cells`.\n"
+    )
+
+
+def _is_run2_lock_set(
+    *,
+    trigger: str,
+    same_bar_policy: str | None,
+    random_baseline: int | None,
+    study_prefix: str,
+) -> bool:
+    """True when any Run 2 lock would rewrite the historical touch packet."""
+    prefix = str(study_prefix or "").strip().strip("_")
+    return (
+        trigger != "touch"
+        or (same_bar_policy not in (None, "legacy"))
+        or random_baseline is not None
+        or bool(prefix)
     )
 
 
@@ -332,6 +351,16 @@ def generate_packet(
     if packet not in VALID_PACKETS:
         raise ValueError(f"packet must be one of {VALID_PACKETS}; got {packet!r}")
     out = Path(output_dir)
+    if out.resolve() == OUT.resolve() and _is_run2_lock_set(
+        trigger=trigger,
+        same_bar_policy=same_bar_policy,
+        random_baseline=random_baseline,
+        study_prefix=study_prefix,
+    ):
+        raise ValueError(
+            "refusing to write Run 2 locks into the Run 1 directory; "
+            "pass --output-dir (e.g. examples/studies/program_b_run2)"
+        )
     out.mkdir(parents=True, exist_ok=True)
     write_15s = packet in {"15s", "both"}
     write_tick = packet in {"tick", "both"}
@@ -511,8 +540,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--packet",
         choices=VALID_PACKETS,
-        default="both",
-        help="Which manifests to write. Default both (Run 1). Run 2 uses 15s.",
+        default=None,
+        help="Which manifests to write. Default both (Run 1). Fade defaults to 15s.",
     )
     parser.add_argument(
         "--study-prefix",
@@ -522,21 +551,35 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if args.random_baseline is not None and args.random_baseline < 1:
         parser.error("--random-baseline must be >= 1")
+    run2 = args.trigger == "fade"
     prefix = args.study_prefix
     if prefix is None:
-        prefix = "r2" if args.trigger == "fade" else ""
-    write_readme = Path(args.output_dir).resolve() != OUT.resolve()
-    locks = "run2" if args.trigger == "fade" else None
-    generate_packet(
-        Path(args.output_dir),
-        trigger=args.trigger,
-        same_bar_policy=args.same_bar_policy,
-        random_baseline=args.random_baseline,
-        packet=args.packet,
-        study_prefix=prefix,
-        write_readme=write_readme,
-        locks=locks,
-    )
+        prefix = "r2" if run2 else ""
+    same_bar_policy = args.same_bar_policy
+    if same_bar_policy is None and run2:
+        same_bar_policy = "raise"
+    random_baseline = args.random_baseline
+    if random_baseline is None and run2:
+        random_baseline = 50
+    packet = args.packet
+    if packet is None:
+        packet = "15s" if run2 else "both"
+    # README is the Run 2 operator note; never stamp it on a touch packet.
+    write_readme = run2 and Path(args.output_dir).resolve() != OUT.resolve()
+    locks = "run2" if run2 else None
+    try:
+        generate_packet(
+            Path(args.output_dir),
+            trigger=args.trigger,
+            same_bar_policy=same_bar_policy,
+            random_baseline=random_baseline,
+            packet=packet,
+            study_prefix=prefix,
+            write_readme=write_readme,
+            locks=locks,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":

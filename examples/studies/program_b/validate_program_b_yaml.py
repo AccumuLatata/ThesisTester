@@ -21,8 +21,10 @@ LOCKED_INSTRUMENT = "MNQ"
 LOCKED_TRIGGER = "touch"
 LOCKED_TRIGGER_RUN2 = "fade"
 LOCKED_TRIGGER_TF = "1min"
+LOCKED_DIRECTION = "both"
 LOCKED_SAME_BAR_RUN2 = "raise"
 LOCKED_RANDOM_REPLICAS = 50
+LOCKED_NAME_PREFIX_RUN2 = "progB_r2_"
 VALID_LOCKS = frozenset({"run1", "run2"})
 LOCKED_MODE = "anchor_rules"
 LOCKED_FROM_PARTNERS = "required"
@@ -185,6 +187,17 @@ def validate_study_file(
         failures.append(f"{path.name}: trigger drifted")
     if list(factors.get("trigger_timeframe") or []) != [LOCKED_TRIGGER_TF]:
         failures.append(f"{path.name}: trigger_timeframe drifted")
+    if str(constants.get("direction") or "") != LOCKED_DIRECTION:
+        failures.append(f"{path.name}: direction must be {LOCKED_DIRECTION}")
+    if locks == "run2":
+        study_name = str(study.get("name") or "")
+        if not study_name.startswith(LOCKED_NAME_PREFIX_RUN2):
+            failures.append(
+                f"{path.name}: Run 2 study.name must start with {LOCKED_NAME_PREFIX_RUN2!r}"
+            )
+        expected_out = f"results/studies/{study_name}" if study_name else ""
+        if study_name and str(study.get("output_dir") or "") != expected_out:
+            failures.append(f"{path.name}: Run 2 output_dir must be results/studies/<study.name>")
     trigger_params = constants.get("trigger_params") or {}
     if locks == "run2":
         if not isinstance(trigger_params, Mapping):

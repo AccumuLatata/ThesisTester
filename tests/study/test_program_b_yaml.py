@@ -6,6 +6,7 @@ import importlib.util
 import shutil
 from pathlib import Path
 
+import pytest
 import yaml
 
 from thesistester.levels.catalog import PRIOR_PROFILE_LEVEL_NAMES, STATIC_STUDY_LEVEL_NAMES
@@ -250,3 +251,64 @@ def test_program_b_validator_rejects_run2_yaml_under_run1_locks(tmp_path):
         drifted, {"file": drifted.name, "cells": 1, "min_valid": 1}, packet="15s", locks="run1"
     )
     assert any("trigger drifted" in item for item in failures)
+
+
+def test_program_b_fade_cli_defaults_emit_valid_run2_packet(tmp_path):
+    gen = _generate()
+    gen.main(["--trigger", "fade", "--output-dir", str(tmp_path)])
+    validate = _validator()
+    ok_lines, failures, n_studies, n_cells = validate.validate_manifest(tmp_path)
+    assert failures == []
+    assert n_studies == 23
+    assert n_cells == 944
+    assert len(ok_lines) == 23
+    spec = yaml.safe_load((tmp_path / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    assert spec["study"]["factors"]["trigger"] == ["fade"]
+    assert spec["study"]["constants"]["backtest"]["same_bar_opposite_direction"] == "raise"
+    assert spec["study"]["report"]["random_baseline"]["n_replicas"] == 50
+    assert spec["study"]["name"].startswith("progB_r2_")
+    assert not (tmp_path / "manifest_va.yaml").exists()
+    assert not (tmp_path / "progB_w0_va.yaml").exists()
+    readme = (tmp_path / "README.md").read_text(encoding="utf-8")
+    assert "Run 2" in readme
+
+
+def test_program_b_fade_cli_refuses_run1_output_dir():
+    gen = _generate()
+    with pytest.raises(SystemExit):
+        gen.main(["--trigger", "fade"])
+    spec = yaml.safe_load((PROGRAM_B / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    assert spec["study"]["factors"]["trigger"] == ["touch"]
+    assert spec["study"]["name"] == "progB_smoke_ONH_SMA50_5min"
+
+
+def test_program_b_validator_rejects_run2_name_without_r2_prefix(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B_RUN2 / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    spec["study"]["name"] = "progB_smoke_ONH_SMA50_5min"
+    spec["study"]["output_dir"] = "results/studies/progB_smoke_ONH_SMA50_5min"
+    drifted = tmp_path / "progB_smoke_ONH_SMA50_5min.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 1, "min_valid": 1}, packet="15s", locks="run2"
+    )
+    assert any("progB_r2_" in item for item in failures)
+
+
+def test_program_b_validator_rejects_long_only_direction(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    spec["study"]["constants"]["direction"] = "long"
+    drifted = tmp_path / "progB_smoke_ONH_SMA50_5min.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 1, "min_valid": 1}, packet="15s"
+    )
+    assert any("direction must be both" in item for item in failures)
+
+
+def test_program_b_validator_main_accepts_run2_manifest_path(capsys):
+    validate = _validator()
+    validate.main([str(PROGRAM_B_RUN2 / "manifest.yaml")])
+    captured = capsys.readouterr()
+    assert "ok 23 studies / 944 cells" in captured.out

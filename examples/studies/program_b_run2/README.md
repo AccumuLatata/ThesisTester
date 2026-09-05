@@ -10,8 +10,8 @@ Do not hand-edit token lists. Do not treat Run 1 vs Run 2 as a paired ΔE.
 
 ```bash
 python3 examples/studies/program_b/generate_program_b_yaml.py \
-  --trigger fade --same-bar-policy raise --random-baseline 50 \
-  --output-dir examples/studies/program_b_run2 --packet 15s
+  --trigger fade --output-dir examples/studies/program_b_run2
+# fade defaults the rest of the Run 2 lock table: raise, baseline 50, packet 15s, prefix r2.
 PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py \
   examples/studies/program_b_run2/manifest.yaml
 ```
