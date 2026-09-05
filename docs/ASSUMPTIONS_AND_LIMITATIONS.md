@@ -185,6 +185,26 @@ This engine is for **research screening**, not proof of a durable edge.
   (golden-identical trades). `api.run_backtest` and classic Backtest Admit
   controls (SW3) default off.
 
+### 4b) Direction attribution under `direction: both` (verified 2026-09-05)
+- `touch` is direction-agnostic (`bar.low <= zone_high and bar.high >= zone_low`).
+  With `direction: both` every touch bar emits a **long and a short candidate**
+  with the same `bar_index`, `entry_bar_index`, and entry price; the long has the
+  lower `signal_id`.
+- Restrictive policies sort candidates by `(entry_bar_index, bar_idx, signal_id)`.
+  Under `single_position` (and `single_setup` with a shared group key) the long is
+  admitted and the same-bar short is skipped as `overlapping_position` — on
+  every bar. **The resulting trade set is long-only.** Under `allow_all` and
+  `single_direction` both sides fill on the same bar at the same price (a hedged
+  pair). There is no exposure policy under which `touch` + `both` is a
+  directional test of a level.
+- Consequence: Program A L1 (`docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md`
+  §6.0) and Program B Run 1 (`docs/PROGRAM_B_OPERATOR_RUNBOOK.md` §1) are
+  **long-only samples**. Their verdicts describe buying a level touch only.
+- Remediation series and evidence: `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md`
+  (DI). Legacy behaviour is unchanged and stays the default; DI adds a
+  diagnostic, a direction split, an opt-in same-bar policy, and approach-side
+  triggers (`fade` / `continuation`) behind new tokens.
+
 ### 4a) Time Analysis Focus vs Admit (SW1–SW4)
 - **Focus summary** filters already completed trades by **entry** time bucket
   (C2 — always `entry_timestamp`, even when Time Analysis charts group by exit)
