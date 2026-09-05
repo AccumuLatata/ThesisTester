@@ -36,6 +36,8 @@ from thesistester.study.observatory import (
     cohort_key_from_values,
     constrain_facet_selection,
     corpus_progress_counts,
+    directional_integrity_counts,
+    format_heatmap_direction_count,
     delete_observatory_desk,
     desk_class_counts,
     desk_class_for,
@@ -270,6 +272,15 @@ def test_two_studies_index_and_ledger_only(tmp_path: Path):
         model.studies.loc[model.studies["study_name"] == "beta_inflight", "index_present"].iloc[0]
     )
     progress = corpus_progress_counts(model.studies)
+    assert "directional_integrity" in model.frame.columns
+    assert model.frame["long_trade_count"].isna().all()
+    assert model.frame["directional_integrity"].isna().all()
+    assert directional_integrity_counts(model.frame) == {
+        "long_only": 0,
+        "short_only": 0,
+        "mixed": 0,
+        "empty": 0,
+    }
     assert progress["studies"] == 2
     assert progress["ok"] == 1
     assert progress["pending"] == 1
@@ -973,6 +984,12 @@ def test_observatory_page_ast_and_contract():
     assert "inspect_selected_run_for_drill" in source
     assert "pop(STUDIES_VIEWER_SELECTED_RUN_KEY" not in source
     assert "corpus_progress_counts" in source
+    assert "directional_integrity_counts" in source
+    assert "format_heatmap_direction_count" in source
+    assert "Directional integrity" in source
+    assert "cells long_only" in source
+    assert "long_trade_count" in source
+    assert "L {" in source and "/ S {" in source
     assert "observatory_studies_table" in source
     assert "study_choice_labels" in source
     assert "ledger-only dirs stay on this strip" in source
@@ -1298,6 +1315,39 @@ def test_heatmap_cartesian_marks_absent_program_b_cells(tmp_path: Path):
     assert pd.isna(by_cell[("ONL", "SMA")]) or by_cell[("ONL", "SMA")] is None
 
 
+def test_directional_integrity_counts_and_heatmap_ls(tmp_path: Path):
+    studies = tmp_path / "results" / "studies"
+    study_dir = _write_study(
+        studies,
+        "progB_w1_onh_sma",
+        core="ONH",
+        partners=["SMA"],
+        cells=[{"run_name": "onh_sma", "trade_count": 40, "expectancy_r": 0.10}],
+    )
+    index = pd.read_csv(study_dir / "results_index.csv")
+    index["long_trade_count"] = 40
+    index["short_trade_count"] = 0
+    index["long_share"] = 1.0
+    index["directional_integrity"] = "long_only"
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    frame = attach_program_b_projections(load_observatory_frame(roots=(tmp_path.resolve(),)).frame)
+    assert frame.iloc[0]["directional_integrity"] == "long_only"
+    assert int(frame.iloc[0]["long_trade_count"]) == 40
+    assert int(frame.iloc[0]["short_trade_count"]) == 0
+    assert directional_integrity_counts(frame)["long_only"] == 1
+    grid = program_b_heatmap_cells(frame)
+    hit = grid.loc[
+        (grid["factor_core_level"] == "ONH") & (grid["factor_partner_levels"] == "SMA")
+    ].iloc[0]
+    assert int(hit["long_trade_count"]) == 40
+    assert int(hit["short_trade_count"]) == 0
+    assert format_heatmap_direction_count(40) == "40"
+    assert format_heatmap_direction_count(0) == "0"
+    assert format_heatmap_direction_count(None) == "—"
+    assert format_heatmap_direction_count(float("nan")) == "—"
+    assert format_heatmap_direction_count(pd.NA) == "—"
+
+
 def test_delta_e_does_not_cross_instrument_or_null_when_each_has_wave0(tmp_path: Path):
     studies = tmp_path / "results" / "studies"
     _write_study(
@@ -1449,6 +1499,7 @@ def test_saved_desk_round_trip_and_schema_v1(tmp_path: Path):
     assert payload["facets"]["useful_confluence"] == [True]
     assert "desk_class" in DESK_FACET_COLUMNS
     assert "useful_confluence" in DESK_FACET_COLUMNS
+    assert "directional_integrity" in DESK_FACET_COLUMNS
     assert LENS_FACET_COLUMNS == ("desk_class", "useful_confluence")
     desks, ignored_after = list_observatory_desks(store_root=store)
     assert ignored_after == ()

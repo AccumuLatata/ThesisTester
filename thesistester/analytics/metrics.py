@@ -262,6 +262,21 @@ def summarize_trades_by_direction(trades: pd.DataFrame) -> dict[str, dict]:
     return output
 
 
+def direction_split_index_values(trades: pd.DataFrame | None) -> dict[str, object]:
+    """Long/short n and E for the study index. Reuses :func:`summarize_trades_by_direction`.
+
+    No new formulas. Empty / missing sides keep ``trade_count`` 0 and
+    ``expectancy_r`` ``None`` from the existing empty-summary contract.
+    """
+    split = summarize_trades_by_direction(trades)
+    return {
+        "long_trade_count": int(split["long"].get("trade_count") or 0),
+        "short_trade_count": int(split["short"].get("trade_count") or 0),
+        "long_expectancy_r": split["long"].get("expectancy_r"),
+        "short_expectancy_r": split["short"].get("expectancy_r"),
+    }
+
+
 def summarize_by_group(trades: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
     """Compute a minimal grouped trade outcome summary."""
     requested_group_cols = list(group_cols or [])

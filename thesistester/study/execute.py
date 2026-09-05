@@ -31,8 +31,10 @@ except ImportError:  # pragma: no cover - POSIX
 
 import pandas as pd
 
+from thesistester.analytics.metrics import direction_split_index_values
 from thesistester.api import run_experiment
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.study.briefing import read_zip_parquet, resolve_cell_bundle
 from thesistester.levels.tick_vap import (
     build_prior_profile_table_from_paths,
     compute_tick_source_id,
@@ -84,7 +86,21 @@ R18_INDEX_METRIC_KEYS: tuple[str, ...] = (
     "wfa_stitched_oos_total_r",
 )
 
-STUDY_INDEX_KEYS: tuple[str, ...] = R18_INDEX_METRIC_KEYS + ("bundle_path", "status")
+# Study-owned DA2 keys. Not on R18_INDEX_METRIC_KEYS (CLI RS-D7 ordered parity).
+DA_DIRECTION_INDEX_KEYS: tuple[str, ...] = (
+    "long_trade_count",
+    "short_trade_count",
+    "long_expectancy_r",
+    "short_expectancy_r",
+    "long_share",
+    "directional_integrity",
+    "collision_pairs",
+    "collision_resolved_long",
+)
+
+STUDY_INDEX_KEYS: tuple[str, ...] = (
+    R18_INDEX_METRIC_KEYS + DA_DIRECTION_INDEX_KEYS + ("bundle_path", "status")
+)
 STUDY_PRIOR_PROFILE_PARQUET = "study.prior_profile.parquet"
 
 
@@ -187,11 +203,129 @@ def build_index_row_from_state(
     }
 
 
+def _direction_n(trade_count: Any, *, long_n: int, short_n: int) -> int:
+    """Accepted-trade N for DA2 share / class. Non-finite → long+short."""
+    count = _coerce_index_float(trade_count)
+    if count is None or not math.isfinite(count):
+        count = float(int(long_n) + int(short_n))
+    return int(count)
+
+
+def classify_directional_integrity(
+    *,
+    trade_count: Any,
+    long_trade_count: int,
+    short_trade_count: int,
+) -> str:
+    """Label a cell from accepted-trade counts. Empty when ``trade_count == 0``."""
+    n = _direction_n(
+        trade_count, long_n=int(long_trade_count), short_n=int(short_trade_count)
+    )
+    if n == 0:
+        return "empty"
+    if int(short_trade_count) == 0:
+        return "long_only"
+    if int(long_trade_count) == 0:
+        return "short_only"
+    return "mixed"
+
+
+def direction_index_fields(
+    trades: pd.DataFrame | None,
+    *,
+    trade_count: Any = None,
+    collision: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Study-index DA2 fields from trades (+ optional in-memory DA1 diagnostic).
+
+    ``long_share`` is ``long_trade_count / trade_count`` and ``None`` when
+    ``trade_count`` is 0. Collision keys stay ``None`` unless ``collision``
+    is a mapping from ``direction_collision_diagnostic``.
+    """
+    split = direction_split_index_values(trades)
+    long_n = int(split["long_trade_count"] or 0)
+    short_n = int(split["short_trade_count"] or 0)
+    n = _direction_n(trade_count, long_n=long_n, short_n=short_n)
+    long_share = (long_n / n) if n else None
+    pairs: Any = None
+    resolved_long: Any = None
+    if isinstance(collision, Mapping) and collision:
+        if "candidate_pairs" in collision:
+            pairs = collision.get("candidate_pairs")
+        if "resolved_long" in collision:
+            resolved_long = collision.get("resolved_long")
+    return {
+        "long_trade_count": long_n,
+        "short_trade_count": short_n,
+        "long_expectancy_r": split["long_expectancy_r"],
+        "short_expectancy_r": split["short_expectancy_r"],
+        "long_share": long_share,
+        "directional_integrity": classify_directional_integrity(
+            trade_count=n,
+            long_trade_count=long_n,
+            short_trade_count=short_n,
+        ),
+        "collision_pairs": pairs,
+        "collision_resolved_long": resolved_long,
+    }
+
+
 def _failed_index_row(name: str) -> dict[str, Any]:
     row = {key: None for key in R18_INDEX_METRIC_KEYS}
+    row.update({key: None for key in DA_DIRECTION_INDEX_KEYS})
     row["run_name"] = name
     row["execution_origin"] = "study"
     return row
+
+
+def _read_bundle_trades(bundle_path: Path) -> pd.DataFrame | None:
+    """Best-effort ``trades.parquet`` from a research zip. Missing → None."""
+    return read_zip_parquet(Path(bundle_path), "trades.parquet")
+
+
+def rebuild_direction_index(study_dir: str | Path) -> Path:
+    """Fill DA2 keys on ``results_index.csv`` from bundle ``trades.parquet``.
+
+    Never rewrites existing metric values. Collision fields stay ``None``
+    (DA1 diagnostic is not persisted in bundles). Idempotent. Atomic replace.
+    """
+    root = Path(study_dir)
+    path = root / "results_index.csv"
+    if not path.is_file():
+        raise StudySpecError(f"Missing results_index.csv under {root}")
+    frame = pd.read_csv(path)
+    if "run_name" not in frame.columns:
+        raise StudySpecError(f"{path} must include a run_name column")
+    existing_columns = list(frame.columns)
+    filled: dict[str, list[Any]] = {key: [] for key in DA_DIRECTION_INDEX_KEYS}
+    none_fields = {key: None for key in DA_DIRECTION_INDEX_KEYS}
+    for idx in frame.index:
+        bundle_rel = frame.at[idx, "bundle_path"] if "bundle_path" in frame.columns else None
+        if _metric_missing(bundle_rel):
+            for key, value in none_fields.items():
+                filled[key].append(value)
+            continue
+        resolved = resolve_cell_bundle(root, str(bundle_rel).strip())
+        trades = _read_bundle_trades(resolved) if resolved is not None else None
+        if trades is None:
+            for key, value in none_fields.items():
+                filled[key].append(value)
+            continue
+        trade_count = frame.at[idx, "trade_count"] if "trade_count" in frame.columns else None
+        fields = direction_index_fields(trades, trade_count=trade_count, collision=None)
+        fields["collision_pairs"] = None
+        fields["collision_resolved_long"] = None
+        for key in DA_DIRECTION_INDEX_KEYS:
+            filled[key].append(fields[key])
+    for key, values in filled.items():
+        frame[key] = values
+    extras = [column for column in existing_columns if column not in STUDY_INDEX_KEYS]
+    ordered = [column for column in STUDY_INDEX_KEYS if column in frame.columns] + extras
+    frame = frame.loc[:, ordered]
+    tmp = path.with_name(".results_index.csv.tmp")
+    frame.to_csv(tmp, index=False)
+    os.replace(tmp, path)
+    return path
 
 
 def _read_bundle_trade_summary(bundle_path: Path) -> dict[str, Any] | None:
@@ -251,7 +385,8 @@ def _index_row_from_existing_bundle(
     Rehydrate core trade metrics from ``trade_summary.json`` so report ranking
     stays honest without re-running the cell. Preserve non-null identity fields
     from ``prior_row`` / ``dataset_meta.json`` so soft-resume does not wipe
-    ``dataset_id`` / ``instrument``.
+    ``dataset_id`` / ``instrument``. DA2 keys come from ``trades.parquet`` when
+    present; collision copies stay ``None`` (DA1 diagnostic is in-memory only).
     """
     row = _failed_index_row(name)
     if prior_row is not None:
@@ -276,6 +411,15 @@ def _index_row_from_existing_bundle(
             row[key] = summary.get(key)
     row["profit_factor"] = _coerce_index_float(summary.get("profit_factor"))
     row["win_rate"] = _coerce_index_float(summary.get("win_rate"))
+    trades = _read_bundle_trades(bundle_path)
+    if trades is not None:
+        row.update(
+            direction_index_fields(
+                trades,
+                trade_count=row.get("trade_count"),
+                collision=None,
+            )
+        )
     return row
 
 
@@ -367,6 +511,14 @@ def execute_study_cell(
         )
         bundle = build_research_bundle(state)
         index_row = build_index_row_from_state(name=name, state=state, bundle=bundle)
+        trades = state.get("trades")
+        index_row.update(
+            direction_index_fields(
+                trades if isinstance(trades, pd.DataFrame) else None,
+                trade_count=index_row.get("trade_count"),
+                collision=state.get("direction_collision_diagnostic"),
+            )
+        )
         return {
             "status": "ok",
             "name": name,

@@ -73,6 +73,7 @@ _FACET_COLUMNS: tuple[tuple[str, str], ...] = (
     ("stop_loss_ticks", "Stop loss (ticks)"),
     ("take_profit_ticks", "Take profit (ticks)"),
     ("ingestion_mode", "Ingestion"),
+    ("directional_integrity", "Directional integrity"),
 )
 _TABLE_COLUMNS: tuple[str, ...] = (
     "study_name",
@@ -80,6 +81,9 @@ _TABLE_COLUMNS: tuple[str, ...] = (
     "instrument",
     "setup_kind",
     "trade_count",
+    "long_trade_count",
+    "short_trade_count",
+    "long_share",
     "expectancy_r",
     "profit_factor",
     "win_rate",
@@ -153,6 +157,8 @@ delete_observatory_desk = getattr(_observatory, "delete_observatory_desk", None)
 observatory_desk_query_state = getattr(_observatory, "observatory_desk_query_state", None)
 observatory_desk_from_payload = getattr(_observatory, "observatory_desk_from_payload", None)
 corpus_progress_counts = getattr(_observatory, "corpus_progress_counts", None)
+directional_integrity_counts = getattr(_observatory, "directional_integrity_counts", None)
+format_heatmap_direction_count = getattr(_observatory, "format_heatmap_direction_count", None)
 sort_observatory_studies = getattr(_observatory, "sort_observatory_studies", None)
 observatory_studies_table = getattr(_observatory, "observatory_studies_table", None)
 study_choice_labels = getattr(_observatory, "study_choice_labels", None)
@@ -193,6 +199,8 @@ def _helpers_ready() -> bool:
             observatory_desk_query_state,
             observatory_desk_from_payload,
             corpus_progress_counts,
+            directional_integrity_counts,
+            format_heatmap_direction_count,
             sort_observatory_studies,
             observatory_studies_table,
             study_choice_labels,
@@ -610,24 +618,32 @@ def _render_program_b_lens(frame: pd.DataFrame) -> None:
     partners = list(dict.fromkeys(grid["factor_partner_levels"].tolist()))
     z: list[list[int]] = []
     hover: list[list[str]] = []
+    format_ls = (
+        format_heatmap_direction_count
+        if callable(format_heatmap_direction_count)
+        else (lambda value: "—" if value is None else str(value))
+    )
     by_cell = {
         (
             record["factor_core_level"],
             record["factor_partner_levels"],
-        ): record.get("desk_class")
+        ): record
         for record in grid.to_dict(orient="records")
     }
     for core in cores:
         z_row: list[int] = []
         hover_row: list[str] = []
         for partner in partners:
-            desk = by_cell.get((core, partner))
+            rec = by_cell.get((core, partner)) or {}
+            desk = rec.get("desk_class")
             z_value = heatmap_class_z(desk)
             z_row.append(z_value)
             if z_value == 0:
                 hover_row.append(f"{core} × {partner}: missing / pending")
             else:
-                hover_row.append(f"{core} × {partner}: {desk}")
+                long_n = format_ls(rec.get("long_trade_count"))
+                short_n = format_ls(rec.get("short_trade_count"))
+                hover_row.append(f"{core} × {partner}: {desk} · L {long_n} / S {short_n}")
         z.append(z_row)
         hover.append(hover_row)
     fig = go.Figure(
@@ -707,6 +723,13 @@ st.caption(
     "dirs. Cells is the index grain — ledger-only dirs stay on this strip, "
     "not as invented cell rows. Refresh reloads index + expansion mtimes."
 )
+if callable(directional_integrity_counts):
+    integrity = directional_integrity_counts(frame)
+    st.caption(
+        f"{integrity.get('long_only', 0)} cells long_only · "
+        f"{integrity.get('short_only', 0)} short_only · "
+        f"{integrity.get('mixed', 0)} mixed"
+    )
 
 if studies.empty and frame.empty:
     st.caption(_EMPTY_CATALOG)

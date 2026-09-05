@@ -3,6 +3,8 @@
 Joins ``results_index.csv`` ⟕ ``study.expansion.json`` on ``run_name``, resolves
 ``profit_factor`` / ``win_rate`` from bundle ``trade_summary`` when absent from
 the index, and emits ranked / low-N / group / OTF-Δ views with honesty text.
+DA2 also writes ``study.direction.csv`` from index direction-split keys when
+present (nulls on older indexes). This module does not rewrite the index.
 
 RS-D7 writers add additive index ``profit_factor`` / ``win_rate`` columns; this
 module prefers those when present and keeps the bundle fallback for older
@@ -29,9 +31,22 @@ from thesistester.study.schema import load_study_spec
 OVERVIEW_CSV = "study.overview.csv"
 OVERVIEW_MD = "study.overview.md"
 OTF_DELTA_CSV = "study.otf_delta.csv"
+DIRECTION_CSV = "study.direction.csv"
 EXPANSION_JSON = "study.expansion.json"
 SPEC_YAML = "study.spec.yaml"
 RESULTS_INDEX = "results_index.csv"
+
+# Mirrors execute.DA_DIRECTION_INDEX_KEYS — do not import execute (cycle via briefing).
+_DIRECTION_COLUMNS: tuple[str, ...] = (
+    "long_trade_count",
+    "short_trade_count",
+    "long_expectancy_r",
+    "short_expectancy_r",
+    "long_share",
+    "directional_integrity",
+    "collision_pairs",
+    "collision_resolved_long",
+)
 
 _HIGHER_IS_BETTER = frozenset({"expectancy_r", "total_r", "profit_factor", "trade_count"})
 _LOWER_IS_BETTER = frozenset({"max_drawdown_r"})
@@ -286,6 +301,18 @@ def _flatten_factors(factors: Mapping[str, Any]) -> dict[str, Any]:
     return flat
 
 
+def _direction_frame(overview: pd.DataFrame) -> pd.DataFrame:
+    """``run_name`` plus DA2 keys. Missing keys stay null (older indexes)."""
+    cols = ["run_name", *_DIRECTION_COLUMNS]
+    if overview.empty:
+        return pd.DataFrame(columns=list(cols))
+    frame = overview.copy()
+    for column in cols:
+        if column not in frame.columns:
+            frame[column] = None
+    return frame.loc[:, list(cols)].reset_index(drop=True)
+
+
 def build_overview_frame(
     *,
     study_dir: Path,
@@ -335,6 +362,14 @@ def build_overview_frame(
         "run_name",
         "status",
         "trade_count",
+        "long_trade_count",
+        "short_trade_count",
+        "long_expectancy_r",
+        "short_expectancy_r",
+        "long_share",
+        "directional_integrity",
+        "collision_pairs",
+        "collision_resolved_long",
         "expectancy_r",
         "total_r",
         "max_drawdown_r",
@@ -838,7 +873,8 @@ def report_study(
     """Aggregate a completed study directory into overview CSV/MD (+ OTF Δ).
 
     When ``write_artifacts`` is false (RS-D2 viewer), compute the same in-memory
-    result without rewriting ``study.overview.*`` / ``study.otf_delta.csv``.
+    result without rewriting ``study.overview.*`` / ``study.otf_delta.csv`` /
+    ``study.direction.csv``. Does not rewrite ``results_index.csv``.
     """
     root = Path(study_dir)
     if not root.is_dir():
@@ -890,6 +926,8 @@ def report_study(
     overview_path = root / OVERVIEW_CSV
     md_path = root / OVERVIEW_MD
     otf_path = root / OTF_DELTA_CSV
+    direction_path = root / DIRECTION_CSV
+    direction = _direction_frame(overview)
 
     if write_artifacts:
         overview.to_csv(overview_path, index=False)
@@ -898,6 +936,7 @@ def report_study(
             encoding="utf-8",
         )
         otf_delta.to_csv(otf_path, index=False)
+        direction.to_csv(direction_path, index=False)
 
     return StudyReportResult(
         overview=overview,
@@ -911,6 +950,7 @@ def report_study(
             OVERVIEW_CSV: overview_path,
             OVERVIEW_MD: md_path,
             OTF_DELTA_CSV: otf_path,
+            DIRECTION_CSV: direction_path,
         },
         primary_metric=primary,
         min_trades=min_trades,

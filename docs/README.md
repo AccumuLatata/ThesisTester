@@ -21,7 +21,7 @@ research snapshots live under [`research/`](research/README.md).
 | [LEVEL_COMBINATION_RESEARCH_CONCEPT.md](LEVEL_COMBINATION_RESEARCH_CONCEPT.md) | Program B: level × MA / rolling VWAP / pivot (`dVWAP` not a required partner) |
 | [LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md](LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md) | Complete 50-anchor × 22-confirm list and wave order |
 | [PROGRAM_B_OPERATOR_RUNBOOK.md](PROGRAM_B_OPERATOR_RUNBOOK.md) | Bot-facing Program B run list + CLI (YAMLs in `examples/studies/program_b/`) |
-| [DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md](DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md) | DA — `touch`+`both`+`single_position` is long-only; **DA1 landed**; DI is Discuss Intelligence |
+| [DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md](DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md) | DA — `touch`+`both`+`single_position` is long-only; **DA2 landed**; DI is Discuss Intelligence |
 | [LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md) | Program A: desk product funnel (token inventory + staged studies; promote/Admit/L2 power locks; executed) |
 | [ANCHOR_ONLY_IMPLEMENTATION_PLAN.md](ANCHOR_ONLY_IMPLEMENTATION_PLAN.md) | AO — opt-in `anchor_rules` with no partners (`min_valid_confluences: 0`); **AO1 implemented** |
 | [LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md](LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) | Handoff: rewrite Notion desk contract without losing logging/roadmap |
@@ -60,7 +60,7 @@ Engine / data contracts:
 - [STUDY_VIEWER_IMPLEMENTATION_PLAN.md](STUDY_VIEWER_IMPLEMENTATION_PLAN.md) (SV — Studies Inspect catalog / quality / charts / cell peek / briefing; SV0–SV5 ✅; does not reopen RS-D2 execute/session boundaries)
 - [STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md](STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md) (SO — corpus fact table + facets + cohort lock + Program B lens + saved desks + studies pane + cohort labels + lens-as-filter; **SO1–SO4 + SO7–SO9 shipped**; SO5/SO6 parked; does not reopen SV Inspect or execute)
 - [AUDIT_HONESTY_IMPLEMENTATION_PLAN.md](AUDIT_HONESTY_IMPLEMENTATION_PLAN.md) (AH — research-honesty remediations from the 2026-08-18 audit merge; AH0–AH6 landed)
-- [DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md](DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md) (DA — Directional Attribution; **not** Discuss Intelligence DI. `touch` + `both` + `single_position` is a long-only sample; **DA1 landed**; DA2–DA6 not started; no golden regen)
+- [DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md](DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md) (DA — Directional Attribution; **not** Discuss Intelligence DI. `touch` + `both` + `single_position` is a long-only sample; **DA2 landed**; DA3–DA6 not started; no golden regen)
 - [STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md](STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md) (SAF — Admit follow-up draft from a completed study; SAF1–SAF3 shipped: CLI `--admit-tod auto` / `--tod-group` / `--allow-thin` + Inspect draft + catalog `parent`; SAF4 parked; does not auto-run or add a ToD factor axis)
 - [LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md](LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md) (LC — catalog completeness/correctness for already-emitted levels; LC0–LC4 landed; no new price series)
 - [WVWAP_MVWAP_IMPLEMENTATION_PLAN.md](WVWAP_MVWAP_IMPLEMENTATION_PLAN.md) (WMV — developing `wVWAP` / `mVWAP`; **WMV0–WMV2 complete**; same `session_vwap_enabled` gate as `dVWAP`)
