@@ -100,7 +100,7 @@ Consequences for existing corpora: the Program A **swing** product (`3c` @ 1min)
 - No re-interpretation of Run 1 in code. Judgement stays with Edge Finder.
 - No change to `signal_id` assignment order, `simulate_trades` sort key, or any default.
 - No new factor axes in Program B Run 2 beyond replacing `touch` with `fade`.
-- No trade-journal import (tracked as a follow-up in §8).
+- No trade-journal import (TJ series: `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md`).
 - No Notion API writes from the repo.
 
 ---
@@ -483,6 +483,6 @@ Hard rules:
 
 ## 8. Follow-ups (out of scope, recorded)
 
-- **Trade-journal import** (executed fills → same engine, same costs) so discretionary outcomes can be compared to the systematic counterfactual per setup. Highest long-run value; separate plan.
+- **Trade-journal import** — now a separate series: `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ0 locked). TradesViz executions CSV + AMP Daily Statement PDF; `spread_id` pairing; AMP fees are the cost SoT; tags verified against the levels frame. Do not implement TJ inside a DA PR.
 - **Conditional locks** for a small Program C: pre-registered ToD window and OTF state as part of the L0 lock, not post-hoc slices.
 - **Notion Results schema**: add `Long n`, `Short n`, `Integrity`, `E − null` columns so DA2/DA5 outputs have a home. Manual desk change; not a repo task.
