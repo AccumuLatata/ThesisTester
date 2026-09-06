@@ -1090,7 +1090,14 @@ fetched.
 list; P&S is `ps_pairs` + signed `ps_usd` only. `pdfplumber` is imported in
 `journal/amp_statement.py` and nowhere else. AMP fees are the cost SoT.
 
-Later TJ milestones (pairing, recon, bar join, counterfactuals, page 17)
+**TJ3 landed.** `pair_journal_trades(fills, *, include_manual=False,
+journal_risk_ticks=10)` emits a `JournalTrade` frame. `spread_id` groups
+that net flat with one open side pair inside the group; otherwise
+qty-aware FIFO per `(instrument, contract, session_date)`
+(`pair_method=fifo_fallback`). AMP P&S is not a pairing source.
+`commission_cost` / `fee_ticks` stay null until TJ4.
+
+Later TJ milestones (recon, bar join, counterfactuals, page 17)
 add siblings in the same package. Persistence, when it lands
 (TJ9), is `.thesistester_store/journal/v1/` — sibling of `datasets/` /
 `setups/`, **not** under `execution_artifacts/` (CAI-10 LRU does not scan

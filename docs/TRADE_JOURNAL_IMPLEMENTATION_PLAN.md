@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ2 landed.** TJ3 (pairing) is next. No recon / page yet.
+**Status:** **TJ3 landed.** TJ4 (reconcile) is next. No page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -731,13 +731,13 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ3 — Pair
 
-- `spread_id` clean 2-fill, 4-fill scale-in, non-netting group → FIFO
-  fallback, leftover → `open`.
-- Tags/notes/declared SL-TP propagate; `r_multiple_declared` emitted only
-  when `declared_stop` present.
-- `journal_risk_ticks` keyword-only, default 10. `r_multiple` denominator
-  includes **qty**. `fee_ticks` / `net_ticks` / `hold_seconds` emitted. No
-  `simulate_trades` call.
+- [x] `spread_id` clean 2-fill, 4-fill scale-in, non-netting group → FIFO
+      fallback, leftover → `open`.
+- [x] Tags/notes/declared SL-TP propagate; `r_multiple_declared` emitted only
+      when `declared_stop` present.
+- [x] `journal_risk_ticks` keyword-only, default 10. `r_multiple` denominator
+      includes **qty**. `fee_ticks` / `net_ticks` / `hold_seconds` emitted. No
+      `simulate_trades` call.
 
 ### TJ4 — Reconcile
 

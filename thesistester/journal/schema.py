@@ -1,7 +1,7 @@
-"""Journal typed records (TJ1 ``FillRecord``, TJ2 ``AmpStatement``).
+"""Journal typed records (TJ1 ``FillRecord``, TJ2 ``AmpStatement``, TJ3 ``JournalTrade``).
 
-Later TJ milestones add ``JournalTrade`` / recon artifacts here. This module
-does not pair fills, compute P&L, or call the engine.
+Later TJ milestones add recon artifacts here. This module does not pair
+fills, call ``simulate_trades``, or compute AMP fees.
 """
 
 from __future__ import annotations
@@ -36,6 +36,13 @@ SOURCE_TRADESVIZ: Final[str] = "tradesviz"
 ENTRY_KIND_IMPORTED: Final[str] = "imported"
 ENTRY_KIND_MANUAL: Final[str] = "manual"
 FLAG_MANUAL_NO_QTY: Final[str] = "manual_no_qty"
+PAIR_METHOD_SPREAD: Final[str] = "spread_id"
+PAIR_METHOD_FIFO: Final[str] = "fifo_fallback"
+STATUS_CLOSED: Final[str] = "closed"
+STATUS_OPEN: Final[str] = "open"
+DEFAULT_JOURNAL_RISK_TICKS: Final[int] = 10
+JOURNAL_TICK_SIZE: Final[float] = 0.25
+JOURNAL_POINT_VALUE: Final[dict[str, float]] = {"MNQ": 2.0, "MES": 5.0}
 
 
 class JournalIngestError(ValueError):
@@ -124,3 +131,56 @@ class AmpStatement:
 
     def per_side_map(self) -> Mapping[str, float]:
         return dict(self.per_side_schedule)
+
+
+@dataclass(frozen=True)
+class JournalTrade:
+    """One paired journal round-trip (or leftover open lot) after TJ3.
+
+    ``commission_cost`` / ``day_fee_allocation`` stay null until TJ4. AMP P&S
+    is not a pairing source. ``r_multiple`` uses ``journal_risk_ticks``
+    (default 10) × tick × point value × **qty**; ``r_multiple_declared`` is
+    emitted only when ``declared_stop`` is present.
+    """
+
+    trade_id: str
+    source_group_id: str | None
+    pair_method: Literal["spread_id", "fifo_fallback"]
+    lot_seq: int
+    direction: Literal["long", "short"]
+    instrument: str
+    contract_month: str | None
+    contract_year: int | None
+    session_date: date
+    qty: int
+    entry_timestamp: pd.Timestamp
+    exit_timestamp: pd.Timestamp | None
+    entry_price: float
+    exit_price: float | None
+    entry_fill_id: str
+    exit_fill_id: str | None
+    gross_pnl_points: float | None
+    gross_pnl_currency: float | None
+    commission_cost: float | None
+    slippage_cost: float | None
+    day_fee_allocation: float | None
+    net_pnl_currency: float | None
+    r_multiple: float | None
+    r_multiple_declared: float | None
+    journal_risk_ticks: int
+    fee_ticks: float | None
+    net_ticks: float | None
+    hold_seconds: float | None
+    bars_held: int | None
+    mae_points: float | None
+    mfe_points: float | None
+    stop_price: float | None
+    target_price: float | None
+    tags: tuple[str, ...]
+    notes_text: str
+    status: Literal["closed", "open"]
+    signal_id: str | None
+    trigger: str | None
+
+
+JOURNAL_TRADE_COLUMNS: Final[tuple[str, ...]] = tuple(f.name for f in fields(JournalTrade))
