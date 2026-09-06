@@ -1126,11 +1126,21 @@ the token). `python -m thesistester journal attribute` writes
 `results/studies/`. Tag→token map is `journal/tag_map.yaml` (data, not
 code). Unknown tags stay `unmapped`. No `compute_all_levels`.
 
-Later TJ milestones (counterfactuals, named-cell match, page 17)
-add siblings in the same package. Persistence, when it lands
-(TJ9), is `.thesistester_store/journal/v1/` — sibling of `datasets/` /
-`setups/`, **not** under `execution_artifacts/` (CAI-10 LRU does not scan
-it). Journal code must not call `simulate_trades` or `compute_all_levels`.
+**TJ7 landed.** `replay_journal_brackets` / `direction_shuffle_null` /
+`apply_journal_rules` and `python -m thesistester journal
+counterfactual` replay the desk's own entries. 15s walks start at the
+next 15s open; same-bar both-hit is SL-first; tick walks use Last prints
+with `ts > entry_timestamp`. The only RNG is the seeded direction
+shuffle (preserves per-session long/short counts). Rules require
+`declared_on` and never blend `in_sample` / `forward`. Writes
+`journal_counterfactuals.parquet` + `counterfactual.json`. Refuses
+`results/studies/`. No `simulate_trades`.
+
+Later TJ milestones (named-cell match, page 17) add siblings in the
+same package. Persistence, when it lands (TJ9), is
+`.thesistester_store/journal/v1/` — sibling of `datasets/` / `setups/`,
+**not** under `execution_artifacts/` (CAI-10 LRU does not scan it).
+Journal code must not call `simulate_trades` or `compute_all_levels`.
 
 ## R22 simulation-core boundary
 

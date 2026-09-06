@@ -1,4 +1,4 @@
-"""Journal typed records (TJ1–TJ6).
+"""Journal typed records (TJ1–TJ7).
 
 Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
@@ -115,6 +115,49 @@ ATTRIBUTION_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
     "intent_mismatch",
     "unmapped_tags",
     "tag_verifications",
+)
+
+# --- counterfactuals (TJ7) ---
+CF_EXIT_TP: Final[str] = "tp"
+CF_EXIT_SL: Final[str] = "sl"
+CF_EXIT_TIME_STOP: Final[str] = "time_stop"
+CF_EXIT_SESSION_END: Final[str] = "session_end"
+CF_EXIT_UNRESOLVED: Final[str] = "unresolved"
+CF_EXIT_REASONS: Final[frozenset[str]] = frozenset(
+    {CF_EXIT_TP, CF_EXIT_SL, CF_EXIT_TIME_STOP, CF_EXIT_SESSION_END, CF_EXIT_UNRESOLVED}
+)
+DEFAULT_CF_BRACKETS: Final[tuple[tuple[int, int, int | None], ...]] = (
+    (10, 10, None),
+    (10, 20, None),
+    (20, 20, None),
+)
+DEFAULT_CF_SEED: Final[int] = 0
+DEFAULT_CF_K: Final[int] = 1000
+ENTRY_EDGE_MIN_N: Final[int] = 30
+RULE_SPLIT_IN_SAMPLE: Final[str] = "in_sample"
+RULE_SPLIT_FORWARD: Final[str] = "forward"
+RULE_FILTER_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "trade_window_ny",
+        "max_trades_per_day",
+        "cooldown_seconds_after_loss",
+        "stop_after_k_consecutive_losses",
+        "daily_loss_stop_ticks",
+        "hard_stop_ticks",
+    }
+)
+CF_HONESTY: Final[str] = "counterfactuals assume fills at the bar/tick price; no slippage model."
+COUNTERFACTUAL_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
+    "trade_id",
+    "cf_id",
+    "resolution",
+    "sl_ticks",
+    "tp_ticks",
+    "max_hold_seconds",
+    "cf_exit_price",
+    "cf_exit_reason",
+    "cf_gross_ticks",
+    "cf_net_ticks",
 )
 
 

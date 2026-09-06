@@ -1367,6 +1367,29 @@ other than the last bar in the dataset.
   It refuses `results/studies/` and refuses days that are not `reconciled`
   unless `--allow-unreconciled`.
 
+## Trade journal (TJ7 — own-entry counterfactuals; no slippage)
+
+- Counterfactuals assume fills at the bar or Last-print price. There is **no
+  slippage model**. Every TJ7 table carries n, resolution, seed, brackets,
+  and that honesty line.
+- 15s walks start at the **next** 15s open after the fill. The entry bar's
+  H/L is never used (it includes pre-fill range). Same-bar both-hit on a
+  later bar is **SL first**. Tick walks use Last prints with
+  `ts > entry_timestamp`. Session end is the CME 18:00 ET boundary of
+  `session_date`. Data that ends mid-session is `unresolved`.
+- The direction-shuffle null is the only RNG. It is seeded; the seed is
+  persisted. It permutes existing per-session labels and **preserves that
+  day's long/short counts**. It is not a global sign-flip and not a 50/50
+  resample.
+- Rules are **declared**, never searched. `declared_on` is required
+  (`ValueError` if missing). Evaluation is time-ordered. `in_sample` and
+  `forward` are separate columns; do not blend them.
+- Journal code never calls `simulate_trades`.
+  `python -m thesistester journal counterfactual` writes
+  `journal_counterfactuals.parquet` + `counterfactual.json` under
+  `--output-dir`. It refuses `results/studies/` and days that are not
+  `reconciled` unless `--allow-unreconciled`.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

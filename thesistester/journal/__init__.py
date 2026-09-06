@@ -5,6 +5,7 @@ TJ1 ships the TradesViz executions loader. TJ2 adds the AMP statement parser.
 TJ3 pairs fills into ``JournalTrade``. TJ4 reconciles AMP per instrument-day.
 TJ5 joins trades to the 15s / derived-1m clock (ticks when present).
 TJ6 attributes every entry bar and verifies level-class tags.
+TJ7 replays entries under fixed brackets, a direction-shuffle null, and declared rules.
 """
 
 from __future__ import annotations
@@ -13,6 +14,12 @@ from thesistester.journal.amp_statement import (
     extract_amp_pdf_text,
     load_amp_statement,
     parse_amp_statement_text,
+)
+from thesistester.journal.counterfactual import (
+    counterfactual_files,
+    direction_shuffle_null,
+    replay_journal_brackets,
+    write_counterfactual_artifacts,
 )
 from thesistester.journal.join import join_journal_bars
 from thesistester.journal.levels import (
@@ -44,6 +51,12 @@ from thesistester.journal.schema import (
     TRADESVIZ_EXECUTIONS_PROFILE,
     FillRecord,
 )
+from thesistester.journal.rules import (
+    JournalRule,
+    apply_journal_rules,
+    load_journal_rules,
+    parse_journal_rule,
+)
 from thesistester.journal.tags import TagMapping, load_tag_map, mapped_engine_tokens, resolve_tag
 from thesistester.journal.tradesviz import load_tradesviz_executions
 
@@ -60,24 +73,32 @@ __all__ = [
     "AmpStatement",
     "DayReconcile",
     "JournalIngestError",
+    "JournalRule",
     "JournalTrade",
     "TRADESVIZ_EXECUTIONS_PROFILE",
     "FillRecord",
     "TagMapping",
+    "apply_journal_rules",
     "attribute_files",
     "attribute_journal_trades",
+    "counterfactual_files",
+    "direction_shuffle_null",
     "extract_amp_pdf_text",
     "load_amp_statement",
     "join_journal_bars",
+    "load_journal_rules",
     "load_tag_map",
     "load_tradesviz_executions",
     "mapped_engine_tokens",
     "pair_journal_trades",
     "parse_amp_statement_text",
+    "parse_journal_rule",
     "quantize_price",
     "reconcile_files",
     "reconcile_journal",
+    "replay_journal_brackets",
     "resolve_tag",
     "write_attribution_artifacts",
+    "write_counterfactual_artifacts",
     "write_reconcile_artifacts",
 ]

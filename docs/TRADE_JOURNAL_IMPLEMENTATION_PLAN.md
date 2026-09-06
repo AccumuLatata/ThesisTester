@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ6 landed.** TJ7 (own-entry counterfactuals) is next. No page yet.
+**Status:** **TJ7 landed.** TJ8 (named-cell match + forward ledger) is next. No page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -784,17 +784,17 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ7 — Own-entry counterfactuals
 
-- Bracket replay: synthetic bar path where TP and SL touch in the same
+- [x] Bracket replay: synthetic bar path where TP and SL touch in the same
   **post-entry** bar resolves to `sl`; entry-bar H/L is not used at 15s; tick
   path resolves by Last order after the fill; `session_end` and `unresolved`
   covered. Fees applied from TJ4, qty-scaled.
-- Direction-shuffle null: fixed seed reproduces the identical percentile;
+- [x] Direction-shuffle null: fixed seed reproduces the identical percentile;
   permutation is within `session_date` **and preserves that day’s long/short
   counts**; K keyword-only.
-- Rules: each filter type unit-tested; `declared_on` required (missing →
+- [x] Rules: each filter type unit-tested; `declared_on` required (missing →
   `ValueError`); `in_sample` vs `forward` split never blended.
-- No RNG anywhere except the null; seed in the artifact and the caption.
-- Docs: `METRICS_GLOSSARY` entries `exit_rule_delta`, `entry_edge_flag`,
+- [x] No RNG anywhere except the null; seed in the artifact and the caption.
+- [x] Docs: `METRICS_GLOSSARY` entries `exit_rule_delta`, `entry_edge_flag`,
   `direction_null_pct`, `rule_delta_ticks`; `ASSUMPTIONS` (no slippage in
   counterfactuals; SL-first on bars).
 
