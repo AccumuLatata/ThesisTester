@@ -1085,8 +1085,13 @@ read so a missing column fails closed, then discarded. Notes HTML is
 stripped locally; `<img>` becomes the literal token `[image]` and is never
 fetched.
 
-Later TJ milestones (AMP parse, pairing, recon, bar join, counterfactuals,
-page 17) add siblings in the same package. Persistence, when it lands
+**TJ2 landed.** `extract_amp_pdf_text` / `parse_amp_statement_text` /
+`load_amp_statement` produce an `AmpStatement`. Confirmations are the fill
+list; P&S is `ps_pairs` + signed `ps_usd` only. `pdfplumber` is imported in
+`journal/amp_statement.py` and nowhere else. AMP fees are the cost SoT.
+
+Later TJ milestones (pairing, recon, bar join, counterfactuals, page 17)
+add siblings in the same package. Persistence, when it lands
 (TJ9), is `.thesistester_store/journal/v1/` — sibling of `datasets/` /
 `setups/`, **not** under `execution_artifacts/` (CAI-10 LRU does not scan
 it). Journal code must not call `simulate_trades` or `compute_all_levels`.

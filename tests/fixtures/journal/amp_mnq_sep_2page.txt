@@ -1,0 +1,46 @@
+                              DAILY STATEMENT
+
+
+     REDACTED CLIENT                                 23-JUN-26
+                                                     000000
+                           Introduced By: AMP Trading
+                                                                      PAGE : 1
+                           T R A D E S C O N F I R M A T I O N S
+ THE FOLLOWING TRADES HAVE BEEN EXECUTED THIS DAY FOR YOUR ACCOUNT AND RISK.
+   DATE NUMBER MARKET BUY   SELL CONTRACT DESCRIPTION      TRADE PRICE CCY DEBIT/CREDIT
+ 23-JUN-26 17500001 CME        1 MNQ Future SEP 26         29840.00 USD
+ 23-JUN-26 17500002 CME 1        MNQ Future SEP 26         29850.00 USD
+ TOTAL                  1      1 EX- 18-SEP-26
+                                                        Commission USD    0.04 DR
+                                             AVERAGE LONG 29850.00000
+                                             AVERAGE SHORT 29840.00000
+                                P U R C H A S E & S A L E
+   DATE TRADE NUMBER MARKET BUY SELL CONTRACT DESCRIPTION TRADE PRICE CCY DEBIT/CREDIT
+ 23-JUN-26 17500001 CME      1 MNQ Future SEP 26           29840.00 USD
+ 23-JUN-26 17500002 CME 1     MNQ Future SEP 26            29850.00 USD
+ TOTAL                  1     1 EX- 18-SEP-26         P&S         USD     20.00 CR
+                      Account Summary as of 06/23/26
+                          Reg. EUR         Reg. USD       BASE CURRENCY USD
+   ACCOUNT CASH BALANCE       0.00 CR         1,000.00 CR       1,000.00 CR
+   REALIZED PROFIT/LOSS       0.00 CR            20.00 CR          20.00 CR
+   TOTAL COMMISSION & FEES    0.00 CR             3.74 DR           3.74 DR
+    EXCHANGE                  0.00 CR             0.70 DR           0.70 DR
+    NFA                       0.00 CR             0.04 DR           0.04 DR
+    CLEARING CLIENT           0.00 CR             0.26 DR           0.26 DR
+    LIQUIDATION FEE           0.00 CR             2.50 DR           2.50 DR
+    RITHMIC TRF               0.00 CR             0.20 DR           0.20 DR
+    COMMISSION                0.00 CR             0.04 DR           0.04 DR
+   OPEN TRADE EQUITY          0.00 CR             0.00 CR           0.00 CR
+                                                                      PAGE : 2
+                      Account Summary as of 06/23/26
+      BASE CURRENCY USD     Reg.
+   ACCOUNT CASH BALANCE       1,000.00 CR
+   REALIZED PROFIT/LOSS         20.00 CR
+   TOTAL COMMISSION & FEES       3.74 DR
+    EXCHANGE                     0.70 DR
+    NFA                          0.04 DR
+    CLEARING CLIENT              0.26 DR
+    LIQUIDATION FEE              2.50 DR
+    RITHMIC TRF                  0.20 DR
+    COMMISSION                   0.04 DR
+   OPEN TRADE EQUITY             0.00 CR

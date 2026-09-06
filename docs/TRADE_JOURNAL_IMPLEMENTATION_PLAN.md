@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ1 landed.** TJ2 (AMP statement parser) is next. No pairing / recon / page yet.
+**Status:** **TJ2 landed.** TJ3 (pairing) is next. No recon / page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -710,11 +710,11 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ2 — AMP statement parser
 
-- Confirmations vs P&S split; side via layout; averages self-check.
-- `Liquidation Fee` kept extra; unknown fee fails.
-- Redacted text fixtures: MNQ JUN 3-page, MNQ SEP 2-page, MES SEP 2-page.
-- `pdfplumber` pinned in `pyproject.toml` / `requirements.txt`; import
-  confined to `journal/amp_statement.py`.
+- [x] Confirmations vs P&S split; side via layout; averages self-check.
+- [x] `Liquidation Fee` kept extra; unknown fee fails.
+- [x] Redacted text fixtures: MNQ JUN 3-page, MNQ SEP 2-page, MES SEP 2-page.
+- [x] `pdfplumber` pinned in `pyproject.toml` / `requirements.txt`; import
+      confined to `journal/amp_statement.py`.
 
 ### TJ3 — Pair
 

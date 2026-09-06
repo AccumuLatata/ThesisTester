@@ -1,0 +1,33 @@
+                              DAILY STATEMENT
+
+
+     REDACTED CLIENT                                 29-JUN-26
+                                                     000000
+                           Introduced By: AMP Trading
+                                                                      PAGE : 1
+                           T R A D E S C O N F I R M A T I O N S
+ THE FOLLOWING TRADES HAVE BEEN EXECUTED THIS DAY FOR YOUR ACCOUNT AND RISK.
+   DATE NUMBER MARKET BUY   SELL CONTRACT DESCRIPTION      TRADE PRICE CCY DEBIT/CREDIT
+ 29-JUN-26 18100001 CME 1        MES Future SEP 26          7458.75 USD
+ 29-JUN-26 18100002 CME        1 MES Future SEP 26          7459.25 USD
+ TOTAL                  1      1 EX- 18-SEP-26
+                                                        Commission USD    0.04 DR
+                                             AVERAGE LONG 7458.75000
+                                             AVERAGE SHORT 7459.25000
+                                P U R C H A S E & S A L E
+   DATE TRADE NUMBER MARKET BUY SELL CONTRACT DESCRIPTION TRADE PRICE CCY DEBIT/CREDIT
+ 29-JUN-26 18100002 CME      1 MES Future SEP 26            7459.25 USD
+ 29-JUN-26 18100001 CME 1     MES Future SEP 26             7458.75 USD
+ TOTAL                  1     1 EX- 18-SEP-26          P&S         USD     21.25 CR
+                                                                      PAGE : 2
+                      Account Summary as of 06/29/26
+      BASE CURRENCY USD     Reg.
+   ACCOUNT CASH BALANCE       1,000.00 CR
+   REALIZED PROFIT/LOSS         21.25 CR
+   TOTAL COMMISSION & FEES       1.24 DR
+    EXCHANGE                     0.70 DR
+    NFA                          0.04 DR
+    CLEARING CLIENT              0.26 DR
+    RITHMIC TRF                  0.20 DR
+    COMMISSION                   0.04 DR
+   OPEN TRADE EQUITY             0.00 CR

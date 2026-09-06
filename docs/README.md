@@ -27,7 +27,7 @@ research snapshots live under [`research/`](research/README.md).
 | [LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md](LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) | Handoff: rewrite Notion desk contract without losing logging/roadmap |
 | [ANCHOR_CONFLUENCE.md](ANCHOR_CONFLUENCE.md) | Anchor-confluence workflow guide |
 | [VOICE_SIDECAR_OPS.md](VOICE_SIDECAR_OPS.md) | Localhost realtime voice sidecar ops |
-| [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) | TJ — TradesViz+AMP journal; **TJ1 landed**; `session_date` is CME `trading_session_date` |
+| [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) | TJ — TradesViz+AMP journal; **TJ2 landed**; `session_date` is CME `trading_session_date` |
 | [SIMULATE_PERF.md](SIMULATE_PERF.md) · [CAI_BASELINE.md](CAI_BASELINE.md) | Informational performance baselines |
 
 ## Normative contracts (complete — amend carefully)
@@ -67,7 +67,7 @@ Engine / data contracts:
 - [WVWAP_MVWAP_IMPLEMENTATION_PLAN.md](WVWAP_MVWAP_IMPLEMENTATION_PLAN.md) (WMV — developing `wVWAP` / `mVWAP`; **WMV0–WMV2 complete**; same `session_vwap_enabled` gate as `dVWAP`)
 - [TICK_VAP_IMPLEMENTATION_PLAN.md](TICK_VAP_IMPLEMENTATION_PLAN.md) (TV — Quantower tick-last ingest for prior VA/POC only; **TV1–TV4 landed**; series complete; fail-closed without ticks; no golden regen)
 - [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) (AP — Quantower A-period POC parity investigation; **AP1 implemented — evidence collection pending**; candidate comparison precedes any APOC engine change)
-- [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) (TJ — TradesViz executions (UTC, `spread_id`, tags) + AMP EOD statement → journal trades + recon + level attribution / tag verification + own-entry counterfactuals (bracket replay, direction null, declared rules) + named-cell match / forward ledger; **TJ1 landed**; no engine/golden touch)
+- [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) (TJ — TradesViz executions (UTC, `spread_id`, tags) + AMP EOD statement → journal trades + recon + level attribution / tag verification + own-entry counterfactuals (bracket replay, direction null, declared rules) + named-cell match / forward ledger; **TJ2 landed**; no engine/golden touch)
 
 ## Research (demoted snapshots)
 
