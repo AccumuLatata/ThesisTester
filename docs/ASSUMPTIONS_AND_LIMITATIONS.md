@@ -1262,6 +1262,14 @@ other than the last bar in the dataset.
   Commission}` become `per_side_schedule` (total ÷ confirmation sides).
   `Liquidation Fee` is a day-level extra (`day_fees_extra`) and is never
   smeared into the per-side schedule. Unknown fee names fail closed.
+  Printed `TOTAL COMMISSION & FEES` must equal the sum of known fee lines
+  (1 cent). Distinct `P&S USD` amounts in one statement fail closed.
+- Confirmation `TOTAL` buy/sell counts must match confirmation qty sums.
+  A date + FCM-number row in Confirmations or P&S that is not an `MNQ`/`MES`
+  CME Future line fails closed (no silent drop of ES/NQ/other roots).
+- Confirmation fill dates must equal the statement date. P&S row dates may
+  predate it (prior-day open / liquidation). Fill price must be finite and
+  `> 0`. Invalid calendar dates raise `JournalIngestError`.
 - `pdfplumber` is imported only in `thesistester/journal/amp_statement.py`.
   CI owns the text parser against redacted fixtures; PDF extraction is
   tested on a synthetic PDF. Desk statements stay out of git.

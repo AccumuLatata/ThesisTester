@@ -38,6 +38,10 @@ def test_mnq_jun_3page_confirmations_averages_and_ps():
     assert stmt.ps_usd == 27.0
     assert len(stmt.ps_pairs) == 4
     assert [fill.fcm_number for fill in stmt.ps_pairs] != [fill.fcm_number for fill in stmt.fills]
+    by_fcm = {fill.fcm_number: fill for fill in stmt.fills}
+    for pair in stmt.ps_pairs:
+        conf = by_fcm[pair.fcm_number]
+        assert (pair.side, pair.qty, pair.price) == (conf.side, conf.qty, conf.price)
     assert "../.." in _text(MNQ_JUN)
 
 
@@ -120,6 +124,7 @@ def test_open_positions_without_ps_do_not_join_confirmations() -> None:
                            T R A D E S C O N F I R M A T I O N S
  24-JUN-26 19000001 CME 1        MNQ Future SEP 26         22600.00 USD
  24-JUN-26 19000002 CME        1 MNQ Future SEP 26         22610.00 USD
+ TOTAL                  1      1 EX- 18-SEP-26
                                              AVERAGE LONG 22600.00000
                                              AVERAGE SHORT 22610.00000
                                 P U R C H A S E & S A L E
@@ -151,6 +156,7 @@ def test_qty_gt_1_is_one_confirmation_and_scales_fees_and_average():
                            T R A D E S C O N F I R M A T I O N S
  24-JUN-26 19000001 CME 2        MNQ Future SEP 26         22600.00 USD
  24-JUN-26 19000002 CME        2 MNQ Future SEP 26         22610.00 USD
+ TOTAL                  2      2 EX- 18-SEP-26
                                              AVERAGE LONG 22600.00000
                                              AVERAGE SHORT 22610.00000
                                 P U R C H A S E & S A L E
@@ -192,6 +198,111 @@ def test_pdfplumber_import_is_confined_to_amp_module():
         assert "from thesistester.engine" not in source
 
 
+def _qty2_statement(
+    *,
+    extra_conf: str = "",
+    extra_ps: str = "",
+    extra_tail: str = "",
+    ps_usd: str = "40.00 CR",
+    buy_price: str = "22600.00",
+    avg_long: str = "22600.00000",
+) -> str:
+    return f"""\
+                              DAILY STATEMENT
+     REDACTED CLIENT                                 24-JUN-26
+                           T R A D E S C O N F I R M A T I O N S
+ 24-JUN-26 19000001 CME 2        MNQ Future SEP 26         {buy_price} USD
+ 24-JUN-26 19000002 CME        2 MNQ Future SEP 26         22610.00 USD
+{extra_conf} TOTAL                  2      2 EX- 18-SEP-26
+                                             AVERAGE LONG {avg_long}
+                                             AVERAGE SHORT 22610.00000
+                                P U R C H A S E & S A L E
+ 24-JUN-26 19000002 CME        2 MNQ Future SEP 26         22610.00 USD
+ 24-JUN-26 19000001 CME 2        MNQ Future SEP 26         {buy_price} USD
+{extra_ps} TOTAL                  2     2 EX- 18-SEP-26         P&S         USD     {ps_usd}
+                      Account Summary as of 06/24/26
+   TOTAL COMMISSION & FEES       2.48 DR
+    EXCHANGE                     1.40 DR
+    NFA                          0.08 DR
+    CLEARING CLIENT              0.52 DR
+    RITHMIC TRF                  0.40 DR
+    COMMISSION                   0.08 DR
+   OPEN TRADE EQUITY             0.00 CR
+{extra_tail}"""
+
+
+def test_unknown_confirmation_root_fails_closed():
+    text = _text(MNQ_JUN).replace(
+        " 27-MAY-26 15000004 CME        1 MNQ Future JUN 26         30133.60 USD",
+        " 27-MAY-26 15000004 CME        1 MNQ Future JUN 26         30133.60 USD\n"
+        " 27-MAY-26 15000005 CME 1        ES Future JUN 26          6000.00 USD",
+    )
+    with pytest.raises(JournalIngestError, match="unparseable AMP confirmation row"):
+        parse_amp_statement_text(text)
+
+
+def test_conflicting_ps_usd_fails_closed():
+    text = (
+        _text(MNQ_JUN)
+        + "\n TOTAL                  0     0 EX- 18-JUN-26         P&S         USD      0.00 CR\n"
+    )
+    with pytest.raises(JournalIngestError, match="conflicting P&S USD"):
+        parse_amp_statement_text(text)
+
+
+def test_fee_lines_must_sum_to_printed_total():
+    text = _text(MNQ_JUN).replace(
+        "EXCHANGE                     1.40 DR", "EXCHANGE                     9.99 DR"
+    )
+    with pytest.raises(JournalIngestError, match="fee lines sum"):
+        parse_amp_statement_text(text)
+
+
+def test_ps_pair_may_predate_statement_date():
+    text = _qty2_statement(
+        extra_ps=" 23-JUN-26 18999999 CME 2        MNQ Future SEP 26         22600.00 USD\n"
+    )
+    stmt = parse_amp_statement_text(text)
+    prior = next(fill for fill in stmt.ps_pairs if fill.fcm_number == "18999999")
+    assert prior.session_date == date(2026, 6, 23)
+    assert prior.side == "buy"
+    assert {fill.session_date for fill in stmt.fills} == {date(2026, 6, 24)}
+
+
+def test_confirmation_prior_date_still_fails_closed():
+    text = _qty2_statement().replace(
+        " 24-JUN-26 19000001 CME 2        MNQ Future SEP 26         22600.00 USD",
+        " 23-JUN-26 19000001 CME 2        MNQ Future SEP 26         22600.00 USD",
+        1,
+    )
+    with pytest.raises(JournalIngestError, match="disagrees with statement date"):
+        parse_amp_statement_text(text)
+
+
+def test_invalid_calendar_date_is_journal_error():
+    text = _text(MNQ_JUN).replace("27-MAY-26", "32-MAY-26", 1)
+    with pytest.raises(JournalIngestError, match="invalid AMP date"):
+        parse_amp_statement_text(text)
+
+
+def test_non_positive_fill_price_fails_closed():
+    text = _qty2_statement(buy_price="0.00", avg_long="0.00000")
+    with pytest.raises(JournalIngestError, match="price must be finite and > 0"):
+        parse_amp_statement_text(text)
+
+
+def test_confirmation_total_must_match_fill_qtys():
+    extra = " 24-JUN-26 19000003 CME        1 MNQ Future SEP 26         22610.00 USD\n"
+    text = _qty2_statement(extra_conf=extra)
+    with pytest.raises(JournalIngestError, match="confirmation TOTAL buy/sell"):
+        parse_amp_statement_text(text)
+
+
+def test_ps_debit_is_negative():
+    stmt = parse_amp_statement_text(_qty2_statement(ps_usd="12.50 DR"))
+    assert stmt.ps_usd == pytest.approx(-12.50)
+
+
 def test_extract_amp_pdf_text_then_parse_synthetic_pdf(tmp_path):
     pdf_path = tmp_path / "amp_synthetic.pdf"
     # Wide BUY/SELL gaps so pdfplumber layout reconstructs the columns.
@@ -201,6 +312,7 @@ def test_extract_amp_pdf_text_then_parse_synthetic_pdf(tmp_path):
         "T R A D E S C O N F I R M A T I O N S",
         "29-JUN-26 18100001 CME 1                MES Future SEP 26          7458.75 USD",
         "29-JUN-26 18100002 CME                1 MES Future SEP 26          7459.25 USD",
+        "TOTAL                  1      1 EX- 18-SEP-26",
         "AVERAGE LONG 7458.75000",
         "AVERAGE SHORT 7459.25000",
         "P U R C H A S E & S A L E",

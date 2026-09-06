@@ -8,6 +8,7 @@ Two-stage: ``extract_amp_pdf_text`` (pdfplumber, this module only) then
 from __future__ import annotations
 
 from datetime import date
+import math
 from pathlib import Path
 import re
 
@@ -71,6 +72,10 @@ _MONEY_RE = re.compile(r"([\d,]+\.\d{2})\s+(CR|DR)")
 _FEE_BLOCK_STOP = "OPEN TRADE EQUITY"
 _FEE_BLOCK_START = "TOTAL COMMISSION & FEES"
 _QTY_RE = re.compile(r"\d+")
+# Date + FCM number: a trade row that must parse as MNQ/MES CME Future.
+_TRADE_ROW_PREFIX = re.compile(r"^\d{2}-[A-Z]{3}-\d{2}\s+\d+\s+")
+_CONF_TOTAL_RE = re.compile(r"^TOTAL\s+(\d+)\s+(\d+)\b")
+_MONEY_TOLERANCE = 0.011  # 1 cent, plus float dust
 
 _FEE_CANON = {
     "EXCHANGE": "Exchange",
@@ -119,16 +124,21 @@ def parse_amp_statement_text(text: str) -> AmpStatement:
         raise JournalIngestError("AMP statement missing Trades Confirmations section")
 
     session_date = _header_session_date(text)
-    conf_lines, ps_lines, summary_lines = _split_sections(text)
+    conf_lines, ps_lines, summary_lines, conf_totals = _split_sections(text)
 
     fills = tuple(_parse_fill_line(line, session_date) for line in conf_lines)
     if not fills:
         raise JournalIngestError("AMP confirmations contain no fills")
     _assert_one_session(fills, session_date)
+    _assert_confirmation_totals(fills, conf_totals)
 
-    ps_pairs = tuple(_parse_fill_line(line, session_date) for line in ps_lines)
+    # P&S legs may predate the statement (prior-day open / liquidation).
+    ps_pairs = tuple(
+        _parse_fill_line(line, session_date, require_session_date=False) for line in ps_lines
+    )
     ps_usd = _parse_ps_usd(text)
-    printed_long, printed_short = _parse_printed_averages(text)
+    avg_source = text.split(_PS_HEADER, 1)[0] if _PS_HEADER in text else text
+    printed_long, printed_short = _parse_printed_averages(avg_source)
     _assert_averages(fills, printed_long, printed_short)
     average_long, average_short = printed_long[0], printed_short[0]
 
@@ -161,11 +171,14 @@ def _collapse_header(line: str) -> str:
     return re.sub(r"[^A-Z0-9&]+", "", line.upper())
 
 
-def _split_sections(text: str) -> tuple[list[str], list[str], list[str]]:
+def _split_sections(
+    text: str,
+) -> tuple[list[str], list[str], list[str], list[tuple[int, int]]]:
     section = _SECTION_NONE
     conf: list[str] = []
     ps: list[str] = []
     summary: list[str] = []
+    conf_totals: list[tuple[int, int]] = []
     for raw in text.splitlines():
         line = raw.rstrip()
         stripped = line.strip()
@@ -185,21 +198,36 @@ def _split_sections(text: str) -> tuple[list[str], list[str], list[str]]:
             # Open Positions / journal / delivery rows can match ``_FILL_RE``.
             section = _SECTION_NONE
             continue
-        if section == _SECTION_CONF and _FILL_RE.match(stripped):
-            conf.append(stripped)
-        elif section == _SECTION_PS and _FILL_RE.match(stripped):
-            ps.append(stripped)
+        if section == _SECTION_CONF:
+            if _FILL_RE.match(stripped):
+                conf.append(stripped)
+            elif _TRADE_ROW_PREFIX.match(stripped):
+                raise JournalIngestError(f"unparseable AMP confirmation row: {stripped!r}")
+            else:
+                total_match = _CONF_TOTAL_RE.match(stripped)
+                if total_match:
+                    conf_totals.append((int(total_match.group(1)), int(total_match.group(2))))
+        elif section == _SECTION_PS:
+            if _FILL_RE.match(stripped):
+                ps.append(stripped)
+            elif _TRADE_ROW_PREFIX.match(stripped):
+                raise JournalIngestError(f"unparseable AMP P&S row: {stripped!r}")
         elif section == _SECTION_SUMMARY:
             summary.append(line)
-    return conf, ps, summary
+    return conf, ps, summary, conf_totals
 
 
-def _parse_fill_line(line: str, session_date: date) -> AmpFill:
+def _parse_fill_line(
+    line: str,
+    session_date: date,
+    *,
+    require_session_date: bool = True,
+) -> AmpFill:
     match = _FILL_RE.match(line.strip())
     if match is None:
         raise JournalIngestError(f"unparseable AMP fill line: {line!r}")
     fill_date = _parse_amp_date(match.group("date"))
-    if fill_date != session_date:
+    if require_session_date and fill_date != session_date:
         raise JournalIngestError(
             f"fill date {fill_date} disagrees with statement date {session_date}"
         )
@@ -207,6 +235,9 @@ def _parse_fill_line(line: str, session_date: date) -> AmpFill:
     if month not in _MONTHS:
         raise JournalIngestError(f"unknown AMP contract month {month!r}")
     qty, side = _side_from_gap(match.group("gap"))
+    price = float(match.group("price").replace(",", ""))
+    if not math.isfinite(price) or price <= 0:
+        raise JournalIngestError(f"AMP fill price must be finite and > 0 (got {price})")
     return AmpFill(
         fcm_number=match.group("number"),
         session_date=fill_date,
@@ -216,7 +247,7 @@ def _parse_fill_line(line: str, session_date: date) -> AmpFill:
         contract_year=2000 + int(match.group("yy")),
         side=side,
         qty=qty,
-        price=float(match.group("price").replace(",", "")),
+        price=price,
     )
 
 
@@ -241,9 +272,8 @@ def _side_from_gap(gap: str) -> tuple[int, str]:
 
 def _header_session_date(text: str) -> date:
     after = text.split(_DAILY_MARK, 1)[1]
-    for line in after.splitlines()[:40]:
-        if _FILL_RE.match(line.strip()):
-            break
+    header = after.split(_CONF_HEADER, 1)[0] if _CONF_HEADER in after else after
+    for line in header.splitlines():
         match = _DATE_RE.search(line)
         if match:
             return _parse_amp_date(match.group(0))
@@ -259,7 +289,25 @@ def _parse_amp_date(raw: str) -> date:
     if month is None:
         raise JournalIngestError(f"unknown AMP month in date {raw!r}")
     year = 2000 + int(match.group(3))
-    return date(year, month, day)
+    try:
+        return date(year, month, day)
+    except ValueError as exc:
+        raise JournalIngestError(f"invalid AMP date {raw!r}") from exc
+
+
+def _assert_confirmation_totals(
+    fills: tuple[AmpFill, ...],
+    conf_totals: list[tuple[int, int]],
+) -> None:
+    if not conf_totals:
+        raise JournalIngestError("AMP confirmations missing TOTAL buy/sell counts")
+    buy_qty = sum(fill.qty for fill in fills if fill.side == "buy")
+    sell_qty = sum(fill.qty for fill in fills if fill.side == "sell")
+    printed_buy, printed_sell = conf_totals[-1]
+    if (printed_buy, printed_sell) != (buy_qty, sell_qty):
+        raise JournalIngestError(
+            f"confirmation TOTAL buy/sell {printed_buy}/{printed_sell} != {buy_qty}/{sell_qty}"
+        )
 
 
 def _assert_one_session(fills: tuple[AmpFill, ...], session_date: date) -> None:
@@ -273,7 +321,12 @@ def _parse_printed_averages(text: str) -> tuple[tuple[float, int], tuple[float, 
     for match in _AVG_RE.finditer(text):
         raw = match.group(2)
         places = len(raw.split(".", 1)[1]) if "." in raw else 0
-        found[match.group(1)] = (float(raw), places)
+        value = (float(raw), places)
+        key = match.group(1)
+        prior = found.get(key)
+        if prior is not None and abs(prior[0] - value[0]) > 10 ** (-max(prior[1], places, 2)):
+            raise JournalIngestError(f"conflicting AVERAGE {key} values: {prior[0]} vs {value[0]}")
+        found[key] = value
     if "LONG" not in found or "SHORT" not in found:
         raise JournalIngestError("AMP statement missing AVERAGE LONG / AVERAGE SHORT")
     return found["LONG"], found["SHORT"]
@@ -313,21 +366,27 @@ def _avg_matches(computed: float, printed: float, places: int) -> bool:
 
 
 def _parse_ps_usd(text: str) -> float:
-    matches = list(_PS_USD_RE.finditer(text))
-    if not matches:
+    signed: set[float] = set()
+    for match in _PS_USD_RE.finditer(text):
+        amount = float(match.group(1).replace(",", ""))
+        sign = 1.0 if match.group(2) == "CR" else -1.0
+        signed.add(sign * amount)
+    if not signed:
         raise JournalIngestError("AMP statement missing P&S USD total")
-    amount = float(matches[-1].group(1).replace(",", ""))
-    sign = 1.0 if matches[-1].group(2) == "CR" else -1.0
-    return sign * amount
+    if len(signed) > 1:
+        raise JournalIngestError(f"conflicting P&S USD totals: {sorted(signed)}")
+    return next(iter(signed))
 
 
 def _parse_fee_lines(lines: list[str] | str) -> dict[str, float]:
     blob = lines if isinstance(lines, list) else lines.splitlines()
     parsed: dict[str, float] = {}
+    printed_totals: list[float] = []
     collecting = False
     for line in blob:
         if _FEE_BLOCK_START in line:
             collecting = True
+            printed_totals.append(_last_money(line))
             continue
         if collecting and _FEE_BLOCK_STOP in line:
             collecting = False
@@ -346,6 +405,15 @@ def _parse_fee_lines(lines: list[str] | str) -> dict[str, float]:
     missing = [name for name in AMP_STANDARD_FEE_NAMES if name not in parsed]
     if missing:
         raise JournalIngestError("AMP statement missing standard fee lines: " + ", ".join(missing))
+    if not printed_totals:
+        raise JournalIngestError("AMP statement missing TOTAL COMMISSION & FEES")
+    if any(abs(total - printed_totals[0]) > _MONEY_TOLERANCE for total in printed_totals):
+        raise JournalIngestError(f"conflicting TOTAL COMMISSION & FEES: {printed_totals}")
+    summed = sum(parsed.values())
+    if abs(summed - printed_totals[0]) > _MONEY_TOLERANCE:
+        raise JournalIngestError(
+            f"fee lines sum {summed:.2f} != printed TOTAL COMMISSION & FEES {printed_totals[0]:.2f}"
+        )
     return parsed
 
 
