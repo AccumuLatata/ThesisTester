@@ -199,6 +199,72 @@ def test_session_end_and_unresolved() -> None:
     assert missing.iloc[0]["cf_exit_reason"] == CF_EXIT_UNRESOLVED
 
 
+def test_later_day_bars_do_not_fake_session_end() -> None:
+    bars = _bars(
+        [
+            ("2026-05-14T14:00:00", 100.00, 100.25, 99.75, 100.00),
+            ("2026-05-14T14:00:15", 100.00, 100.25, 99.75, 100.10),
+            ("2026-05-15T13:30:00", 100.10, 100.20, 100.00, 100.15),
+        ]
+    )
+    trades = pd.DataFrame([_trade()])
+    out = replay_journal_brackets(trades, bars=bars, brackets=((10, 10, None),))
+    assert out.iloc[0]["cf_exit_reason"] == CF_EXIT_UNRESOLVED
+    assert out.iloc[0]["cf_exit_price"] is None
+
+
+def test_later_day_ticks_do_not_fake_session_end() -> None:
+    ticks = pd.DataFrame(
+        [
+            {"timestamp": _ts("2026-05-14T14:00:04"), "price": 100.10},
+            {"timestamp": _ts("2026-05-14T14:00:10"), "price": 100.15},
+            {"timestamp": _ts("2026-05-15T13:30:00"), "price": 100.20},
+        ]
+    )
+    trades = pd.DataFrame([_trade()])
+    out = replay_journal_brackets(
+        trades,
+        bars=_path_15s(),
+        ticks=ticks,
+        brackets=((10, 10, None),),
+        resolution=JOIN_RESOLUTION_TICK,
+    )
+    assert out.iloc[0]["cf_exit_reason"] == CF_EXIT_UNRESOLVED
+    assert out.iloc[0]["cf_exit_price"] is None
+
+
+def test_exit_rule_delta_pairs_same_entries_only() -> None:
+    trades = pd.DataFrame(
+        [
+            _trade(trade_id="jt:closed:1", net_ticks=4.0),
+            _trade(
+                trade_id="jt:open:1",
+                entry="2026-05-14T15:00:03",
+                exit_at=None,
+                exit_price=None,
+                net_ticks=None,
+            ),
+            _trade(
+                trade_id="jt:unresolved:1",
+                entry="2026-05-14T15:01:03",
+                net_ticks=10.0,
+                exit_price=101.00,
+            ),
+        ]
+    )
+    frame = replay_journal_brackets(trades, bars=_path_15s(), brackets=((10, 10, None),))
+    reasons = dict(zip(frame["trade_id"], frame["cf_exit_reason"], strict=True))
+    assert reasons["jt:closed:1"] == CF_EXIT_SL
+    assert reasons["jt:open:1"] == CF_EXIT_UNRESOLVED
+    assert reasons["jt:unresolved:1"] == CF_EXIT_UNRESOLVED
+    summary = cf_mod.summarize_bracket_replay(frame, trades)
+    bucket = summary["brackets"]["bracket:10/10"]
+    assert bucket["paired"] == 1
+    assert bucket["n_resolved"] == 1
+    assert bucket["exit_rule_delta"] == pytest.approx(-12.48 - 4.0)
+    assert bucket["mean_cf_net_ticks"] == pytest.approx(-12.48)
+
+
 def test_time_stop_before_next_15s_open() -> None:
     trades = pd.DataFrame([_trade()])
     out = replay_journal_brackets(trades, bars=_path_15s(), brackets=((10, 10, 5),))
@@ -379,6 +445,50 @@ def test_hard_stop_uses_sl_path() -> None:
     in_sample = next(row for row in rows if row["split"] == RULE_SPLIT_IN_SAMPLE)
     assert in_sample["rule_net_ticks"] == pytest.approx(-12.48)
     assert in_sample["rule_delta_ticks"] == pytest.approx(-12.48 - 20.0)
+
+
+def test_hard_stop_cooldown_uses_sl_fill_time() -> None:
+    first = _trade(
+        trade_id="jt:loser:1",
+        entry="2026-05-14T14:00:03",
+        exit_at="2026-05-14T14:05:00",
+        net_ticks=20.0,
+        exit_price=105.00,
+    )
+    later = _trade(
+        trade_id="jt:next:1",
+        entry="2026-05-14T14:00:40",
+        exit_at="2026-05-14T14:01:10",
+        net_ticks=5.0,
+        exit_price=101.25,
+    )
+    trades = pd.DataFrame([first, later])
+    hit = cf_mod.sl_hit_for_trade(
+        first,
+        bars=_path_15s(),
+        ticks=None,
+        sl_ticks=10,
+        resolution=JOIN_RESOLUTION_15S,
+    )
+    assert hit is not None
+    rows = apply_journal_rules(
+        trades,
+        (
+            parse_journal_rule(
+                {
+                    "name": "hard_cooldown",
+                    "declared_on": "2026-05-20",
+                    "hard_stop_ticks": 10,
+                    "cooldown_seconds_after_loss": 30,
+                }
+            ),
+        ),
+        hard_stop_exits={("jt:loser:1", 10.0): hit},
+    )
+    in_sample = next(row for row in rows if row["split"] == RULE_SPLIT_IN_SAMPLE)
+    assert in_sample["n_kept"] == 1
+    assert in_sample["trades_removed"] == 1
+    assert in_sample["rule_net_ticks"] == pytest.approx(-12.48)
 
 
 def test_cli_writes_artifacts_and_refuses_studies_dir(tmp_path: Path) -> None:

@@ -173,8 +173,11 @@ def _apply_one(
             continue
 
         net = baseline
+        exit_used = raw.get("exit_timestamp") or raw["entry_timestamp"]
         if rule.hard_stop_ticks is not None:
-            net = _apply_hard_stop(raw, rule.hard_stop_ticks, hard_stop_exits, baseline)
+            net, stopped_at = _apply_hard_stop(raw, rule.hard_stop_ticks, hard_stop_exits, baseline)
+            if stopped_at is not None:
+                exit_used = stopped_at
         if net is not None:
             buckets[split]["rule_net_ticks"] += net
         buckets[split]["n_kept"] += 1
@@ -183,7 +186,7 @@ def _apply_one(
             day_net[session] = day_net.get(session, 0.0) + net
             if net < 0:
                 day_streak[session] = day_streak.get(session, 0) + 1
-                last_loss_exit = raw.get("exit_timestamp") or raw["entry_timestamp"]
+                last_loss_exit = exit_used
             elif net > 0:
                 day_streak[session] = 0
             if rule.daily_loss_stop_ticks is not None and day_net[session] <= -float(
@@ -205,15 +208,22 @@ def _apply_hard_stop(
     hard_stop_ticks: float,
     hard_stop_exits: Mapping[tuple[str, float], tuple[float, pd.Timestamp]],
     baseline: float | None,
-) -> float | None:
+) -> tuple[float | None, pd.Timestamp | None]:
     key = (str(raw["trade_id"]), float(hard_stop_ticks))
     hit = hard_stop_exits.get(key)
+    original_exit = raw.get("exit_timestamp")
+    if isinstance(original_exit, pd.Timestamp):
+        original_exit = (
+            original_exit.tz_convert("UTC") if original_exit.tzinfo is not None else original_exit
+        )
     if hit is None:
-        return baseline
+        return baseline, original_exit
     sl_price, sl_ts = hit
-    exit_ts = raw.get("exit_timestamp")
-    if exit_ts is not None and sl_ts >= pd.Timestamp(exit_ts):
-        return baseline
+    sl_ts = pd.Timestamp(sl_ts)
+    if sl_ts.tzinfo is not None:
+        sl_ts = sl_ts.tz_convert("UTC")
+    if original_exit is not None and sl_ts >= pd.Timestamp(original_exit):
+        return baseline, original_exit
     qty = int(raw["qty"])
     instrument = str(raw["instrument"])
     point_value = JOURNAL_POINT_VALUE[instrument]
@@ -221,7 +231,7 @@ def _apply_hard_stop(
     points = _signed_points(str(raw["direction"]), float(raw["entry_price"]), sl_price)
     gross_ticks = points * qty / JOURNAL_TICK_SIZE
     cost = _cost_ticks(raw, tick_value)
-    return gross_ticks - cost
+    return gross_ticks - cost, sl_ts
 
 
 def _empty_bucket() -> dict[str, float]:

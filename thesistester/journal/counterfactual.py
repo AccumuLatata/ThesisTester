@@ -166,6 +166,7 @@ def summarize_bracket_replay(frame: pd.DataFrame, trades: pd.DataFrame) -> dict[
                 "max_hold_seconds": raw["max_hold_seconds"],
                 "resolution": resolution,
                 "n": 0,
+                "n_resolved": 0,
                 "sum_cf_net_ticks": 0.0,
                 "sum_net_ticks": 0.0,
                 "paired": 0,
@@ -173,25 +174,35 @@ def summarize_bracket_replay(frame: pd.DataFrame, trades: pd.DataFrame) -> dict[
         )
         bucket["n"] = int(bucket["n"]) + 1
         trades_by_resolution.setdefault(resolution, set()).add(trade_id)
-        if cf_net is not None:
-            bucket["sum_cf_net_ticks"] = float(bucket["sum_cf_net_ticks"]) + cf_net
-            realized = net_by_id.get(trade_id)
-            if realized is not None:
-                bucket["sum_net_ticks"] = float(bucket["sum_net_ticks"]) + realized
-                bucket["paired"] = int(bucket["paired"]) + 1
+        if cf_net is None:
+            continue
+        bucket["n_resolved"] = int(bucket["n_resolved"]) + 1
+        bucket["sum_cf_resolved"] = float(bucket.get("sum_cf_resolved", 0.0)) + cf_net
+        realized = net_by_id.get(trade_id)
+        if realized is None:
+            continue
+        # Same-entry pair only: open / unresolved rows do not move the delta.
+        bucket["sum_cf_net_ticks"] = float(bucket["sum_cf_net_ticks"]) + cf_net
+        bucket["sum_net_ticks"] = float(bucket["sum_net_ticks"]) + realized
+        bucket["paired"] = int(bucket["paired"]) + 1
     for bucket in by_bracket.values():
-        n = int(bucket["n"])
+        n_resolved = int(bucket.get("n_resolved", 0))
+        bucket["n_resolved"] = n_resolved
         bucket["exit_rule_delta"] = float(bucket["sum_cf_net_ticks"]) - float(
             bucket["sum_net_ticks"]
         )
-        bucket["mean_cf_net_ticks"] = (float(bucket["sum_cf_net_ticks"]) / n) if n else None
+        bucket["mean_cf_net_ticks"] = (
+            (float(bucket.get("sum_cf_resolved", 0.0)) / n_resolved) if n_resolved else None
+        )
+        bucket.pop("sum_cf_resolved", None)
     flags: dict[str, object] = {}
     for resolution, trade_ids in trades_by_resolution.items():
         n = len(trade_ids)
         means = [
             float(bucket["mean_cf_net_ticks"] or 0.0)
             for bucket in by_bracket.values()
-            if bucket["resolution"] == resolution and int(bucket["n"]) >= ENTRY_EDGE_MIN_N
+            if bucket["resolution"] == resolution
+            and int(bucket.get("n_resolved", 0)) >= ENTRY_EDGE_MIN_N
         ]
         best = max(means) if means else None
         flags[resolution] = {
@@ -447,13 +458,9 @@ def _walk_15s(
         last_ts = open_ts + _BAR_DELTA
     if last_close is not None:
         data_end = walkable["timestamp"].iloc[-1] + _BAR_DELTA
-        has_later = bool((bars["timestamp"] >= session_end).any())
-        if has_later or data_end >= session_end:
+        if _reached_this_session_end(data_end, session_end):
             return CF_EXIT_SESSION_END, last_close, session_end
         return CF_EXIT_UNRESOLVED, None, None
-    has_later = bool((bars["timestamp"] >= session_end).any())
-    if has_later:
-        return CF_EXIT_SESSION_END, None, session_end
     return CF_EXIT_UNRESOLVED, None, None
 
 
@@ -488,14 +495,10 @@ def _walk_ticks(
             return CF_EXIT_TP, tp_price, ts
         last_price = price
         last_ts = ts
-    if last_price is not None:
-        has_later = bool((ticks["timestamp"] >= session_end).any())
-        if has_later or (last_ts is not None and last_ts >= session_end - pd.Timedelta(seconds=1)):
+    if last_price is not None and last_ts is not None:
+        if _reached_this_session_end(last_ts + pd.Timedelta(seconds=1), session_end):
             return CF_EXIT_SESSION_END, last_price, session_end
         return CF_EXIT_UNRESOLVED, None, None
-    has_later = bool((ticks["timestamp"] >= session_end).any())
-    if has_later:
-        return CF_EXIT_SESSION_END, None, session_end
     return CF_EXIT_UNRESOLVED, None, None
 
 
@@ -537,6 +540,11 @@ def _next_15s_open(entry_ts: pd.Timestamp) -> pd.Timestamp:
     if entry_ts == open_ts:
         return open_ts + _BAR_DELTA
     return open_ts + _BAR_DELTA
+
+
+def _reached_this_session_end(clock: pd.Timestamp, session_end: pd.Timestamp) -> bool:
+    """True only when this session's clock reached CME 18:00, not a later day."""
+    return clock >= session_end
 
 
 def _session_end_utc(session: date) -> pd.Timestamp:
