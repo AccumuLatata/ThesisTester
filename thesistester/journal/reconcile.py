@@ -427,6 +427,17 @@ def _apply_costs(
     frame = pd.DataFrame(rows)
     frame["entry_timestamp"] = pd.Series(frame["entry_timestamp"], dtype="datetime64[ns, UTC]")
     frame["exit_timestamp"] = pd.Series(frame["exit_timestamp"], dtype="datetime64[ns, UTC]")
+    # Mixed None/float cost cells must stay object-None, not float64 NaN.
+    for column in (
+        "commission_cost",
+        "day_fee_allocation",
+        "fee_ticks",
+        "net_pnl_currency",
+        "net_ticks",
+        "r_multiple",
+        "r_multiple_declared",
+    ):
+        frame[column] = pd.Series([row.get(column) for row in rows], dtype="object")
     return frame.loc[:, list(JOURNAL_TRADE_COLUMNS) + ["recon_status"]]
 
 
