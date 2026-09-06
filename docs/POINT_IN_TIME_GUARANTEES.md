@@ -312,3 +312,17 @@ parent) and `subtimeframe_data` (15s primary). It does **not** call
 | Resolution stamp | **Yes** | Every joined row carries `resolution` ∈ {`15s`, `tick`}. Rows of different resolution are never averaged together. |
 
 Tests: `tests/test_journal_join.py`.
+
+## Trade journal (TJ6) — level attribution
+
+`attribute_journal_trades` is post-trade. It consumes an already-built 1m
+levels frame and `closed_level_token_set(settings)`. It does **not** call
+`compute_all_levels` or `simulate_trades`.
+
+| Rule | Causal? | Detail |
+|---|---|---|
+| Frozen tokens | **Yes** | Value on the 1m parent that contains the fill (`open <= entry < open+1min`). |
+| Developing tokens | **Yes** | Value on the adjacent completed 1m bar whose close is strictly before the fill. Session/weekend gaps and a missing previous minute omit the token (`tag_level_missing`). Do not walk back to an older stamp. |
+| Tag verification | **Yes** | Same bar rule as the token class. Alignment is a distance check, not a trigger. |
+
+Tests: `tests/test_journal_levels.py`.

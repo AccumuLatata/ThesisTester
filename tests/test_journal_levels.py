@@ -491,3 +491,71 @@ def test_write_attribution_round_trip(tmp_path: Path) -> None:
     assert paths["journal_attribution.parquet"].is_file()
     loaded = pd.read_parquet(paths["journal_attribution.parquet"])
     assert loaded.iloc[0]["nearest_level_token"] == "pdHigh"
+
+
+def test_cost_columns_stay_object_none_after_attribution() -> None:
+    trades = _trades(_trade(entry="2026-05-14T14:00:24", price=100.00))
+    trades["commission_cost"] = pd.Series([None], dtype="object")
+    trades["day_fee_allocation"] = pd.Series([None], dtype="object")
+    trades["fee_ticks"] = pd.Series([None], dtype="object")
+    out = attribute_journal_trades(trades, levels=_frame_14())
+    assert out.iloc[0]["commission_cost"] is None
+    assert out.iloc[0]["day_fee_allocation"] is None
+    assert out.iloc[0]["fee_ticks"] is None
+    assert out["commission_cost"].dtype == object
+
+
+def test_non_finite_tolerance_and_non_positive_price_fail_closed() -> None:
+    frame = _frame_14()
+    trades = _trades(_trade(entry="2026-05-14T14:00:24", price=100.00))
+    with pytest.raises(JournalIngestError, match="level_tolerance_ticks"):
+        attribute_journal_trades(trades, levels=frame, level_tolerance_ticks=float("nan"))
+    with pytest.raises(JournalIngestError, match="tag_tolerance_ticks"):
+        attribute_journal_trades(trades, levels=frame, tag_tolerance_ticks=float("inf"))
+    zero = _trades(_trade(entry="2026-05-14T14:00:24", price=0.0))
+    with pytest.raises(JournalIngestError, match="non-positive"):
+        attribute_journal_trades(zero, levels=frame)
+    negative = _trades(_trade(entry="2026-05-14T14:00:24", price=-1.0))
+    with pytest.raises(JournalIngestError, match="non-positive"):
+        attribute_journal_trades(negative, levels=frame)
+
+
+def test_confirm_qualifier_strip_does_not_drive_alignment() -> None:
+    stripped = resolve_tag("5m21EMA_retest")
+    assert stripped.token == "EMA_21_5min"
+    assert stripped.tag_class == TAG_CLASS_CONFIRM
+    assert stripped.qualifier == "_retest"
+    frame = _frame_14()
+    trades = _trades(_trade(entry="2026-05-14T14:00:24", price=100.00, tags=("5m21EMA_retest",)))
+    out = attribute_journal_trades(trades, levels=frame)
+    row = out.iloc[0]
+    assert row["tag_alignment"] == TAG_ALIGN_UNVERIFIABLE
+    assert row["tag_verifications"] == []
+    assert list(row["unmapped_tags"]) == []
+
+
+def test_corrupt_levels_settings_fail_closed(tmp_path: Path) -> None:
+    trades_path = tmp_path / "journal_trades.parquet"
+    levels_path = tmp_path / "levels.parquet"
+    raw = _trades(_trade(entry="2026-05-14T14:00:24", price=100.00))
+    raw["tags"] = raw["tags"].map(list)
+    raw["session_date"] = raw["session_date"].map(lambda value: value.isoformat())
+    raw.to_parquet(trades_path, index=False)
+    _frame_14().to_parquet(levels_path, index=False)
+    bad = tmp_path / "settings.yaml"
+    bad.write_text("not: [valid\n", encoding="utf-8")
+    code = cli_main(
+        [
+            "journal",
+            "attribute",
+            "--trades",
+            str(trades_path),
+            "--levels",
+            str(levels_path),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--levels-settings",
+            str(bad),
+        ]
+    )
+    assert code == 2

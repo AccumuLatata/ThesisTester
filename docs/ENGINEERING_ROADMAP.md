@@ -1542,7 +1542,8 @@ edits; no golden regen; desk exports stay out of git.
 currency / R scale with qty (engine `simulate_trades` is 1-lot — do not copy
 those formulas). TradesViz `commission`/`fees` are unused (always 0). AMP is
 the fee SoT ($1.24 RT = 2.48 MNQ ticks). Tags are intent, not evidence.
-Developing levels use the previous completed 1m bar. Counterfactuals never
+Developing levels use the adjacent previous 1m bar whose close is
+strictly before the fill (a gap omits the token). Counterfactuals never
 call `simulate_trades`; 15s walks start at the next 15s open; the only RNG is
 the seeded TJ7 null (preserves per-session direction counts). Rules are
 declared, never searched. Journal expectancy does not re-rank studies.

@@ -42,14 +42,22 @@ def load_tag_map(path: str | Path | None = None) -> dict[str, object]:
     source = Path(_MAP_PATH if path is None else path)
     if not source.is_file():
         raise JournalIngestError(f"tag map not found: {source}")
-    payload = yaml.safe_load(source.read_text(encoding="utf-8"))
+    try:
+        payload = yaml.safe_load(source.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise JournalIngestError(f"tag map is not valid YAML: {exc}") from exc
     if not isinstance(payload, Mapping):
         raise JournalIngestError("tag map must be a mapping")
     return dict(payload)
 
 
 def resolve_tag(tag: str, *, tag_map: Mapping[str, object] | None = None) -> TagMapping:
-    """Resolve one tag. Exact rows win; then qualifier suffixes are stripped."""
+    """Resolve one tag. Exact rows win; then qualifier suffixes are stripped.
+
+    Qualifier strip applies to ``level`` and ``confirm`` exact rows. Context
+    tags keep class ``context``. ``_RTH`` remaps only via the exact ``pdH_RTH``
+    row; other ``*_RTH`` tags keep the base token.
+    """
     raw = str(tag).strip()
     if not raw:
         return TagMapping(raw=tag, token=None, tag_class=TAG_CLASS_UNMAPPED)
@@ -68,11 +76,11 @@ def resolve_tag(tag: str, *, tag_map: Mapping[str, object] | None = None) -> Tag
         if raw.endswith(suffix) and len(raw) > len(suffix):
             base = raw[: -len(suffix)]
             mapped = _exact_row(base, exact)
-            if mapped is not None and mapped.tag_class == TAG_CLASS_LEVEL:
+            if mapped is not None and mapped.tag_class in {TAG_CLASS_LEVEL, TAG_CLASS_CONFIRM}:
                 return TagMapping(
                     raw=raw,
                     token=mapped.token,
-                    tag_class=TAG_CLASS_LEVEL,
+                    tag_class=mapped.tag_class,
                     qualifier=suffix,
                 )
             if base in context:

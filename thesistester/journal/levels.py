@@ -1,8 +1,9 @@
 """Level attribution and tag verification on an already-built 1m frame (TJ6).
 
 Consumes ``frame.columns ∩ closed_level_token_set(settings)``. Frozen tokens
-use the containing minute; developing tokens use the previous completed 1m
-bar. Does not call ``simulate_trades`` or ``compute_all_levels``.
+use the containing minute; developing tokens use the adjacent completed
+1m bar whose close is strictly before the fill. A gap omits the token.
+Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from thesistester.journal.schema import (
     TAG_CLASS_UNMAPPED,
     JournalIngestError,
 )
-from thesistester.journal.tags import TagMapping, resolve_tag
+from thesistester.journal.tags import TagMapping, load_tag_map, resolve_tag
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.study.schema import StudySpecError, closed_level_token_set
 
@@ -93,6 +94,7 @@ def attribute_journal_trades(
         return out
 
     stamps = frame["timestamp"]
+    tag_map = load_tag_map()
     rows: list[dict[str, object]] = []
     for raw in work.to_dict(orient="records"):
         rows.append(
@@ -104,6 +106,7 @@ def attribute_journal_trades(
                 level_tol=level_tol,
                 tag_tol=tag_tol,
                 tick=tick,
+                tag_map=tag_map,
             )
         )
     return _rows_to_frame(work, rows)
@@ -118,6 +121,10 @@ def write_attribution_artifacts(
     allow_unreconciled: bool = False,
 ) -> dict[str, Path]:
     """Write ``journal_attribution.parquet`` + ``attribution.json``. Not under ``results/studies/``."""
+    level_tol = _as_tolerance(level_tolerance_ticks, name="level_tolerance_ticks")
+    tag_tol = _as_tolerance(tag_tolerance_ticks, name="tag_tolerance_ticks")
+    if not isinstance(allow_unreconciled, bool):
+        raise JournalIngestError("allow_unreconciled must be a bool")
     out = _assert_output_dir(Path(output_dir))
     out.mkdir(parents=True, exist_ok=True)
     parquet_path = out / "journal_attribution.parquet"
@@ -125,9 +132,9 @@ def write_attribution_artifacts(
     counts = _unmapped_counts(trades)
     payload = {
         "schema_version": JOURNAL_STORE_SCHEMA,
-        "level_tolerance_ticks": float(level_tolerance_ticks),
-        "tag_tolerance_ticks": float(tag_tolerance_ticks),
-        "allow_unreconciled": bool(allow_unreconciled),
+        "level_tolerance_ticks": level_tol,
+        "tag_tolerance_ticks": tag_tol,
+        "allow_unreconciled": allow_unreconciled,
         "trade_count": int(len(trades)),
         "unmapped_tag_counts": dict(sorted(counts.items())),
         "unmapped_tag_total": int(sum(counts.values())),
@@ -197,8 +204,12 @@ def _coerce_trades(trades: pd.DataFrame) -> pd.DataFrame:
     work = trades.copy()
     work["entry_timestamp"] = _as_utc_series(work["entry_timestamp"])
     work["entry_price"] = pd.to_numeric(work["entry_price"], errors="coerce")
-    if work["entry_price"].isna().any() or not work["entry_price"].map(_is_finite).all():
-        raise JournalIngestError("trades frame has non-finite entry_price")
+    if (
+        work["entry_price"].isna().any()
+        or not work["entry_price"].map(_is_finite).all()
+        or not (work["entry_price"] > 0).all()
+    ):
+        raise JournalIngestError("trades frame has non-finite or non-positive entry_price")
     if "tags" not in work.columns:
         work["tags"] = [() for _ in range(len(work))]
     else:
@@ -238,6 +249,7 @@ def _attribute_trade(
     level_tol: float,
     tag_tol: float,
     tick: float,
+    tag_map: Mapping[str, object],
 ) -> dict[str, object]:
     entry_ts = _as_utc(raw["entry_timestamp"])
     entry_price = float(raw["entry_price"])
@@ -266,7 +278,7 @@ def _attribute_trade(
     else:
         context = LEVEL_CONTEXT_BETWEEN
 
-    mappings = [resolve_tag(tag) for tag in _as_tags(raw.get("tags"))]
+    mappings = [resolve_tag(tag, tag_map=tag_map) for tag in _as_tags(raw.get("tags"))]
     unmapped = [item.raw for item in mappings if item.tag_class == TAG_CLASS_UNMAPPED]
     verifications: list[dict[str, object]] = []
     aligned = 0
@@ -444,7 +456,10 @@ def _finite_level(value: object) -> float | None:
 def _as_tolerance(value: object, *, name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
         raise JournalIngestError(f"{name} must be a non-negative number (got {value!r})")
-    return float(value)
+    number = float(value)
+    if not math.isfinite(number):
+        raise JournalIngestError(f"{name} must be a non-negative number (got {value!r})")
+    return number
 
 
 def _as_positive_tick(value: object) -> float:
@@ -538,21 +553,12 @@ def _assert_1m_grid(stamps: pd.Series) -> None:
 
 
 def _rows_to_frame(trades: pd.DataFrame, rows: Sequence[Mapping[str, object]]) -> pd.DataFrame:
-    frame = pd.DataFrame(rows)
-    keep = [column for column in trades.columns if column in frame.columns]
-    extra = [column for column in ATTRIBUTION_OUTPUT_COLUMNS if column in frame.columns]
-    ordered = keep + [column for column in extra if column not in keep]
-    out = frame.loc[:, ordered]
+    # Copy the coerced trade frame so TJ4 object-None cost cells survive.
+    # Rebuilding via DataFrame(rows) would promote mixed None/float to NaN.
+    out = trades.copy()
     out["entry_timestamp"] = pd.Series(out["entry_timestamp"], dtype="datetime64[ns, UTC]")
-    for column in (
-        "levels_within_tolerance",
-        "nearest_level_token",
-        "nearest_level_distance_ticks",
-        "unmapped_tags",
-        "tag_verifications",
-        "intent_mismatch",
-    ):
-        out[column] = pd.Series([row[column] for row in rows], dtype="object")
+    for column in ATTRIBUTION_OUTPUT_COLUMNS:
+        out[column] = pd.Series([row[column] for row in rows], index=out.index, dtype="object")
     return out
 
 
@@ -572,7 +578,33 @@ def _trades_for_parquet(trades: pd.DataFrame) -> pd.DataFrame:
         frame["levels_within_tolerance"] = frame["levels_within_tolerance"].map(
             lambda tokens: list(tokens) if tokens is not None else []
         )
+    if "tag_verifications" in frame.columns:
+        frame["tag_verifications"] = frame["tag_verifications"].map(
+            lambda items: list(items) if items is not None else []
+        )
+    for column in (
+        "nearest_level_token",
+        "nearest_level_distance_ticks",
+        "intent_mismatch",
+    ):
+        if column in frame.columns:
+            frame[column] = pd.Series(
+                [_parquet_scalar(value) for value in frame[column]],
+                index=frame.index,
+                dtype="object",
+            )
     return frame
+
+
+def _parquet_scalar(value: object) -> object:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
 
 
 def _unmapped_counts(trades: pd.DataFrame) -> Counter[str]:
@@ -609,12 +641,15 @@ def _load_settings(path: str | Path | None) -> dict[str, object] | None:
         raise JournalIngestError(f"levels_settings not found: {source}")
     text = source.read_text(encoding="utf-8")
     suffix = source.suffix.lower()
-    if suffix in {".yaml", ".yml"}:
-        payload = yaml.safe_load(text)
-    elif suffix == ".json":
-        payload = json.loads(text)
-    else:
-        raise JournalIngestError("levels_settings must be .yaml, .yml, or .json")
+    try:
+        if suffix in {".yaml", ".yml"}:
+            payload = yaml.safe_load(text)
+        elif suffix == ".json":
+            payload = json.loads(text)
+        else:
+            raise JournalIngestError("levels_settings must be .yaml, .yml, or .json")
+    except (yaml.YAMLError, json.JSONDecodeError) as exc:
+        raise JournalIngestError(f"levels_settings is not valid {suffix}: {exc}") from exc
     if not isinstance(payload, Mapping):
         raise JournalIngestError("levels_settings must be a mapping")
     return dict(payload)

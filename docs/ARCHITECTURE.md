@@ -1119,8 +1119,9 @@ Nullable join/cost cells stay object-None. No `compute_all_levels`.
 **TJ6 landed.** `attribute_journal_trades(trades, *, levels, …)` labels
 every entry from an already-built 1m levels frame
 (`frame.columns ∩ closed_level_token_set(settings)`). Frozen tokens use
-the containing minute; developing tokens use the previous completed 1m
-bar. `python -m thesistester journal attribute` writes
+the containing minute; developing tokens use the adjacent previous
+completed 1m bar whose close is strictly before the fill (a gap omits
+the token). `python -m thesistester journal attribute` writes
 `journal_attribution.parquet` + `attribution.json`. Refuses
 `results/studies/`. Tag→token map is `journal/tag_map.yaml` (data, not
 code). Unknown tags stay `unmapped`. No `compute_all_levels`.
