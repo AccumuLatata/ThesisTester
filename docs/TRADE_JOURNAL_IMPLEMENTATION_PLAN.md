@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ0 locked.** No production journal code has landed.
+**Status:** **TJ1 landed.** TJ2 (AMP statement parser) is next. No pairing / recon / page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -696,14 +696,17 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ1 — TradesViz loader
 
-- Explicit profile. Offset required. `asset_type` → `entry_kind`.
-- Symbol table §3.1; unknown → `ValueError`.
-- `session_date` uses `trading_session_date` / `eth_start="18:00"` (ETH 18:05
-  ET fixture → next calendar date).
-- `commission` / `fees` discarded with a test asserting they are not used.
-- Tags split/preserved; notes HTML-stripped with `[image]` token.
-- Fixture: synthetic CSV with MNQM26 imports, a 4-fill `spread_id`, a manual
-  `stock` row with tags + SL/TP, a `quantity=0` manual row.
+- [x] Explicit profile. Offset required. `asset_type` → `entry_kind`.
+- [x] Symbol table §3.1; unknown → `ValueError`.
+- [x] `session_date` uses `trading_session_date` / `eth_start="18:00"` (ETH 18:05
+      ET fixture → next calendar date).
+- [x] `commission` / `fees` discarded with a test asserting they are not used.
+- [x] Tags split/preserved; notes HTML-stripped with `[image]` token.
+- [x] Fixture: synthetic CSV with MNQM26 imports, a 4-fill `spread_id`, a manual
+      `stock` row with tags + SL/TP, a `quantity=0` manual row.
+- [x] ISO-8601 offset lock (reject `MM-DD-YYYY` / named `UTC`); imported fills
+      require a CME contract symbol; `asset_type` stripped; price finite `> 0`.
+      Late-ETH after UTC midnight (22:30 ET) stays on the next session date.
 
 ### TJ2 — AMP statement parser
 

@@ -1064,6 +1064,33 @@ their shared bar indices and emits combined equity, correlation, and
 leave-one-out contributions. It does not invoke the backtest engine or make
 claims about capital, margin, liquidity, or fill interactions.
 
+## Trade journal boundary (TJ)
+
+`thesistester/journal/` is an additive, Streamlit-free post-trade package
+(R21-shaped). It does **not** sit on the R18 path
+(`load_dataset → compute_levels → … → simulate_trades`) and never writes
+research bundles.
+
+**TJ1 landed.** `load_tradesviz_executions(path, *, profile=)` is the only
+public loader. `profile` is keyword-only and must be
+`tradesviz_executions` — no autodetect. Output is a `FillRecord` frame
+(`thesistester/journal/schema.py`) with imported (`asset_type=future`) and
+manual (any other `asset_type`) rows retained. `session_date` is
+`trading_session_date(..., eth_start="18:00")` after converting the fill to
+`America/New_York`. `date` is ISO-8601 with an explicit numeric offset
+(pandas-fuzzy / `MM-DD-YYYY` rejected). Imported rows require a CME
+month-year symbol; `asset_type` is stripped before classification. Fill
+`price` must be finite and positive. TradesViz `commission` / `fees` are
+read so a missing column fails closed, then discarded. Notes HTML is
+stripped locally; `<img>` becomes the literal token `[image]` and is never
+fetched.
+
+Later TJ milestones (AMP parse, pairing, recon, bar join, counterfactuals,
+page 17) add siblings in the same package. Persistence, when it lands
+(TJ9), is `.thesistester_store/journal/v1/` — sibling of `datasets/` /
+`setups/`, **not** under `execution_artifacts/` (CAI-10 LRU does not scan
+it). Journal code must not call `simulate_trades` or `compute_all_levels`.
+
 ## R22 simulation-core boundary
 
 `thesistester.engine.sim_core` is an internal-only hot-path boundary. It owns
@@ -1481,6 +1508,8 @@ Signals robustness notes:
 - UI state (active dataset, execution defaults): `<store>/ui_state.json`
 - Study Observatory desks (SO4): `<store>/study_observatory/desks/<id>.json`
   (`schema_version: 1`; corrupt / unknown schema ignored; default unused)
+- Journal (TJ; not written until TJ9): `<store>/journal/v1/` — user-owned;
+  CAI-10 eviction must not scan it
 
 ### Configuring the store root
 
