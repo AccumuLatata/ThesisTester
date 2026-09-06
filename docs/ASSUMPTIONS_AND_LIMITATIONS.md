@@ -1344,6 +1344,28 @@ other than the last bar in the dataset.
   Off-grid or non-finite OHLC fails closed. Nullable join/cost cells stay
   object-None, not float64 NaN.
 
+## Trade journal (TJ6 — tags are intent, not evidence)
+
+- Tags are what the desk wrote. Attribution is what the already-built 1m
+  levels frame shows at the fill. Alignment is a **distance check** against
+  `tag_tolerance_ticks` (default 10), not a trigger and not proof the tag
+  caused the trade. Unmapped tags (`p30POC`, unknown strings) are kept and
+  counted; they are never dropped.
+- Frozen tokens (`pd*`, `pw*`, `pm*`, `prevSettlement`, `pRTH_*`, overnight
+  highs once the session exists) use the 1m bar that **contains** the fill
+  (`open <= entry < open+1min`). Developing tokens (`dVWAP` / `dVWAP_RTH` /
+  `wVWAP` / `mVWAP`, `APOC`, MAs, rolling VWAP/POC) use the **previous
+  completed** 1m bar whose close is strictly before `entry_timestamp`. Using
+  the current minute’s close is look-ahead on a 24 s median hold. Missing
+  previous bar → omit the token / `tag_level_missing`.
+- Journal code never calls `compute_all_levels`. Missing columns are omitted
+  from `levels_within_tolerance`. Default 10-tick tolerance is the scalp
+  stop width — “nearby tokens”, not “the level you meant”.
+- `python -m thesistester journal attribute` writes
+  `journal_attribution.parquet` + `attribution.json` under `--output-dir`.
+  It refuses `results/studies/` and refuses days that are not `reconciled`
+  unless `--allow-unreconciled`.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

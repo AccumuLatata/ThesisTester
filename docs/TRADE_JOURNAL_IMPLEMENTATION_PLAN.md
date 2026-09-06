@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ5 landed.** TJ6 (level attribution + tag verification) is next. No page yet.
+**Status:** **TJ6 landed.** TJ7 (own-entry counterfactuals) is next. No page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -769,15 +769,15 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ6 — Level attribution + tag verification
 
-- Attribution on a hand-built **1m** levels frame: `at_level`, `between_levels`,
+- [x] Attribution on a hand-built **1m** levels frame: `at_level`, `between_levels`,
   `no_frame`; developing token uses previous completed minute; tolerance
   keyword-only default 10.
-- Map is data (YAML/dict), unit-tested against
+- [x] Map is data (YAML/dict), unit-tested against
   `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`.
-- `unmapped` tags counted, never dropped; exact-tag before qualifier strip.
-- Alignment classes + `intent_mismatch` tested (aligned / partial / missing
+- [x] `unmapped` tags counted, never dropped; exact-tag before qualifier strip.
+- [x] Alignment classes + `intent_mismatch` tested (aligned / partial / missing
   token / tagged-A-but-at-B).
-- Docs: intent ≠ evidence; alignment is a distance check, not a trigger.
+- [x] Docs: intent ≠ evidence; alignment is a distance check, not a trigger.
 
 ### TJ7 — Own-entry counterfactuals
 

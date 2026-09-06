@@ -1,0 +1,70 @@
+# Frozen desk tag → engine token map (TJ6). Data, not code.
+# Exact rows win before qualifier stripping. Desk owns additions; repo owns this file.
+
+exact:
+  pdH:
+    token: pdHigh
+    class: level
+  pdLow:
+    token: pdLow
+    class: level
+  pdEQ:
+    token: pdEQ
+    class: level
+  pdH_RTH:
+    token: pRTH_High
+    class: level
+  pdVAL:
+    token: pdVAL
+    class: level
+  pwVAH:
+    token: pwVAH
+    class: level
+  dVWAP:
+    token: dVWAP
+    class: level
+  mVWAP:
+    token: mVWAP
+    class: level
+  4hVWAP:
+    token: VWAP_rolling_4h
+    class: level
+  p30VWAP:
+    token: prev30mVWAP
+    class: level
+  APOC:
+    token: APOC
+    class: level
+  pSettlement:
+    token: prevSettlement
+    class: level
+  dOpen:
+    token: dOpen
+    class: level
+  p30POC:
+    token: null
+    class: unmapped
+  5m21EMA:
+    token: EMA_21_5min
+    class: confirm
+  5m50SMA:
+    token: SMA_50_5min
+    class: confirm
+  1m9EMA:
+    token: EMA_9_1min
+    class: confirm
+
+context:
+  - ITR
+  - ITR-C
+  - CTR
+  - CTR-R
+  - DeltaNode
+  - GEX2
+  - 5mCOT
+  - 5mSFP
+
+qualifiers:
+  - _retest
+  - _SFP
+  - _RTH
