@@ -1335,7 +1335,9 @@ other than the last bar in the dataset.
   Every joined row is stamped `resolution` ∈ {`15s`, `tick`}. Do not average
   those rows together without saying so in the caption.
 - A Jun fill on a Sep-rolled 15s series is `roll_mismatch` unless valid R7
-  roll metadata covers that session day.
+  roll metadata covers that session day: `external_continuous`, or a
+  `segmented_contracts` `roll_gap` that connects those contracts on or
+  before the fill. Empty / unrelated segmented gaps do not cover.
 
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.

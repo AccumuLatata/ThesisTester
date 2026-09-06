@@ -220,12 +220,35 @@ def _series_month(bar: pd.Series | None, *, series_contract: str | None) -> str 
     return _month_token(series_contract)
 
 
+def _roll_ts(raw: object) -> pd.Timestamp | None:
+    if raw is None:
+        return None
+    stamp = pd.Timestamp(raw)
+    if pd.isna(stamp):
+        return None
+    if stamp.tzinfo is None:
+        return stamp.tz_localize("UTC")
+    return stamp.tz_convert("UTC")
+
+
+def _gap_connects(gap: Mapping[str, object], *, trade_month: str, series_month: str) -> bool:
+    previous = _month_token(gap.get("previous_contract"))
+    nxt = _month_token(gap.get("next_contract"))
+    if previous is None or nxt is None:
+        return False
+    pair = {previous, nxt}
+    return trade_month in pair and series_month in pair
+
+
 def _roll_metadata_covers(
     metadata: Mapping[str, object] | None,
     *,
     session_date: date,
     entry_ts: pd.Timestamp,
+    trade_month: str,
+    series_month: str,
 ) -> bool:
+    """True when valid R7 metadata documents this session's contract change."""
     if not metadata or not bool(metadata.get("valid")):
         return False
     method = str(metadata.get("roll_method") or "")
@@ -234,22 +257,19 @@ def _roll_metadata_covers(
     if method != "segmented_contracts":
         return False
     gaps = metadata.get("roll_gaps")
-    if not isinstance(gaps, Sequence) or not gaps:
-        return True
+    if not isinstance(gaps, Sequence):
+        return False
     for gap in gaps:
         if not isinstance(gap, Mapping):
             continue
-        raw = gap.get("roll_timestamp")
-        if raw is None:
+        if not _gap_connects(gap, trade_month=trade_month, series_month=series_month):
             continue
-        roll_ts = pd.Timestamp(raw)
-        if roll_ts.tzinfo is None:
-            roll_ts = roll_ts.tz_localize("UTC")
-        else:
-            roll_ts = roll_ts.tz_convert("UTC")
+        roll_ts = _roll_ts(gap.get("roll_timestamp"))
+        if roll_ts is None:
+            continue
         if roll_ts.date() == session_date or roll_ts <= entry_ts:
             return True
-    return True
+    return False
 
 
 def _tick_sessions(ticks: pd.DataFrame) -> set[date]:
@@ -355,7 +375,13 @@ def _join_trade(
         trade_month is not None
         and series_month is not None
         and trade_month != series_month
-        and not _roll_metadata_covers(roll_metadata, session_date=session, entry_ts=entry_ts)
+        and not _roll_metadata_covers(
+            roll_metadata,
+            session_date=session,
+            entry_ts=entry_ts,
+            trade_month=trade_month,
+            series_month=series_month,
+        )
     ):
         flags.append(FLAG_ROLL_MISMATCH)
 

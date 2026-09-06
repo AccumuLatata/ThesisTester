@@ -171,6 +171,68 @@ def test_roll_mismatch_without_metadata(tmp_path: Path) -> None:
     assert joined.iloc[0]["contract_month"] == "JUN"
 
 
+def test_segmented_metadata_without_gap_stays_mismatch(tmp_path: Path) -> None:
+    trades = _pair(tmp_path, *_same_bar_rows())
+    bars = _minute_14()
+    bars["contract"] = "MNQU26"
+    parent = _parent_14()
+    parent["contract"] = "MNQU26"
+    meta = {"roll_method": "segmented_contracts", "valid": True, "roll_gaps": []}
+    joined = join_journal_bars(
+        trades,
+        data=parent,
+        subtimeframe_data=bars,
+        roll_metadata=meta,
+    )
+    assert FLAG_ROLL_MISMATCH in joined.iloc[0]["join_flags"]
+
+
+def test_segmented_gap_covers_only_matching_session(tmp_path: Path) -> None:
+    trades = _pair(tmp_path, *_same_bar_rows())
+    bars = _minute_14()
+    bars["contract"] = "MNQU26"
+    parent = _parent_14()
+    parent["contract"] = "MNQU26"
+    covering = {
+        "roll_method": "segmented_contracts",
+        "valid": True,
+        "roll_gaps": [
+            {
+                "previous_contract": "MNQM26",
+                "next_contract": "MNQU26",
+                "roll_timestamp": "2026-05-14T13:00:00+00:00",
+            }
+        ],
+    }
+    other_pair = {
+        "roll_method": "segmented_contracts",
+        "valid": True,
+        "roll_gaps": [
+            {
+                "previous_contract": "MESH26",
+                "next_contract": "MESM26",
+                "roll_timestamp": "2026-05-14T13:00:00+00:00",
+            }
+        ],
+    }
+    future_gap = {
+        "roll_method": "segmented_contracts",
+        "valid": True,
+        "roll_gaps": [
+            {
+                "previous_contract": "MNQM26",
+                "next_contract": "MNQU26",
+                "roll_timestamp": "2026-06-01T00:00:00+00:00",
+            }
+        ],
+    }
+    covered = join_journal_bars(trades, data=parent, subtimeframe_data=bars, roll_metadata=covering)
+    assert FLAG_ROLL_MISMATCH not in covered.iloc[0]["join_flags"]
+    for meta in (other_pair, future_gap):
+        joined = join_journal_bars(trades, data=parent, subtimeframe_data=bars, roll_metadata=meta)
+        assert FLAG_ROLL_MISMATCH in joined.iloc[0]["join_flags"]
+
+
 def test_roll_metadata_covers_continuous_day(tmp_path: Path) -> None:
     trades = _pair(tmp_path, *_same_bar_rows())
     bars = _minute_14()
