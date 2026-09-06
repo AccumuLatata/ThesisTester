@@ -1,4 +1,4 @@
-"""Journal typed records (TJ1–TJ5).
+"""Journal typed records (TJ1–TJ6).
 
 Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
@@ -81,6 +81,40 @@ JOIN_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
     "exit_bar_open",
     "parent_1m_ts",
     "join_flags",
+)
+
+# --- tag classes / attribution (TJ6) ---
+TAG_CLASS_LEVEL: Final[str] = "level"
+TAG_CLASS_CONTEXT: Final[str] = "context"
+TAG_CLASS_CONFIRM: Final[str] = "confirm"
+TAG_CLASS_UNMAPPED: Final[str] = "unmapped"
+TAG_CLASSES: Final[frozenset[str]] = frozenset(
+    {TAG_CLASS_LEVEL, TAG_CLASS_CONTEXT, TAG_CLASS_CONFIRM, TAG_CLASS_UNMAPPED}
+)
+LEVEL_CONTEXT_AT_LEVEL: Final[str] = "at_level"
+LEVEL_CONTEXT_BETWEEN: Final[str] = "between_levels"
+LEVEL_CONTEXT_NO_FRAME: Final[str] = "no_frame"
+LEVEL_CONTEXTS: Final[frozenset[str]] = frozenset(
+    {LEVEL_CONTEXT_AT_LEVEL, LEVEL_CONTEXT_BETWEEN, LEVEL_CONTEXT_NO_FRAME}
+)
+TAG_ALIGN_ALL: Final[str] = "all_aligned"
+TAG_ALIGN_PARTIAL: Final[str] = "partial"
+TAG_ALIGN_NONE: Final[str] = "none_aligned"
+TAG_ALIGN_UNVERIFIABLE: Final[str] = "unverifiable"
+TAG_ALIGNMENTS: Final[frozenset[str]] = frozenset(
+    {TAG_ALIGN_ALL, TAG_ALIGN_PARTIAL, TAG_ALIGN_NONE, TAG_ALIGN_UNVERIFIABLE}
+)
+DEFAULT_LEVEL_TOLERANCE_TICKS: Final[float] = 10.0
+DEFAULT_TAG_TOLERANCE_TICKS: Final[float] = 10.0
+ATTRIBUTION_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
+    "levels_within_tolerance",
+    "nearest_level_token",
+    "nearest_level_distance_ticks",
+    "level_context",
+    "tag_alignment",
+    "intent_mismatch",
+    "unmapped_tags",
+    "tag_verifications",
 )
 
 

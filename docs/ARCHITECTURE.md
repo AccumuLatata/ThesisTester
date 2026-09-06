@@ -1116,7 +1116,17 @@ write session state; it **reads** the existing `data` /
 metadata covers only the CME session of a documented roll timestamp.
 Nullable join/cost cells stay object-None. No `compute_all_levels`.
 
-Later TJ milestones (level attribution, counterfactuals, page 17)
+**TJ6 landed.** `attribute_journal_trades(trades, *, levels, …)` labels
+every entry from an already-built 1m levels frame
+(`frame.columns ∩ closed_level_token_set(settings)`). Frozen tokens use
+the containing minute; developing tokens use the adjacent previous
+completed 1m bar whose close is strictly before the fill (a gap omits
+the token). `python -m thesistester journal attribute` writes
+`journal_attribution.parquet` + `attribution.json`. Refuses
+`results/studies/`. Tag→token map is `journal/tag_map.yaml` (data, not
+code). Unknown tags stay `unmapped`. No `compute_all_levels`.
+
+Later TJ milestones (counterfactuals, named-cell match, page 17)
 add siblings in the same package. Persistence, when it lands
 (TJ9), is `.thesistester_store/journal/v1/` — sibling of `datasets/` /
 `setups/`, **not** under `execution_artifacts/` (CAI-10 LRU does not scan

@@ -57,6 +57,9 @@ version = { attr = "thesistester.__version__" }
 [tool.setuptools.packages.find]
 include = ["thesistester*"]
 
+[tool.setuptools.package-data]
+"thesistester.journal" = ["tag_map.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

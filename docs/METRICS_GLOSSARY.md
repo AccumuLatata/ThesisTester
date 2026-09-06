@@ -688,7 +688,7 @@ Uncited numeric tokens in LLM narrative are rejected before render. Glossary
 formulas above remain the definitional source; packet paths are the citation
 addresses used by the assistant release gate.
 
-## Trade journal metrics (TJ3–TJ4)
+## Trade journal metrics (TJ3–TJ6)
 
 Journal trades are **not** study cells. These quantities live on
 `JournalTrade` and must not re-rank `results_index` or replace engine
@@ -704,6 +704,9 @@ Journal trades are **not** study cells. These quantities live on
 | `hold_seconds` | `exit_timestamp − entry_timestamp` in seconds. Primary journal duration. |
 | `bars_held` (journal) | Count of completed 15s bars strictly between entry and exit (TJ5). `0` + `excursion_unavailable` when the trade dies inside the entry bar; null when the covering bar is missing. |
 | `reconciled` | TJ4 day status: `reconciled` / `journal_missing` / `amp_missing` / `multiset_mismatch` / `pnl_mismatch`. Later milestones refuse days that are not `reconciled` unless `allow_unreconciled=True`. |
+| `level_context` | TJ6 attribution of the entry price on the derived 1m parent: `at_level` (at least one closed-set token with \|distance\| ≤ `level_tolerance_ticks`, default **10**), `between_levels` (tokens exist, none inside tolerance), `no_frame` (no covering 1m bar or no usable token values). Nearby tokens, not “the level you meant”. |
+| `tag_alignment` | TJ6 verification of **level-class** tags only: `all_aligned` / `partial` / `none_aligned` / `unverifiable`. A tag is aligned when \|`tag_distance_ticks`\| ≤ `tag_tolerance_ticks` (default **10**). Missing token → `tag_level_missing`. Context / confirm / unmapped tags never drive this field. Distance check, not a trigger. |
+| `intent_mismatch` | `True` when at least one level-class tag is present, none of those tags is within tag tolerance, and `levels_within_tolerance` is non-empty (tagged A; the frame says B was at hand). |
 
 Point values are MNQ $2 / MES $5; tick 0.25. Engine `simulate_trades` is 1-lot
 — do not copy those formulas onto journal rows.

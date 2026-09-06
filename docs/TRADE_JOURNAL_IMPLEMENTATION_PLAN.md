@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ5 landed.** TJ6 (level attribution + tag verification) is next. No page yet.
+**Status:** **TJ6 landed.** TJ7 (own-entry counterfactuals) is next. No page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -368,9 +368,10 @@ These match live engine helpers. Do not re-derive them.
    bar that contains the fill. **Prior/frozen** tokens (`pd*`, `pw*`, `pm*`,
    `prevSettlement`, `pRTH_*`, overnight highs after the session exists) may
    use that minute. **Developing** tokens (`dVWAP`, `APOC`, MAs, rolling
-   VWAP/POC) use the **previous completed 1m bar** whose close is strictly
-   before `entry_timestamp`. Using the current minute’s close is look-ahead
-   on a 24 s median hold.
+   VWAP/POC) use the **adjacent previous completed 1m bar** whose close
+   is strictly before `entry_timestamp`. A gap or session start omits the
+   token rather than walking back to a stale stamp. Using the current
+   minute’s close is look-ahead on a 24 s median hold.
 4. **Never call `compute_all_levels` from journal code.** Library kwargs
    default `apoc_enabled=False` / `session_vwap_enabled=False`; product
    `DEFAULT_LEVELS_SETTINGS` enables them. Consume an already-built frame;
@@ -552,7 +553,9 @@ that day.
 contains the fill (§3.0), for every token in
 `frame.columns ∩ closed_level_token_set(frame_settings)` with a non-null
 value: `level_distance_ticks = (entry_price − level_value) / tick`. Frozen
-tokens use that minute; developing tokens use the previous completed 1m bar.
+tokens use that minute; developing tokens use the adjacent previous
+completed 1m bar whose close is strictly before the fill (a gap omits
+the token).
 Emit `levels_within_tolerance` (tokens with `|distance| ≤ level_tolerance_ticks`,
 default **10**, sorted by |distance|), `nearest_level_token`,
 `nearest_level_distance_ticks`, and `level_context` ∈ `at_level` |
@@ -769,15 +772,15 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ6 — Level attribution + tag verification
 
-- Attribution on a hand-built **1m** levels frame: `at_level`, `between_levels`,
+- [x] Attribution on a hand-built **1m** levels frame: `at_level`, `between_levels`,
   `no_frame`; developing token uses previous completed minute; tolerance
   keyword-only default 10.
-- Map is data (YAML/dict), unit-tested against
+- [x] Map is data (YAML/dict), unit-tested against
   `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`.
-- `unmapped` tags counted, never dropped; exact-tag before qualifier strip.
-- Alignment classes + `intent_mismatch` tested (aligned / partial / missing
+- [x] `unmapped` tags counted, never dropped; exact-tag before qualifier strip.
+- [x] Alignment classes + `intent_mismatch` tested (aligned / partial / missing
   token / tagged-A-but-at-B).
-- Docs: intent ≠ evidence; alignment is a distance check, not a trigger.
+- [x] Docs: intent ≠ evidence; alignment is a distance check, not a trigger.
 
 ### TJ7 — Own-entry counterfactuals
 
@@ -834,7 +837,7 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 | Opt-in | No journal code on the default research path. CLI/page are new entry points |
 | Schema-versioned persistence | `journal/v1`; readers tolerate missing recon/attribution/counterfactual/match files |
 | Bundle hash neutrality | Journal never writes into research bundles |
-| PIT | TJ5–TJ7 use already-emitted bars/ticks/levels; no new level series. Developing levels read the previous completed 1m bar. TJ7 15s walk starts at the next 15s open. Journal never calls `simulate_trades` or `compute_all_levels` |
+| PIT | TJ5–TJ7 use already-emitted bars/ticks/levels; no new level series. Developing levels read the adjacent previous 1m bar whose close is strictly before the fill (a gap omits the token). TJ7 15s walk starts at the next 15s open. Journal never calls `simulate_trades` or `compute_all_levels` |
 | Determinism | Pairing is `spread_id` + time + `fill_id` tie-break. The only RNG is the TJ7 null, seeded, seed persisted; shuffle preserves per-session direction counts |
 | Same-PR docs | Each PR lists its doc edits; honesty/glossary/architecture only when true |
 | PII | Desk exports stay outside git |
