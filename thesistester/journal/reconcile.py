@@ -243,7 +243,11 @@ def _fill_key(price: float, side: str, qty: object, *, fill_id: str = "") -> tup
     side_text = str(side)
     if side_text not in {"buy", "sell"}:
         raise JournalIngestError(f"fill {fill_id!r} side must be buy or sell (got {side!r})")
-    return (quantize_price(float(price)), side_text, _require_positive_int(qty, fill_id=fill_id, field="qty"))
+    return (
+        quantize_price(float(price)),
+        side_text,
+        _require_positive_int(qty, fill_id=fill_id, field="qty"),
+    )
 
 
 def _journal_multiset(rows: Sequence[Mapping[str, object]]) -> Counter[tuple[float, str, int]]:
@@ -356,11 +360,7 @@ def _reconcile_day(
             note="imported fill multiset (price, side, qty) != AMP confirmations",
         )
     ps_usd = _finite_or_none(float(statement.ps_usd))
-    if (
-        journal_gross is None
-        or ps_usd is None
-        or abs(journal_gross - ps_usd) > pnl_tolerance
-    ):
+    if journal_gross is None or ps_usd is None or abs(journal_gross - ps_usd) > pnl_tolerance:
         return DayReconcile(
             session_date=session,
             instrument=instrument,
@@ -473,7 +473,11 @@ def _cost_row(
     if commission is None or gross is None or (isinstance(gross, float) and pd.isna(gross)):
         return row
     gross_f = float(gross)
-    if not math.isfinite(gross_f) or not math.isfinite(commission) or not math.isfinite(day_fee_allocation):
+    if (
+        not math.isfinite(gross_f)
+        or not math.isfinite(commission)
+        or not math.isfinite(day_fee_allocation)
+    ):
         return row
     net = gross_f - commission - day_fee_allocation
     risk = int(row["journal_risk_ticks"]) * tick_value * qty
