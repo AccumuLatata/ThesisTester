@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, time
+from numbers import Integral, Real
 from pathlib import Path
 import json
 import math
@@ -71,10 +72,10 @@ def replay_journal_brackets(
     tick = _as_positive_tick(tick_size)
     work = _coerce_trades(trades)
     _assert_reconciled(work, allow_unreconciled=allow_unreconciled)
-    bars_15s = _normalize_bars(bars)
-    tick_frame = _normalize_ticks(ticks) if resolution == JOIN_RESOLUTION_TICK else None
     if work.empty:
         return pd.DataFrame(columns=list(COUNTERFACTUAL_OUTPUT_COLUMNS))
+    bars_15s = _normalize_bars(bars)
+    tick_frame = _normalize_ticks(ticks) if resolution == JOIN_RESOLUTION_TICK else None
     rows: list[dict[str, object]] = []
     for raw in work.to_dict(orient="records"):
         for sl_ticks, tp_ticks, max_hold in parsed:
@@ -114,7 +115,17 @@ def direction_shuffle_null(
     tick = _as_positive_tick(tick_size)
     work = _coerce_trades(trades)
     _assert_reconciled(work, allow_unreconciled=allow_unreconciled)
+    if "exit_price" not in work.columns:
+        raise JournalIngestError("direction shuffle requires exit_price")
     records = [row for row in work.to_dict(orient="records") if _has_exit(row)]
+    if not records:
+        return {
+            "seed": seed,
+            "k": k,
+            "n": 0,
+            "realized_gross_ticks": 0.0,
+            "direction_null_pct": float("nan"),
+        }
     realized = sum(_gross_ticks(row, direction=str(row["direction"]), tick=tick) for row in records)
     groups = _group_indices(records)
     rng = np.random.RandomState(seed)
@@ -147,6 +158,7 @@ def summarize_bracket_replay(frame: pd.DataFrame, trades: pd.DataFrame) -> dict[
                 net_by_id[str(raw["trade_id"])] = net
     by_bracket: dict[str, dict[str, object]] = {}
     trades_by_resolution: dict[str, set[str]] = {}
+    resolved_by_resolution: dict[str, set[str]] = {}
     if frame.empty:
         return {
             "brackets": {},
@@ -158,9 +170,11 @@ def summarize_bracket_replay(frame: pd.DataFrame, trades: pd.DataFrame) -> dict[
         resolution = str(raw["resolution"])
         trade_id = str(raw["trade_id"])
         cf_net = _optional_float(raw.get("cf_net_ticks"))
+        key = f"{cf_id}@{resolution}"
         bucket = by_bracket.setdefault(
-            cf_id,
+            key,
             {
+                "cf_id": cf_id,
                 "sl_ticks": raw["sl_ticks"],
                 "tp_ticks": raw["tp_ticks"],
                 "max_hold_seconds": raw["max_hold_seconds"],
@@ -168,6 +182,7 @@ def summarize_bracket_replay(frame: pd.DataFrame, trades: pd.DataFrame) -> dict[
                 "n": 0,
                 "n_resolved": 0,
                 "sum_cf_net_ticks": 0.0,
+                "sum_paired_cf_net_ticks": 0.0,
                 "sum_net_ticks": 0.0,
                 "paired": 0,
             },
@@ -177,43 +192,48 @@ def summarize_bracket_replay(frame: pd.DataFrame, trades: pd.DataFrame) -> dict[
         if cf_net is None:
             continue
         bucket["n_resolved"] = int(bucket["n_resolved"]) + 1
-        bucket["sum_cf_resolved"] = float(bucket.get("sum_cf_resolved", 0.0)) + cf_net
+        bucket["sum_cf_net_ticks"] = float(bucket["sum_cf_net_ticks"]) + cf_net
+        resolved_by_resolution.setdefault(resolution, set()).add(trade_id)
         realized = net_by_id.get(trade_id)
         if realized is None:
             continue
         # Same-entry pair only: open / unresolved rows do not move the delta.
-        bucket["sum_cf_net_ticks"] = float(bucket["sum_cf_net_ticks"]) + cf_net
+        bucket["sum_paired_cf_net_ticks"] = float(bucket["sum_paired_cf_net_ticks"]) + cf_net
         bucket["sum_net_ticks"] = float(bucket["sum_net_ticks"]) + realized
         bucket["paired"] = int(bucket["paired"]) + 1
     for bucket in by_bracket.values():
-        n_resolved = int(bucket.get("n_resolved", 0))
-        bucket["n_resolved"] = n_resolved
-        bucket["exit_rule_delta"] = float(bucket["sum_cf_net_ticks"]) - float(
+        n_resolved = int(bucket["n_resolved"])
+        bucket["exit_rule_delta"] = float(bucket["sum_paired_cf_net_ticks"]) - float(
             bucket["sum_net_ticks"]
         )
         bucket["mean_cf_net_ticks"] = (
-            (float(bucket.get("sum_cf_resolved", 0.0)) / n_resolved) if n_resolved else None
+            (float(bucket["sum_cf_net_ticks"]) / n_resolved) if n_resolved else None
         )
-        bucket.pop("sum_cf_resolved", None)
     flags: dict[str, object] = {}
     for resolution, trade_ids in trades_by_resolution.items():
-        n = len(trade_ids)
         means = [
-            float(bucket["mean_cf_net_ticks"] or 0.0)
+            float(bucket["mean_cf_net_ticks"])
             for bucket in by_bracket.values()
             if bucket["resolution"] == resolution
-            and int(bucket.get("n_resolved", 0)) >= ENTRY_EDGE_MIN_N
+            and bucket["mean_cf_net_ticks"] is not None
+            and int(bucket["n_resolved"]) >= ENTRY_EDGE_MIN_N
         ]
         best = max(means) if means else None
         flags[resolution] = {
-            "n": n,
+            "n": len(trade_ids),
+            "n_resolved": len(resolved_by_resolution.get(resolution, set())),
             "best_mean_cf_net_ticks": best,
             "entry_edge_flag": bool(best is not None and best > 0),
         }
+    n_brackets = len({str(bucket["cf_id"]) for bucket in by_bracket.values()})
+    if n_brackets == 3:
+        caption = "three brackets were looked at (not a single pre-registered test)"
+    else:
+        caption = f"{n_brackets} brackets were looked at (not a single pre-registered test)"
     return {
         "brackets": by_bracket,
         "entry_edge_flag": flags,
-        "caption": "three brackets were looked at (not a single pre-registered test)",
+        "caption": caption,
     }
 
 
@@ -292,7 +312,12 @@ def counterfactual_files(
             resolution=resolution,
             allow_unreconciled=allow_unreconciled,
         )
-        rule_rows = apply_journal_rules(trade_frame, loaded, hard_stop_exits=hard_stops)
+        rule_rows = apply_journal_rules(
+            trade_frame,
+            loaded,
+            hard_stop_exits=hard_stops,
+            allow_unreconciled=allow_unreconciled,
+        )
     return write_counterfactual_artifacts(
         output_dir,
         replayed,
@@ -315,11 +340,12 @@ def sl_hit_for_trade(
     tick: float = JOURNAL_TICK_SIZE,
 ) -> tuple[float, pd.Timestamp] | None:
     """SL-only walk used by ``hard_stop_ticks``. ``None`` when SL never hits."""
+    sl = _as_positive_number(sl_ticks, "sl_ticks")
     result = _replay_one(
         raw,
         bars=bars,
         ticks=ticks,
-        sl_ticks=int(sl_ticks),
+        sl_ticks=sl,
         tp_ticks=10**9,
         max_hold=None,
         resolution=resolution,
@@ -365,15 +391,15 @@ def _replay_one(
     *,
     bars: pd.DataFrame,
     ticks: pd.DataFrame | None,
-    sl_ticks: int,
-    tp_ticks: int,
+    sl_ticks: int | float,
+    tp_ticks: int | float,
     max_hold: int | None,
     resolution: str,
     tick: float,
 ) -> dict[str, object]:
     entry_ts = _as_utc(raw["entry_timestamp"])
     entry_price = float(raw["entry_price"])
-    direction = str(raw["direction"])
+    direction = _as_direction(raw["direction"])
     sl_price, tp_price = _bracket_prices(direction, entry_price, sl_ticks, tp_ticks, tick)
     session_end = _session_end_utc(raw["session_date"])
     hold_deadline = entry_ts + pd.Timedelta(seconds=max_hold) if max_hold is not None else None
@@ -398,8 +424,8 @@ def _replay_one(
             hold_deadline=hold_deadline,
         )
     qty = int(raw["qty"])
-    instrument = str(raw.get("instrument") or "MNQ")
-    point_value = JOURNAL_POINT_VALUE.get(instrument, JOURNAL_POINT_VALUE["MNQ"])
+    instrument = _as_instrument(raw["instrument"])
+    point_value = JOURNAL_POINT_VALUE[instrument]
     tick_value = tick * point_value
     if exit_price is None:
         gross = None
@@ -481,7 +507,7 @@ def _walk_ticks(
     last_ts: pd.Timestamp | None = None
     for raw in later.to_dict(orient="records"):
         ts = raw["timestamp"]
-        if hold_deadline is not None and ts > hold_deadline:
+        if hold_deadline is not None and ts >= hold_deadline:
             if last_price is not None:
                 return CF_EXIT_TIME_STOP, last_price, last_ts
             return CF_EXIT_TIME_STOP, None, hold_deadline
@@ -519,7 +545,7 @@ def _tick_hits(direction: str, price: float, sl_price: float, tp_price: float) -
 
 
 def _bracket_prices(
-    direction: str, entry: float, sl_ticks: int, tp_ticks: int, tick: float
+    direction: str, entry: float, sl_ticks: int | float, tp_ticks: int | float, tick: float
 ) -> tuple[float, float]:
     sl_off = sl_ticks * tick
     tp_off = tp_ticks * tick
@@ -533,12 +559,6 @@ def _next_15s_open(entry_ts: pd.Timestamp) -> pd.Timestamp:
     second = int(floored.second)
     bucket = (second // JOIN_BAR_SECONDS) * JOIN_BAR_SECONDS
     open_ts = floored.replace(second=bucket, microsecond=0)
-    if floored != open_ts:
-        # entry is inside (open, open+15s)
-        return open_ts + _BAR_DELTA
-    # exact open: that bar is the entry bar; start at the next
-    if entry_ts == open_ts:
-        return open_ts + _BAR_DELTA
     return open_ts + _BAR_DELTA
 
 
@@ -605,7 +625,7 @@ def _load_brackets(
     return _parse_brackets(value)
 
 
-def _cf_id(sl_ticks: int, tp_ticks: int, max_hold: int | None) -> str:
+def _cf_id(sl_ticks: int | float, tp_ticks: int | float, max_hold: int | None) -> str:
     if max_hold is None:
         return f"bracket:{sl_ticks}/{tp_ticks}"
     return f"bracket:{sl_ticks}/{tp_ticks}/{max_hold}"
@@ -614,20 +634,39 @@ def _cf_id(sl_ticks: int, tp_ticks: int, max_hold: int | None) -> str:
 def _coerce_trades(trades: pd.DataFrame) -> pd.DataFrame:
     if trades is None or not isinstance(trades, pd.DataFrame):
         raise JournalIngestError("trades must be a DataFrame")
-    needed = {"trade_id", "entry_timestamp", "entry_price", "direction", "qty", "session_date"}
+    needed = {
+        "trade_id",
+        "entry_timestamp",
+        "entry_price",
+        "direction",
+        "qty",
+        "session_date",
+        "instrument",
+    }
     missing = sorted(needed.difference(trades.columns))
     if missing:
         raise JournalIngestError("trades frame missing columns: " + ", ".join(missing))
     work = trades.copy()
+    work["trade_id"] = work["trade_id"].map(str)
+    if work["trade_id"].duplicated().any():
+        raise JournalIngestError("trades frame has duplicate trade_id")
     work["entry_timestamp"] = [_as_utc(value) for value in work["entry_timestamp"]]
     work["entry_price"] = pd.to_numeric(work["entry_price"], errors="coerce")
-    if work["entry_price"].isna().any():
-        raise JournalIngestError("trades frame has non-finite entry_price")
+    if (
+        work["entry_price"].isna().any()
+        or not work["entry_price"].map(math.isfinite).all()
+        or not (work["entry_price"] > 0).all()
+    ):
+        raise JournalIngestError("trades frame has non-finite or non-positive entry_price")
     if "recon_status" in work.columns:
         work["recon_status"] = work["recon_status"].map(_as_optional_str)
     work["session_date"] = work["session_date"].map(_as_date)
-    work["direction"] = work["direction"].map(str)
-    work["qty"] = work["qty"].map(int)
+    work["direction"] = work["direction"].map(_as_direction)
+    work["instrument"] = work["instrument"].map(_as_instrument)
+    work["qty"] = [
+        _require_positive_int(value, field="qty", trade_id=str(tid))
+        for value, tid in zip(work["qty"], work["trade_id"], strict=True)
+    ]
     return work
 
 
@@ -736,7 +775,9 @@ def _has_exit(row: Mapping[str, object]) -> bool:
 def _signed_points(direction: str, entry: float, exit_price: float) -> float:
     if direction == "long":
         return exit_price - entry
-    return entry - exit_price
+    if direction == "short":
+        return entry - exit_price
+    raise JournalIngestError(f"invalid direction {direction!r}")
 
 
 def _cost_ticks(raw: Mapping[str, object], tick_value: float) -> float:
@@ -754,13 +795,24 @@ def _cost_ticks(raw: Mapping[str, object], tick_value: float) -> float:
 
 
 def _cf_frame(rows: Sequence[Mapping[str, object]]) -> pd.DataFrame:
-    frame = pd.DataFrame(list(rows))
-    keep = [column for column in COUNTERFACTUAL_OUTPUT_COLUMNS if column in frame.columns]
-    extra = [column for column in ("cf_exit_ts",) if column in frame.columns]
-    out = frame.loc[:, keep + extra]
-    for column in ("cf_exit_price", "cf_gross_ticks", "cf_net_ticks", "cf_exit_ts"):
-        if column in out.columns:
-            out[column] = pd.Series([row.get(column) for row in rows], dtype="object")
+    if not rows:
+        return pd.DataFrame(columns=list(COUNTERFACTUAL_OUTPUT_COLUMNS))
+    keep = [column for column in COUNTERFACTUAL_OUTPUT_COLUMNS if column in rows[0]]
+    extra = [column for column in ("cf_exit_ts",) if column in rows[0]]
+    out = pd.DataFrame(index=range(len(rows)))
+    object_cols = {
+        "cf_exit_price",
+        "cf_gross_ticks",
+        "cf_net_ticks",
+        "cf_exit_ts",
+        "max_hold_seconds",
+    }
+    for column in keep + extra:
+        values = [row.get(column) for row in rows]
+        if column in object_cols:
+            out[column] = pd.Series(values, dtype="object")
+        else:
+            out[column] = pd.Series(values)
     return out
 
 
@@ -811,16 +863,70 @@ def _optional_float(value: object) -> float | None:
     return number
 
 
+def _as_direction(value: object) -> str:
+    text = str(value)
+    if text not in {"long", "short"}:
+        raise JournalIngestError(f"invalid direction {text!r}")
+    return text
+
+
+def _as_instrument(value: object) -> str:
+    text = str(value)
+    if text not in JOURNAL_POINT_VALUE:
+        raise JournalIngestError(f"unknown instrument {text!r}")
+    return text
+
+
+def _require_positive_int(value: object, *, field: str, trade_id: str) -> int:
+    if isinstance(value, bool):
+        raise JournalIngestError(
+            f"trade {trade_id!r} {field} must be a positive int (got {value!r})"
+        )
+    if isinstance(value, Integral):
+        qty = int(value)
+    elif isinstance(value, Real) and math.isfinite(float(value)) and float(value).is_integer():
+        qty = int(value)
+    else:
+        raise JournalIngestError(
+            f"trade {trade_id!r} {field} must be a positive int (got {value!r})"
+        )
+    if qty <= 0:
+        raise JournalIngestError(
+            f"trade {trade_id!r} {field} must be a positive int (got {value!r})"
+        )
+    return qty
+
+
 def _as_positive_tick(value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-        raise JournalIngestError(f"tick_size must be a positive number (got {value!r})")
-    return float(value)
+    return _as_positive_number(value, "tick_size")
+
+
+def _as_positive_number(value: object, name: str) -> float:
+    if isinstance(value, bool):
+        raise JournalIngestError(f"{name} must be a positive number (got {value!r})")
+    if isinstance(value, Integral):
+        number = float(value)
+    elif isinstance(value, Real) and math.isfinite(float(value)):
+        number = float(value)
+    else:
+        raise JournalIngestError(f"{name} must be a positive number (got {value!r})")
+    if number <= 0:
+        raise JournalIngestError(f"{name} must be a positive number (got {value!r})")
+    return number
 
 
 def _as_positive_int(value: object, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    if isinstance(value, bool):
         raise JournalIngestError(f"{name} must be a positive int (got {value!r})")
-    return value
+    if isinstance(value, Integral):
+        number = int(value)
+    elif isinstance(value, Real) and math.isfinite(float(value)) and float(value).is_integer():
+        number = int(value)
+    else:
+        raise JournalIngestError(f"{name} must be a positive int (got {value!r})")
+    if number <= 0:
+        raise JournalIngestError(f"{name} must be a positive int (got {value!r})")
+    return number
 
 
 def _load_table(path: str | Path, *, name: str) -> pd.DataFrame:

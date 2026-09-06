@@ -1132,7 +1132,8 @@ counterfactual` replay the desk's own entries. 15s walks start at the
 next 15s open; same-bar both-hit is SL-first; tick walks use Last prints
 with `ts > entry_timestamp`. The only RNG is the seeded direction
 shuffle (preserves per-session long/short counts). Rules require
-`declared_on` and never blend `in_sample` / `forward`. Writes
+`declared_on` and never blend `in_sample` / `forward`. Qty / direction /
+instrument / entry price fail closed. Writes
 `journal_counterfactuals.parquet` + `counterfactual.json`. Refuses
 `results/studies/`. No `simulate_trades`.
 

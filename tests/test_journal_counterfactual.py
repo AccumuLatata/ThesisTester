@@ -258,7 +258,7 @@ def test_exit_rule_delta_pairs_same_entries_only() -> None:
     assert reasons["jt:open:1"] == CF_EXIT_UNRESOLVED
     assert reasons["jt:unresolved:1"] == CF_EXIT_UNRESOLVED
     summary = cf_mod.summarize_bracket_replay(frame, trades)
-    bucket = summary["brackets"]["bracket:10/10"]
+    bucket = summary["brackets"]["bracket:10/10@15s"]
     assert bucket["paired"] == 1
     assert bucket["n_resolved"] == 1
     assert bucket["exit_rule_delta"] == pytest.approx(-12.48 - 4.0)
@@ -551,3 +551,202 @@ def test_cli_writes_artifacts_and_refuses_studies_dir(tmp_path: Path) -> None:
     )
     assert code_bad == 2
     assert not (forbidden / "counterfactual.json").exists()
+
+
+def test_inputs_fail_closed() -> None:
+    bars = _path_15s()
+    with pytest.raises(JournalIngestError, match="invalid direction"):
+        replay_journal_brackets(
+            pd.DataFrame([_trade(direction="Long")]), bars=bars, brackets=((10, 10, None),)
+        )
+    with pytest.raises(JournalIngestError, match="positive int"):
+        replay_journal_brackets(
+            pd.DataFrame([_trade(qty=0)]), bars=bars, brackets=((10, 10, None),)
+        )
+    with pytest.raises(JournalIngestError, match="positive int"):
+        replay_journal_brackets(
+            pd.DataFrame([_trade(qty=1.5)]),  # type: ignore[arg-type]
+            bars=bars,
+            brackets=((10, 10, None),),
+        )
+    bad_inst = _trade()
+    bad_inst["instrument"] = "NQ"
+    with pytest.raises(JournalIngestError, match="unknown instrument"):
+        replay_journal_brackets(pd.DataFrame([bad_inst]), bars=bars, brackets=((10, 10, None),))
+    with pytest.raises(JournalIngestError, match="non-positive"):
+        replay_journal_brackets(
+            pd.DataFrame([_trade(price=0.0)]), bars=bars, brackets=((10, 10, None),)
+        )
+    dup = pd.DataFrame([_trade(), _trade()])
+    with pytest.raises(JournalIngestError, match="duplicate trade_id"):
+        replay_journal_brackets(dup, bars=bars, brackets=((10, 10, None),))
+
+
+def test_max_hold_seconds_stays_object_none() -> None:
+    out = replay_journal_brackets(
+        pd.DataFrame([_trade()]),
+        bars=_path_15s(),
+        brackets=((10, 10, None), (10, 10, 5)),
+    )
+    assert out["max_hold_seconds"].dtype == object
+    assert out.iloc[0]["max_hold_seconds"] is None
+    assert out.iloc[1]["max_hold_seconds"] == 5
+    assert out.iloc[1]["cf_exit_reason"] == CF_EXIT_TIME_STOP
+    assert out.iloc[0]["cf_exit_price"] == pytest.approx(97.50)
+    assert out.iloc[1]["cf_exit_price"] is None
+
+
+def test_exit_rule_delta_is_paired_and_resolutions_do_not_mix() -> None:
+    trades = pd.DataFrame([_trade(net_ticks=None)])
+    bars = _path_15s()
+    replayed = replay_journal_brackets(trades, bars=bars, brackets=((10, 10, None),))
+    summary = cf_mod.summarize_bracket_replay(replayed, trades)
+    bucket = summary["brackets"]["bracket:10/10@15s"]
+    assert bucket["paired"] == 0
+    assert bucket["exit_rule_delta"] == pytest.approx(0.0)
+    assert bucket["sum_cf_net_ticks"] == pytest.approx(-12.48)
+
+    ticks = pd.DataFrame(
+        [
+            {"timestamp": _ts("2026-05-14T14:00:04"), "price": 100.25},
+            {"timestamp": _ts("2026-05-14T14:00:05"), "price": 102.50},
+        ]
+    )
+    tick_row = replay_journal_brackets(
+        pd.DataFrame([_trade()]),
+        bars=bars,
+        ticks=ticks,
+        brackets=((10, 10, None),),
+        resolution=JOIN_RESOLUTION_TICK,
+    )
+    mixed = pd.concat([replayed, tick_row], ignore_index=True)
+    mixed_summary = cf_mod.summarize_bracket_replay(mixed, pd.DataFrame([_trade()]))
+    assert set(mixed_summary["brackets"]) == {"bracket:10/10@15s", "bracket:10/10@tick"}
+    assert mixed_summary["brackets"]["bracket:10/10@15s"]["n"] == 1
+    assert mixed_summary["brackets"]["bracket:10/10@tick"]["n"] == 1
+    assert mixed_summary["entry_edge_flag"]["15s"]["n"] == 1
+    assert mixed_summary["entry_edge_flag"]["tick"]["n"] == 1
+
+
+def test_unresolved_does_not_dilute_cf_mean() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "trade_id": "jt:a:1",
+                "cf_id": "bracket:10/10",
+                "resolution": JOIN_RESOLUTION_15S,
+                "sl_ticks": 10,
+                "tp_ticks": 10,
+                "max_hold_seconds": None,
+                "cf_net_ticks": 10.0,
+            },
+            {
+                "trade_id": "jt:b:1",
+                "cf_id": "bracket:10/10",
+                "resolution": JOIN_RESOLUTION_15S,
+                "sl_ticks": 10,
+                "tp_ticks": 10,
+                "max_hold_seconds": None,
+                "cf_net_ticks": None,
+            },
+        ]
+    )
+    trades = pd.DataFrame(
+        [_trade(trade_id="jt:a:1", net_ticks=4.0), _trade(trade_id="jt:b:1", net_ticks=2.0)]
+    )
+    summary = cf_mod.summarize_bracket_replay(frame, trades)
+    bucket = summary["brackets"]["bracket:10/10@15s"]
+    assert bucket["n"] == 2
+    assert bucket["n_resolved"] == 1
+    assert bucket["mean_cf_net_ticks"] == pytest.approx(10.0)
+    assert bucket["exit_rule_delta"] == pytest.approx(10.0 - 4.0)
+    assert bucket["paired"] == 1
+
+
+def test_tick_print_at_hold_deadline_is_time_stop() -> None:
+    ticks = pd.DataFrame(
+        [
+            {"timestamp": _ts("2026-05-14T14:00:04"), "price": 100.25},
+            {"timestamp": _ts("2026-05-14T14:00:05"), "price": 102.50},
+        ]
+    )
+    out = replay_journal_brackets(
+        pd.DataFrame([_trade()]),
+        bars=_path_15s(),
+        ticks=ticks,
+        brackets=((10, 10, 2),),
+        resolution=JOIN_RESOLUTION_TICK,
+    )
+    assert out.iloc[0]["cf_exit_reason"] == CF_EXIT_TIME_STOP
+    assert out.iloc[0]["cf_exit_price"] == pytest.approx(100.25)
+
+
+def test_direction_shuffle_empty_closed_book_is_nan() -> None:
+    trades = pd.DataFrame([_trade(exit_at=None, exit_price=None)])  # type: ignore[arg-type]
+    result = direction_shuffle_null(trades, seed=1, k=10)
+    assert result["n"] == 0
+    assert result["direction_null_pct"] != result["direction_null_pct"]
+    missing = pd.DataFrame([_trade()]).drop(columns=["exit_price"])
+    with pytest.raises(JournalIngestError, match="exit_price"):
+        direction_shuffle_null(missing, seed=1, k=10)
+
+
+def test_hard_stop_float_ticks_and_cooldown_uses_sl_ts() -> None:
+    trades = pd.DataFrame(
+        [
+            _trade(net_ticks=20.0, exit_price=105.00, exit_at="2026-05-14T14:00:40"),
+            _trade(
+                trade_id="jt:t2:1",
+                entry="2026-05-14T14:00:50",
+                exit_at="2026-05-14T14:01:00",
+                net_ticks=3.0,
+            ),
+        ]
+    )
+    hit = cf_mod.sl_hit_for_trade(
+        trades.iloc[0].to_dict(),
+        bars=_path_15s(),
+        ticks=None,
+        sl_ticks=10.0,
+        resolution=JOIN_RESOLUTION_15S,
+    )
+    assert hit is not None
+    assert hit[1] == _ts("2026-05-14T14:00:15")
+    rows = apply_journal_rules(
+        trades,
+        (
+            parse_journal_rule(
+                {
+                    "name": "hard_cool",
+                    "declared_on": "2026-05-20",
+                    "hard_stop_ticks": 10.0,
+                    "cooldown_seconds_after_loss": 20,
+                }
+            ),
+        ),
+        hard_stop_exits={("jt:t1:1", 10.0): hit},
+    )
+    in_sample = next(row for row in rows if row["split"] == RULE_SPLIT_IN_SAMPLE)
+    assert in_sample["n_kept"] == 2
+    assert in_sample["trades_removed"] == 0
+
+
+def test_rules_refuse_unreconciled_days() -> None:
+    trades = pd.DataFrame([_trade(recon=RECON_AMP_MISSING)])
+    rule = parse_journal_rule(
+        {"name": "cap", "declared_on": "2026-05-20", "max_trades_per_day": 10}
+    )
+    with pytest.raises(JournalIngestError, match="not reconciled"):
+        apply_journal_rules(trades, (rule,))
+    kept = apply_journal_rules(trades, (rule,), allow_unreconciled=True)
+    assert kept[0]["n_kept"] == 1
+
+
+def test_brackets_accept_integer_valued_floats() -> None:
+    out = replay_journal_brackets(
+        pd.DataFrame([_trade()]),
+        bars=_path_15s(),
+        brackets=({"sl_ticks": 10.0, "tp_ticks": 10.0, "max_hold_seconds": None},),
+    )
+    assert out.iloc[0]["cf_exit_reason"] == CF_EXIT_SL
+    assert out.iloc[0]["sl_ticks"] == 10

@@ -10,8 +10,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
+from numbers import Integral, Real
 from pathlib import Path
 import json
+import math
 
 import pandas as pd
 import yaml
@@ -20,6 +22,7 @@ from thesistester.journal.schema import (
     JOURNAL_EXCHANGE_TZ,
     JOURNAL_POINT_VALUE,
     JOURNAL_TICK_SIZE,
+    RECON_RECONCILED,
     RULE_FILTER_KEYS,
     RULE_SPLIT_FORWARD,
     RULE_SPLIT_IN_SAMPLE,
@@ -109,15 +112,19 @@ def apply_journal_rules(
     rules: Sequence[JournalRule],
     *,
     hard_stop_exits: Mapping[tuple[str, float], tuple[float, pd.Timestamp]] | None = None,
+    allow_unreconciled: bool = False,
 ) -> tuple[dict[str, object], ...]:
     """Evaluate each rule in time order. Returns per-rule × split summaries.
 
     ``hard_stop_exits`` maps ``(trade_id, hard_stop_ticks)`` to
     ``(exit_price, exit_ts)`` from the TJ7 SL walk. Missing ``declared_on`` is
-    rejected at parse time, not here.
+    rejected at parse time, not here. ``allow_unreconciled`` is keyword-only.
     """
     if not isinstance(rules, Sequence) or isinstance(rules, (str, bytes)):
         raise JournalIngestError("rules must be a sequence of JournalRule")
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        raise JournalIngestError("trades must be a DataFrame")
+    _assert_reconciled(trades, allow_unreconciled=allow_unreconciled)
     ordered = _ordered_trades(trades)
     summaries: list[dict[str, object]] = []
     for rule in rules:
@@ -226,6 +233,8 @@ def _apply_hard_stop(
         return baseline, original_exit
     qty = int(raw["qty"])
     instrument = str(raw["instrument"])
+    if instrument not in JOURNAL_POINT_VALUE:
+        raise JournalIngestError(f"unknown instrument {instrument!r}")
     point_value = JOURNAL_POINT_VALUE[instrument]
     tick_value = JOURNAL_TICK_SIZE * point_value
     points = _signed_points(str(raw["direction"]), float(raw["entry_price"]), sl_price)
@@ -258,15 +267,47 @@ def _summary_row(rule: JournalRule, split: str, bucket: Mapping[str, float]) -> 
     }
 
 
+def _assert_reconciled(trades: pd.DataFrame, *, allow_unreconciled: bool) -> None:
+    if allow_unreconciled:
+        return
+    if "recon_status" not in trades.columns:
+        raise JournalIngestError(
+            "journal rules refuse days that are not reconciled "
+            "(pass allow_unreconciled=True to override)"
+        )
+    if trades.empty:
+        return
+    bad = [status for status in trades["recon_status"] if status != RECON_RECONCILED]
+    if bad:
+        raise JournalIngestError(
+            "journal rules refuse days that are not reconciled "
+            f"(got {sorted({str(item) for item in bad})}; "
+            "pass allow_unreconciled=True to override)"
+        )
+
+
 def _ordered_trades(trades: pd.DataFrame) -> list[dict[str, object]]:
     if trades is None or not isinstance(trades, pd.DataFrame):
         raise JournalIngestError("trades must be a DataFrame")
-    needed = {"trade_id", "entry_timestamp", "entry_price", "direction", "qty", "session_date"}
+    needed = {
+        "trade_id",
+        "entry_timestamp",
+        "entry_price",
+        "direction",
+        "qty",
+        "session_date",
+        "instrument",
+    }
     missing = sorted(needed.difference(trades.columns))
     if missing:
         raise JournalIngestError("trades frame missing columns: " + ", ".join(missing))
     rows: list[dict[str, object]] = []
+    seen: set[str] = set()
     for raw in trades.to_dict(orient="records"):
+        trade_id = str(raw["trade_id"])
+        if trade_id in seen:
+            raise JournalIngestError("trades frame has duplicate trade_id")
+        seen.add(trade_id)
         entry = pd.Timestamp(raw["entry_timestamp"])
         if entry.tzinfo is None:
             raise JournalIngestError("naive timestamp is not allowed")
@@ -278,20 +319,35 @@ def _ordered_trades(trades: pd.DataFrame) -> list[dict[str, object]]:
         elif isinstance(session, datetime):
             session = session.date()
         exit_ts = raw.get("exit_timestamp")
-        if exit_ts is not None and not (isinstance(exit_ts, float) and pd.isna(exit_ts)):
+        if exit_ts is not None and not pd.isna(exit_ts):
             exit_ts = pd.Timestamp(exit_ts)
+            if pd.isna(exit_ts):
+                exit_ts = None
+            elif exit_ts.tzinfo is None:
+                raise JournalIngestError("naive timestamp is not allowed")
+            else:
+                exit_ts = exit_ts.tz_convert("UTC")
         else:
             exit_ts = None
+        direction = str(raw["direction"])
+        if direction not in {"long", "short"}:
+            raise JournalIngestError(f"invalid direction {direction!r}")
+        instrument = str(raw["instrument"])
+        if instrument not in JOURNAL_POINT_VALUE:
+            raise JournalIngestError(f"unknown instrument {instrument!r}")
+        price = float(raw["entry_price"])
+        if not math.isfinite(price) or price <= 0:
+            raise JournalIngestError("trades frame has non-finite or non-positive entry_price")
         rows.append(
             {
-                "trade_id": str(raw["trade_id"]),
-                "entry_timestamp": entry.tz_convert("UTC") if entry.tzinfo else entry,
+                "trade_id": trade_id,
+                "entry_timestamp": entry.tz_convert("UTC"),
                 "exit_timestamp": exit_ts,
-                "entry_price": float(raw["entry_price"]),
+                "entry_price": price,
                 "exit_price": raw.get("exit_price"),
-                "direction": str(raw["direction"]),
-                "qty": int(raw["qty"]),
-                "instrument": str(raw.get("instrument") or "MNQ"),
+                "direction": direction,
+                "qty": _require_positive_int(raw["qty"], field="qty", trade_id=trade_id),
+                "instrument": instrument,
                 "session_date": session,
                 "net_ticks": raw.get("net_ticks"),
                 "commission_cost": raw.get("commission_cost"),
@@ -327,9 +383,14 @@ def _net_ticks(raw: Mapping[str, object]) -> float | None:
             return None
     except (TypeError, ValueError):
         pass
-    number = float(value)
-    if not pd.notna(number):
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise JournalIngestError(f"net_ticks must be finite (got {value!r})") from exc
+    if math.isnan(number):
         return None
+    if not math.isfinite(number):
+        raise JournalIngestError(f"net_ticks must be finite (got {value!r})")
     return number
 
 
@@ -363,7 +424,9 @@ def _cost_ticks(raw: Mapping[str, object], tick_value: float) -> float:
 def _signed_points(direction: str, entry: float, exit_price: float) -> float:
     if direction == "long":
         return exit_price - entry
-    return entry - exit_price
+    if direction == "short":
+        return entry - exit_price
+    raise JournalIngestError(f"invalid direction {direction!r}")
 
 
 def _as_date(value: object) -> date:
@@ -393,32 +456,79 @@ def _as_hhmm(text: str) -> time:
     parts = text.strip().split(":")
     if len(parts) != 2:
         raise JournalIngestError(f"invalid HH:MM {text!r}")
-    hour, minute = int(parts[0]), int(parts[1])
-    return time(hour, minute)
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+        return time(hour, minute)
+    except ValueError as exc:
+        raise JournalIngestError(f"invalid HH:MM {text!r}") from exc
+
+
+def _require_positive_int(value: object, *, field: str, trade_id: str) -> int:
+    if isinstance(value, bool):
+        raise JournalIngestError(
+            f"trade {trade_id!r} {field} must be a positive int (got {value!r})"
+        )
+    if isinstance(value, Integral):
+        qty = int(value)
+    elif isinstance(value, Real) and math.isfinite(float(value)) and float(value).is_integer():
+        qty = int(value)
+    else:
+        raise JournalIngestError(
+            f"trade {trade_id!r} {field} must be a positive int (got {value!r})"
+        )
+    if qty <= 0:
+        raise JournalIngestError(
+            f"trade {trade_id!r} {field} must be a positive int (got {value!r})"
+        )
+    return qty
 
 
 def _as_optional_positive_int(value: object, name: str) -> int | None:
     if value is None or value == "":
         return None
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    if isinstance(value, bool):
         raise JournalIngestError(f"{name} must be a positive int (got {value!r})")
-    return value
+    if isinstance(value, Integral):
+        number = int(value)
+    elif isinstance(value, Real) and math.isfinite(float(value)) and float(value).is_integer():
+        number = int(value)
+    else:
+        raise JournalIngestError(f"{name} must be a positive int (got {value!r})")
+    if number <= 0:
+        raise JournalIngestError(f"{name} must be a positive int (got {value!r})")
+    return number
 
 
 def _as_optional_nonneg(value: object, name: str) -> float | None:
     if value is None or value == "":
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+    if isinstance(value, bool):
         raise JournalIngestError(f"{name} must be a non-negative number (got {value!r})")
-    return float(value)
+    if isinstance(value, Integral):
+        number = float(value)
+    elif isinstance(value, Real) and math.isfinite(float(value)):
+        number = float(value)
+    else:
+        raise JournalIngestError(f"{name} must be a non-negative number (got {value!r})")
+    if number < 0:
+        raise JournalIngestError(f"{name} must be a non-negative number (got {value!r})")
+    return number
 
 
 def _as_optional_positive_number(value: object, name: str) -> float | None:
     if value is None or value == "":
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if isinstance(value, bool):
         raise JournalIngestError(f"{name} must be a positive number (got {value!r})")
-    return float(value)
+    if isinstance(value, Integral):
+        number = float(value)
+    elif isinstance(value, Real) and math.isfinite(float(value)):
+        number = float(value)
+    else:
+        raise JournalIngestError(f"{name} must be a positive number (got {value!r})")
+    if number <= 0:
+        raise JournalIngestError(f"{name} must be a positive number (got {value!r})")
+    return number
 
 
 def _load_payload(path: Path) -> object:

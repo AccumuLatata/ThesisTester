@@ -1375,11 +1375,17 @@ other than the last bar in the dataset.
 - 15s walks start at the **next** 15s open after the fill. The entry bar's
   H/L is never used (it includes pre-fill range). Same-bar both-hit on a
   later bar is **SL first**. Tick walks use Last prints with
-  `ts > entry_timestamp`. Session end is the CME 18:00 ET boundary of
-  `session_date`. Data that ends mid-session is `unresolved`. A later day's
-  bar or Last print does not prove this session finished.
+  `ts > entry_timestamp`. A print at exactly `max_hold` is a time stop.
+  Session end is the CME 18:00 ET boundary of `session_date`. Data that
+  ends mid-session is `unresolved`. A later day's bar or Last print does
+  not prove this session finished.
 - `exit_rule_delta` is paired only (finite CF net and finite realized net).
   `entry_edge_flag` mean / n use resolved CF rows; nulls are omitted.
+  15s and tick rows are never mixed in one mean. `max_hold_seconds` and
+  unresolved prices stay object-None, not NaN.
+- Inputs fail closed: `direction` must be `long`/`short`, `qty` a positive
+  int, `instrument` in the journal point-value table, `entry_price` finite
+  `> 0`.
 - When a rule applies `hard_stop_ticks` with `cooldown_seconds_after_loss`,
   the cooldown clock starts at the SL fill time, not the original exit.
 - The direction-shuffle null is the only RNG. It is seeded; the seed is
