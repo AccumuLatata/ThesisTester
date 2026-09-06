@@ -711,12 +711,19 @@ Journal trades are **not** study cells. These quantities live on
 | `entry_edge_flag` | `True` when the best-bracket mean `cf_net_ticks` is `> 0` with **resolved** n ≥ 30 **per resolution**. Mean is over resolved CF rows only (null `cf_net_ticks` is omitted, not zero). Not a single pre-registered test. |
 | `direction_null_pct` | Percentile of realized `Σ gross_ticks` inside a seeded direction-shuffle null (K default 1000). Labels are permuted within `session_date` and that day's long/short counts are preserved. High ≈ the which-way call carries information; ~50 ≈ it does not. Not a global sign-flip. |
 | `rule_delta_ticks` | Per declared rule × split: `rule_net_ticks − Σ original net_ticks`. `in_sample` (`session_date < declared_on`) and `forward` are never blended. |
-| `match_class` | TJ8 named-cell class: `executed_cell` / `near_level` / `discretionary_only` / `systematic_unfilled` / `product_mismatch`. Time window default 60 s; `match_ticks` default 8. Never a corpus scan. |
-| `product_mismatch` | Spatial-temporal match that fails the cell lock. Dimension is `hold`, `risk`, or both. Hold = journal `hold_seconds` inside `[ (bars_held−1)×bar_seconds, bars_held×bar_seconds ]`. Risk = `journal_risk_ticks` within ±50% of cell SL. |
-| `adherence` | Forward-ledger `executed_cell / (executed_cell + systematic_unfilled)` per `session_date` after `live_since`. Null when the denominator is 0. |
 
 Point values are MNQ $2 / MES $5; tick 0.25. Engine `simulate_trades` is 1-lot
 — do not copy those formulas onto journal rows.
+
+## Trade journal metrics (TJ8)
+
+Named-cell match is not a study rank key and does not rewrite `results_index`.
+
+| Key | Definition |
+|---|---|
+| `match_class` | `executed_cell` / `near_level` / `discretionary_only` / `systematic_unfilled` / `product_mismatch`. Window 60 s; `match_ticks` 8. Named cell only. |
+| `product_mismatch` | Time+price match that fails the cell lock. Dimension `hold`, `risk`, or both. Hold = `hold_seconds` in `[(bars_held−1)×bar_s, bars_held×bar_s]`. Risk = `journal_risk_ticks` within ±50% of cell SL. |
+| `adherence` | `executed_cell / (executed_cell + systematic_unfilled)` per session after `live_since`. Null if denominator is 0. |
 
 **Spoken / voice display (VA):** Push-to-talk and realtime trusted speech use the
 same digit-token grounding rules (`voice/grounding.audit_spoken_text`) against
