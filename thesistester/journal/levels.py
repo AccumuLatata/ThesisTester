@@ -402,13 +402,26 @@ def _containing_bar(
 def _previous_completed_bar(
     stamps: pd.Series, frame: pd.DataFrame, entry_ts: pd.Timestamp
 ) -> pd.Series | None:
+    """Return the adjacent completed 1m bar whose close is strictly before entry.
+
+    A session break or missing minute is fail-closed: do not read developing
+    tokens from a stale earlier row.
+    """
     if stamps.empty:
         return None
-    cutoff = entry_ts - _PARENT_DELTA
-    index = int(stamps.searchsorted(cutoff, side="left")) - 1
-    if index < 0:
+    expected = _expected_previous_open(entry_ts)
+    index = int(stamps.searchsorted(expected, side="left"))
+    if index >= len(stamps) or stamps.iloc[index] != expected:
         return None
     return frame.iloc[index]
+
+
+def _expected_previous_open(entry_ts: pd.Timestamp) -> pd.Timestamp:
+    """1m open whose close is the latest minute-close strictly before ``entry_ts``."""
+    floored = entry_ts.floor("min")
+    if entry_ts == floored:
+        return floored - (2 * _PARENT_DELTA)
+    return floored - _PARENT_DELTA
 
 
 def _finite_level(value: object) -> float | None:

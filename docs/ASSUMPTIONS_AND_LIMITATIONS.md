@@ -1354,10 +1354,11 @@ other than the last bar in the dataset.
 - Frozen tokens (`pd*`, `pw*`, `pm*`, `prevSettlement`, `pRTH_*`, overnight
   highs once the session exists) use the 1m bar that **contains** the fill
   (`open <= entry < open+1min`). Developing tokens (`dVWAP` / `dVWAP_RTH` /
-  `wVWAP` / `mVWAP`, `APOC`, MAs, rolling VWAP/POC) use the **previous
-  completed** 1m bar whose close is strictly before `entry_timestamp`. Using
-  the current minute’s close is look-ahead on a 24 s median hold. Missing
-  previous bar → omit the token / `tag_level_missing`.
+  `wVWAP` / `mVWAP`, `APOC`, MAs, rolling VWAP/POC) use the **adjacent**
+  previous completed 1m bar whose close is strictly before
+  `entry_timestamp`. Using the current minute’s close is look-ahead on a
+  24 s median hold. A missing or gapped previous minute (session break)
+  omits the token / `tag_level_missing` — do not read a stale earlier row.
 - Journal code never calls `compute_all_levels`. Missing columns are omitted
   from `levels_within_tolerance`. Default 10-tick tolerance is the scalp
   stop width — “nearby tokens”, not “the level you meant”.

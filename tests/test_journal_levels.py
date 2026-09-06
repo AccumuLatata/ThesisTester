@@ -224,6 +224,18 @@ def test_developing_token_uses_previous_completed_minute() -> None:
     assert 200.0 not in {abs(float(row["nearest_level_distance_ticks"]))}
 
 
+def test_exact_minute_entry_uses_bar_closed_strictly_before() -> None:
+    """Fill at 14:01:00 must not read the 14:00 close (equals entry)."""
+    frame = _frame_14()
+    trades = _trades(_trade(entry="2026-05-14T14:01:00", price=90.00, tags=("dVWAP",)))
+    out = attribute_journal_trades(trades, levels=frame)
+    row = out.iloc[0]
+    # Expected previous open is 13:59 (dVWAP=90), not 14:00 (dVWAP=100).
+    assert row["nearest_level_token"] == "dVWAP"
+    assert row["nearest_level_distance_ticks"] == pytest.approx(0.0)
+    assert row["tag_verifications"][0]["tag_level_missing"] is False
+
+
 def test_frozen_token_uses_containing_minute() -> None:
     frame = _frame_14()
     trades = _trades(_trade(entry="2026-05-14T14:01:10", price=101.00))
@@ -231,6 +243,34 @@ def test_frozen_token_uses_containing_minute() -> None:
     row = out.iloc[0]
     assert row["nearest_level_token"] == "pdHigh"
     assert row["nearest_level_distance_ticks"] == pytest.approx(0.0)
+
+
+def test_gapped_previous_minute_omits_developing_token() -> None:
+    """A stale earlier row is not 'the previous completed minute' (session/gap)."""
+    frame = _levels(
+        [
+            {
+                "timestamp": "2026-05-14T13:59:00",
+                "pdHigh": 99.00,
+                "dVWAP": 90.00,
+                "APOC": 91.00,
+            },
+            {
+                "timestamp": "2026-05-14T14:01:00",
+                "pdHigh": 101.00,
+                "dVWAP": 200.00,
+                "APOC": 201.00,
+            },
+        ]
+    )
+    trades = _trades(_trade(entry="2026-05-14T14:01:10", price=101.00, tags=("dVWAP", "APOC")))
+    out = attribute_journal_trades(trades, levels=frame)
+    row = out.iloc[0]
+    nearby = list(row["levels_within_tolerance"])
+    assert "dVWAP" not in nearby
+    assert "APOC" not in nearby
+    assert row["nearest_level_token"] == "pdHigh"
+    assert all(verify["tag_level_missing"] is True for verify in row["tag_verifications"])
 
 
 def test_missing_previous_developing_bar_omits_token() -> None:
