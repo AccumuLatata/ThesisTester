@@ -3,6 +3,7 @@
 Additive package. Does not call ``simulate_trades`` or ``compute_all_levels``.
 TJ1 ships the TradesViz executions loader. TJ2 adds the AMP statement parser.
 TJ3 pairs fills into ``JournalTrade``. TJ4 reconciles AMP per instrument-day.
+TJ5 joins trades to the 15s / derived-1m clock (ticks when present).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from thesistester.journal.amp_statement import (
     load_amp_statement,
     parse_amp_statement_text,
 )
+from thesistester.journal.join import join_journal_bars
 from thesistester.journal.pair import pair_journal_trades
 from thesistester.journal.reconcile import (
     quantize_price,
@@ -52,6 +54,7 @@ __all__ = [
     "FillRecord",
     "extract_amp_pdf_text",
     "load_amp_statement",
+    "join_journal_bars",
     "load_tradesviz_executions",
     "pair_journal_trades",
     "parse_amp_statement_text",

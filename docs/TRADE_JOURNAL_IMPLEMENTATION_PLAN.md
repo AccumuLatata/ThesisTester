@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ4 landed.** TJ5 (bar join) is next. No page yet.
+**Status:** **TJ5 landed.** TJ6 (level attribution + tag verification) is next. No page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -760,12 +760,12 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ5 — Join
 
-- Uses already-loaded `data` / `subtimeframe_data`; UTC-safe **bar-open** join.
-- `price_outside_bar`, `missing_bar`, `excursion_unavailable`, `roll_mismatch` tested.
-- Tick path: Last prints with `ts > entry_timestamp`; same trade joined at `15s`
-  and `tick` yields identical 1m parent and stamped `resolution`; no
-  cross-resolution averaging.
-- No level-value edits; no `LEVEL_ENGINE_VERSION` bump; no `compute_all_levels`.
+- [x] Uses already-loaded `data` / `subtimeframe_data`; UTC-safe **bar-open** join.
+- [x] `price_outside_bar`, `missing_bar`, `excursion_unavailable`, `roll_mismatch` tested.
+- [x] Tick path: Last prints with `ts > entry_timestamp`; same trade joined at `15s`
+      and `tick` yields identical 1m parent and stamped `resolution`; no
+      cross-resolution averaging.
+- [x] No level-value edits; no `LEVEL_ENGINE_VERSION` bump; no `compute_all_levels`.
 
 ### TJ6 — Level attribution + tag verification
 

@@ -1,4 +1,4 @@
-"""Journal typed records (TJ1–TJ4).
+"""Journal typed records (TJ1–TJ5).
 
 Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
@@ -57,6 +57,30 @@ RECON_STATUSES: Final[frozenset[str]] = frozenset(
         RECON_MULTISET_MISMATCH,
         RECON_PNL_MISMATCH,
     }
+)
+JOIN_RESOLUTION_15S: Final[str] = "15s"
+JOIN_RESOLUTION_TICK: Final[str] = "tick"
+JOIN_RESOLUTIONS: Final[frozenset[str]] = frozenset({JOIN_RESOLUTION_15S, JOIN_RESOLUTION_TICK})
+FLAG_MISSING_BAR: Final[str] = "missing_bar"
+FLAG_PRICE_OUTSIDE_BAR: Final[str] = "price_outside_bar"
+FLAG_EXCURSION_UNAVAILABLE: Final[str] = "excursion_unavailable"
+FLAG_ROLL_MISMATCH: Final[str] = "roll_mismatch"
+JOIN_FLAGS: Final[frozenset[str]] = frozenset(
+    {
+        FLAG_MISSING_BAR,
+        FLAG_PRICE_OUTSIDE_BAR,
+        FLAG_EXCURSION_UNAVAILABLE,
+        FLAG_ROLL_MISMATCH,
+    }
+)
+JOIN_BAR_SECONDS: Final[int] = 15
+JOIN_PARENT_MINUTES: Final[int] = 1
+JOIN_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
+    "resolution",
+    "entry_bar_open",
+    "exit_bar_open",
+    "parent_1m_ts",
+    "join_flags",
 )
 
 
