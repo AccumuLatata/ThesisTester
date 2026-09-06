@@ -284,6 +284,31 @@ def test_positional_args_rejected() -> None:
         match_journal_to_cell(pd.DataFrame([_journal()]), pd.DataFrame([_sys()]))  # type: ignore[misc]
 
 
+def test_research_zip_stem_is_run_name(tmp_path: Path) -> None:
+    bundle = tmp_path / "fade_mnq.research.zip"
+    digest = _write_bundle(bundle, trades=pd.DataFrame([_sys()]))
+    cell = load_named_cell(bundle=bundle, expected_hash=digest)
+    assert cell.run_name == "fade_mnq"
+
+
+def test_product_mismatch_does_not_also_count_unfilled() -> None:
+    out = match_journal_to_cell(
+        pd.DataFrame([_journal(journal_risk_ticks=10.0)]),
+        systematic_trades=pd.DataFrame([_sys(sl=80.0)]),
+        systematic_signals=pd.DataFrame([_signal(signal_id="sig:1", stamp="2026-05-14T14:00:10")]),
+        cell_id="cell_a",
+        instrument="MNQ",
+        stop_loss_ticks=80.0,
+    )
+    assert MATCH_PRODUCT_MISMATCH in set(out["match_class"])
+    assert MATCH_SYSTEMATIC_UNFILLED not in set(out["match_class"])
+    ledger = build_forward_ledger(out, live_since=None, cell_expectancy_ticks=None)
+    assert ledger[0]["product_mismatch"] == 1
+    assert ledger[0]["systematic_unfilled"] == 0
+    assert ledger[0]["adherence"] is None
+    assert ledger[0]["systematic_signals"] == 1
+
+
 def test_hash_verified_bundle_and_mismatch(tmp_path: Path) -> None:
     bundle = tmp_path / "cell.research.zip"
     digest = _write_bundle(bundle, trades=pd.DataFrame([_sys()]))
@@ -380,6 +405,8 @@ def test_ledger_does_not_write_promotion_registry(tmp_path: Path) -> None:
     assert registry.stat().st_mtime_ns == mtime
     payload = json.loads((out / "match.json").read_text(encoding="utf-8"))
     assert payload["schema_version"] == "journal/v1"
+    assert payload["cell"]["run_name"] == "cell"
+    assert payload["cell"]["live_since"] == "2026-05-14"
     assert payload["cell"]["bundle_hash"] == digest
     assert "named-cell" in payload["honesty"]
     frame = pd.read_parquet(out / "journal_matches.parquet")

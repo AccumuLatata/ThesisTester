@@ -123,7 +123,7 @@ def build_forward_ledger(
         rows.append(
             {
                 "session_date": session.isoformat(),
-                "systematic_signals": unfilled + executed,
+                "systematic_signals": unfilled + executed + counts[MATCH_PRODUCT_MISMATCH],
                 "executed_cell": executed,
                 "near_level": counts[MATCH_NEAR_LEVEL],
                 "discretionary_only": counts[MATCH_DISCRETIONARY_ONLY],

@@ -166,7 +166,7 @@ def load_named_cell(
         expectancy_r = (sum(finite) / len(finite)) if finite else None
     expectancy_ticks = (expectancy_r * sl) if expectancy_r is not None else None
     since = live_since if live_since is not None else spec.get("live_since")
-    run_name = str(spec.get("run_name") or bundle_path.stem)
+    run_name = _run_name_from_bundle(bundle_path, spec)
     return NamedCell(
         run_name=run_name,
         bundle_path=bundle_path.resolve(),
@@ -339,16 +339,16 @@ def _classify(
             stop_loss_ticks=stop_loss_ticks,
             bar_seconds=bar_seconds,
         )
+        sid = _as_optional_str(sys_row.get("signal_id"))
+        if sid is not None:
+            executed_signal_ids.add(sid)
+        executed_sys_ids.add(str(sys_row["trade_id"]))
         if failing:
             klass = MATCH_PRODUCT_MISMATCH
             dimension = ",".join(failing)
         else:
             klass = MATCH_EXECUTED_CELL
             dimension = None
-            sid = _as_optional_str(sys_row.get("signal_id"))
-            if sid is not None:
-                executed_signal_ids.add(sid)
-            executed_sys_ids.add(str(sys_row["trade_id"]))
         rows.append(
             _journal_match_row(
                 journal_row,
@@ -679,6 +679,16 @@ def _load_runspec(path: Path) -> dict[str, object]:
     if not isinstance(payload, Mapping):
         raise JournalIngestError("RunSpec path must contain a mapping")
     return dict(payload)
+
+
+def _run_name_from_bundle(path: Path, spec: Mapping[str, object]) -> str:
+    named = str(spec.get("run_name") or "").strip()
+    if named:
+        return named
+    stem = path.stem
+    if stem.endswith(".research"):
+        return stem[: -len(".research")]
+    return stem
 
 
 def _refuse_corpus(path: Path) -> None:

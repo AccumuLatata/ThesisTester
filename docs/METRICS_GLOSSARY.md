@@ -723,7 +723,7 @@ Named-cell match is not a study rank key and does not rewrite `results_index`.
 |---|---|
 | `match_class` | `executed_cell` / `near_level` / `discretionary_only` / `systematic_unfilled` / `product_mismatch`. Window 60 s; `match_ticks` 8. Named cell only. |
 | `product_mismatch` | Time+price match that fails the cell lock. Dimension `hold`, `risk`, or both. Hold = `hold_seconds` in `[(bars_held−1)×bar_s, bars_held×bar_s]`. Risk = `journal_risk_ticks` within ±50% of cell SL. |
-| `adherence` | `executed_cell / (executed_cell + systematic_unfilled)` per session after `live_since`. Null if denominator is 0. |
+| `adherence` | `executed_cell / (executed_cell + systematic_unfilled)` per session after `live_since`. `product_mismatch` is omitted from both sides. Null if denominator is 0. |
 
 **Spoken / voice display (VA):** Push-to-talk and realtime trusted speech use the
 same digit-token grounding rules (`voice/grounding.audit_spoken_text`) against

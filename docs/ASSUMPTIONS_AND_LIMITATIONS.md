@@ -1414,9 +1414,12 @@ other than the last bar in the dataset.
   `journal_risk_ticks` within ±50% of the cell SL. A 10-tick scalp is not
   an 80-tick study lock.
 - Adherence = `executed_cell / (executed_cell + systematic_unfilled)`.
-  The forward ledger is per `session_date` for cells declared live
-  (`live_since`). Sessions before that date are omitted. Live ticks are
-  qty-scaled journal; cell expectancy is 1-lot `R × SL` in ticks.
+  A time+price pair that fails the cell lock is `product_mismatch` only
+  — it does not also count as `systematic_unfilled`. The forward ledger
+  is per `session_date` for cells declared live (`live_since`). Sessions
+  before that date are omitted. Live ticks are qty-scaled journal; cell
+  expectancy is 1-lot `R × SL` in ticks. Bundle files named
+  `{run_name}.research.zip` resolve `run_name` by stripping `.research`.
 - The promotion / live-declaration file is **read-only**. Journal match
   does not write the registry, `results_index`, or research bundles.
 - `python -m thesistester journal match` writes `journal_matches.parquet`
