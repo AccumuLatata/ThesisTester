@@ -23,6 +23,21 @@ _CONF_HEADER = "T R A D E S C O N F I R M A T I O N S"
 _PS_HEADER = "P U R C H A S E & S A L E"
 _SUMMARY_MARK = "Account Summary"
 _DAILY_MARK = "DAILY STATEMENT"
+# Collapsed (whitespace-stripped) headers. AMP letter-spaces section titles;
+# Open Positions / Journal / delivery blocks sit between P&S and Account
+# Summary and reuse the confirmation-row layout.
+_HEADER_CONF = "TRADESCONFIRMATIONS"
+_HEADER_PS = "PURCHASE&SALE"
+_HEADER_SUMMARY = "ACCOUNTSUMMARY"
+_HEADER_IGNORE = frozenset(
+    {
+        "OPENPOSITIONS",
+        "JOURNALENTRIES",
+        "DELIVERYANDCASHSETTLEMENT",
+        "EXPIRATIONS",
+        "EXERCISES",
+    }
+)
 
 _MONTHS = {
     "JAN": 1,
@@ -142,6 +157,10 @@ def load_amp_statement(path: str | Path) -> AmpStatement:
     return parse_amp_statement_text(extract_amp_pdf_text(path))
 
 
+def _collapse_header(line: str) -> str:
+    return re.sub(r"[^A-Z0-9&]+", "", line.upper())
+
+
 def _split_sections(text: str) -> tuple[list[str], list[str], list[str]]:
     section = _SECTION_NONE
     conf: list[str] = []
@@ -152,14 +171,19 @@ def _split_sections(text: str) -> tuple[list[str], list[str], list[str]]:
         stripped = line.strip()
         if not stripped or stripped.startswith("../.."):
             continue
-        if _CONF_HEADER in stripped:
+        collapsed = _collapse_header(stripped)
+        if _HEADER_CONF in collapsed or _CONF_HEADER in stripped:
             section = _SECTION_CONF
             continue
-        if _PS_HEADER in stripped:
+        if _HEADER_PS in collapsed or _PS_HEADER in stripped:
             section = _SECTION_PS
             continue
-        if _SUMMARY_MARK in stripped:
+        if _HEADER_SUMMARY in collapsed or _SUMMARY_MARK in stripped:
             section = _SECTION_SUMMARY
+            continue
+        if any(name in collapsed for name in _HEADER_IGNORE):
+            # Open Positions / journal / delivery rows can match ``_FILL_RE``.
+            section = _SECTION_NONE
             continue
         if section == _SECTION_CONF and _FILL_RE.match(stripped):
             conf.append(stripped)

@@ -93,6 +93,56 @@ def test_unknown_fee_name_fails_closed():
         parse_amp_statement_text(text)
 
 
+def test_open_positions_after_ps_are_not_absorbed() -> None:
+    """AMP places Open Positions between P&S and Account Summary (Bugbot)."""
+    extra = """\
+                                O P E N   P O S I T I O N S
+ 27-MAY-26 15000999 CME 1        MNQ Future JUN 26         29999.00 USD
+                      Account Summary as of 05/27/26
+"""
+    text = _text(MNQ_JUN).replace(
+        "                      Account Summary as of 05/27/26\n",
+        extra,
+        1,
+    )
+    stmt = parse_amp_statement_text(text)
+    assert len(stmt.fills) == 4
+    assert len(stmt.ps_pairs) == 4
+    assert all(fill.fcm_number != "15000999" for fill in stmt.fills)
+    assert all(fill.fcm_number != "15000999" for fill in stmt.ps_pairs)
+    assert all(fill.price != 29999.0 for fill in (*stmt.fills, *stmt.ps_pairs))
+
+
+def test_open_positions_without_ps_do_not_join_confirmations() -> None:
+    text = """\
+                              DAILY STATEMENT
+     REDACTED CLIENT                                 24-JUN-26
+                           T R A D E S C O N F I R M A T I O N S
+ 24-JUN-26 19000001 CME 1        MNQ Future SEP 26         22600.00 USD
+ 24-JUN-26 19000002 CME        1 MNQ Future SEP 26         22610.00 USD
+                                             AVERAGE LONG 22600.00000
+                                             AVERAGE SHORT 22610.00000
+                                P U R C H A S E & S A L E
+ 24-JUN-26 19000002 CME        1 MNQ Future SEP 26         22610.00 USD
+ 24-JUN-26 19000001 CME 1        MNQ Future SEP 26         22600.00 USD
+ TOTAL                  1     1 EX- 18-SEP-26         P&S         USD     20.00 CR
+                           OPEN POSITIONS
+ 24-JUN-26 19000999 CME 1        MNQ Future SEP 26         22650.00 USD
+                      Account Summary as of 06/24/26
+   TOTAL COMMISSION & FEES       1.24 DR
+    EXCHANGE                     0.70 DR
+    NFA                          0.04 DR
+    CLEARING CLIENT              0.26 DR
+    RITHMIC TRF                  0.20 DR
+    COMMISSION                   0.04 DR
+   OPEN TRADE EQUITY             0.00 CR
+"""
+    stmt = parse_amp_statement_text(text)
+    assert [fill.fcm_number for fill in stmt.fills] == ["19000001", "19000002"]
+    assert [fill.fcm_number for fill in stmt.ps_pairs] == ["19000002", "19000001"]
+    assert stmt.ps_usd == 20.0
+
+
 def test_qty_gt_1_is_one_confirmation_and_scales_fees_and_average():
     """Qty lives in the BUY xor SELL column; fee sides and averages are qty-weighted."""
     text = """\

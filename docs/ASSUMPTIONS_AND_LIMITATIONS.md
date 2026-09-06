@@ -1252,7 +1252,9 @@ other than the last bar in the dataset.
 - TJ2 parses **Trades Confirmations** for the fill list. The Purchase & Sale
   section is stored as `ps_pairs` + signed `ps_usd` (CR positive, DR
   negative) for later recon only — it is not a journal-trade list and is
-  not chronological.
+  not chronological. **Open Positions**, journal entries, and delivery /
+  cash-settlement blocks are ignored: they can reuse the confirmation-row
+  layout and must not be absorbed into `fills` or `ps_pairs`.
 - BUY vs SELL is the confirmation-row layout (qty in the BUY xor SELL
   column). A parse that disagrees with printed `AVERAGE LONG` /
   `AVERAGE SHORT` fails closed.
