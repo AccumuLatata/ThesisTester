@@ -135,6 +135,9 @@ def test_non_netting_group_falls_to_fifo_and_leftover_is_open(tmp_path: Path) ->
     opened = trades[trades["status"] == "open"]
     assert len(closed) == 1
     assert len(opened) == 1
+    assert closed.iloc[0]["trade_id"] == "jt:odd:0"
+    assert closed.iloc[0]["entry_price"] == 100.0
+    assert closed.iloc[0]["exit_price"] == 102.0
     assert opened.iloc[0]["qty"] == 1
     assert opened.iloc[0]["entry_price"] == 101.0
     assert pd.isna(opened.iloc[0]["exit_timestamp"])
@@ -286,3 +289,150 @@ def test_amp_ps_is_not_a_pairing_source() -> None:
     assert "AmpStatement" not in source
     assert "ps_pairs" not in source
     assert "amp_statement" not in source
+
+
+def test_non_netting_groups_pair_inside_group_before_session_fifo(tmp_path: Path) -> None:
+    """Interleaved 3-fill groups must not steal each other's covering fill."""
+    trades = _pair(
+        tmp_path,
+        "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,A",
+        "2026-05-14T14:00:30+0000,MNQM26,sell,USD,MNQ,future,200.0,1.0,0.0,0.0,N/A,N/A,,,B",
+        "2026-05-14T14:01:00+0000,MNQM26,buy,USD,MNQ,future,101.0,1.0,0.0,0.0,N/A,N/A,,,A",
+        "2026-05-14T14:02:00+0000,MNQM26,sell,USD,MNQ,future,102.0,1.0,0.0,0.0,N/A,N/A,,,A",
+        "2026-05-14T14:03:00+0000,MNQM26,sell,USD,MNQ,future,201.0,1.0,0.0,0.0,N/A,N/A,,,B",
+        "2026-05-14T14:04:00+0000,MNQM26,buy,USD,MNQ,future,199.0,1.0,0.0,0.0,N/A,N/A,,,B",
+    )
+    assert len(trades) == 3
+    assert (trades["pair_method"] == PAIR_METHOD_FIFO).all()
+    pairs = list(zip(trades["entry_price"], trades["exit_price"], trades["direction"], strict=True))
+    assert (100.0, 102.0, "long") in pairs
+    assert (200.0, 199.0, "short") in pairs
+    assert (101.0, 201.0, "long") in pairs
+    assert (100.0, 200.0, "long") not in pairs
+    assert set(trades["trade_id"]) == {
+        "jt:A:0",
+        "jt:B:0",
+        "jt:fifo:MNQ:JUN:2026:2026-05-14:0",
+    }
+
+
+def test_timestamp_session_date_coerces_to_calendar_date(tmp_path: Path) -> None:
+    fills = _load_csv(
+        _write_csv(
+            tmp_path,
+            "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,odd",
+            "2026-05-14T14:00:01+0000,MNQM26,buy,USD,MNQ,future,101.0,1.0,0.0,0.0,N/A,N/A,,,odd",
+            "2026-05-14T14:00:10+0000,MNQM26,sell,USD,MNQ,future,102.0,1.0,0.0,0.0,N/A,N/A,,,odd",
+        )
+    )
+    fills = fills.copy()
+    fills["session_date"] = pd.to_datetime(fills["session_date"])
+    trades = pair_journal_trades(fills)
+    assert all(type(value).__name__ == "date" for value in trades["session_date"])
+    opened = trades[trades["status"] == "open"]
+    assert list(opened["trade_id"]) == ["jt:fifo:MNQ:JUN:2026:2026-05-14:0"]
+
+
+def test_invalid_side_on_fifo_path_fails_closed(tmp_path: Path) -> None:
+    fills = _load_csv(
+        _write_csv(
+            tmp_path,
+            "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,",
+            "2026-05-14T14:00:08+0000,MNQM26,sell,USD,MNQ,future,99.0,1.0,0.0,0.0,N/A,N/A,,,",
+        )
+    )
+    fills = fills.copy()
+    fills.loc[0, "side"] = "BUY"
+    fills.loc[1, "side"] = "SELL"
+    with pytest.raises(JournalIngestError, match="side must be buy or sell"):
+        pair_journal_trades(fills)
+
+
+def test_non_integral_qty_fails_closed(tmp_path: Path) -> None:
+    fills = _load_csv(
+        _write_csv(
+            tmp_path,
+            "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,q",
+            "2026-05-14T14:00:10+0000,MNQM26,sell,USD,MNQ,future,101.0,1.0,0.0,0.0,N/A,N/A,,,q",
+        )
+    )
+    fills = fills.copy()
+    fills.loc[0, "qty"] = 1.9
+    with pytest.raises(JournalIngestError, match="qty must be a positive int"):
+        pair_journal_trades(fills)
+    fills.loc[0, "qty"] = True
+    with pytest.raises(JournalIngestError, match="qty must be a positive int"):
+        pair_journal_trades(fills)
+
+
+def test_non_finite_price_fails_closed(tmp_path: Path) -> None:
+    fills = _load_csv(
+        _write_csv(
+            tmp_path,
+            "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,p",
+            "2026-05-14T14:00:10+0000,MNQM26,sell,USD,MNQ,future,101.0,1.0,0.0,0.0,N/A,N/A,,,p",
+        )
+    )
+    fills = fills.copy()
+    fills.loc[0, "price"] = float("inf")
+    with pytest.raises(JournalIngestError, match="price must be a finite positive"):
+        pair_journal_trades(fills)
+    fills.loc[0, "price"] = float("nan")
+    with pytest.raises(JournalIngestError, match="price must be a finite positive"):
+        pair_journal_trades(fills)
+
+
+def test_unknown_entry_kind_fails_closed(tmp_path: Path) -> None:
+    fills = _load_csv(
+        _write_csv(
+            tmp_path,
+            "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,k",
+            "2026-05-14T14:00:10+0000,MNQM26,sell,USD,MNQ,future,101.0,1.0,0.0,0.0,N/A,N/A,,,k",
+        )
+    )
+    fills = fills.copy()
+    fills.loc[:, "entry_kind"] = "Imported"
+    with pytest.raises(JournalIngestError, match="entry_kind must be imported or manual"):
+        pair_journal_trades(fills)
+
+
+def test_nan_notes_become_empty(tmp_path: Path) -> None:
+    fills = _load_csv(
+        _write_csv(
+            tmp_path,
+            "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,n",
+            "2026-05-14T14:00:10+0000,MNQM26,sell,USD,MNQ,future,101.0,1.0,0.0,0.0,N/A,N/A,,,n",
+        )
+    )
+    fills = fills.copy()
+    fills.loc[0, "notes_text"] = float("nan")
+    trades = pair_journal_trades(fills)
+    assert trades.iloc[0]["notes_text"] == ""
+
+
+def test_mixed_instrument_spread_fails_closed(tmp_path: Path) -> None:
+    fills = _load_csv(
+        _write_csv(
+            tmp_path,
+            "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,mix",
+            "2026-05-14T14:00:10+0000,MNQM26,sell,USD,MNQ,future,101.0,1.0,0.0,0.0,N/A,N/A,,,mix",
+        )
+    )
+    fills = fills.copy()
+    fills.loc[1, "instrument"] = "MES"
+    with pytest.raises(JournalIngestError, match="mixes instrument/contract"):
+        pair_journal_trades(fills)
+
+
+def test_string_session_date_with_time_coerces(tmp_path: Path) -> None:
+    fills = _load_csv(
+        _write_csv(
+            tmp_path,
+            "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.0,1.0,0.0,0.0,N/A,N/A,,,s",
+            "2026-05-14T14:00:10+0000,MNQM26,sell,USD,MNQ,future,101.0,1.0,0.0,0.0,N/A,N/A,,,s",
+        )
+    )
+    fills = fills.copy()
+    fills.loc[:, "session_date"] = "2026-05-14 00:00:00"
+    trades = pair_journal_trades(fills)
+    assert trades.iloc[0]["session_date"].isoformat() == "2026-05-14"

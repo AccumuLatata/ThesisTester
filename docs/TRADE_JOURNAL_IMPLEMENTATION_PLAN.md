@@ -470,9 +470,11 @@ Pairing order:
    zero and has exactly one open side becomes trades via qty-aware FIFO
    *inside the group* (a `qty=2` cover against two 1-lot opens emits two
    trades, same exit fill, distinct `lot_seq`).
-2. A group that does not net to zero, or fills without `spread_id`, fall to
-   **qty-aware FIFO per `(instrument, contract, session_date)`** and are
-   flagged `pair_method=fifo_fallback`.
+2. A group that does not net to zero, or that opens both sides, is
+   FIFO-matched **inside the group** first (`pair_method=fifo_fallback`) so a
+   covering fill cannot be stolen by another `spread_id` on the same
+   session. Residual lots, and fills without `spread_id`, then FIFO-match
+   per `(instrument, contract, session_date)`.
 
 Direction = side of the opening lot. Tags / notes / declared SL-TP of the
 group are copied onto every trade in the group.
@@ -732,7 +734,9 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 ### TJ3 — Pair
 
 - [x] `spread_id` clean 2-fill, 4-fill scale-in, non-netting group → FIFO
-      fallback, leftover → `open`.
+      inside the group first, leftover → session FIFO / `open`. Interleaved
+      3-fill groups do not steal each other's cover. Side / qty / price /
+      `entry_kind` / mixed-contract groups fail closed.
 - [x] Tags/notes/declared SL-TP propagate; `r_multiple_declared` emitted only
       when `declared_stop` present.
 - [x] `journal_risk_ticks` keyword-only, default 10. `r_multiple` denominator

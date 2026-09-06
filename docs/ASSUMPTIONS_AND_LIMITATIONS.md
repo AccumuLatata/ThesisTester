@@ -1281,10 +1281,13 @@ other than the last bar in the dataset.
   pairing source.
 - Imported fills with a `spread_id` whose signed qty nets to zero and that
   never open the opposite side pair via qty-aware FIFO **inside that group**.
-  Groups that do not net, groups that open both sides, and fills without
-  `spread_id` fall to qty-aware FIFO per `(instrument, contract,
-  session_date)` and are flagged `pair_method=fifo_fallback`. Unpaired
-  leftover lots are `status=open`.
+  A group that does not qualify is FIFO-matched inside the group first
+  (`pair_method=fifo_fallback`); only residual lots, and fills without
+  `spread_id`, join qty-aware FIFO per `(instrument, contract,
+  session_date)`. Unpaired leftover lots are `status=open`. A `spread_id`
+  group that mixes instrument or contract fails closed. `session_date` is
+  coerced to a calendar `date` (`Timestamp` is a `date` subclass and must
+  not leak a time component into FIFO keys).
 - Manual rows stay excluded from pairing unless `include_manual=True`
   (keyword-only, default false). `qty is None` rows never pair.
 - `journal_risk_ticks` is keyword-only, default **10**. `r_multiple`

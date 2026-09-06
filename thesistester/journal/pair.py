@@ -1,23 +1,27 @@
 """Pair ``FillRecord`` rows into ``JournalTrade`` (TJ3).
 
 ``spread_id`` groups that net to zero with one open side pair via qty-aware
-FIFO inside the group. Everything else falls to qty-aware FIFO per
-``(instrument, contract, session_date)`` and is flagged ``fifo_fallback``.
-Does not reconcile AMP, join bars, or call ``simulate_trades``.
+FIFO inside the group. A group that does not qualify is FIFO-matched
+**inside the group** first (``fifo_fallback``); only residual lots, and
+fills without ``spread_id``, join qty-aware FIFO per
+``(instrument, contract, session_date)``. Does not reconcile AMP, join
+bars, or call ``simulate_trades``.
 """
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict, deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 
 from thesistester.journal.schema import (
     DEFAULT_JOURNAL_RISK_TICKS,
     ENTRY_KIND_IMPORTED,
+    ENTRY_KIND_MANUAL,
     FILL_RECORD_COLUMNS,
     JOURNAL_POINT_VALUE,
     JOURNAL_TICK_SIZE,
@@ -29,6 +33,9 @@ from thesistester.journal.schema import (
     JournalIngestError,
     JournalTrade,
 )
+
+_SIDES = frozenset({"buy", "sell"})
+_ENTRY_KINDS = frozenset({ENTRY_KIND_IMPORTED, ENTRY_KIND_MANUAL})
 
 
 @dataclass(frozen=True)
@@ -90,18 +97,41 @@ def pair_journal_trades(
     trades: list[JournalTrade] = []
     for spread_id, members in grouped.items():
         ordered = _sorted_fills(members)
+        _assert_homogeneous_group(ordered, spread_id)
+        intent = _intent_from_fills(ordered)
         if _nets_flat_one_open_side(ordered):
+            closed, leftovers = _fifo_match(
+                ordered,
+                pair_method=PAIR_METHOD_SPREAD,
+                group_key=spread_id,
+                intent=intent,
+                journal_risk_ticks=journal_risk_ticks,
+            )
+            trades.extend(closed)
+            # Net-flat + one open side should consume every lot. Emit any
+            # residual as open under the same spread key rather than mixing
+            # it into the session book (defensive; the predicate forbids it).
             trades.extend(
-                _fifo_pair(
-                    ordered,
+                _open_trade(
+                    lot=lot,
+                    lot_seq=len(closed) + index,
                     pair_method=PAIR_METHOD_SPREAD,
                     group_key=spread_id,
-                    intent=_intent_from_fills(ordered),
+                    intent=intent,
                     journal_risk_ticks=journal_risk_ticks,
                 )
+                for index, lot in enumerate(leftovers)
             )
         else:
-            fallback.extend(ordered)
+            closed, leftovers = _fifo_match(
+                ordered,
+                pair_method=PAIR_METHOD_FIFO,
+                group_key=spread_id,
+                intent=intent,
+                journal_risk_ticks=journal_risk_ticks,
+            )
+            trades.extend(closed)
+            fallback.extend(_fill_from_lot(lot, intent=intent) for lot in leftovers)
 
     buckets: dict[tuple[str, str | None, int | None, date], list[_Fill]] = defaultdict(list)
     for fill in fallback:
@@ -135,29 +165,30 @@ def _fills_from_frame(frame: pd.DataFrame, *, include_manual: bool) -> list[_Fil
         raise JournalIngestError("fills frame missing columns: " + ", ".join(missing))
     out: list[_Fill] = []
     for row in frame.itertuples(index=False):
+        fill_id = str(getattr(row, "fill_id"))
         kind = str(getattr(row, "entry_kind"))
+        if kind not in _ENTRY_KINDS:
+            raise JournalIngestError(
+                f"fill {fill_id!r} entry_kind must be imported or manual (got {kind!r})"
+            )
         if kind != ENTRY_KIND_IMPORTED and not include_manual:
             continue
         qty = getattr(row, "qty")
         if qty is None or (isinstance(qty, float) and pd.isna(qty)):
             continue
-        qty_int = int(qty)
-        if qty_int <= 0:
-            raise JournalIngestError(f"fill {getattr(row, 'fill_id')!r} qty must be a positive int")
+        qty_int = _require_positive_int(qty, fill_id=fill_id, field="qty")
         instrument = str(getattr(row, "instrument"))
         if instrument not in JOURNAL_POINT_VALUE:
             raise JournalIngestError(f"unknown journal instrument {instrument!r}")
-        tags = getattr(row, "tags")
-        if tags is None or (isinstance(tags, float) and pd.isna(tags)):
-            tag_tuple: tuple[str, ...] = ()
-        else:
-            tag_tuple = tuple(tags)
+        side = str(getattr(row, "side"))
+        if side not in _SIDES:
+            raise JournalIngestError(f"fill {fill_id!r} side must be buy or sell (got {side!r})")
+        price = _require_positive_finite(getattr(row, "price"), fill_id=fill_id, field="price")
+        tag_tuple = _coerce_tags(getattr(row, "tags"), fill_id=fill_id)
         ts = pd.Timestamp(getattr(row, "timestamp"))
         if ts.tzinfo is None:
-            raise JournalIngestError(f"fill {getattr(row, 'fill_id')!r} timestamp must be tz-aware")
-        session = getattr(row, "session_date")
-        if not isinstance(session, date):
-            session = date.fromisoformat(str(session))
+            raise JournalIngestError(f"fill {fill_id!r} timestamp must be tz-aware")
+        session = _coerce_session_date(getattr(row, "session_date"), fill_id=fill_id)
         group = getattr(row, "source_group_id")
         if group is None or (isinstance(group, float) and pd.isna(group)) or str(group) == "":
             group = None
@@ -165,44 +196,109 @@ def _fills_from_frame(frame: pd.DataFrame, *, include_manual: bool) -> list[_Fil
             group = str(group)
         out.append(
             _Fill(
-                fill_id=str(getattr(row, "fill_id")),
+                fill_id=fill_id,
                 source_group_id=group,
                 instrument=instrument,
                 contract_month=_optional_str(getattr(row, "contract_month")),
                 contract_year=_optional_int(getattr(row, "contract_year")),
-                side=str(getattr(row, "side")),
+                side=side,
                 qty=qty_int,
-                price=float(getattr(row, "price")),
+                price=price,
                 timestamp=ts.tz_convert("UTC"),
                 session_date=session,
                 tags=tag_tuple,
-                notes_text=""
-                if getattr(row, "notes_text") is None
-                else str(getattr(row, "notes_text")),
-                declared_stop=_optional_float(getattr(row, "declared_stop")),
-                declared_target=_optional_float(getattr(row, "declared_target")),
+                notes_text=_optional_str(getattr(row, "notes_text")) or "",
+                declared_stop=_optional_float(getattr(row, "declared_stop"), fill_id=fill_id),
+                declared_target=_optional_float(getattr(row, "declared_target"), fill_id=fill_id),
             )
         )
     return out
 
 
 def _optional_str(value: object) -> str | None:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+    if value is None or value is pd.NA or (isinstance(value, float) and pd.isna(value)):
         return None
     text = str(value)
-    return text if text else None
+    if text in {"", "nan", "NaN", "<NA>", "None"}:
+        return None
+    return text
 
 
 def _optional_int(value: object) -> int | None:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+    if value is None or value is pd.NA or (isinstance(value, float) and pd.isna(value)):
         return None
-    return int(value)
+    if isinstance(value, bool):
+        raise JournalIngestError(f"contract_year must be an int (got {value!r})")
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return int(value)
+    raise JournalIngestError(f"contract_year must be an int (got {value!r})")
 
 
-def _optional_float(value: object) -> float | None:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+def _optional_float(value: object, *, fill_id: str | None = None) -> float | None:
+    if value is None or value is pd.NA or (isinstance(value, float) and pd.isna(value)):
         return None
-    return float(value)
+    number = float(value)
+    if not math.isfinite(number):
+        where = f"fill {fill_id!r} " if fill_id is not None else ""
+        raise JournalIngestError(f"{where}optional numeric must be finite (got {value!r})")
+    return number
+
+
+def _require_positive_int(value: object, *, fill_id: str, field: str) -> int:
+    if isinstance(value, bool):
+        raise JournalIngestError(f"fill {fill_id!r} {field} must be a positive int (got {value!r})")
+    if isinstance(value, int):
+        qty = int(value)
+    elif isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        qty = int(value)
+    else:
+        raise JournalIngestError(f"fill {fill_id!r} {field} must be a positive int (got {value!r})")
+    if qty <= 0:
+        raise JournalIngestError(f"fill {fill_id!r} {field} must be a positive int (got {value!r})")
+    return qty
+
+
+def _require_positive_finite(value: object, *, fill_id: str, field: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise JournalIngestError(
+            f"fill {fill_id!r} {field} must be a finite positive number (got {value!r})"
+        ) from exc
+    if not math.isfinite(number) or number <= 0.0:
+        raise JournalIngestError(
+            f"fill {fill_id!r} {field} must be a finite positive number (got {value!r})"
+        )
+    return number
+
+
+def _coerce_tags(value: object, *, fill_id: str) -> tuple[str, ...]:
+    if value is None or value is pd.NA or (isinstance(value, float) and pd.isna(value)):
+        return ()
+    if isinstance(value, (str, bytes)):
+        raise JournalIngestError(
+            f"fill {fill_id!r} tags must be a sequence of tokens (got {value!r})"
+        )
+    return tuple(str(tag) for tag in value)
+
+
+def _coerce_session_date(value: object, *, fill_id: str) -> date:
+    """Calendar date only. ``datetime`` / ``Timestamp`` are instances of ``date``."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        parsed = pd.Timestamp(value)
+    except (TypeError, ValueError) as exc:
+        raise JournalIngestError(
+            f"fill {fill_id!r} session_date must be a calendar date (got {value!r})"
+        ) from exc
+    if pd.isna(parsed):
+        raise JournalIngestError(f"fill {fill_id!r} session_date must be a calendar date")
+    return parsed.date()
 
 
 def _sorted_fills(fills: Sequence[_Fill]) -> list[_Fill]:
@@ -256,6 +352,38 @@ def _intent_from_fills(fills: Sequence[_Fill]) -> _Intent:
     return _Intent(tags=tuple(tags), notes_text=notes, declared_stop=stop, declared_target=target)
 
 
+def _assert_homogeneous_group(fills: Sequence[_Fill], spread_id: str) -> None:
+    instruments = {fill.instrument for fill in fills}
+    months = {fill.contract_month for fill in fills}
+    years = {fill.contract_year for fill in fills}
+    if len(instruments) > 1 or len(months) > 1 or len(years) > 1:
+        raise JournalIngestError(
+            f"spread_id {spread_id!r} mixes instrument/contract "
+            f"(instruments={sorted(instruments)}, months={sorted(str(m) for m in months)}, "
+            f"years={sorted(str(y) for y in years)})"
+        )
+
+
+def _fill_from_lot(lot: _OpenLot, *, intent: _Intent) -> _Fill:
+    fill = lot.fill
+    return _Fill(
+        fill_id=fill.fill_id,
+        source_group_id=fill.source_group_id,
+        instrument=fill.instrument,
+        contract_month=fill.contract_month,
+        contract_year=fill.contract_year,
+        side=fill.side,
+        qty=lot.remaining,
+        price=fill.price,
+        timestamp=fill.timestamp,
+        session_date=fill.session_date,
+        tags=intent.tags,
+        notes_text=intent.notes_text,
+        declared_stop=intent.declared_stop,
+        declared_target=intent.declared_target,
+    )
+
+
 def _fallback_key(fill: _Fill) -> tuple[str, str | None, int | None, date]:
     return (fill.instrument, fill.contract_month, fill.contract_year, fill.session_date)
 
@@ -267,14 +395,14 @@ def _fifo_group_key(key: tuple[str, str | None, int | None, date]) -> str:
     return f"fifo:{instrument}:{month_part}:{year_part}:{session.isoformat()}"
 
 
-def _fifo_pair(
+def _fifo_match(
     fills: Sequence[_Fill],
     *,
     pair_method: str,
     group_key: str,
     intent: _Intent | None,
     journal_risk_ticks: int,
-) -> list[JournalTrade]:
+) -> tuple[list[JournalTrade], list[_OpenLot]]:
     opens: deque[_OpenLot] = deque()
     trades: list[JournalTrade] = []
     lot_seq = 0
@@ -305,7 +433,26 @@ def _fifo_pair(
             remaining -= take
             if lot.remaining == 0:
                 opens.popleft()
-    for lot in opens:
+    return trades, list(opens)
+
+
+def _fifo_pair(
+    fills: Sequence[_Fill],
+    *,
+    pair_method: str,
+    group_key: str,
+    intent: _Intent | None,
+    journal_risk_ticks: int,
+) -> list[JournalTrade]:
+    trades, leftovers = _fifo_match(
+        fills,
+        pair_method=pair_method,
+        group_key=group_key,
+        intent=intent,
+        journal_risk_ticks=journal_risk_ticks,
+    )
+    lot_seq = len(trades)
+    for lot in leftovers:
         leftover_intent = intent if intent is not None else _intent_from_fills((lot.fill,))
         trades.append(
             _open_trade(
@@ -340,13 +487,15 @@ def _closed_trade(
     point_value = JOURNAL_POINT_VALUE[entry.instrument]
     tick_value = JOURNAL_TICK_SIZE * point_value
     gross_currency = points * point_value * qty
+    # Costs stay null until TJ4; net equals gross so r / net_ticks stay defined.
+    net_currency = gross_currency
     risk = journal_risk_ticks * tick_value * qty
-    r_multiple = gross_currency / risk
+    r_multiple = net_currency / risk
     r_declared = None
     if intent.declared_stop is not None:
         distance = abs(entry.price - intent.declared_stop)
         if distance > 0:
-            r_declared = gross_currency / (distance * point_value * qty)
+            r_declared = net_currency / (distance * point_value * qty)
     hold = (exit_fill.timestamp - entry.timestamp).total_seconds()
     return JournalTrade(
         trade_id=f"jt:{group_key}:{lot_seq}",
@@ -370,12 +519,12 @@ def _closed_trade(
         commission_cost=None,
         slippage_cost=None,
         day_fee_allocation=None,
-        net_pnl_currency=gross_currency,
+        net_pnl_currency=net_currency,
         r_multiple=r_multiple,
         r_multiple_declared=r_declared,
         journal_risk_ticks=journal_risk_ticks,
         fee_ticks=None,
-        net_ticks=gross_currency / tick_value,
+        net_ticks=net_currency / tick_value,
         hold_seconds=hold,
         bars_held=None,
         mae_points=None,
