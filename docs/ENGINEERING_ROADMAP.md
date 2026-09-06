@@ -29,7 +29,7 @@ Assistant-related contracts:
 | Level-as-anchor combination protocol | `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` | **Program A** (docs-only, executed desk funnel). Closed token inventory + staged `core_level` × complementary partners; L1 coin-flip-first / L2 low-N stop / Admit=`backtest.entry_window`. No new factor axes / engine / goldens |
 | Level-combination research concept | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` · inventory `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` · runbook `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | **Program B** (operator packet). Wave 0 solo (AO1) + 50 × MA / rolling VWAP / pivot, split 15s (`manifest.yaml`, 23/944) vs tick-gated VA (`manifest_va.yaml`, 4/207). `dVWAP` is an optional core, not a required partner. Does not amend the Notion desk lock page |
 | Directional integrity & edge attribution | `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA) | **DA6 landed** (DA0 locked, DA1–DA5 landed). Program B Run 2 packet (`fade` @ 1min, `same_bar_opposite_direction: raise`, `report.random_baseline` 50). Series code is **DA** (DI is Discuss Intelligence). Run 1 YAMLs untouched; generator defaults unchanged; no existing-golden regen |
-| Trade journal (fills + intent ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ0 locked.** TradesViz executions CSV (UTC, `spread_id`, tags) + AMP Daily Statement PDF (money). 27-May reconciles exactly (TJ4 golden). Tag→token verification (TJ6). AMP fees $1.24 RT; no engine/golden touch. Quantower parked (Vienna-local clock) |
+| Trade journal (fills + intent ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ0 locked.** TradesViz executions CSV (UTC, `spread_id`, tags) + AMP Daily Statement PDF (money). 27-May reconciles exactly (TJ4 golden). Level attribution + tag verification (TJ6); own-entry bracket replay / direction null / declared rules (TJ7); named-cell match + forward ledger (TJ8). AMP fees $1.24 RT; no engine/golden touch. Quantower parked (Vienna-local clock) |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
 | A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP1 implemented — evidence collection pending.** Current APOC is a 1-minute typical-price proxy. The comparison harness is isolated from production APOC. A versioned source change still requires a reproducible Quantower oracle. |
@@ -1508,33 +1508,41 @@ availability, pAPOC freeze, and unrelated level families. Goldens remain
 unchanged. A product-default source change requires identity/cache versioning;
 missing selected-source inputs must not silently emit legacy typical APOC.
 
-## Trade Journal (TJ0–TJ8) — TJ0 locked
+## Trade Journal (TJ0–TJ9) — TJ0 locked
 
 Post-trade ingest of discretionary fills **and trader intent** (TradesViz
 tags / notes / declared SL-TP) so the desk can measure realized outcomes
-against AMP money truth, verify tagged levels against the levels frame, and
-(later) match a named systematic cell. R21-shaped: new
-`thesistester/journal/` package; no `simulate_trades` / signals / levels
+against AMP money truth, attribute every entry to the engine's levels,
+replay its own entries under fixed brackets / a direction-shuffle null /
+declared discipline rules, and match a named systematic cell with a forward
+ledger. Answers eight desk questions (plan §1.1: real-cost P&L, where R
+leaks, which levels, entry vs exit edge, direction vs drift, rule
+counterfactuals, research↔live product match, live cell scoreboard). Does
+not rebuild generic journal statistics TradesViz already ships. R21-shaped:
+new `thesistester/journal/` package; no `simulate_trades` / signals / levels
 edits; no golden regen; desk exports stay out of git.
 
 **Canonical spec:** `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md`
 
 | Milestone | Intent |
 |---|---|
-| TJ0 | Plan lock + desk-file evidence + contracts (this PR) |
+| TJ0 | Plan lock + desk-file evidence + value thesis + contracts (this PR) |
 | TJ1 | TradesViz executions CSV → `FillRecord` (`tradesviz_executions`; imported vs manual) |
 | TJ2 | AMP Daily Statement PDF → `AmpStatement` (layout Buy/Sell + fees) |
-| TJ3 | `spread_id` pairing + qty-aware FIFO fallback → `JournalTrade` (+tags; default 10-tick R) |
+| TJ3 | `spread_id` pairing + qty-aware FIFO fallback → `JournalTrade` (+tags; `fee_ticks`; default 10-tick R) |
 | TJ4 | Daily recon (multiset + P&S + fees); 27-May redacted golden; fail-closed |
-| TJ5 | Join to 15s/1m clock (UTC); MAE/MFE only when `bars_held ≥ 1` |
-| TJ6 | Tag→token map + tag verification (entry-bar level distance) |
-| TJ7 | Named-cell counterfactual match (`executed_cell` / `near_level` / …) |
-| TJ8 | Report + page 17 Journal (read-only; USER_GUIDE H2 + HC allowlist) |
+| TJ5 | Join to 15s/1m clock (UTC); tick resolution when present; MAE/MFE only when `bars_held ≥ 1` |
+| TJ6 | Level attribution on every entry bar + tag→token map + tag verification (`intent_mismatch`) |
+| TJ7 | Own-entry counterfactuals: fixed-bracket replay (SL-first), seeded direction-shuffle null, declared rule filters (in-sample vs forward) |
+| TJ8 | Named-cell match (`executed_cell` / `near_level` / `product_mismatch` …) + forward ledger for promoted cells |
+| TJ9 | Report + page 17 Journal (read-only; Q1–Q8 order; USER_GUIDE H2 + HC allowlist) |
 
 **Regression posture:** additive package only. TradesViz `commission`/`fees`
-are unused (always 0). AMP is the fee SoT. Tags are intent, not evidence.
-Journal expectancy does not re-rank studies. Quantower loader parked (its
-clock is Europe/Vienna local, not NY). PII fixtures are redacted.
+are unused (always 0). AMP is the fee SoT ($1.24 RT = 2.48 MNQ ticks). Tags
+are intent, not evidence. Counterfactuals never call `simulate_trades`; the
+only RNG is the seeded TJ7 null. Rules are declared, never searched. Journal
+expectancy does not re-rank studies. Quantower loader parked (its clock is
+Europe/Vienna local, not NY). PII fixtures are redacted.
 
 ## Studies Inspect ledger progress (additive)
 
