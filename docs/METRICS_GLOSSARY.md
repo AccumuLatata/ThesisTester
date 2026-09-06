@@ -701,7 +701,8 @@ Journal trades are **not** study cells. These quantities live on
 | `net_ticks` | `net_pnl_currency / (tick_size × point_value)` — qty-scaled dollar-ticks. |
 | `fee_ticks` | `commission_cost / (tick_size × point_value)`. AMP per-side × 2 × qty on `reconciled` closed imported trades; null otherwise. |
 | `r_multiple_declared` | Same net over `\|entry − declared_stop\| × point_value × qty`. Emitted **only** when `declared_stop` is present. Intent, not an executed bracket. |
-| `hold_seconds` | `exit_timestamp − entry_timestamp` in seconds. Primary journal duration; `bars_held` stays null until TJ5. |
+| `hold_seconds` | `exit_timestamp − entry_timestamp` in seconds. Primary journal duration. |
+| `bars_held` (journal) | Count of completed 15s bars strictly between entry and exit (TJ5). `0` + `excursion_unavailable` when the trade dies inside the entry bar; null when the covering bar is missing. |
 | `reconciled` | TJ4 day status: `reconciled` / `journal_missing` / `amp_missing` / `multiset_mismatch` / `pnl_mismatch`. Later milestones refuse days that are not `reconciled` unless `allow_unreconciled=True`. |
 
 Point values are MNQ $2 / MES $5; tick 0.25. Engine `simulate_trades` is 1-lot

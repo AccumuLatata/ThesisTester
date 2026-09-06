@@ -304,7 +304,7 @@ parent) and `subtimeframe_data` (15s primary). It does **not** call
 
 | Rule | Causal? | Detail |
 |---|---|---|
-| 15s covering bar | **Yes** | `open_ts <= ts < open_ts + 15s` after both sides are UTC. No covering bar → `missing_bar`. Fill price outside `[low, high]` → `price_outside_bar`. |
+| 15s covering bar | **Yes** | `open_ts <= ts < open_ts + 15s` after both sides are UTC. 15s opens must be on-grid (`:00/:15/:30/:45`); 1m parent opens must be whole minutes. Non-finite or inverted OHLC fails closed. No covering bar → `missing_bar`. Fill price outside `[low, high]` → `price_outside_bar`. |
 | 1m parent | **Yes** | The already-emitted parent minute that contains the fill (`parent_open <= ts < parent_open + 1min`). Same parent for `resolution=15s` and `resolution=tick`. |
 | `bars_held` | **Yes** | Count of **completed** 15s bars with `open > entry_bar_open` and `open + 15s <= exit_timestamp`. |
 | MAE/MFE at 15s | **Yes** | Computed only from those completed intermediate bars. The entry bar's unused range is never used (it includes pre-fill ticks). `bars_held == 0` → `mae_points` / `mfe_points` null + `excursion_unavailable`. |

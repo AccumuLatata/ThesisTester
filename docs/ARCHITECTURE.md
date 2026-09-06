@@ -1112,7 +1112,9 @@ UTC. Optional Tick-Last prints set `resolution=tick` and walk
 `ts > entry_timestamp`. Default `join_resolution` is `15s`. Does not
 write session state; it **reads** the existing `data` /
 `subtimeframe_data` / tick frames. MAE/MFE stay null when
-`bars_held == 0` (`excursion_unavailable`). No `compute_all_levels`.
+`bars_held == 0` (`excursion_unavailable`). `segmented_contracts` roll
+metadata covers only the CME session of a documented roll timestamp.
+Nullable join/cost cells stay object-None. No `compute_all_levels`.
 
 Later TJ milestones (level attribution, counterfactuals, page 17)
 add siblings in the same package. Persistence, when it lands

@@ -1335,9 +1335,14 @@ other than the last bar in the dataset.
   Every joined row is stamped `resolution` ∈ {`15s`, `tick`}. Do not average
   those rows together without saying so in the caption.
 - A Jun fill on a Sep-rolled 15s series is `roll_mismatch` unless valid R7
-  roll metadata covers that session day: `external_continuous`, or a
-  `segmented_contracts` `roll_gap` that connects those contracts on or
-  before the fill. Empty / unrelated segmented gaps do not cover.
+  roll metadata covers that session day. `external_continuous` covers every
+  day. `segmented_contracts` covers only when a `roll_gap` connects those
+  contracts **and** the gap's `roll_timestamp` falls on the same CME
+  `session_date` (ETH 18:00, not the UTC calendar date and not
+  `roll_ts <= entry`). Empty / unrelated / earlier segmented gaps do not
+  cover. Same-month / different-year (`MNQM26` vs `MNQM27`) also flags.
+  Off-grid or non-finite OHLC fails closed. Nullable join/cost cells stay
+  object-None, not float64 NaN.
 
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.

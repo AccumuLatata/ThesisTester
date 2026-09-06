@@ -226,9 +226,20 @@ def test_segmented_gap_covers_only_matching_session(tmp_path: Path) -> None:
             }
         ],
     }
+    past_gap = {
+        "roll_method": "segmented_contracts",
+        "valid": True,
+        "roll_gaps": [
+            {
+                "previous_contract": "MNQM26",
+                "next_contract": "MNQU26",
+                "roll_timestamp": "2026-03-01T13:00:00+00:00",
+            }
+        ],
+    }
     covered = join_journal_bars(trades, data=parent, subtimeframe_data=bars, roll_metadata=covering)
     assert FLAG_ROLL_MISMATCH not in covered.iloc[0]["join_flags"]
-    for meta in (other_pair, future_gap):
+    for meta in (other_pair, future_gap, past_gap):
         joined = join_journal_bars(trades, data=parent, subtimeframe_data=bars, roll_metadata=meta)
         assert FLAG_ROLL_MISMATCH in joined.iloc[0]["join_flags"]
 
@@ -352,3 +363,146 @@ def test_open_trade_joins_entry_only(tmp_path: Path) -> None:
     assert row["bars_held"] is None
     assert row["mae_points"] is None
     assert FLAG_EXCURSION_UNAVAILABLE not in row["join_flags"]
+
+
+def test_segmented_roll_uses_cme_session_not_utc_date(tmp_path: Path) -> None:
+    trades = _pair(
+        tmp_path,
+        "2026-05-10T22:05:03+0000,MNQM26,buy,USD,MNQ,future,100.00,1.0,0.0,0.0,N/A,N/A,,,eth",
+        "2026-05-10T22:05:12+0000,MNQM26,sell,USD,MNQ,future,100.25,1.0,0.0,0.0,N/A,N/A,,,eth",
+    )
+    bars = _ohlcv(
+        [
+            ("2026-05-10T22:05:00", 100.00, 100.50, 99.75, 100.25),
+            ("2026-05-10T22:05:15", 100.25, 100.50, 100.00, 100.25),
+        ],
+        contract="MNQU26",
+    )
+    parent = _ohlcv(
+        [("2026-05-10T22:05:00", 100.00, 100.50, 99.75, 100.25)],
+        contract="MNQU26",
+    )
+    # Sunday 21:59 UTC = 17:59 ET Sunday → Sunday session, not Monday 2026-05-11.
+    prior_session = {
+        "roll_method": "segmented_contracts",
+        "valid": True,
+        "roll_gaps": [
+            {
+                "previous_contract": "MNQM26",
+                "next_contract": "MNQU26",
+                "roll_timestamp": "2026-05-10T21:59:00+00:00",
+            }
+        ],
+    }
+    joined = join_journal_bars(
+        trades, data=parent, subtimeframe_data=bars, roll_metadata=prior_session
+    )
+    assert joined.iloc[0]["session_date"].isoformat() == "2026-05-11"
+    assert FLAG_ROLL_MISMATCH in joined.iloc[0]["join_flags"]
+
+    # Sunday 22:00 UTC = 18:00 ET Sunday → Monday session (same as the fills).
+    covers = {
+        "roll_method": "segmented_contracts",
+        "valid": True,
+        "roll_gaps": [
+            {
+                "previous_contract": "MNQM26",
+                "next_contract": "MNQU26",
+                "roll_timestamp": "2026-05-10T22:00:00+00:00",
+            }
+        ],
+    }
+    covered = join_journal_bars(
+        trades, data=parent, subtimeframe_data=bars, roll_metadata=covers
+    )
+    assert FLAG_ROLL_MISMATCH not in covered.iloc[0]["join_flags"]
+
+
+def test_contract_year_mismatch_flags_roll(tmp_path: Path) -> None:
+    trades = _pair(tmp_path, *_same_bar_rows())
+    bars = _minute_14()
+    bars["contract"] = "MNQM27"
+    parent = _parent_14()
+    parent["contract"] = "MNQM27"
+    joined = join_journal_bars(trades, data=parent, subtimeframe_data=bars)
+    assert FLAG_ROLL_MISMATCH in joined.iloc[0]["join_flags"]
+    assert joined.iloc[0]["contract_month"] == "JUN"
+    assert joined.iloc[0]["contract_year"] == 2026
+
+
+def test_non_finite_ohlc_fails_closed(tmp_path: Path) -> None:
+    trades = _pair(tmp_path, *_same_bar_rows())
+    bars = _minute_14()
+    bars.loc[0, "high"] = float("inf")
+    with pytest.raises(JournalIngestError, match="non-finite high"):
+        join_journal_bars(trades, data=_parent_14(), subtimeframe_data=bars)
+
+
+def test_inverted_bar_fails_closed(tmp_path: Path) -> None:
+    trades = _pair(tmp_path, *_same_bar_rows())
+    bars = _minute_14()
+    bars.loc[0, "high"] = 99.0
+    bars.loc[0, "low"] = 101.0
+    with pytest.raises(JournalIngestError, match="high < low"):
+        join_journal_bars(trades, data=_parent_14(), subtimeframe_data=bars)
+
+
+def test_off_grid_15s_fails_closed(tmp_path: Path) -> None:
+    trades = _pair(tmp_path, *_same_bar_rows())
+    bars = _minute_14()
+    bars.loc[0, "timestamp"] = pd.Timestamp("2026-05-14T14:00:07", tz=UTC)
+    with pytest.raises(JournalIngestError, match="15s bar opens"):
+        join_journal_bars(trades, data=_parent_14(), subtimeframe_data=bars)
+
+
+def test_exit_before_entry_fails_closed(tmp_path: Path) -> None:
+    trades = _pair(tmp_path, *_same_bar_rows())
+    trades = trades.copy()
+    trades.loc[0, "exit_timestamp"] = pd.Timestamp("2026-05-14T13:59:00", tz=UTC)
+    with pytest.raises(JournalIngestError, match="precedes entry"):
+        join_journal_bars(trades, data=_parent_14(), subtimeframe_data=_minute_14())
+
+
+def test_nullable_join_columns_stay_object_none(tmp_path: Path) -> None:
+    same_dir = tmp_path / "same"
+    held_dir = tmp_path / "held"
+    same_dir.mkdir()
+    held_dir.mkdir()
+    same = _pair(same_dir, *_same_bar_rows())
+    held = _pair(held_dir, *_held_rows())
+    held = held.copy()
+    held["commission_cost"] = 1.24
+    trades = pd.concat([same, held], ignore_index=True)
+    joined = join_journal_bars(trades, data=_parent_14(), subtimeframe_data=_minute_14())
+    same_row = joined.iloc[0]
+    held_row = joined.iloc[1]
+    assert same_row["mae_points"] is None
+    assert same_row["mfe_points"] is None
+    assert same_row["commission_cost"] is None
+    assert held_row["mae_points"] == pytest.approx(1.5)
+    assert held_row["commission_cost"] == pytest.approx(1.24)
+    assert joined["mae_points"].dtype == object
+    assert joined["commission_cost"].dtype == object
+
+
+def test_entry_and_exit_outside_do_not_duplicate_flag(tmp_path: Path) -> None:
+    trades = _pair(
+        tmp_path,
+        "2026-05-14T14:00:03+0000,MNQM26,buy,USD,MNQ,future,110.00,1.0,0.0,0.0,N/A,N/A,,,p2",
+        "2026-05-14T14:00:48+0000,MNQM26,sell,USD,MNQ,future,110.25,1.0,0.0,0.0,N/A,N/A,,,p2",
+    )
+    joined = join_journal_bars(trades, data=_parent_14(), subtimeframe_data=_minute_14())
+    assert joined.iloc[0]["join_flags"] == (FLAG_PRICE_OUTSIDE_BAR,)
+
+
+def test_short_mae_mfe_from_completed_bars(tmp_path: Path) -> None:
+    trades = _pair(
+        tmp_path,
+        "2026-05-14T14:00:03+0000,MNQM26,sell,USD,MNQ,future,100.00,1.0,0.0,0.0,N/A,N/A,,,s1",
+        "2026-05-14T14:00:48+0000,MNQM26,buy,USD,MNQ,future,99.00,1.0,0.0,0.0,N/A,N/A,,,s1",
+    )
+    joined = join_journal_bars(trades, data=_parent_14(), subtimeframe_data=_minute_14())
+    row = joined.iloc[0]
+    assert row["direction"] == "short"
+    assert row["mae_points"] == pytest.approx(3.0)  # 103 - 100
+    assert row["mfe_points"] == pytest.approx(1.5)  # 100 - 98.50
