@@ -240,7 +240,7 @@ def add_journal_subparser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def dispatch_journal(args: argparse.Namespace) -> int:
-    """Dispatch ``journal reconcile``, ``journal attribute``, and ``journal counterfactual``."""
+    """Dispatch ``journal reconcile`` / ``attribute`` / ``counterfactual`` / ``match``."""
     if args.journal_command == "reconcile":
         try:
             paths = reconcile_files(

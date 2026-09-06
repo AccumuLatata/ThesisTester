@@ -1406,20 +1406,22 @@ other than the last bar in the dataset.
 - Match is **named-cell only**: one hash-verified bundle zip or a RunSpec
   that points at exactly one cell. The Observatory corpus is out.
 - Classes: `executed_cell` (time + price + instrument + direction, and
-  hold/risk compatible with the cell lock), `near_level` (price within
-  `match_ticks` of the zone / theoretical entry but `|Δentry|` outside
-  `match_window`), `discretionary_only`, `systematic_unfilled`.
-- `product_mismatch` names the failing dimension (`hold`, `risk`, or both).
-  Hold uses the cell's parent bar clock × `bars_held` band. Risk requires
-  `journal_risk_ticks` within ±50% of the cell SL. A 10-tick scalp is not
-  an 80-tick study lock.
+  hold/risk compatible with the cell lock), `near_level` (same
+  `session_date`, price within `match_ticks` of the zone / theoretical
+  entry but `|Δentry|` outside `match_window`), `discretionary_only`,
+  `systematic_unfilled`.
+- `product_mismatch` names the failing dimension (`hold`, `risk`,
+  `trigger`, or a comma-joined subset). Hold uses the cell's parent bar
+  clock × `bars_held` band. Risk requires `journal_risk_ticks` within
+  ±50% of the cell SL. `trigger` is compared only when both sides name
+  one. A time+price pair that fails the lock is not also
+  `systematic_unfilled`. A 10-tick scalp is not an 80-tick study lock.
 - Adherence = `executed_cell / (executed_cell + systematic_unfilled)`.
-  A time+price pair that fails the cell lock is `product_mismatch` only
-  — it does not also count as `systematic_unfilled`. The forward ledger
-  is per `session_date` for cells declared live (`live_since`). Sessions
-  before that date are omitted. Live ticks are qty-scaled journal; cell
-  expectancy is 1-lot `R × SL` in ticks. Bundle files named
-  `{run_name}.research.zip` resolve `run_name` by stripping `.research`.
+  The forward ledger is per `session_date` for cells declared live
+  (`live_since`). Sessions before that date are omitted. Live ticks are
+  qty-scaled journal; cell expectancy is 1-lot `R × SL` in ticks.
+  Bundle files named `{run_name}.research.zip` resolve `run_name` by
+  stripping `.research`.
 - The promotion / live-declaration file is **read-only**. Journal match
   does not write the registry, `results_index`, or research bundles.
 - `python -m thesistester journal match` writes `journal_matches.parquet`

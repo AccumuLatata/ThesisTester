@@ -26,6 +26,7 @@ from thesistester.journal.schema import (
     DEFAULT_MATCH_WINDOW_SECONDS,
     JOURNAL_ETH_START,
     JOURNAL_EXCHANGE_TZ,
+    JOURNAL_POINT_VALUE,
     JOURNAL_STORE_SCHEMA,
     JOURNAL_TICK_SIZE,
     MATCH_DISCRETIONARY_ONLY,
@@ -40,6 +41,7 @@ from thesistester.journal.schema import (
     MATCH_SYSTEMATIC_UNFILLED,
     MISMATCH_HOLD,
     MISMATCH_RISK,
+    MISMATCH_TRIGGER,
     RECON_RECONCILED,
     JournalIngestError,
 )
@@ -92,6 +94,8 @@ def match_journal_to_cell(
     Keyword-only after ``trades``. Default window 60 s, default ``match_ticks``
     8. ``executed_cell`` requires hold/risk compatibility with the cell lock.
     """
+    if not isinstance(allow_unreconciled, bool):
+        raise JournalIngestError("allow_unreconciled must be a bool")
     window = _as_positive_number(match_window_seconds, "match_window_seconds")
     ticks = _as_positive_number(match_ticks, "match_ticks")
     sl = _as_positive_number(stop_loss_ticks, "stop_loss_ticks")
@@ -99,8 +103,7 @@ def match_journal_to_cell(
     tick = _as_positive_tick(tick_size)
     if not str(cell_id).strip():
         raise JournalIngestError("cell_id is required")
-    if not str(instrument).strip():
-        raise JournalIngestError("instrument is required")
+    instrument = _as_instrument(instrument)
     journal = _coerce_journal(trades)
     _assert_reconciled(journal, allow_unreconciled=allow_unreconciled)
     systematic = _coerce_systematic(systematic_trades, instrument=str(instrument), tick=tick)
@@ -135,9 +138,16 @@ def load_named_cell(
     spec: dict[str, object] = {}
     if runspec is not None:
         spec = _load_runspec(Path(runspec))
-    bundle_path = Path(str(bundle if bundle is not None else spec.get("bundle_path") or ""))
+    spec_bundle = spec.get("bundle_path")
+    bundle_path = Path(str(bundle if bundle is not None else spec_bundle or ""))
     if not str(bundle_path):
         raise JournalIngestError("journal match requires a named bundle zip or RunSpec path")
+    if (
+        bundle is not None
+        and spec_bundle not in (None, "")
+        and Path(str(spec_bundle)).expanduser().resolve() != bundle_path.expanduser().resolve()
+    ):
+        raise JournalIngestError("RunSpec bundle_path does not match the named --bundle")
     _refuse_corpus(bundle_path)
     if not bundle_path.is_file():
         raise JournalIngestError(f"named cell bundle not found: {bundle_path}")
@@ -149,9 +159,16 @@ def load_named_cell(
             f"bundle hash mismatch (got {digest[:12]}…, expected {str(want)[:12]}…)"
         )
     trades, signals, summary, meta = _read_bundle_members(bundle_path)
-    instrument = str(spec.get("instrument") or meta.get("instrument") or "").strip()
+    spec_instrument = str(spec.get("instrument") or "").strip()
+    meta_instrument = str(meta.get("instrument") or "").strip()
+    if spec_instrument and meta_instrument and spec_instrument != meta_instrument:
+        raise JournalIngestError(
+            f"RunSpec instrument {spec_instrument!r} does not match bundle {meta_instrument!r}"
+        )
+    instrument = spec_instrument or meta_instrument
     if not instrument:
         raise JournalIngestError("named cell is missing instrument")
+    instrument = _as_instrument(instrument)
     sl = _optional_float(spec.get("stop_loss_ticks"))
     if sl is None:
         sl = _optional_float(summary.get("stop_loss_ticks"))
@@ -327,8 +344,8 @@ def _classify(
         used_s.add(s_idx)
         pairs.append((j_idx, s_idx, delta_s, delta_t))
 
-    executed_signal_ids: set[str] = set()
-    executed_sys_ids: set[str] = set()
+    paired_signal_ids: set[str] = set()
+    paired_sys_ids: set[str] = set()
     rows: list[dict[str, object]] = []
     for j_idx, s_idx, delta_s, delta_t in pairs:
         journal_row = journal_rows[j_idx]
@@ -339,16 +356,16 @@ def _classify(
             stop_loss_ticks=stop_loss_ticks,
             bar_seconds=bar_seconds,
         )
-        sid = _as_optional_str(sys_row.get("signal_id"))
-        if sid is not None:
-            executed_signal_ids.add(sid)
-        executed_sys_ids.add(str(sys_row["trade_id"]))
         if failing:
             klass = MATCH_PRODUCT_MISMATCH
             dimension = ",".join(failing)
         else:
             klass = MATCH_EXECUTED_CELL
             dimension = None
+        sid = _as_optional_str(sys_row.get("signal_id"))
+        if sid is not None:
+            paired_signal_ids.add(sid)
+        paired_sys_ids.add(str(sys_row["trade_id"]))
         rows.append(
             _journal_match_row(
                 journal_row,
@@ -363,19 +380,29 @@ def _classify(
             )
         )
 
+    signal_rows = signals.to_dict(orient="records") if not signals.empty else []
     for j_idx, journal_row in enumerate(journal_rows):
         if j_idx in used_j:
             continue
-        if str(journal_row["instrument"]) == instrument and _near_any_level(
-            float(journal_row["entry_price"]),
-            str(journal_row["direction"]),
-            sys_rows,
-            signals.to_dict(orient="records") if not signals.empty else [],
-            match_ticks=match_ticks,
-            tick=tick,
-        ):
+        nearest = (
+            _nearest_level(
+                journal_row,
+                sys_rows,
+                signal_rows,
+                match_ticks=match_ticks,
+                tick=tick,
+            )
+            if str(journal_row["instrument"]) == instrument
+            else None
+        )
+        if nearest is not None:
+            counterpart_id, near_s, near_t, bars_held = nearest
             klass = MATCH_NEAR_LEVEL
         else:
+            counterpart_id = None
+            near_s = None
+            near_t = None
+            bars_held = None
             klass = MATCH_DISCRETIONARY_ONLY
         rows.append(
             _journal_match_row(
@@ -383,23 +410,23 @@ def _classify(
                 cell_id=cell_id,
                 match_class=klass,
                 dimension=None,
-                counterpart_id=None,
-                delta_s=None,
-                delta_t=None,
+                counterpart_id=counterpart_id,
+                delta_s=near_s,
+                delta_t=near_t,
                 sl=stop_loss_ticks,
-                bars_held=None,
+                bars_held=bars_held,
             )
         )
 
-    if not signals.empty:
-        for raw in signals.to_dict(orient="records"):
+    if signal_rows:
+        for raw in signal_rows:
             sid = _as_optional_str(raw.get("signal_id"))
-            if sid is not None and sid in executed_signal_ids:
+            if sid is not None and sid in paired_signal_ids:
                 continue
             rows.append(_systematic_unfilled_row(raw, cell_id=cell_id, sl=stop_loss_ticks))
     else:
         for raw in sys_rows:
-            if str(raw["trade_id"]) in executed_sys_ids:
+            if str(raw["trade_id"]) in paired_sys_ids:
                 continue
             rows.append(_systematic_unfilled_row(raw, cell_id=cell_id, sl=stop_loss_ticks))
     return rows
@@ -430,6 +457,14 @@ def _product_failing(
     hi_r = sl * (1.0 + MATCH_RISK_TOLERANCE_RATIO)
     if not (lo_r <= risk <= hi_r):
         failing.append(MISMATCH_RISK)
+    journal_trigger = _as_optional_str(journal_row.get("trigger"))
+    sys_trigger = _as_optional_str(sys_row.get("trigger"))
+    if (
+        journal_trigger is not None
+        and sys_trigger is not None
+        and journal_trigger != sys_trigger
+    ):
+        failing.append(MISMATCH_TRIGGER)
     return failing
 
 
@@ -449,21 +484,41 @@ def _price_distance_ticks(price: float, sys_row: Mapping[str, object], tick: flo
     return min(distances) if distances else math.inf
 
 
-def _near_any_level(
-    price: float,
-    direction: str,
+def _nearest_level(
+    journal_row: Mapping[str, object],
     systematic: list[dict[str, object]],
     signals: list[dict[str, object]],
     *,
     match_ticks: float,
     tick: float,
-) -> bool:
+) -> tuple[str | None, float, float, object] | None:
+    """Same-session price neighbor. Cross-session zones are not ``near_level``."""
+    session = journal_row["session_date"]
+    direction = str(journal_row["direction"])
+    price = float(journal_row["entry_price"])
+    entry = journal_row["entry_timestamp"]
+    best: tuple[float, float, str | None, object] | None = None
     for raw in systematic + signals:
         if str(raw.get("direction") or "") != direction:
             continue
-        if _price_distance_ticks(price, raw, tick) <= match_ticks:
-            return True
-    return False
+        if raw.get("session_date") != session:
+            continue
+        delta_t = _price_distance_ticks(price, raw, tick)
+        if delta_t > match_ticks:
+            continue
+        raw_entry = raw.get("entry_timestamp")
+        if not isinstance(raw_entry, pd.Timestamp):
+            continue
+        delta_s = abs((entry - raw_entry).total_seconds())
+        counterpart = _as_optional_str(raw.get("trade_id")) or _as_optional_str(
+            raw.get("signal_id")
+        )
+        candidate = (delta_t, delta_s, counterpart, raw.get("bars_held"))
+        if best is None or candidate[:2] < best[:2]:
+            best = candidate
+    if best is None:
+        return None
+    return best[2], best[1], best[0], best[3]
 
 
 def _journal_match_row(
@@ -493,8 +548,7 @@ def _journal_match_row(
         "direction": str(raw["direction"]),
         "net_ticks": _optional_float(raw.get("net_ticks")),
         "hold_seconds": _optional_float(raw.get("hold_seconds")),
-        "journal_risk_ticks": _optional_float(raw.get("journal_risk_ticks"))
-        or float(DEFAULT_JOURNAL_RISK_TICKS),
+        "journal_risk_ticks": _journal_risk_ticks(raw),
         "cell_stop_loss_ticks": sl,
         "cell_bars_held": _optional_float(bars_held),
     }
@@ -540,15 +594,19 @@ def _coerce_journal(trades: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise JournalIngestError("trades frame missing columns: " + ", ".join(missing))
     work = trades.copy()
+    work["trade_id"] = work["trade_id"].map(str)
+    if work["trade_id"].duplicated().any():
+        raise JournalIngestError("trades frame has duplicate trade_id")
     work["entry_timestamp"] = [_as_utc(value) for value in work["entry_timestamp"]]
     work["entry_price"] = pd.to_numeric(work["entry_price"], errors="coerce")
-    if work["entry_price"].isna().any() or not (work["entry_price"] > 0).all():
-        raise JournalIngestError("trades frame has non-finite entry_price")
-    work["direction"] = work["direction"].map(str)
-    bad_dir = sorted({str(item) for item in work["direction"] if item not in {"long", "short"}})
-    if bad_dir:
-        raise JournalIngestError(f"direction must be long/short (got {bad_dir})")
-    work["instrument"] = work["instrument"].map(str)
+    if (
+        work["entry_price"].isna().any()
+        or not work["entry_price"].map(math.isfinite).all()
+        or not (work["entry_price"] > 0).all()
+    ):
+        raise JournalIngestError("trades frame has non-finite or non-positive entry_price")
+    work["direction"] = work["direction"].map(_as_direction)
+    work["instrument"] = work["instrument"].map(_as_instrument)
     work["session_date"] = work["session_date"].map(_as_date)
     if "recon_status" in work.columns:
         work["recon_status"] = work["recon_status"].map(_as_optional_str)
@@ -582,7 +640,11 @@ def _coerce_systematic(trades: pd.DataFrame, *, instrument: str, tick: float) ->
         raise JournalIngestError("systematic trades missing columns: " + ", ".join(missing))
     work = trades.copy()
     work["entry_timestamp"] = [_as_utc(value) for value in work["entry_timestamp"]]
-    work["direction"] = work["direction"].map(str)
+    work["direction"] = work["direction"].map(_as_direction)
+    price_keys = {"theoretical_entry_price", "entry_price", "zone_mid"}
+    has_zone = "zone_low" in work.columns and "zone_high" in work.columns
+    if not price_keys.intersection(work.columns) and not has_zone:
+        raise JournalIngestError("systematic trades missing price or zone columns")
     if "trade_id" not in work.columns:
         work["trade_id"] = [f"sys:{index}" for index in range(len(work))]
     else:
@@ -601,14 +663,19 @@ def _coerce_signals(signals: pd.DataFrame, *, instrument: str, tick: float) -> p
         return pd.DataFrame()
     if "timestamp" not in signals.columns and "entry_timestamp" not in signals.columns:
         raise JournalIngestError("systematic signals require timestamp")
+    if "direction" not in signals.columns:
+        raise JournalIngestError("systematic signals require direction")
     work = signals.copy()
     stamp_col = "timestamp" if "timestamp" in work.columns else "entry_timestamp"
     work["entry_timestamp"] = [_as_utc(value) for value in work[stamp_col]]
-    work["direction"] = work["direction"].map(str) if "direction" in work.columns else "long"
+    work["direction"] = work["direction"].map(_as_direction)
     work["instrument"] = instrument
     if "signal_id" not in work.columns:
         work["signal_id"] = [f"sig:{index}" for index in range(len(work))]
-    work["session_date"] = [_session_of(stamp, None) for stamp in work["entry_timestamp"]]
+    if "session_date" in signals.columns:
+        work["session_date"] = [_as_date(value) for value in signals["session_date"]]
+    else:
+        work["session_date"] = [_session_of(stamp, None) for stamp in work["entry_timestamp"]]
     _ = tick
     return work.reset_index(drop=True)
 
@@ -785,14 +852,29 @@ def _as_utc(value: object) -> pd.Timestamp:
     return stamp.tz_convert("UTC")
 
 
+def _journal_risk_ticks(raw: Mapping[str, object]) -> float:
+    risk = _optional_float(raw.get("journal_risk_ticks"))
+    if risk is None:
+        return float(DEFAULT_JOURNAL_RISK_TICKS)
+    return risk
+
+
 def _as_date(value: object) -> date:
     if isinstance(value, pd.Timestamp):
+        if pd.isna(value):
+            raise JournalIngestError("session_date is missing")
         return value.date()
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
         return date(value.year, value.month, value.day)
-    return date.fromisoformat(str(value)[:10])
+    try:
+        stamp = pd.Timestamp(value)
+    except (TypeError, ValueError) as exc:
+        raise JournalIngestError(f"invalid session_date {value!r}") from exc
+    if pd.isna(stamp):
+        raise JournalIngestError("session_date is missing")
+    return stamp.date()
 
 
 def _as_optional_date(value: object) -> date | None:
@@ -830,13 +912,28 @@ def _optional_float(value: object) -> float | None:
     return number
 
 
+def _as_direction(value: object) -> str:
+    text = str(value)
+    if text not in {"long", "short"}:
+        raise JournalIngestError(f"invalid direction {text!r}")
+    return text
+
+
+def _as_instrument(value: object) -> str:
+    text = str(value).strip()
+    if text not in JOURNAL_POINT_VALUE:
+        raise JournalIngestError(f"unknown instrument {text!r}")
+    return text
+
+
 def _as_positive_tick(value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-        raise JournalIngestError(f"tick_size must be a positive number (got {value!r})")
-    return float(value)
+    return _as_positive_number(value, "tick_size")
 
 
 def _as_positive_number(value: object, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise JournalIngestError(f"{name} must be a positive number (got {value!r})")
-    return float(value)
+    number = float(value)
+    if not math.isfinite(number) or number <= 0:
+        raise JournalIngestError(f"{name} must be a positive number (got {value!r})")
+    return number

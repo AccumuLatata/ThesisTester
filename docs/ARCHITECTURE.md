@@ -1141,7 +1141,9 @@ instrument / entry price fail closed. Writes
 `python -m thesistester journal match` classify journal trades against
 **one** hash-verified bundle or named RunSpec (never the Observatory
 corpus). `executed_cell` requires hold/risk compatibility; otherwise
-`product_mismatch` names the failing dimension. Writes
+`product_mismatch` names the failing dimension. A lock-fail pair is not
+also `systematic_unfilled`. `near_level` is same-session. Qty /
+direction / instrument / entry price fail closed. Writes
 `journal_matches.parquet` + `match.json` (ledger rows, adherence).
 Refuses `results/studies/` as output. Does not write the promotion
 registry, `results_index`, or research bundles. No

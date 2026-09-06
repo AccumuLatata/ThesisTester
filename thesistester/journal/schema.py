@@ -182,6 +182,7 @@ DEFAULT_MATCH_TICKS: Final[float] = 8.0
 MATCH_RISK_TOLERANCE_RATIO: Final[float] = 0.5
 MISMATCH_HOLD: Final[str] = "hold"
 MISMATCH_RISK: Final[str] = "risk"
+MISMATCH_TRIGGER: Final[str] = "trigger"
 MATCH_HONESTY: Final[str] = (
     "journal is not a study cell; named-cell match only (no Observatory corpus); "
     "adherence is executed_cell / (executed_cell + systematic_unfilled); "

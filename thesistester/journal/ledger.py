@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from pathlib import Path
 import json
+import math
 
 import pandas as pd
 import yaml
@@ -103,6 +104,7 @@ def build_forward_ledger(
                 counts[str(klass)] = int(count)
         executed = counts[MATCH_EXECUTED_CELL]
         unfilled = counts[MATCH_SYSTEMATIC_UNFILLED]
+        mismatch = counts[MATCH_PRODUCT_MISMATCH]
         denom = executed + unfilled
         adherence = (executed / denom) if denom else None
         journal = group.loc[
@@ -123,7 +125,7 @@ def build_forward_ledger(
         rows.append(
             {
                 "session_date": session.isoformat(),
-                "systematic_signals": unfilled + executed + counts[MATCH_PRODUCT_MISMATCH],
+                "systematic_signals": unfilled + executed + mismatch,
                 "executed_cell": executed,
                 "near_level": counts[MATCH_NEAR_LEVEL],
                 "discretionary_only": counts[MATCH_DISCRETIONARY_ONLY],
@@ -144,12 +146,20 @@ def build_forward_ledger(
 
 def _as_date(value: object) -> date:
     if isinstance(value, pd.Timestamp):
+        if pd.isna(value):
+            raise JournalIngestError("session_date is missing")
         return value.date()
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
         return date(value.year, value.month, value.day)
-    return date.fromisoformat(str(value)[:10])
+    try:
+        stamp = pd.Timestamp(value)
+    except (TypeError, ValueError) as exc:
+        raise JournalIngestError(f"invalid session_date {value!r}") from exc
+    if pd.isna(stamp):
+        raise JournalIngestError("session_date is missing")
+    return stamp.date()
 
 
 def _optional_float(value: object) -> float | None:
@@ -163,5 +173,7 @@ def _optional_float(value: object) -> float | None:
     try:
         number = float(value)
     except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
         return None
     return number

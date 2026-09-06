@@ -30,6 +30,7 @@ from thesistester.journal.schema import (
     MATCH_SYSTEMATIC_UNFILLED,
     MISMATCH_HOLD,
     MISMATCH_RISK,
+    MISMATCH_TRIGGER,
     RECON_AMP_MISSING,
     RECON_RECONCILED,
     JournalIngestError,
@@ -55,6 +56,7 @@ def _journal(
     journal_risk_ticks: float = 10.0,
     net_ticks: float | None = 2.0,
     recon: str | None = RECON_RECONCILED,
+    trigger: str | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "trade_id": trade_id,
@@ -69,6 +71,8 @@ def _journal(
         "net_ticks": net_ticks,
         "status": "closed",
     }
+    if trigger is not None:
+        payload["trigger"] = trigger
     if recon is not None:
         payload["recon_status"] = recon
     return payload
@@ -86,8 +90,9 @@ def _sys(
     bars_held: int = 1,
     zone_low: float = 99.75,
     zone_high: float = 100.25,
+    trigger: str | None = None,
 ) -> dict[str, object]:
-    return {
+    payload = {
         "trade_id": trade_id,
         "signal_id": signal_id,
         "direction": direction,
@@ -101,6 +106,9 @@ def _sys(
         "bars_held": bars_held,
         "r_multiple": 0.2,
     }
+    if trigger is not None:
+        payload["trigger"] = trigger
+    return payload
 
 
 def _signal(
@@ -212,6 +220,7 @@ def test_product_mismatch_names_hold() -> None:
     journal = out.loc[out["side"] == "journal"].iloc[0]
     assert journal["match_class"] == MATCH_PRODUCT_MISMATCH
     assert journal["product_mismatch_dimension"] == MISMATCH_HOLD
+    assert MATCH_SYSTEMATIC_UNFILLED not in set(out["match_class"])
 
 
 def test_product_mismatch_names_risk() -> None:
@@ -239,6 +248,9 @@ def test_near_level_when_price_matches_but_time_does_not() -> None:
     )
     journal = out.loc[out["side"] == "journal"].iloc[0]
     assert journal["match_class"] == MATCH_NEAR_LEVEL
+    assert journal["counterpart_id"] == "sys:1"
+    assert journal["delta_entry_seconds"] == pytest.approx(7193.0)
+    assert journal["delta_entry_ticks"] == pytest.approx(0.0)
 
 
 def test_discretionary_only_when_no_level_or_time() -> None:
@@ -435,3 +447,107 @@ def test_cli_refuses_studies_output_dir(tmp_path: Path) -> None:
     )
     assert code == 2
     assert not (forbidden / "match.json").exists()
+
+
+def test_product_mismatch_is_not_also_systematic_unfilled() -> None:
+    out = match_journal_to_cell(
+        pd.DataFrame([_journal(hold_seconds=180.0)]),
+        systematic_trades=pd.DataFrame([_sys()]),
+        systematic_signals=pd.DataFrame(
+            [_signal(signal_id="sig:1", stamp="2026-05-14T14:00:10"), _signal()]
+        ),
+        cell_id="cell_a",
+        instrument="MNQ",
+        stop_loss_ticks=10.0,
+    )
+    assert set(out["match_class"]) == {MATCH_PRODUCT_MISMATCH, MATCH_SYSTEMATIC_UNFILLED}
+    assert set(out.loc[out["match_class"] == MATCH_SYSTEMATIC_UNFILLED, "signal_id"]) == {
+        "sig:open"
+    }
+
+
+def test_near_level_is_same_session_only() -> None:
+    out = _match(
+        [_journal(entry="2026-05-15T16:00:03", session=date(2026, 5, 15), price=100.00)],
+        [_sys(entry="2026-05-14T14:00:10")],
+    )
+    journal = out.loc[out["side"] == "journal"].iloc[0]
+    assert journal["match_class"] == MATCH_DISCRETIONARY_ONLY
+    assert journal["counterpart_id"] is None
+    assert journal["delta_entry_seconds"] is None
+
+
+def test_product_mismatch_names_trigger_when_both_sides_name_one() -> None:
+    out = _match(
+        [_journal(trigger="touch")],
+        [_sys(trigger="fade")],
+    )
+    journal = out.loc[out["side"] == "journal"].iloc[0]
+    assert journal["match_class"] == MATCH_PRODUCT_MISMATCH
+    assert journal["product_mismatch_dimension"] == MISMATCH_TRIGGER
+
+
+def test_zero_journal_risk_ticks_is_kept() -> None:
+    out = _match([_journal(journal_risk_ticks=0.0)], [_sys(sl=10.0)])
+    journal = out.loc[out["side"] == "journal"].iloc[0]
+    assert journal["match_class"] == MATCH_PRODUCT_MISMATCH
+    assert journal["product_mismatch_dimension"] == MISMATCH_RISK
+    assert journal["journal_risk_ticks"] == 0.0
+
+
+def test_inputs_fail_closed() -> None:
+    with pytest.raises(JournalIngestError, match="invalid direction"):
+        _match([_journal(direction="Long")], [_sys()])
+    with pytest.raises(JournalIngestError, match="unknown instrument"):
+        _match([_journal(instrument="NQ")], [_sys()])
+    with pytest.raises(JournalIngestError, match="non-finite or non-positive"):
+        _match([_journal(price=float("inf"))], [_sys()])
+    with pytest.raises(JournalIngestError, match="duplicate trade_id"):
+        _match([_journal(), _journal()], [_sys()])
+    with pytest.raises(JournalIngestError, match="positive number"):
+        _match([_journal()], [_sys()], match_ticks=float("inf"))
+    with pytest.raises(JournalIngestError, match="allow_unreconciled"):
+        _match([_journal()], [_sys()], allow_unreconciled="yes")  # type: ignore[arg-type]
+    with pytest.raises(JournalIngestError, match="require direction"):
+        match_journal_to_cell(
+            pd.DataFrame([_journal()]),
+            systematic_trades=pd.DataFrame([_sys()]),
+            systematic_signals=pd.DataFrame(
+                [{"signal_id": "sig:x", "timestamp": _ts("2026-05-14T15:00:00")}]
+            ),
+            cell_id="cell_a",
+            instrument="MNQ",
+            stop_loss_ticks=10.0,
+        )
+
+
+def test_nullable_match_columns_stay_object_none() -> None:
+    out = _match(
+        [_journal(entry="2026-05-14T16:00:03", price=120.00)],
+        [_sys()],
+    )
+    journal = out.loc[out["side"] == "journal"].iloc[0]
+    assert out["counterpart_id"].dtype == object
+    assert out["delta_entry_seconds"].dtype == object
+    assert journal["counterpart_id"] is None
+    assert journal["delta_entry_seconds"] is None
+    assert journal["product_mismatch_dimension"] is None
+
+
+def test_runspec_instrument_must_match_bundle(tmp_path: Path) -> None:
+    bundle = tmp_path / "cell.research.zip"
+    digest = _write_bundle(bundle, trades=pd.DataFrame([_sys()]), instrument="MNQ")
+    spec = tmp_path / "cell.yaml"
+    spec.write_text(
+        yaml.safe_dump(
+            {
+                "run_name": "cell",
+                "bundle_path": str(bundle),
+                "bundle_hash": digest,
+                "instrument": "MES",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(JournalIngestError, match="does not match bundle"):
+        load_named_cell(runspec=spec)
