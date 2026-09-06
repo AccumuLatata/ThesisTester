@@ -1096,9 +1096,16 @@ that net flat with one open side pair inside the group; a group that does
 not qualify FIFO-matches inside the group first, then residual lots (and
 fills without `spread_id`) FIFO-match per `(instrument, contract,
 session_date)` (`pair_method=fifo_fallback`). AMP P&S is not a pairing
-source. `commission_cost` / `fee_ticks` stay null until TJ4.
+source.
 
-Later TJ milestones (recon, bar join, counterfactuals, page 17)
+**TJ4 landed.** `reconcile_journal` / `python -m thesistester journal
+reconcile` compare imported fills to AMP confirmations per
+`(session_date, instrument)` and write `journal/v1` artifacts
+(`reconcile.json`, `journal_trades.parquet`) under `--output-dir`.
+Refuses `results/studies/`. AMP costs apply only to closed imported
+trades on `reconciled` days (`include_manual` is pairing-only).
+
+Later TJ milestones (bar join, counterfactuals, page 17)
 add siblings in the same package. Persistence, when it lands
 (TJ9), is `.thesistester_store/journal/v1/` — sibling of `datasets/` /
 `setups/`, **not** under `execution_artifacts/` (CAI-10 LRU does not scan

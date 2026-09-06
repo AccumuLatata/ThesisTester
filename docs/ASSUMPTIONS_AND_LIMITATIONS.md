@@ -1225,9 +1225,11 @@ other than the last bar in the dataset.
   when a file carries non-zero values they are discarded. Cost truth is the
   AMP Daily Statement (TJ2). Do not treat TradesViz P/L as money.
 - Manual rows (`asset_type` ≠ `future`) are **retained** on the `FillRecord`
-  frame for tag / notes lineage. They are **excluded** from pairing,
-  reconciliation, and P&L by default (`include_manual=False` starting TJ3).
-  `quantity == 0` manual rows stay with `qty=None` and flag `manual_no_qty`.
+  frame for tag / notes lineage. They are **excluded** from pairing and P&L
+  by default (`include_manual=False` starting TJ3). TJ4 reconciliation always
+  uses imported fills only — `include_manual` does not add manuals to the
+  AMP multiset or journal gross. `quantity == 0` manual rows stay with
+  `qty=None` and flag `manual_no_qty`.
 - `session_date` is the CME session (`trading_session_date`,
   `eth_start="18:00"`), not the New York calendar date. A fill at 18:05 ET
   belongs to the next statement day. A fill after UTC midnight that is still
@@ -1295,6 +1297,30 @@ other than the last bar in the dataset.
   `fee_ticks` stay null until TJ4; `net_pnl_currency` equals gross until
   then. `slippage_cost` is null (no 1-tick invention). `r_multiple_declared`
   is emitted only when `declared_stop` is present.
+
+## Trade journal (TJ4 — daily recon; AMP fees on reconciled days)
+
+- Recon is per `(session_date, instrument)`. Statuses are `reconciled`,
+  `journal_missing`, `amp_missing`, `multiset_mismatch`, `pnl_mismatch`.
+  The fill key is `(quantize(price, tick_size), side, qty)` — not
+  `round(price, 2)`. Journal gross $ vs AMP `P&S` $ allows 1 cent. Non-finite
+  journal gross or AMP P&S is `pnl_mismatch`, not `reconciled`.
+- AMP P&S is money evidence only. It is never paired into `JournalTrade`.
+  The fill multiset and journal gross use **imported** fills only.
+  `include_manual=True` pairs manuals but does not add them to the AMP
+  comparison or invent AMP costs on those rows.
+- `commission_cost` = AMP `per_side_schedule` total × 2 × **qty** on
+  `reconciled` **closed imported** trades. `Liquidation Fee` (and any day
+  extra) is `day_fee_allocation`, split equally across that instrument-day's
+  closed imported trades, never folded into `commission_cost`. Open leftovers
+  and manual trades keep costs null. Unreconciled days keep costs null.
+- Imported fills with missing or non-integer qty fail closed (no silent drop
+  from the recon multiset).
+- `python -m thesistester journal reconcile` writes `reconcile.json` +
+  `journal_trades.parquet` under an explicit `--output-dir`. It refuses
+  `results/studies/`. Schema `journal/v1`.
+- 27-May redacted golden: 40 fills, avg long `30132.87500`, avg short
+  `30133.55000`, gross `$27.00`, fees `$24.80` ($0.62/side).
 
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
