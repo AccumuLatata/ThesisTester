@@ -1,4 +1,4 @@
-"""Journal typed records (TJ1–TJ7).
+"""Journal typed records (TJ1–TJ8).
 
 Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
@@ -158,6 +158,53 @@ COUNTERFACTUAL_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
     "cf_exit_reason",
     "cf_gross_ticks",
     "cf_net_ticks",
+)
+
+# --- named-cell match / forward ledger (TJ8) ---
+MATCH_EXECUTED_CELL: Final[str] = "executed_cell"
+MATCH_NEAR_LEVEL: Final[str] = "near_level"
+MATCH_DISCRETIONARY_ONLY: Final[str] = "discretionary_only"
+MATCH_SYSTEMATIC_UNFILLED: Final[str] = "systematic_unfilled"
+MATCH_PRODUCT_MISMATCH: Final[str] = "product_mismatch"
+MATCH_CLASSES: Final[frozenset[str]] = frozenset(
+    {
+        MATCH_EXECUTED_CELL,
+        MATCH_NEAR_LEVEL,
+        MATCH_DISCRETIONARY_ONLY,
+        MATCH_SYSTEMATIC_UNFILLED,
+        MATCH_PRODUCT_MISMATCH,
+    }
+)
+MATCH_SIDE_JOURNAL: Final[str] = "journal"
+MATCH_SIDE_SYSTEMATIC: Final[str] = "systematic"
+DEFAULT_MATCH_WINDOW_SECONDS: Final[float] = 60.0
+DEFAULT_MATCH_TICKS: Final[float] = 8.0
+MATCH_RISK_TOLERANCE_RATIO: Final[float] = 0.5
+MISMATCH_HOLD: Final[str] = "hold"
+MISMATCH_RISK: Final[str] = "risk"
+MATCH_HONESTY: Final[str] = (
+    "journal is not a study cell; named-cell match only (no Observatory corpus); "
+    "adherence is executed_cell / (executed_cell + systematic_unfilled); "
+    "live ticks are qty-scaled journal, cell expectancy is 1-lot R × SL in ticks."
+)
+MATCH_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
+    "side",
+    "trade_id",
+    "signal_id",
+    "session_date",
+    "match_class",
+    "product_mismatch_dimension",
+    "cell_id",
+    "counterpart_id",
+    "delta_entry_seconds",
+    "delta_entry_ticks",
+    "instrument",
+    "direction",
+    "net_ticks",
+    "hold_seconds",
+    "journal_risk_ticks",
+    "cell_stop_loss_ticks",
+    "cell_bars_held",
 )
 
 
