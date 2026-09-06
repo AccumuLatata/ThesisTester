@@ -29,6 +29,7 @@ Assistant-related contracts:
 | Level-as-anchor combination protocol | `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` | **Program A** (docs-only, executed desk funnel). Closed token inventory + staged `core_level` × complementary partners; L1 coin-flip-first / L2 low-N stop / Admit=`backtest.entry_window`. No new factor axes / engine / goldens |
 | Level-combination research concept | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` · inventory `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` · runbook `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | **Program B** (operator packet). Wave 0 solo (AO1) + 50 × MA / rolling VWAP / pivot, split 15s (`manifest.yaml`, 23/944) vs tick-gated VA (`manifest_va.yaml`, 4/207). `dVWAP` is an optional core, not a required partner. Does not amend the Notion desk lock page |
 | Directional integrity & edge attribution | `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA) | **DA6 landed** (DA0 locked, DA1–DA5 landed). Program B Run 2 packet (`fade` @ 1min, `same_bar_opposite_direction: raise`, `report.random_baseline` 50). Series code is **DA** (DI is Discuss Intelligence). Run 1 YAMLs untouched; generator defaults unchanged; no existing-golden regen |
+| Trade journal (fills ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ0 locked.** Quantower Trades CSV (timestamps) + AMP Daily Statement PDF (money). Qty-aware FIFO; AMP fees $1.24 RT; no engine/golden touch. Same-day AMP↔QT overlap golden still desk-blocked |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
 | A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP1 implemented — evidence collection pending.** Current APOC is a 1-minute typical-price proxy. The comparison harness is isolated from production APOC. A versioned source change still requires a reproducible Quantower oracle. |
@@ -1506,6 +1507,30 @@ algorithm from one matching bar-range reconstruction.
 availability, pAPOC freeze, and unrelated level families. Goldens remain
 unchanged. A product-default source change requires identity/cache versioning;
 missing selected-source inputs must not silently emit legacy typical APOC.
+
+## Trade Journal (TJ0–TJ7) — TJ0 locked
+
+Post-trade ingest of discretionary fills so the desk can measure realized
+outcomes against AMP money truth and (later) a named systematic cell.
+R21-shaped: new `thesistester/journal/` package; no `simulate_trades` /
+signals / levels edits; no golden regen; desk PDFs/CSV stay out of git.
+
+**Canonical spec:** `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| TJ0 | Plan lock + desk-file evidence + contracts (this PR) |
+| TJ1 | Quantower Trades CSV → `FillRecord` (`quantower_trades`, NY timestamps) |
+| TJ2 | AMP Daily Statement PDF → `AmpStatement` (layout Buy/Sell + fees) |
+| TJ3 | Qty-aware FIFO on `Position ID` → `JournalTrade` (default 10-tick R) |
+| TJ4 | Daily recon (multiset + P&S + fees); fail-closed if not `reconciled` |
+| TJ5 | Join to 15s/1m clock; MAE/MFE only when `bars_held ≥ 1` |
+| TJ6 | Named-cell counterfactual match (`executed_cell` / `near_level` / …) |
+| TJ7 | Report + page 17 Journal (read-only; USER_GUIDE H2 + HC allowlist) |
+
+**Regression posture:** additive package only. QT `Fee`/`Gross P/L` are unused
+(always 0 in the desk export). AMP is the fee SoT. Journal expectancy does
+not re-rank studies. PII fixtures are redacted.
 
 ## Studies Inspect ledger progress (additive)
 
