@@ -1105,7 +1105,18 @@ reconcile` compare imported fills to AMP confirmations per
 Refuses `results/studies/`. AMP costs apply only to closed imported
 trades on `reconciled` days (`include_manual` is pairing-only).
 
-Later TJ milestones (bar join, counterfactuals, page 17)
+**TJ5 landed.** `join_journal_bars(trades, *, data, subtimeframe_data, …)`
+joins fills to already-loaded 15s bars (`subtimeframe_data`) and the
+derived 1m parent (`data`). Join is `open_ts <= ts < open_ts + 15s` in
+UTC. Optional Tick-Last prints set `resolution=tick` and walk
+`ts > entry_timestamp`. Default `join_resolution` is `15s`. Does not
+write session state; it **reads** the existing `data` /
+`subtimeframe_data` / tick frames. MAE/MFE stay null when
+`bars_held == 0` (`excursion_unavailable`). `segmented_contracts` roll
+metadata covers only the CME session of a documented roll timestamp.
+Nullable join/cost cells stay object-None. No `compute_all_levels`.
+
+Later TJ milestones (level attribution, counterfactuals, page 17)
 add siblings in the same package. Persistence, when it lands
 (TJ9), is `.thesistester_store/journal/v1/` — sibling of `datasets/` /
 `setups/`, **not** under `execution_artifacts/` (CAI-10 LRU does not scan
@@ -1376,15 +1387,15 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
-| `data` | Data (`pages/1_Data.py`), Research Bundle import | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Report/Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV/session columns. Data page Sample auto-load applies only to empty sessions; navigation must not replace in-session bars. |
+| `data` | Data (`pages/1_Data.py`), Research Bundle import | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Report/Bundles (`pages/12_Research_Bundles.py`); TJ5 `join_journal_bars` (read-only 1m parent) | `pd.DataFrame` OHLCV/session columns. Data page Sample auto-load applies only to empty sessions; navigation must not replace in-session bars. |
 | `bundle_import_omitted_data` | Research Bundle apply | Page 12 / Data bootstrap and Sample auto-load gate; cleared on Data-page successful load | `bool` — True when the imported zip omitted `data` |
 | `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
 | `raw_data` | NinjaTrader capture, data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated NinjaTrader 3/5-field capture or tick/trade rows restored from `raw.parquet`; never consumed by the bar engine. A canonical-only resave preserves an existing sidecar and its provenance. |
 | `raw_interval` | Data capture profiles / saved-dataset bootstrap | Local dataset provenance | Inferred raw capture interval restored from saved metadata and preserved with an existing raw sidecar |
-| `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
+| `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles; TJ5 `join_journal_bars` (read-only 15s clock) | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
 | `subtimeframe_interval` | Data page, R18 API/CLI, or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
-| `tick_paths` | Data page optional tick-last attach | Data page honesty / copy-into Studies Build | `list[str]` durable Quantower Tick–Tick–Last paths under cwd or the local store (launch-parity trusted roots). Not an ingestion mode and not a replacement for `data`. Cleared when dataset identity changes or source invalidation runs |
+| `tick_paths` | Data page optional tick-last attach | Data page honesty / copy-into Studies Build; TJ5 tick join (already-loaded Last prints, not this path list) | `list[str]` durable Quantower Tick–Tick–Last paths under cwd or the local store (launch-parity trusted roots). Not an ingestion mode and not a replacement for `data`. Cleared when dataset identity changes or source invalidation runs |
 | `_tick_paths_text` | Data page tick path textarea | Data page only | Widget-bound typed paths; not cleared with installed `tick_paths` |
 | `_tick_uploader_nonce` | Data page / bundle source invalidation | Data page tick `file_uploader` key | `int` — bumped so a leftover tick upload cannot re-apply after restore |
 | `_tick_upload_signature` | Data page tick attach | Data page only | Installed-path signature; not bundle-managed |

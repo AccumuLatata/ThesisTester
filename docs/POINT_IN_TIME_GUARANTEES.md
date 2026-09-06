@@ -295,3 +295,20 @@ Contract reference: `docs/otf-filter.md` §6 / §13b.
    with `profile.py`. True intrabar volume-at-price data would produce different POC values
    but would not introduce look-ahead bias. APOC uses only the first RTH 30-minute bracket;
    it is not the full-session POC and is not derived from Single Prints.
+
+## Trade journal fill → bar / tick join (TJ5)
+
+`join_journal_bars` is post-trade. It consumes already-loaded `data` (derived 1m
+parent) and `subtimeframe_data` (15s primary). It does **not** call
+`compute_all_levels`, `derive_complete_parent_ohlcv`, or `simulate_trades`.
+
+| Rule | Causal? | Detail |
+|---|---|---|
+| 15s covering bar | **Yes** | `open_ts <= ts < open_ts + 15s` after both sides are UTC. 15s opens must be on-grid (`:00/:15/:30/:45`); 1m parent opens must be whole minutes. Non-finite or inverted OHLC fails closed. No covering bar → `missing_bar`. Fill price outside `[low, high]` → `price_outside_bar`. |
+| 1m parent | **Yes** | The already-emitted parent minute that contains the fill (`parent_open <= ts < parent_open + 1min`). Same parent for `resolution=15s` and `resolution=tick`. |
+| `bars_held` | **Yes** | Count of **completed** 15s bars with `open > entry_bar_open` and `open + 15s <= exit_timestamp`. |
+| MAE/MFE at 15s | **Yes** | Computed only from those completed intermediate bars. The entry bar's unused range is never used (it includes pre-fill ticks). `bars_held == 0` → `mae_points` / `mfe_points` null + `excursion_unavailable`. |
+| MAE/MFE at tick | **Yes** | Quantower Tick-Last prints with `entry_timestamp < ts < exit_timestamp`. A print at the entry timestamp is excluded. Missing session ticks fail closed. |
+| Resolution stamp | **Yes** | Every joined row carries `resolution` ∈ {`15s`, `tick`}. Rows of different resolution are never averaged together. |
+
+Tests: `tests/test_journal_join.py`.

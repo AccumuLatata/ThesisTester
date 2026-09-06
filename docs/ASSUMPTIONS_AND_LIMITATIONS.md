@@ -1322,6 +1322,28 @@ other than the last bar in the dataset.
 - 27-May redacted golden: 40 fills, avg long `30132.87500`, avg short
   `30133.55000`, gross `$27.00`, fees `$24.80` ($0.62/side).
 
+## Trade journal (TJ5 — fill→bar/tick join; no entry-bar lookahead)
+
+- Join consumes already-loaded `data` (1m parent) and `subtimeframe_data`
+  (15s). It does not derive parents, recompute levels, or call
+  `simulate_trades`. Covering bar is `open_ts <= ts < open_ts + 15s` in UTC.
+- `bars_held` counts completed 15s bars strictly between entry and exit.
+  When `bars_held == 0`, `mae_points` / `mfe_points` stay null
+  (`excursion_unavailable`). The entry bar's unused range is never used as
+  MAE — that range includes pre-fill ticks.
+- Tick resolution walks Quantower Last prints with `ts > entry_timestamp`.
+  Every joined row is stamped `resolution` ∈ {`15s`, `tick`}. Do not average
+  those rows together without saying so in the caption.
+- A Jun fill on a Sep-rolled 15s series is `roll_mismatch` unless valid R7
+  roll metadata covers that session day. `external_continuous` covers every
+  day. `segmented_contracts` covers only when a `roll_gap` connects those
+  contracts **and** the gap's `roll_timestamp` falls on the same CME
+  `session_date` (ETH 18:00, not the UTC calendar date and not
+  `roll_ts <= entry`). Empty / unrelated / earlier segmented gaps do not
+  cover. Same-month / different-year (`MNQM26` vs `MNQM27`) also flags.
+  Off-grid or non-finite OHLC fails closed. Nullable join/cost cells stay
+  object-None, not float64 NaN.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.
