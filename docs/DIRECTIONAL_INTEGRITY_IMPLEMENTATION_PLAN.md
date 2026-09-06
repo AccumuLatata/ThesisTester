@@ -483,6 +483,6 @@ Hard rules:
 
 ## 8. Follow-ups (out of scope, recorded)
 
-- **Trade-journal import** — now a separate series: `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ0 locked). Quantower Trades CSV + AMP Daily Statement PDF; qty-aware FIFO; AMP fees are the cost SoT. Do not implement TJ inside a DA PR.
+- **Trade-journal import** — now a separate series: `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ0 locked). TradesViz executions CSV + AMP Daily Statement PDF; `spread_id` pairing; AMP fees are the cost SoT; tags verified against the levels frame. Do not implement TJ inside a DA PR.
 - **Conditional locks** for a small Program C: pre-registered ToD window and OTF state as part of the L0 lock, not post-hoc slices.
 - **Notion Results schema**: add `Long n`, `Short n`, `Integrity`, `E − null` columns so DA2/DA5 outputs have a home. Manual desk change; not a repo task.

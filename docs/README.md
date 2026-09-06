@@ -66,7 +66,7 @@ Engine / data contracts:
 - [WVWAP_MVWAP_IMPLEMENTATION_PLAN.md](WVWAP_MVWAP_IMPLEMENTATION_PLAN.md) (WMV — developing `wVWAP` / `mVWAP`; **WMV0–WMV2 complete**; same `session_vwap_enabled` gate as `dVWAP`)
 - [TICK_VAP_IMPLEMENTATION_PLAN.md](TICK_VAP_IMPLEMENTATION_PLAN.md) (TV — Quantower tick-last ingest for prior VA/POC only; **TV1–TV4 landed**; series complete; fail-closed without ticks; no golden regen)
 - [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) (AP — Quantower A-period POC parity investigation; **AP1 implemented — evidence collection pending**; candidate comparison precedes any APOC engine change)
-- [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) (TJ — Quantower fills + AMP EOD statement → journal trades + recon + optional named-cell match; **TJ0 locked**; no engine/golden touch)
+- [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) (TJ — TradesViz executions (UTC, `spread_id`, tags) + AMP EOD statement → journal trades + recon + tag verification + optional named-cell match; **TJ0 locked**; no engine/golden touch)
 
 ## Research (demoted snapshots)
 
