@@ -29,7 +29,7 @@ Assistant-related contracts:
 | Level-as-anchor combination protocol | `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` | **Program A** (docs-only, executed desk funnel). Closed token inventory + staged `core_level` × complementary partners; L1 coin-flip-first / L2 low-N stop / Admit=`backtest.entry_window`. No new factor axes / engine / goldens |
 | Level-combination research concept | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` · inventory `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` · runbook `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | **Program B** (operator packet). Wave 0 solo (AO1) + 50 × MA / rolling VWAP / pivot, split 15s (`manifest.yaml`, 23/944) vs tick-gated VA (`manifest_va.yaml`, 4/207). `dVWAP` is an optional core, not a required partner. Does not amend the Notion desk lock page |
 | Directional integrity & edge attribution | `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA) | **DA6 landed** (DA0 locked, DA1–DA5 landed). Program B Run 2 packet (`fade` @ 1min, `same_bar_opposite_direction: raise`, `report.random_baseline` 50). Series code is **DA** (DI is Discuss Intelligence). Run 1 YAMLs untouched; generator defaults unchanged; no existing-golden regen |
-| Trade journal (fills + intent ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ2 landed** (TJ0 locked, TJ1 landed). AMP Daily Statement PDF → `AmpStatement` (confirmations + P&S + fees; `pdfplumber` confined to `journal/amp_statement.py`). Pairing / recon / page 17 not in this PR. No engine/golden touch. Quantower parked |
+| Trade journal (fills + intent ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ3 landed** (TJ0 locked, TJ1–TJ2 landed). `spread_id` pairing + qty-aware FIFO fallback → `JournalTrade`. Recon / page 17 not in this PR. No engine/golden touch. Quantower parked |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
 | A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP1 implemented — evidence collection pending.** Current APOC is a 1-minute typical-price proxy. The comparison harness is isolated from production APOC. A versioned source change still requires a reproducible Quantower oracle. |
@@ -1508,7 +1508,7 @@ availability, pAPOC freeze, and unrelated level families. Goldens remain
 unchanged. A product-default source change requires identity/cache versioning;
 missing selected-source inputs must not silently emit legacy typical APOC.
 
-## Trade Journal (TJ0–TJ9) — TJ2 landed
+## Trade Journal (TJ0–TJ9) — TJ3 landed
 
 Post-trade ingest of discretionary fills **and trader intent** (TradesViz
 tags / notes / declared SL-TP) so the desk can measure realized outcomes
@@ -1529,7 +1529,7 @@ edits; no golden regen; desk exports stay out of git.
 | TJ0 | Plan lock + desk-file evidence + value thesis + contracts (this PR) |
 | TJ1 | **landed** — TradesViz executions CSV → `FillRecord` (`tradesviz_executions`; imported vs manual) |
 | TJ2 | **landed** — AMP Daily Statement PDF → `AmpStatement` (layout Buy/Sell + fees) |
-| TJ3 | `spread_id` pairing + qty-aware FIFO fallback → `JournalTrade` (+tags; `fee_ticks`; default 10-tick R) |
+| TJ3 | **landed** — `spread_id` pairing + qty-aware FIFO fallback → `JournalTrade` (+tags; `fee_ticks`; default 10-tick R) |
 | TJ4 | Daily recon (multiset + P&S + fees); 27-May redacted golden; fail-closed |
 | TJ5 | Join to 15s/1m clock (UTC); tick resolution when present; MAE/MFE only when `bars_held ≥ 1` |
 | TJ6 | Level attribution on every entry bar + tag→token map + tag verification (`intent_mismatch`) |

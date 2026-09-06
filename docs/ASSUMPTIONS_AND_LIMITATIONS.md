@@ -1274,6 +1274,28 @@ other than the last bar in the dataset.
   CI owns the text parser against redacted fixtures; PDF extraction is
   tested on a synthetic PDF. Desk statements stay out of git.
 
+## Trade journal (TJ3 — pairing is spread_id, then FIFO; not AMP P&S)
+
+- Pairing consumes the TradesViz `FillRecord` frame only. AMP Purchase & Sale
+  pairs are recon evidence (TJ4), never a journal-trade list and never a
+  pairing source.
+- Imported fills with a `spread_id` whose signed qty nets to zero and that
+  never open the opposite side pair via qty-aware FIFO **inside that group**.
+  A group that does not qualify is FIFO-matched inside the group first
+  (`pair_method=fifo_fallback`); only residual lots, and fills without
+  `spread_id`, join qty-aware FIFO per `(instrument, contract,
+  session_date)`. Unpaired leftover lots are `status=open`. A `spread_id`
+  group that mixes instrument or contract fails closed. `session_date` is
+  coerced to a calendar `date` (`Timestamp` is a `date` subclass and must
+  not leak a time component into FIFO keys).
+- Manual rows stay excluded from pairing unless `include_manual=True`
+  (keyword-only, default false). `qty is None` rows never pair.
+- `journal_risk_ticks` is keyword-only, default **10**. `r_multiple`
+  denominator includes **qty**. `commission_cost` / `day_fee_allocation` /
+  `fee_ticks` stay null until TJ4; `net_pnl_currency` equals gross until
+  then. `slippage_cost` is null (no 1-tick invention). `r_multiple_declared`
+  is emitted only when `declared_stop` is present.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.
