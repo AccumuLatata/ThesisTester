@@ -688,7 +688,7 @@ Uncited numeric tokens in LLM narrative are rejected before render. Glossary
 formulas above remain the definitional source; packet paths are the citation
 addresses used by the assistant release gate.
 
-## Trade journal metrics (TJ3)
+## Trade journal metrics (TJ3–TJ4)
 
 Journal trades are **not** study cells. These quantities live on
 `JournalTrade` and must not re-rank `results_index` or replace engine
@@ -696,13 +696,13 @@ Journal trades are **not** study cells. These quantities live on
 
 | Key | Definition |
 |---|---|
-| `r_multiple` (journal) | `net_pnl_currency / (journal_risk_ticks × tick_size × point_value × qty)`. Default `journal_risk_ticks` is **10**. Until TJ4, net equals gross (AMP costs are null). |
+| `r_multiple` (journal) | `net_pnl_currency / (journal_risk_ticks × tick_size × point_value × qty)`. Default `journal_risk_ticks` is **10**. On `reconciled` days net is gross − commission − `day_fee_allocation`. |
 | journal expectancy | Mean journal `r_multiple` or mean `net_ticks` over a slice. Diagnostic only; n and honesty caption required. Not a study rank key. |
 | `net_ticks` | `net_pnl_currency / (tick_size × point_value)` — qty-scaled dollar-ticks. |
-| `fee_ticks` | `commission_cost / (tick_size × point_value)`. **Null until TJ4** (AMP per-side × 2 × qty). |
+| `fee_ticks` | `commission_cost / (tick_size × point_value)`. AMP per-side × 2 × qty on `reconciled` closed trades; null otherwise. |
 | `r_multiple_declared` | Same net over `\|entry − declared_stop\| × point_value × qty`. Emitted **only** when `declared_stop` is present. Intent, not an executed bracket. |
 | `hold_seconds` | `exit_timestamp − entry_timestamp` in seconds. Primary journal duration; `bars_held` stays null until TJ5. |
-| `reconciled` | TJ4 day status (`reconciled` / `journal_missing` / `amp_missing` / `multiset_mismatch` / `pnl_mismatch`). **Not computed in TJ3.** |
+| `reconciled` | TJ4 day status: `reconciled` / `journal_missing` / `amp_missing` / `multiset_mismatch` / `pnl_mismatch`. Later milestones refuse days that are not `reconciled` unless `allow_unreconciled=True`. |
 
 Point values are MNQ $2 / MES $5; tick 0.25. Engine `simulate_trades` is 1-lot
 — do not copy those formulas onto journal rows.

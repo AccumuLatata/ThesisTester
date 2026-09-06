@@ -227,8 +227,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     # Additive Study Runner surface (RS3). Does not alter ``run`` defaults.
     from thesistester.study.cli_study import add_study_subparser
+    from thesistester.journal.cli import add_journal_subparser
 
     add_study_subparser(subparsers)
+    add_journal_subparser(subparsers)
     return parser
 
 
@@ -239,6 +241,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from thesistester.study.cli_study import dispatch_study
 
         return dispatch_study(args)
+    if args.command == "journal":
+        from thesistester.journal.cli import dispatch_journal
+
+        return dispatch_journal(args)
     if args.command != "run":
         raise AssertionError(f"Unhandled command: {args.command}")
     experiment_path = args.experiment.resolve()

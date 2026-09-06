@@ -1296,6 +1296,23 @@ other than the last bar in the dataset.
   then. `slippage_cost` is null (no 1-tick invention). `r_multiple_declared`
   is emitted only when `declared_stop` is present.
 
+## Trade journal (TJ4 — daily recon; AMP fees on reconciled days)
+
+- Recon is per `(session_date, instrument)`. Statuses are `reconciled`,
+  `journal_missing`, `amp_missing`, `multiset_mismatch`, `pnl_mismatch`.
+  The fill key is `(quantize(price, tick_size), side, qty)` — not
+  `round(price, 2)`. Journal gross $ vs AMP `P&S` $ allows 1 cent.
+- AMP P&S is money evidence only. It is never paired into `JournalTrade`.
+- `commission_cost` = AMP `per_side_schedule` total × 2 × **qty** on
+  `reconciled` closed trades. `Liquidation Fee` (and any day extra) is
+  `day_fee_allocation`, split equally across that instrument-day's trades,
+  never folded into `commission_cost`. Unreconciled days keep costs null.
+- `python -m thesistester journal reconcile` writes `reconcile.json` +
+  `journal_trades.parquet` under an explicit `--output-dir`. It refuses
+  `results/studies/`. Schema `journal/v1`.
+- 27-May redacted golden: 40 fills, avg long `30132.87500`, avg short
+  `30133.55000`, gross `$27.00`, fees `$24.80` ($0.62/side).
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

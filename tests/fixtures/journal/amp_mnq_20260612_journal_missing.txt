@@ -1,0 +1,27 @@
+                              DAILY STATEMENT
+
+
+     REDACTED CLIENT                                 12-JUN-26
+                                                     000000
+                           Introduced By: AMP Trading
+                                                                      PAGE : 1
+                           T R A D E S C O N F I R M A T I O N S
+ THE FOLLOWING TRADES HAVE BEEN EXECUTED THIS DAY FOR YOUR ACCOUNT AND RISK.
+   DATE NUMBER MARKET BUY   SELL CONTRACT DESCRIPTION      TRADE PRICE CCY DEBIT/CREDIT
+ 12-JUN-26 16000001 CME 1        MNQ Future JUN 26         22600.00 USD
+ 12-JUN-26 16000002 CME        1 MNQ Future JUN 26         22610.00 USD
+ TOTAL                  1      1 EX- 18-JUN-26
+                                             AVERAGE LONG 22600.00000
+                                             AVERAGE SHORT 22610.00000
+                                P U R C H A S E & S A L E
+ 12-JUN-26 16000002 CME      1 MNQ Future JUN 26           22610.00 USD
+ 12-JUN-26 16000001 CME 1     MNQ Future JUN 26            22600.00 USD
+ TOTAL                  1     1 EX- 18-JUN-26         P&S         USD     40.00 CR
+                      Account Summary as of 06/12/26
+   TOTAL COMMISSION & FEES       1.24 DR
+    EXCHANGE                     0.70 DR
+    NFA                          0.04 DR
+    CLEARING CLIENT              0.26 DR
+    RITHMIC TRF                  0.20 DR
+    COMMISSION                   0.04 DR
+   OPEN TRADE EQUITY             0.00 CR

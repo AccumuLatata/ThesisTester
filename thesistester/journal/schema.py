@@ -1,7 +1,6 @@
-"""Journal typed records (TJ1 ``FillRecord``, TJ2 ``AmpStatement``, TJ3 ``JournalTrade``).
+"""Journal typed records (TJ1–TJ4).
 
-Later TJ milestones add recon artifacts here. This module does not pair
-fills, call ``simulate_trades``, or compute AMP fees.
+Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
 
 from __future__ import annotations
@@ -43,6 +42,22 @@ STATUS_OPEN: Final[str] = "open"
 DEFAULT_JOURNAL_RISK_TICKS: Final[int] = 10
 JOURNAL_TICK_SIZE: Final[float] = 0.25
 JOURNAL_POINT_VALUE: Final[dict[str, float]] = {"MNQ": 2.0, "MES": 5.0}
+JOURNAL_PNL_TOLERANCE_USD: Final[float] = 0.01
+JOURNAL_STORE_SCHEMA: Final[str] = "journal/v1"
+RECON_RECONCILED: Final[str] = "reconciled"
+RECON_JOURNAL_MISSING: Final[str] = "journal_missing"
+RECON_AMP_MISSING: Final[str] = "amp_missing"
+RECON_MULTISET_MISMATCH: Final[str] = "multiset_mismatch"
+RECON_PNL_MISMATCH: Final[str] = "pnl_mismatch"
+RECON_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        RECON_RECONCILED,
+        RECON_JOURNAL_MISSING,
+        RECON_AMP_MISSING,
+        RECON_MULTISET_MISMATCH,
+        RECON_PNL_MISMATCH,
+    }
+)
 
 
 class JournalIngestError(ValueError):
@@ -137,10 +152,10 @@ class AmpStatement:
 class JournalTrade:
     """One paired journal round-trip (or leftover open lot) after TJ3.
 
-    ``commission_cost`` / ``day_fee_allocation`` stay null until TJ4. AMP P&S
-    is not a pairing source. ``r_multiple`` uses ``journal_risk_ticks``
-    (default 10) × tick × point value × **qty**; ``r_multiple_declared`` is
-    emitted only when ``declared_stop`` is present.
+    ``commission_cost`` / ``day_fee_allocation`` are filled by TJ4 on
+    ``reconciled`` days. AMP P&S is not a pairing source. ``r_multiple`` uses
+    ``journal_risk_ticks`` (default 10) × tick × point value × **qty**;
+    ``r_multiple_declared`` is emitted only when ``declared_stop`` is present.
     """
 
     trade_id: str
@@ -184,3 +199,28 @@ class JournalTrade:
 
 
 JOURNAL_TRADE_COLUMNS: Final[tuple[str, ...]] = tuple(f.name for f in fields(JournalTrade))
+
+
+@dataclass(frozen=True)
+class DayReconcile:
+    """One ``(session_date, instrument)`` recon row (TJ4)."""
+
+    session_date: date
+    instrument: str
+    status: Literal[
+        "reconciled",
+        "journal_missing",
+        "amp_missing",
+        "multiset_mismatch",
+        "pnl_mismatch",
+    ]
+    journal_fill_count: int
+    amp_fill_count: int
+    journal_gross_usd: float | None
+    amp_ps_usd: float | None
+    fee_total_usd: float | None
+    day_fees_extra: float | None
+    note: str = ""
+
+
+DAY_RECONCILE_COLUMNS: Final[tuple[str, ...]] = tuple(f.name for f in fields(DayReconcile))

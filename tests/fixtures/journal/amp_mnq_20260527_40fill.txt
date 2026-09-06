@@ -1,0 +1,115 @@
+                              DAILY STATEMENT
+
+
+     REDACTED CLIENT                                 27-MAY-26
+                                                     000000
+                           Introduced By: AMP Trading
+                                                                      PAGE : 1
+                           T R A D E S C O N F I R M A T I O N S
+ THE FOLLOWING TRADES HAVE BEEN EXECUTED THIS DAY FOR YOUR ACCOUNT AND RISK.
+   DATE NUMBER MARKET BUY   SELL CONTRACT DESCRIPTION      TRADE PRICE CCY DEBIT/CREDIT
+ 27-MAY-26 15000001 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000002 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000003 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000004 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000005 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000006 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000007 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000008 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000009 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000010 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000011 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000012 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000013 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000014 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000015 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000016 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000017 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000018 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000019 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000020 CME        1 MNQ Future JUN 26         30133.50 USD
+                                                                           ../..
+                                                                      PAGE : 2
+                           T R A D E S C O N F I R M A T I O N S
+ THE FOLLOWING TRADES HAVE BEEN EXECUTED THIS DAY FOR YOUR ACCOUNT AND RISK.
+   DATE NUMBER MARKET BUY   SELL CONTRACT DESCRIPTION      TRADE PRICE CCY DEBIT/CREDIT
+ 27-MAY-26 15000021 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000022 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000023 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000024 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000025 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000026 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000027 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000028 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000029 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000030 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000031 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000032 CME        1 MNQ Future JUN 26         30133.50 USD
+ 27-MAY-26 15000033 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000034 CME        1 MNQ Future JUN 26         30133.75 USD
+ 27-MAY-26 15000035 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000036 CME        1 MNQ Future JUN 26         30133.75 USD
+ 27-MAY-26 15000037 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000038 CME        1 MNQ Future JUN 26         30133.75 USD
+ 27-MAY-26 15000039 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000040 CME        1 MNQ Future JUN 26         30133.75 USD
+ TOTAL                  20     20 EX- 18-JUN-26
+                                                        Commission USD    0.80 DR
+                                             AVERAGE LONG 30132.87500
+                                             AVERAGE SHORT 30133.55000
+                                P U R C H A S E & S A L E
+   DATE TRADE NUMBER MARKET BUY SELL CONTRACT DESCRIPTION TRADE PRICE CCY DEBIT/CREDIT
+ 27-MAY-26 15000002 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000001 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000004 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000003 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000006 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000005 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000008 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000007 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000010 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000009 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000012 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000011 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000014 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000013 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000016 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000015 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000018 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000017 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000020 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000019 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000022 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000021 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000024 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000023 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000026 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000025 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000028 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000027 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000030 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000029 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000032 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000031 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000034 CME      1 MNQ Future JUN 26           30133.75 USD
+ 27-MAY-26 15000033 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000036 CME      1 MNQ Future JUN 26           30133.75 USD
+ 27-MAY-26 15000035 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000038 CME      1 MNQ Future JUN 26           30133.75 USD
+ 27-MAY-26 15000037 CME 1     MNQ Future JUN 26            30133.00 USD
+ 27-MAY-26 15000040 CME      1 MNQ Future JUN 26           30133.75 USD
+ 27-MAY-26 15000039 CME 1     MNQ Future JUN 26            30133.00 USD
+ TOTAL                  20    20 EX- 18-JUN-26         P&S         USD     27.00 CR
+                      Account Summary as of 05/27/26
+   Processed exchanges : CME
+      BASE CURRENCY USD     Reg.
+   ACCOUNT CASH BALANCE       1,000.00 CR
+   REALIZED PROFIT/LOSS         27.00 CR
+   TOTAL COMMISSION & FEES      24.80 DR
+    EXCHANGE                    14.00 DR
+    NFA                          0.80 DR
+    CLEARING CLIENT              5.20 DR
+    RITHMIC TRF                  4.00 DR
+    COMMISSION                   0.80 DR
+   OPEN TRADE EQUITY             0.00 CR
+   TOTAL EQUITY               1,002.20 CR

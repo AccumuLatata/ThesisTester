@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ3 landed.** TJ4 (reconcile) is next. No page yet.
+**Status:** **TJ4 landed.** TJ5 (bar join) is next. No page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -745,11 +745,11 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ4 — Reconcile
 
-- **27-May redacted golden** (`reconciled`, exact numbers §3.4).
-- `journal_missing` (AMP 12-Jun pattern) and `amp_missing` covered with
-  synthetic dates.
-- CLI writes `reconcile.json` + `journal_trades.parquet` under an explicit
-  `--output-dir`. No write into `results/studies/`.
+- [x] **27-May redacted golden** (`reconciled`, exact numbers §3.4).
+- [x] `journal_missing` (AMP 12-Jun pattern) and `amp_missing` covered with
+      synthetic dates.
+- [x] CLI writes `reconcile.json` + `journal_trades.parquet` under an explicit
+      `--output-dir`. No write into `results/studies/`.
 
 ### TJ5 — Join
 
