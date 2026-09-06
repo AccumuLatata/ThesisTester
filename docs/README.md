@@ -27,6 +27,7 @@ research snapshots live under [`research/`](research/README.md).
 | [LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md](LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) | Handoff: rewrite Notion desk contract without losing logging/roadmap |
 | [ANCHOR_CONFLUENCE.md](ANCHOR_CONFLUENCE.md) | Anchor-confluence workflow guide |
 | [VOICE_SIDECAR_OPS.md](VOICE_SIDECAR_OPS.md) | Localhost realtime voice sidecar ops |
+| [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) | TJ — TradesViz+AMP journal; **TJ0 locked**; `session_date` is CME `trading_session_date` |
 | [SIMULATE_PERF.md](SIMULATE_PERF.md) · [CAI_BASELINE.md](CAI_BASELINE.md) | Informational performance baselines |
 
 ## Normative contracts (complete — amend carefully)

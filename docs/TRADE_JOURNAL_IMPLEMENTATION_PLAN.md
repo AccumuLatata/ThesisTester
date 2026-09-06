@@ -1,7 +1,7 @@
 # Trade Journal — Implementation Plan (TJ)
 
 **Document type:** Focused implementation plan (fully scoped PRs)
-**Date:** 2026-09-06 (rev 3 — value thesis; own-entry counterfactuals; level attribution for untagged trades)
+**Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
 **Status:** **TJ0 locked.** No production journal code has landed.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
@@ -114,8 +114,8 @@ never smeared into the per-side schedule.
 
 | Source | Clock | Rule |
 |---|---|---|
-| TradesViz | explicit `+0000` | parse offset; convert to UTC; `session_date` = NY date |
-| AMP | date only | statement date = NY session date |
+| TradesViz | explicit `+0000` | parse offset; convert to UTC; `session_date` = **`trading_session_date`** in `America/New_York` with `eth_start="18:00"` (`thesistester/levels/session_date.py`) — **not** the NY calendar date |
+| AMP | date only | statement date = CME session date (same helper; ETH 18:00 → next calendar date) |
 | Quantower | naive, **Europe/Vienna** local (verified: +6 h vs TradesViz UTC on 29-May; CEST = UTC+2, EDT = UTC−4) | if ever loaded, caller must pass `source_tz` explicitly; no default |
 
 Fill→bar join (TJ5) fail-closes if the fill price is outside the joined 15s
@@ -191,7 +191,7 @@ slices below are multiple comparisons on the same data.
 | Days ≥ 60 trades | 4 days | — | avg day net < 0 | days < 60 trades: avg day net > 0 |
 | Next trade after 3 losses | 102 | +0.2 | — | vs +1.2 baseline; WR 0.36 |
 | Re-entry < 30 s after a loss | 166 | +4.4 | — | vs −3.5 for re-entry ≥ 120 s (opposite of the revenge-trading prior) |
-| Direction flipped on every trade | — | −1.20 | — | direction call worth +1.20 t/trade vs zero drift (TJ7 null makes this a distribution) |
+| Direction flipped on every trade | — | −1.20 | — | tautological sign flip of the whole book — **not** the TJ7 null |
 
 Two lessons for the design, independent of whether these numbers persist:
 
@@ -203,6 +203,10 @@ Two lessons for the design, independent of whether these numbers persist:
 2. **Priors must be measured, not assumed.** The revenge-trading prior
    (fast re-entry after a loss is bad) is contradicted here. The journal
    must show n and honesty framing on every slice and never moralize.
+
+The “direction flipped” row is a one-shot negation. TJ7’s null **shuffles
+existing per-session long/short labels** (preserves that day’s counts) and
+reports a percentile. Do not implement the null as a global sign flip.
 
 ---
 
@@ -329,19 +333,65 @@ TradesViz executions CSV        AMP Daily Statement PDF
 Posture is **R21-shaped**: post-trade ingest + analytics. Journal trades are
 a new frame, never written into a research bundle as `simulate_trades`
 output. `canonical_bundle_hash` of every existing experiment stays identical.
-TJ7 is pure functions over bars/ticks plus a seeded permutation; it does not
-call `simulate_trades` and does not need to.
+TJ7 is pure functions over bars/ticks plus a seeded permutation. It must
+**not** call `simulate_trades`: that function enters at **next-bar open** on
+1-lot candidate signals (`risk_currency` has no qty). Journal fills are
+intra-bar, multi-lot, AMP-costed. Reusing it would silently change the entry
+model.
 
 Package: `thesistester/journal/` (`schema.py`, `tradesviz.py`,
 `amp_statement.py`, `pair.py`, `reconcile.py`, `join.py`, `levels.py`,
 `tags.py`, `counterfactual.py`, `rules.py`, `match.py`, `ledger.py`,
-`report.py`). CLI: `python -m thesistester journal
-ingest|reconcile|attribute|counterfactual|match|report`. Store (TJ9):
-`.thesistester_store/journal/v1/` — user-owned, never evicted by CAI-10.
+`report.py`). CLI: additive `python -m thesistester journal
+ingest|reconcile|attribute|counterfactual|match|report` subparser (same
+pattern as `study`; do not mutate `run` / `study`). Store (TJ9):
+`.thesistester_store/journal/v1/` — sibling of `datasets/` / `setups/`,
+**not** under `execution_artifacts/` (CAI-10 LRU only scans that subtree).
 
 ---
 
 ## 3. Locked contracts
+
+### 3.0 Clock, qty, and PIT (apply to every later TJ PR)
+
+These match live engine helpers. Do not re-derive them.
+
+1. **`session_date`** = `trading_session_date(local_ts, eth_start="18:00")` after
+   converting the fill to `America/New_York`. A Sunday 18:05 ET fill is Monday’s
+   CME session (AMP statement date). Calendar `NY.date()` would split ETH
+   evening fills onto the previous statement and break TJ4.
+2. **15s timestamps are bar opens** (`:00/:15/:30/:45`,
+   `thesistester/data/derive.py`). Join `open_ts <= ts < open_ts + 15s` in UTC.
+   Missing covering bar → `missing_bar` (fail closed), never a silent skip.
+3. **Levels live on the derived 1-minute parent**, not the 15s row
+   (`docs/15s_primary_derived_1m_implementation_plan.md`). TJ6 looks up the 1m
+   bar that contains the fill. **Prior/frozen** tokens (`pd*`, `pw*`, `pm*`,
+   `prevSettlement`, `pRTH_*`, overnight highs after the session exists) may
+   use that minute. **Developing** tokens (`dVWAP`, `APOC`, MAs, rolling
+   VWAP/POC) use the **previous completed 1m bar** whose close is strictly
+   before `entry_timestamp`. Using the current minute’s close is look-ahead
+   on a 24 s median hold.
+4. **Never call `compute_all_levels` from journal code.** Library kwargs
+   default `apoc_enabled=False` / `session_vwap_enabled=False`; product
+   `DEFAULT_LEVELS_SETTINGS` enables them. Consume an already-built frame;
+   missing column → `tag_level_missing` / omit from `levels_within_tolerance`.
+   `closed_level_token_set` is settings-dependent — iterate
+   `frame.columns ∩ closed_level_token_set(that_frame’s settings)`.
+5. **Qty.** Engine `simulate_trades` is 1-lot
+   (`gross_pnl_currency = points × point_value`,
+   `risk_currency = sl_ticks × tick × point_value`,
+   `commission_cost = 2 × commission_per_side`). Journal is not:
+   - `gross_pnl_points` = signed price difference (engine-shaped, **not × qty**)
+   - `gross_pnl_currency` = `gross_pnl_points × point_value × qty`
+   - `commission_cost` = AMP per-side × 2 × qty (TJ4)
+   - `r_multiple` = `net_pnl_currency / (journal_risk_ticks × tick_size × point_value × qty)`
+   - `net_ticks` / `fee_ticks` = currency / (`tick_size × point_value`) (qty-scaled dollar-ticks)
+   Default report is per-trade dollar-ticks; optional per-contract ticks divide by qty. Never mix in one average without a caption.
+6. **Tick files** are Quantower Tick-Last (`thesistester/data/quantower_ticks.py`),
+   UTC on disk, Last×Volume — not bid/ask. TJ5/TJ7 tick walks use Last.
+7. **Price keys** quantize to `instrument.tick_size` (MNQ/MES 0.25). Do not
+   `round(price, 2)` as the recon key: 0.25 already fits two decimals, but
+   averages in §3.4 are three-dp parser self-checks, not fill keys.
 
 ### 3.1 FillRecord (TJ1)
 
@@ -350,9 +400,12 @@ Required columns after load (additive extras allowed, never required):
 `fill_id`, `source` (`tradesviz`), `source_group_id` (`spread_id`),
 `instrument` (`MNQ`/`MES`), `contract_month`, `contract_year`, `side`
 (`buy`/`sell`), `qty` (positive int), `price`, `timestamp` (UTC-aware),
-`session_date` (NY date), `entry_kind` (`imported` | `manual`),
+`session_date` (`trading_session_date`, §3.0), `entry_kind` (`imported` | `manual`),
 `tags` (tuple of raw tokens), `notes_text` (HTML stripped, may be empty),
 `declared_stop`, `declared_target` (float or null).
+
+`fill_id` is deterministic from source row order + (`spread_id`, timestamp,
+side, price, qty). Pairing tie-break is `timestamp`, then `fill_id`.
 
 Rules:
 
@@ -423,11 +476,11 @@ Engine-shaped columns, systematic-only fields null:
 | `direction` | `long` / `short` |
 | `entry_timestamp` / `exit_timestamp` | UTC |
 | `entry_price` / `exit_price` | fill prices |
-| `gross_pnl_points` / `gross_pnl_currency` | prices × qty × point value |
-| `commission_cost` | AMP per-side × 2 × qty (TJ4 supplies; null before) |
+| `gross_pnl_points` / `gross_pnl_currency` | signed Δprice; currency = points × point value × **qty** (§3.0) |
+| `commission_cost` | AMP per-side × 2 × **qty** (TJ4 supplies; null before) |
 | `slippage_cost` | null (no model declared; do not invent 1 tick) |
 | `net_pnl_currency` | gross − commission − `day_fee_allocation` |
-| `r_multiple` | net / (`journal_risk_ticks` × tick × point value). Default **10**; if `declared_stop` present, `r_multiple_declared` is also emitted |
+| `r_multiple` | net / (`journal_risk_ticks` × tick × point value × **qty**). Default **10**; if `declared_stop` present, `r_multiple_declared` is also emitted |
 | `stop_price` / `target_price` | `declared_stop` / `declared_target` (intent, not executed bracket) |
 | `hold_seconds` | exit − entry, seconds (the journal's primary duration; `bars_held` is secondary) |
 | `bars_held`, `mae_*`, `mfe_*`, `zone_*`, `signal_id`, `trigger` | null until TJ5–TJ8 |
@@ -440,7 +493,7 @@ Point values MNQ $2 / MES $5; tick 0.25. Derived, always emitted:
 
 Per `(session_date, instrument)`:
 
-1. Journal fill multiset `(round(price, 2), side, qty)` vs AMP confirmations
+1. Journal fill multiset `(quantize(price, tick_size), side, qty)` vs AMP confirmations
    (imported fills only).
 2. Fill counts equal.
 3. Recomputed AMP averages equal printed averages (parser self-check).
@@ -460,20 +513,21 @@ instrument-day's trades (documented, not hidden in `commission_cost`).
 ### 3.5 Bar join (TJ5)
 
 Clock is the existing 15s primary (`ingestion_mode: 15s_primary_derive_1m`).
-Join `timestamp` → bar with `open_ts <= ts < open_ts + 15s` after converting
-both to UTC. Fill price must satisfy `low <= price <= high`; else
-`price_outside_bar`.
+Join `timestamp` → **bar open** with `open_ts <= ts < open_ts + 15s` after
+converting both to UTC (§3.0). Fill price must satisfy `low <= price <= high`;
+else `price_outside_bar`. No covering bar → `missing_bar`.
 
 `bars_held` counts completed 15s bars strictly between entry and exit. If
 `bars_held == 0`, `mae_points` / `mfe_points` stay null with
-`excursion_unavailable`. Do not fake MAE from the entry bar's unused range.
+`excursion_unavailable`. Do not fake MAE from the entry bar's unused range
+(that range includes pre-fill ticks).
 
-**Tick resolution (optional):** when the loaded session has a tick series
-for that day (the existing Quantower Tick-Last loader used by `tick_vap`),
-`join_resolution=tick` and excursions/counterfactuals walk ticks instead of
-15s bars. Resolution is stamped on every derived row (`resolution` ∈
-`15s` | `tick`); rows of different resolution are never averaged together
-without the caption saying so.
+**Tick resolution (optional):** when the loaded session has a Tick-Last series
+for that day (`thesistester/data/quantower_ticks.py`, UTC Last prints),
+`join_resolution=tick` and excursions/counterfactuals walk prints with
+`ts > entry_timestamp`. Resolution is stamped on every derived row
+(`resolution` ∈ `15s` | `tick`); rows of different resolution are never
+averaged together without the caption saying so.
 
 Contract month vs the continuous 15s series: stamp `contract_month`; a Jun
 fill on a Sep-rolled series is `roll_mismatch` unless R7 roll metadata covers
@@ -481,14 +535,18 @@ that day.
 
 ### 3.6 Level attribution and tag verification (TJ6)
 
-**Level attribution (all trades).** On the entry bar of the already-computed
-levels frame, for every token in `closed_level_token_set` present at that
-bar: `level_distance_ticks = (entry_price − level_value) / tick`. Emit
-`levels_within_tolerance` (tokens with `|distance| ≤ level_tolerance_ticks`,
+**Level attribution (all trades).** On the **derived 1-minute parent** that
+contains the fill (§3.0), for every token in
+`frame.columns ∩ closed_level_token_set(frame_settings)` with a non-null
+value: `level_distance_ticks = (entry_price − level_value) / tick`. Frozen
+tokens use that minute; developing tokens use the previous completed 1m bar.
+Emit `levels_within_tolerance` (tokens with `|distance| ≤ level_tolerance_ticks`,
 default **10**, sorted by |distance|), `nearest_level_token`,
 `nearest_level_distance_ticks`, and `level_context` ∈ `at_level` |
 `between_levels` | `no_frame`. Consumes the frame the Data/Levels page or R18
 already produced; recomputes nothing; no write to `results/studies/`.
+Default 10 ticks is the stop width of this scalper — `levels_within_tolerance`
+is “nearby tokens”, not “the level you meant”.
 
 **Closed tag→token map** (`journal/tags.py`, data not code; unknown tag →
 `unmapped`, kept and counted):
@@ -508,9 +566,12 @@ already produced; recomputes nothing; no write to `results/studies/`.
 | `ITR`, `ITR-C`, `CTR`, `CTR-R`, `DeltaNode`, `GEX2`, `5mCOT`, `5mSFP` | — | context (never a level) |
 
 The map is frozen against `closed_level_token_set` at TJ6 time; a mapped
-token that is not in the set fails the TJ6 test suite. The table is the desk
-vocabulary observed in this export; the desk owns additions, the repo owns
-the map.
+token that is not in the set **under `DEFAULT_LEVELS_SETTINGS`** fails the
+TJ6 test suite (`EMA_9_1min` / `SMA_50_5min` / `EMA_21_5min` /
+`VWAP_rolling_4h` / `prev30mVWAP` / `mVWAP` / `APOC` are in that product
+set). Exact-tag rows win before qualifier stripping (`pdH_RTH` → `pRTH_High`,
+not `pdHigh` + `_RTH`). The table is the desk vocabulary observed in this
+export; the desk owns additions, the repo owns the map.
 
 **Tag verification (tagged trades).** Per level-class tag:
 `tag_distance_ticks`, `tag_aligned = |distance| ≤ tag_tolerance_ticks`
@@ -529,24 +590,32 @@ frame `journal_counterfactuals.parquet` keyed by `trade_id × cf_id`.
 **(a) Fixed-bracket replay.** For each trade and each declared bracket
 `(sl_ticks, tp_ticks, max_hold_seconds)` in `brackets` (default
 `[(10,10,None), (10,20,None), (20,20,None)]`, session end as the hard time
-stop): walk forward from `entry_timestamp` on 15s bars (or ticks). Bar
-resolution rule: **SL first** when both sides are touched in one bar (same
-pessimism as the engine's `sl_first` default); tick resolution uses tick
-order. Emit `cf_exit_price`, `cf_exit_reason` ∈ `tp` | `sl` | `time_stop` |
+stop): walk **forward from the fill**, not from a 1m next-open.
+
+- **Tick resolution:** prints with `ts > entry_timestamp` in Last order.
+- **15s resolution:** do **not** use the entry bar’s full H/L (pre-fill range).
+  Start at the **next** 15s open. Same-bar both-hit on later bars is **SL
+  first** (engine `sl_first` pessimism only; do not import `simulate_trades`).
+
+Emit `cf_exit_price`, `cf_exit_reason` ∈ `tp` | `sl` | `time_stop` |
 `session_end` | `unresolved`, `cf_gross_ticks`, `cf_net_ticks` (AMP fees
-applied). Aggregate per bracket: `Σ cf_net_ticks − Σ net_ticks` =
+applied, qty-scaled §3.0). Aggregate per bracket: `Σ cf_net_ticks − Σ net_ticks` =
 **exit-rule delta**. Positive delta = the mechanical rule beats the realized
 exits on the same entries (exit leak); negative = the desk's exits add value.
-`entry_edge_flag` = best-bracket `cf_net_ticks` mean > 0 with n ≥ 30.
+`entry_edge_flag` = best-bracket `cf_net_ticks` mean > 0 with n ≥ 30 **per
+resolution**. Caption must say three brackets were looked at (not a single
+pre-registered test). Never mix 15s and tick rows in that mean.
 
-**(b) Direction-shuffle null.** Hold entry times, prices, and each trade's
-own exit rule fixed (realized exit **and** each bracket); permute the
-`direction` labels across trades within the same `session_date` with a
-seeded RNG (`seed` recorded; K default 1000). Report the realized
+**(b) Direction-shuffle null.** Hold entry times, prices, qty, and each trade's
+own exit path fixed (realized exit **and** each bracket). **Permute the existing
+`direction` labels within `session_date`, preserving that day’s long/short
+counts** (shuffle the label vector; do not resample 50/50 — the May book is
+~76% long). Seeded RNG (`seed` recorded; K default 1000). Report the realized
 `Σ gross_ticks` percentile inside the null distribution
 (`direction_null_pct`). Reuses the R15/DA5 presentation grammar (vs-random,
 drift-conditioned). A high percentile says the *which-way* call carries
-information beyond the day's drift; ~50 says it does not.
+information beyond the day’s mix; ~50 says it does not. This is not the
+global sign-flip in §0.10.
 
 **(c) Declared rule filters.** A `JournalRule` is data (YAML/dict), never
 searched: `name`, `declared_on` (date, required), and filters from a closed
@@ -622,12 +691,15 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
       with endogeneity caveat (§0.10).
 - [x] Roadmap row + section, docs index, DA §8 pointer, AGENT_GUIDE one-liner.
 - [x] No `thesistester/` production edits. No goldens touched.
-- [x] `python3 -m pytest -q` matches `main` (one pre-existing failure).
+- [x] Docs-only. Do not freeze a suite skip. Golden + USER_GUIDE-structure
+      tests must stay green; do not cite a pre-existing red test as a TJ0 pass.
 
 ### TJ1 — TradesViz loader
 
 - Explicit profile. Offset required. `asset_type` → `entry_kind`.
 - Symbol table §3.1; unknown → `ValueError`.
+- `session_date` uses `trading_session_date` / `eth_start="18:00"` (ETH 18:05
+  ET fixture → next calendar date).
 - `commission` / `fees` discarded with a test asserting they are not used.
 - Tags split/preserved; notes HTML-stripped with `[image]` token.
 - Fixture: synthetic CSV with MNQM26 imports, a 4-fill `spread_id`, a manual
@@ -647,8 +719,9 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
   fallback, leftover → `open`.
 - Tags/notes/declared SL-TP propagate; `r_multiple_declared` emitted only
   when `declared_stop` present.
-- `journal_risk_ticks` keyword-only, default 10. `fee_ticks` / `net_ticks` /
-  `hold_seconds` emitted. No `simulate_trades` call.
+- `journal_risk_ticks` keyword-only, default 10. `r_multiple` denominator
+  includes **qty**. `fee_ticks` / `net_ticks` / `hold_seconds` emitted. No
+  `simulate_trades` call.
 
 ### TJ4 — Reconcile
 
@@ -660,29 +733,34 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ5 — Join
 
-- Uses already-loaded `data` / `subtimeframe_data`; UTC-safe join.
-- `price_outside_bar`, `excursion_unavailable`, `roll_mismatch` tested.
-- Tick path: same trade joined at `15s` and `tick` yields identical entry
-  bar and stamped `resolution`; no cross-resolution averaging.
-- No level-value edits; no `LEVEL_ENGINE_VERSION` bump.
+- Uses already-loaded `data` / `subtimeframe_data`; UTC-safe **bar-open** join.
+- `price_outside_bar`, `missing_bar`, `excursion_unavailable`, `roll_mismatch` tested.
+- Tick path: Last prints with `ts > entry_timestamp`; same trade joined at `15s`
+  and `tick` yields identical 1m parent and stamped `resolution`; no
+  cross-resolution averaging.
+- No level-value edits; no `LEVEL_ENGINE_VERSION` bump; no `compute_all_levels`.
 
 ### TJ6 — Level attribution + tag verification
 
-- Attribution on a hand-built levels frame: `at_level`, `between_levels`,
-  `no_frame`; tolerance keyword-only default 10.
-- Map is data (YAML/dict), unit-tested against `closed_level_token_set`.
-- `unmapped` tags counted, never dropped; qualifiers separated.
+- Attribution on a hand-built **1m** levels frame: `at_level`, `between_levels`,
+  `no_frame`; developing token uses previous completed minute; tolerance
+  keyword-only default 10.
+- Map is data (YAML/dict), unit-tested against
+  `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`.
+- `unmapped` tags counted, never dropped; exact-tag before qualifier strip.
 - Alignment classes + `intent_mismatch` tested (aligned / partial / missing
   token / tagged-A-but-at-B).
 - Docs: intent ≠ evidence; alignment is a distance check, not a trigger.
 
 ### TJ7 — Own-entry counterfactuals
 
-- Bracket replay: synthetic bar path where TP and SL touch in the same bar
-  resolves to `sl`; tick path resolves by order; `session_end` and
-  `unresolved` covered. Fees applied from TJ4.
+- Bracket replay: synthetic bar path where TP and SL touch in the same
+  **post-entry** bar resolves to `sl`; entry-bar H/L is not used at 15s; tick
+  path resolves by Last order after the fill; `session_end` and `unresolved`
+  covered. Fees applied from TJ4, qty-scaled.
 - Direction-shuffle null: fixed seed reproduces the identical percentile;
-  permutation is within `session_date`; K keyword-only.
+  permutation is within `session_date` **and preserves that day’s long/short
+  counts**; K keyword-only.
 - Rules: each filter type unit-tested; `declared_on` required (missing →
   `ValueError`); `in_sample` vs `forward` split never blended.
 - No RNG anywhere except the null; seed in the artifact and the caption.
@@ -702,11 +780,18 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ9 — UX
 
-- New page **17 · Journal**, read-only over ingested artifacts. No in-process
-  `run_experiment` / `run_study`; no classic session hydrate.
+- New page **17 · Journal** (`pages/17_Journal.py`), read-only over ingested
+  artifacts. No in-process `run_experiment` / `run_study`; no classic session
+  hydrate. Filename `17_` sorts after Observatory `16_`.
 - Sections follow Q1–Q8 in order; every table shows n, resolution, recon
   status, and hides slices with n < 30 behind an explicit toggle.
-- USER_GUIDE new H2 + HC §7.1.4 allowlist in the same PR (HC maintenance).
+- USER_GUIDE new H2 exact title **`Journal`**, inserted after **Study
+  Observatory** and before **When to use Help vs Discuss results**. Same PR
+  amends **all** H2 gates: `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` §6.1,
+  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` §7.1.4,
+  `thesistester/assistant/help_corpus.py` `_USER_GUIDE_SECTIONS`,
+  `tests/test_assistant_user_guide_structure.py` `REQUIRED_USER_GUIDE_H2S`.
+  Omitting any of those fails CI. This is HC maintenance, not a new HC series.
 - Honesty caption: journal ≠ study cell; fees from AMP; TradesViz P/L ignored;
   tags are trader intent; hold-time cuts are outcome-conditioned;
   counterfactuals carry no slippage.
@@ -722,8 +807,8 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 | Opt-in | No journal code on the default research path. CLI/page are new entry points |
 | Schema-versioned persistence | `journal/v1`; readers tolerate missing recon/attribution/counterfactual/match files |
 | Bundle hash neutrality | Journal never writes into research bundles |
-| PIT | TJ5–TJ7 use already-emitted bars/ticks/levels; no new level series |
-| Determinism | Pairing is `spread_id` + time + `fill_id` tie-break. The only RNG is the TJ7 null, seeded, seed persisted |
+| PIT | TJ5–TJ7 use already-emitted bars/ticks/levels; no new level series. Developing levels read the previous completed 1m bar. TJ7 15s walk starts at the next 15s open. Journal never calls `simulate_trades` or `compute_all_levels` |
+| Determinism | Pairing is `spread_id` + time + `fill_id` tie-break. The only RNG is the TJ7 null, seeded, seed persisted; shuffle preserves per-session direction counts |
 | Same-PR docs | Each PR lists its doc edits; honesty/glossary/architecture only when true |
 | PII | Desk exports stay outside git |
 
@@ -737,11 +822,11 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 | TJ1 | `ARCHITECTURE.md` (journal package); `ASSUMPTIONS` (TradesViz P/L unused; manual rows excluded by default) |
 | TJ2 | `ASSUMPTIONS` (AMP PDF is the fee SoT) |
 | TJ3–TJ4 | `METRICS_GLOSSARY.md` (`journal` expectancy, `fee_ticks`, `reconciled`, `r_multiple_declared`); `ASSUMPTIONS` (spread vs FIFO vs P&S) |
-| TJ5 | `POINT_IN_TIME_GUARANTEES.md` (fill→bar/tick join); `ARCHITECTURE` session keys |
-| TJ6 | `METRICS_GLOSSARY.md` (`level_context`, `tag_alignment`, `intent_mismatch`); `ASSUMPTIONS` (intent ≠ evidence) |
-| TJ7 | `METRICS_GLOSSARY.md` (`exit_rule_delta`, `entry_edge_flag`, `direction_null_pct`, `rule_delta_ticks`); `ASSUMPTIONS` (no slippage; SL-first; rules declared not searched); `HONESTY_FRAMING` if present |
+| TJ5 | `POINT_IN_TIME_GUARANTEES.md` (fill→bar/tick join; no entry-bar lookahead); `ARCHITECTURE` session keys |
+| TJ6 | `METRICS_GLOSSARY.md` (`level_context`, `tag_alignment`, `intent_mismatch`); `ASSUMPTIONS` (intent ≠ evidence; developing vs frozen lookup) |
+| TJ7 | `METRICS_GLOSSARY.md` (`exit_rule_delta`, `entry_edge_flag`, `direction_null_pct`, `rule_delta_ticks`); `ASSUMPTIONS` (no slippage; SL-first on post-entry bars; rules declared not searched; shuffle preserves counts). There is no `HONESTY_FRAMING.md` — do not create one |
 | TJ8 | `ASSUMPTIONS` (match classes, `product_mismatch`, ledger adherence) |
-| TJ9 | `USER_GUIDE.md` H2; HC allowlist; `ARCHITECTURE` page 17 |
+| TJ9 | `USER_GUIDE.md` H2 `Journal`; HC §6.1; RQ §7.1.4; `_USER_GUIDE_SECTIONS`; structure test; `ARCHITECTURE` page 17 |
 
 ---
 
@@ -782,7 +867,7 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ```text
 You are implementing TJ1 from docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md
-in the ThesisTester repo. Read §0, §1, §2, §3.1, §5 TJ1, and §6 in full
+in the ThesisTester repo. Read §0, §1, §2, §3.0, §3.1, §5 TJ1, and §6 in full
 before writing code.
 
 Hard rules:
@@ -797,9 +882,10 @@ Hard rules:
   with +0000 offsets, a 4-fill spread_id, a manual asset_type=stock row
   with tags + stop_loss/profit_target, and a quantity=0 manual row.
 - commission/fees columns must be read and discarded; add a test.
-- Run `python3 -m pytest -q` before and after; both green (ignore only
-  pre-existing failures already on main). Run the golden tests and paste
-  their output in the PR body.
+- Run `python3 -m pytest -q` before and after; both green. Do not skip a
+  failing test as “pre-existing” unless it is red on this PR’s `main` and
+  you name the node. Run the golden tests and paste their output in the PR
+  body.
 - Update the TJ1-listed docs in the same PR. Add a "Regression safety"
   paragraph to the PR body.
 - Series code is TJ.
