@@ -1077,9 +1077,13 @@ public loader. `profile` is keyword-only and must be
 (`thesistester/journal/schema.py`) with imported (`asset_type=future`) and
 manual (any other `asset_type`) rows retained. `session_date` is
 `trading_session_date(..., eth_start="18:00")` after converting the fill to
-`America/New_York`. TradesViz `commission` / `fees` are read so a missing
-column fails closed, then discarded. Notes HTML is stripped locally;
-`<img>` becomes the literal token `[image]` and is never fetched.
+`America/New_York`. `date` is ISO-8601 with an explicit numeric offset
+(pandas-fuzzy / `MM-DD-YYYY` rejected). Imported rows require a CME
+month-year symbol; `asset_type` is stripped before classification. Fill
+`price` must be finite and positive. TradesViz `commission` / `fees` are
+read so a missing column fails closed, then discarded. Notes HTML is
+stripped locally; `<img>` becomes the literal token `[image]` and is never
+fetched.
 
 Later TJ milestones (AMP parse, pairing, recon, bar join, counterfactuals,
 page 17) add siblings in the same package. Persistence, when it lands

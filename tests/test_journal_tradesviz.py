@@ -176,6 +176,37 @@ def test_naive_date_fails_closed(tmp_path):
         _load(path)
 
 
+def test_ambiguous_mdy_date_fails_closed(tmp_path):
+    """pandas would read 05-06-2026 as 6 May; ISO-8601 lock rejects it."""
+    path = _write_csv(
+        tmp_path,
+        "05-06-2026T14:03:25+0000,MNQM26,buy,USD,MNQ,future,29584.0,1.0,0.0,0.0,N/A,N/A,,,g1",
+    )
+    with pytest.raises(JournalIngestError, match="ISO-8601"):
+        _load(path)
+
+
+def test_named_utc_suffix_fails_closed(tmp_path):
+    path = _write_csv(
+        tmp_path,
+        "2026-05-14T14:03:25 UTC,MNQM26,buy,USD,MNQ,future,29584.0,1.0,0.0,0.0,N/A,N/A,,,g1",
+    )
+    with pytest.raises(JournalIngestError, match="ISO-8601"):
+        _load(path)
+
+
+def test_iso_offset_variants_are_accepted(tmp_path):
+    rows = (
+        "2026-05-14T14:03:25+00:00,MNQM26,buy,USD,MNQ,future,29584.0,1.0,0.0,0.0,N/A,N/A,,,colon",
+        "2026-05-14T14:03:25Z,MNQM26,sell,USD,MNQ,future,29585.0,1.0,0.0,0.0,N/A,N/A,,,zulu",
+        "2026-05-14 14:03:25+0000,MNQM26,buy,USD,MNQ,future,29586.0,1.0,0.0,0.0,N/A,N/A,,,space",
+    )
+    frame = _load(_write_csv(tmp_path, *rows))
+    assert len(frame) == 3
+    assert frame["timestamp"].dt.tz is not None
+    assert set(frame["session_date"]) == {date(2026, 5, 14)}
+
+
 def test_unknown_symbol_fails_closed(tmp_path):
     path = _write_csv(
         tmp_path,
@@ -205,6 +236,92 @@ def test_imported_zero_qty_fails_closed(tmp_path):
     )
     with pytest.raises(JournalIngestError, match="imported fill quantity"):
         _load(path)
+
+
+def test_imported_bare_root_symbol_fails_closed(tmp_path):
+    path = _write_csv(
+        tmp_path,
+        "2026-05-14T14:03:25+0000,MNQ,buy,USD,MNQ,future,29584.0,1.0,0.0,0.0,N/A,N/A,,,g1",
+    )
+    with pytest.raises(JournalIngestError, match="CME month-year symbol"):
+        _load(path)
+
+
+def test_padded_asset_type_future_is_imported(tmp_path):
+    path = _write_csv(
+        tmp_path,
+        "2026-05-14T14:03:25+0000,MNQM26,buy,USD,MNQ, future ,29584.0,1.0,0.0,0.0,N/A,N/A,,,g1",
+    )
+    frame = _load(path)
+    assert frame["entry_kind"].iloc[0] == "imported"
+    assert frame["contract_month"].iloc[0] == "JUN"
+
+
+def test_empty_asset_type_fails_closed(tmp_path):
+    path = _write_csv(
+        tmp_path,
+        "2026-05-14T14:03:25+0000,MNQM26,buy,USD,MNQ,,29584.0,1.0,0.0,0.0,N/A,N/A,,,g1",
+    )
+    with pytest.raises(JournalIngestError, match="empty asset_type"):
+        _load(path)
+
+
+def test_non_finite_and_non_positive_price_fails_closed(tmp_path):
+    for price in ("nan", "inf", "0", "-1"):
+        path = _write_csv(
+            tmp_path,
+            f"2026-05-14T14:03:25+0000,MNQM26,buy,USD,MNQ,future,{price},1.0,0.0,0.0,N/A,N/A,,,g1",
+        )
+        with pytest.raises(JournalIngestError, match="finite positive"):
+            _load(path)
+
+
+def test_non_finite_declared_stop_fails_closed(tmp_path):
+    path = _write_csv(
+        tmp_path,
+        "2026-05-14T14:03:25+0000,MNQ,sell,USD,MNQ,stock,29200.0,1.0,0.0,0.0,nan,N/A,,,g1",
+    )
+    with pytest.raises(JournalIngestError, match="optional numeric must be finite"):
+        _load(path)
+
+
+def test_padded_headers_are_stripped(tmp_path):
+    path = tmp_path / "padded.csv"
+    path.write_text(
+        " date ,symbol,side,currency,underlying,asset_type,price,quantity,"
+        "commission,fees,stop_loss,profit_target,tags,notes,spread_id\n"
+        "2026-05-14T14:03:25+0000,MNQM26,buy,USD,MNQ,future,29584.0,1.0,"
+        "0.0,0.0,N/A,N/A,,,g1\n",
+        encoding="utf-8",
+    )
+    frame = _load(path)
+    assert frame["instrument"].iloc[0] == "MNQ"
+    assert frame["session_date"].iloc[0] == date(2026, 5, 14)
+
+
+def test_duplicate_columns_fail_closed(tmp_path):
+    path = tmp_path / "dup.csv"
+    path.write_text(
+        "date,symbol,side,currency,underlying,asset_type,price,quantity,"
+        "commission,fees,stop_loss,profit_target,tags,notes,spread_id,date\n"
+        "2026-05-14T14:03:25+0000,MNQM26,buy,USD,MNQ,future,29584.0,1.0,"
+        "0.0,0.0,N/A,N/A,,,g1,x\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(JournalIngestError, match="duplicate columns"):
+        _load(path)
+
+
+def test_session_date_late_eth_after_utc_midnight(tmp_path):
+    """Sunday 22:30 ET is 02:30 UTC Monday — still Monday's CME session."""
+    path = _write_csv(
+        tmp_path,
+        "2026-05-18T02:30:00+0000,MNQM26,buy,USD,MNQ,future,29600.0,1.0,0.0,0.0,N/A,N/A,,,lateEth",
+    )
+    frame = _load(path)
+    local = frame["timestamp"].dt.tz_convert("America/New_York")
+    assert local.iloc[0].isoformat() == "2026-05-17T22:30:00-04:00"
+    assert frame["session_date"].iloc[0] == date(2026, 5, 18)
 
 
 def test_strip_notes_html_replaces_img_and_never_fetches():

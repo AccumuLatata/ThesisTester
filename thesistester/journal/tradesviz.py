@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import csv
+from datetime import datetime
 from html import unescape
+import math
 from pathlib import Path
 import re
 
@@ -55,6 +57,13 @@ _NA_TOKENS: frozenset[str] = frozenset({"", "n/a", "na", "none", "null"})
 _CONTRACT_RE = re.compile(r"^(?P<root>MNQ|MES)(?P<month>[FGHJKMNQUVXZ])(?P<yy>\d{2})$")
 _IMG_RE = re.compile(r"<img\b[^>]*>", flags=re.IGNORECASE)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+# Plan §0.2 / §3.1: ISO-8601 datetime with an explicit numeric offset. Reject
+# pandas-fuzzy forms (``MM-DD-YYYY``, named ``UTC``, slashes) that swap months.
+_ISO_TS_RE = re.compile(
+    r"^(?P<head>\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)"
+    r"(?P<off>Z|[+-]\d{2}:?\d{2})$"
+)
+_NAIVE_ISO_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?$")
 
 
 def load_tradesviz_executions(
@@ -77,14 +86,7 @@ def load_tradesviz_executions(
     if not csv_path.is_file():
         raise JournalIngestError(f"TradesViz executions file not found: {csv_path}")
 
-    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        if reader.fieldnames is None:
-            raise JournalIngestError("TradesViz executions CSV has no header")
-        header = tuple(name.strip() for name in reader.fieldnames)
-        _require_columns(header)
-        raw_rows = list(reader)
-
+    raw_rows = _read_csv_rows(csv_path)
     records = [_row_to_record(index, row) for index, row in enumerate(raw_rows)]
     if not records:
         return _empty_frame()
@@ -141,6 +143,57 @@ def load_tradesviz_executions(
     return frame.loc[:, list(FILL_RECORD_COLUMNS)]
 
 
+def _read_csv_rows(csv_path: Path) -> list[dict[str, str]]:
+    """Read the executions CSV with stripped headers (fail closed on dups / extras)."""
+    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise JournalIngestError("TradesViz executions CSV has no header")
+        header = _normalized_header(reader.fieldnames)
+        _require_columns(header)
+        rows: list[dict[str, str]] = []
+        for raw in reader:
+            rows.append(_remap_row(raw))
+        return rows
+
+
+def _normalized_header(fieldnames: list[str | None]) -> tuple[str, ...]:
+    raw: list[str] = []
+    for name in fieldnames:
+        if name is None:
+            raise JournalIngestError("TradesViz executions CSV has an unnamed header")
+        raw.append(name.strip())
+    while raw and raw[-1] == "":
+        raw.pop()
+    if any(name == "" for name in raw):
+        raise JournalIngestError("TradesViz executions CSV has a blank header name")
+    header = tuple(raw)
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for name in header:
+        if name in seen and name not in duplicates:
+            duplicates.append(name)
+        seen.add(name)
+    if duplicates:
+        raise JournalIngestError(
+            "TradesViz executions CSV has duplicate columns: " + ", ".join(duplicates)
+        )
+    return header
+
+
+def _remap_row(raw: Mapping[str | None, str | None]) -> dict[str, str]:
+    row: dict[str, str] = {}
+    for key, value in raw.items():
+        if key is None or not str(key).strip():
+            if value not in (None, ""):
+                raise JournalIngestError(
+                    "TradesViz executions CSV has extra fields without a header"
+                )
+            continue
+        row[key.strip()] = "" if value is None else str(value)
+    return row
+
+
 def _require_columns(header: tuple[str, ...]) -> None:
     present = set(header)
     missing = [name for name in _REQUIRED_COLUMNS if name not in present]
@@ -162,8 +215,15 @@ def _row_to_record(index: int, row: Mapping[str, str | None]) -> FillRecord:
     symbol = _cell(row, "symbol")
     instrument, contract_month, contract_year = _parse_symbol(symbol, index=index)
     side = _parse_side(_cell(row, "side"), index=index)
-    asset_type = _cell(row, "asset_type").lower()
+    asset_type = _cell(row, "asset_type").strip().lower()
+    if not asset_type:
+        raise JournalIngestError(f"row {index}: empty asset_type")
     entry_kind = ENTRY_KIND_IMPORTED if asset_type == "future" else ENTRY_KIND_MANUAL
+    if entry_kind == ENTRY_KIND_IMPORTED and (contract_month is None or contract_year is None):
+        raise JournalIngestError(
+            f"row {index}: imported fill requires a CME month-year symbol "
+            f"(got {symbol!r}; bare MNQ/MES is the manual pattern)"
+        )
     qty, flags = _parse_qty(_cell(row, "quantity"), entry_kind=entry_kind, index=index)
     price = _parse_price(_cell(row, "price"), index=index)
     # Read to fail-closed if absent; never persist (plan §3.1).
@@ -171,8 +231,8 @@ def _row_to_record(index: int, row: Mapping[str, str | None]) -> FillRecord:
     _cell(row, "fees")
     _cell(row, "currency")
     _cell(row, "underlying")
-    declared_stop = _parse_optional_float(_cell(row, "stop_loss"))
-    declared_target = _parse_optional_float(_cell(row, "profit_target"))
+    declared_stop = _parse_optional_float(_cell(row, "stop_loss"), index=index)
+    declared_target = _parse_optional_float(_cell(row, "profit_target"), index=index)
     tags = _parse_tags(_cell(row, "tags"))
     notes_text = strip_notes_html(_cell(row, "notes"))
     source_group_id = _optional_text(_cell(row, "spread_id"))
@@ -232,15 +292,32 @@ def _parse_timestamp(raw: str, *, index: int) -> pd.Timestamp:
     text = raw.strip()
     if not text:
         raise JournalIngestError(f"row {index}: empty date")
-    try:
-        ts = pd.Timestamp(text)
-    except (ValueError, TypeError) as exc:
-        raise JournalIngestError(f"row {index}: unparseable date {raw!r}") from exc
-    if ts.tzinfo is None:
+    if _NAIVE_ISO_TS_RE.fullmatch(text):
         raise JournalIngestError(
             f"row {index}: date must carry an explicit UTC offset (got naive {raw!r})"
         )
-    return ts.tz_convert("UTC")
+    match = _ISO_TS_RE.fullmatch(text)
+    if match is None:
+        raise JournalIngestError(
+            f"row {index}: date must be ISO-8601 with an explicit offset (got {raw!r})"
+        )
+    head = match.group("head").replace(" ", "T")
+    off = match.group("off")
+    if off == "Z":
+        normalized = f"{head}+00:00"
+    elif ":" not in off:
+        normalized = f"{head}{off[:-2]}:{off[-2:]}"
+    else:
+        normalized = f"{head}{off}"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise JournalIngestError(f"row {index}: unparseable date {raw!r}") from exc
+    if parsed.tzinfo is None:
+        raise JournalIngestError(
+            f"row {index}: date must carry an explicit UTC offset (got naive {raw!r})"
+        )
+    return pd.Timestamp(parsed).tz_convert("UTC")
 
 
 def _parse_symbol(raw: str, *, index: int) -> tuple[str, str | None, int | None]:
@@ -287,19 +364,27 @@ def _parse_price(raw: str, *, index: int) -> float:
     if not text:
         raise JournalIngestError(f"row {index}: empty price")
     try:
-        return float(text)
+        value = float(text)
     except ValueError as exc:
         raise JournalIngestError(f"row {index}: unparseable price {raw!r}") from exc
+    if not math.isfinite(value) or value <= 0.0:
+        raise JournalIngestError(
+            f"row {index}: price must be a finite positive number (got {raw!r})"
+        )
+    return value
 
 
-def _parse_optional_float(raw: str) -> float | None:
+def _parse_optional_float(raw: str, *, index: int) -> float | None:
     text = raw.strip()
     if text.lower() in _NA_TOKENS:
         return None
     try:
-        return float(text)
+        value = float(text)
     except ValueError as exc:
-        raise JournalIngestError(f"unparseable optional numeric {raw!r}") from exc
+        raise JournalIngestError(f"row {index}: unparseable optional numeric {raw!r}") from exc
+    if not math.isfinite(value):
+        raise JournalIngestError(f"row {index}: optional numeric must be finite (got {raw!r})")
+    return value
 
 
 def _parse_tags(raw: str) -> tuple[str, ...]:

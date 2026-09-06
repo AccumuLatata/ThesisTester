@@ -704,6 +704,9 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 - [x] Tags split/preserved; notes HTML-stripped with `[image]` token.
 - [x] Fixture: synthetic CSV with MNQM26 imports, a 4-fill `spread_id`, a manual
       `stock` row with tags + SL/TP, a `quantity=0` manual row.
+- [x] ISO-8601 offset lock (reject `MM-DD-YYYY` / named `UTC`); imported fills
+      require a CME contract symbol; `asset_type` stripped; price finite `> 0`.
+      Late-ETH after UTC midnight (22:30 ET) stays on the next session date.
 
 ### TJ2 — AMP statement parser
 

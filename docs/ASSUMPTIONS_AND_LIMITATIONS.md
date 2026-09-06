@@ -1230,7 +1230,16 @@ other than the last bar in the dataset.
   `quantity == 0` manual rows stay with `qty=None` and flag `manual_no_qty`.
 - `session_date` is the CME session (`trading_session_date`,
   `eth_start="18:00"`), not the New York calendar date. A fill at 18:05 ET
-  belongs to the next statement day.
+  belongs to the next statement day. A fill after UTC midnight that is still
+  Sunday evening ET (e.g. 22:30 ET) stays on Monday's session.
+- `date` must be ISO-8601 with an explicit numeric offset (`+0000`,
+  `+00:00`, or `Z`). Pandas-fuzzy forms (`MM-DD-YYYY`, named `UTC`, slashes)
+  fail closed so a month/day swap cannot silently shift the journal clock.
+- Imported rows (`asset_type=future`, after strip) require a CME month-year
+  symbol (`MNQM26` / `MNQU26` / `MESU26`). Bare `MNQ` / `MES` is the manual
+  pattern. Blank `asset_type` fails closed (it is not treated as manual).
+- Fill `price` must be finite and `> 0`. Non-finite `stop_loss` /
+  `profit_target` fail closed (`N/A` is still null).
 - Tags and notes are trader intent, not evidence that a level triggered.
   HTML in `notes` is stripped; hosted images are not fetched.
 - Desk TradesViz / AMP / Quantower exports contain PII and stay outside git.
