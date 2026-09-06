@@ -699,7 +699,7 @@ Journal trades are **not** study cells. These quantities live on
 | `r_multiple` (journal) | `net_pnl_currency / (journal_risk_ticks × tick_size × point_value × qty)`. Default `journal_risk_ticks` is **10**. On `reconciled` days net is gross − commission − `day_fee_allocation`. |
 | journal expectancy | Mean journal `r_multiple` or mean `net_ticks` over a slice. Diagnostic only; n and honesty caption required. Not a study rank key. |
 | `net_ticks` | `net_pnl_currency / (tick_size × point_value)` — qty-scaled dollar-ticks. |
-| `fee_ticks` | `commission_cost / (tick_size × point_value)`. AMP per-side × 2 × qty on `reconciled` closed trades; null otherwise. |
+| `fee_ticks` | `commission_cost / (tick_size × point_value)`. AMP per-side × 2 × qty on `reconciled` closed imported trades; null otherwise. |
 | `r_multiple_declared` | Same net over `\|entry − declared_stop\| × point_value × qty`. Emitted **only** when `declared_stop` is present. Intent, not an executed bracket. |
 | `hold_seconds` | `exit_timestamp − entry_timestamp` in seconds. Primary journal duration; `bars_held` stays null until TJ5. |
 | `reconciled` | TJ4 day status: `reconciled` / `journal_missing` / `amp_missing` / `multiset_mismatch` / `pnl_mismatch`. Later milestones refuse days that are not `reconciled` unless `allow_unreconciled=True`. |

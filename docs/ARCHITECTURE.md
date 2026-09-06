@@ -1102,7 +1102,8 @@ source.
 reconcile` compare imported fills to AMP confirmations per
 `(session_date, instrument)` and write `journal/v1` artifacts
 (`reconcile.json`, `journal_trades.parquet`) under `--output-dir`.
-Refuses `results/studies/`. AMP costs apply only on `reconciled` days.
+Refuses `results/studies/`. AMP costs apply only to closed imported
+trades on `reconciled` days (`include_manual` is pairing-only).
 
 Later TJ milestones (bar join, counterfactuals, page 17)
 add siblings in the same package. Persistence, when it lands

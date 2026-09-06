@@ -21,11 +21,13 @@ from thesistester.journal import (
 from thesistester.journal import reconcile as recon_mod
 from thesistester.journal.amp_statement import parse_amp_statement_text as parse_amp
 from thesistester.journal.schema import (
+    JournalIngestError,
     RECON_AMP_MISSING,
     RECON_JOURNAL_MISSING,
     RECON_MULTISET_MISMATCH,
     RECON_PNL_MISMATCH,
     RECON_RECONCILED,
+    STATUS_CLOSED,
 )
 from thesistester.journal.reconcile import load_amp_statement_file
 
@@ -347,3 +349,134 @@ def test_load_amp_text_file_roundtrip() -> None:
     stmt = load_amp_statement_file(GOLDEN_AMP)
     assert stmt.session_date == date(2026, 5, 27)
     assert len(stmt.fills) == 40
+
+
+def test_include_manual_does_not_break_imported_recon(tmp_path: Path) -> None:
+    """Plan §3.4: manuals stay out of the AMP multiset and journal gross."""
+    tv = tmp_path / "with_manual.csv"
+    tv.write_text(
+        GOLDEN_TV.read_text(encoding="utf-8").rstrip()
+        + "\n"
+        + "2026-05-27T14:05:00+0000,MNQ,buy,USD,MNQ,stock,30132.75,1.0,0.0,0.0,"
+        "N/A,N/A,ITR-C,,manual_may27\n"
+        + "2026-05-27T14:05:02+0000,MNQ,sell,USD,MNQ,stock,30140.00,1.0,0.0,0.0,"
+        "N/A,N/A,ITR-C,,manual_may27\n",
+        encoding="utf-8",
+    )
+    fills = _load_tv(tv)
+    stmt = parse_amp_statement_text(GOLDEN_AMP.read_text(encoding="utf-8"))
+    trades, days = reconcile_journal(fills, (stmt,), include_manual=True)
+    assert days[0].status == RECON_RECONCILED
+    assert days[0].journal_fill_count == 40
+    assert days[0].journal_gross_usd == pytest.approx(27.0)
+    closed = trades[trades["status"] == STATUS_CLOSED]
+    imported_closed = closed[closed["source_group_id"] != "manual_may27"]
+    manual_closed = closed[closed["source_group_id"] == "manual_may27"]
+    assert len(imported_closed) == 20
+    assert len(manual_closed) == 1
+    assert imported_closed["commission_cost"].astype(float).eq(1.24).all()
+    assert manual_closed["commission_cost"].isna().all()
+    assert manual_closed["day_fee_allocation"].isna().all()
+    assert isinstance(trades.iloc[0]["tags"], tuple)
+    assert all(isinstance(value, date) for value in trades["session_date"])
+
+
+def test_imported_fill_missing_qty_fails_closed() -> None:
+    fills = _load_tv().copy()
+    fills.loc[fills.index[0], "qty"] = None
+    stmt = parse_amp_statement_text(GOLDEN_AMP.read_text(encoding="utf-8"))
+    with pytest.raises(JournalIngestError, match="qty"):
+        reconcile_journal(fills, (stmt,))
+
+
+def test_imported_fill_fractional_qty_fails_closed() -> None:
+    fills = _load_tv().copy()
+    fills.loc[fills.index[0], "qty"] = 1.5
+    stmt = parse_amp_statement_text(GOLDEN_AMP.read_text(encoding="utf-8"))
+    with pytest.raises(JournalIngestError, match="qty"):
+        reconcile_journal(fills, (stmt,))
+
+
+def test_nan_journal_gross_is_pnl_mismatch() -> None:
+    stmt = parse_amp_statement_text(GOLDEN_AMP.read_text(encoding="utf-8"))
+    fills = _load_tv()
+    imported = fills.loc[fills["entry_kind"] == "imported"]
+    imported_ids = frozenset(str(fid) for fid in imported["fill_id"])
+    trades = pd.DataFrame(
+        {
+            "session_date": [date(2026, 5, 27)],
+            "instrument": ["MNQ"],
+            "status": [STATUS_CLOSED],
+            "entry_fill_id": ["tv:0"],
+            "gross_pnl_currency": [float("nan")],
+        }
+    )
+    day = recon_mod._reconcile_day(
+        (date(2026, 5, 27), "MNQ"),
+        journal_fills=tuple(imported.to_dict(orient="records")),
+        statement=stmt,
+        trades=trades,
+        imported_ids=imported_ids,
+        pnl_tolerance=0.01,
+    )
+    assert day.status == RECON_PNL_MISMATCH
+    assert day.journal_gross_usd is None
+
+
+def test_open_leftover_does_not_dilute_day_fee(tmp_path: Path) -> None:
+    tv = _write_csv(
+        tmp_path,
+        "2026-05-14T14:00:00+0000,MNQM26,buy,USD,MNQ,future,100.00,1.0,0.0,0.0,N/A,N/A,,,open3",
+        "2026-05-14T14:00:02+0000,MNQM26,sell,USD,MNQ,future,101.00,1.0,0.0,0.0,N/A,N/A,,,open3",
+        "2026-05-14T14:00:04+0000,MNQM26,buy,USD,MNQ,future,100.00,1.0,0.0,0.0,N/A,N/A,,,open3",
+    )
+    amp = tmp_path / "amp.txt"
+    amp.write_text(
+        """\
+                              DAILY STATEMENT
+     REDACTED CLIENT                                 14-MAY-26
+                           T R A D E S C O N F I R M A T I O N S
+ 14-MAY-26 19000001 CME 1        MNQ Future JUN 26         100.00 USD
+ 14-MAY-26 19000002 CME        1 MNQ Future JUN 26         101.00 USD
+ 14-MAY-26 19000003 CME 1        MNQ Future JUN 26         100.00 USD
+ TOTAL                  2      1 EX- 18-JUN-26
+                                             AVERAGE LONG 100.00000
+                                             AVERAGE SHORT 101.00000
+                                P U R C H A S E & S A L E
+ 14-MAY-26 19000002 CME      1 MNQ Future JUN 26           101.00 USD
+ 14-MAY-26 19000001 CME 1     MNQ Future JUN 26            100.00 USD
+ TOTAL                  1     1 EX- 18-JUN-26         P&S         USD     2.00 CR
+                      Account Summary as of 05/14/26
+   TOTAL COMMISSION & FEES       4.36 DR
+    EXCHANGE                     1.05 DR
+    NFA                          0.06 DR
+    CLEARING CLIENT              0.39 DR
+    RITHMIC TRF                  0.30 DR
+    COMMISSION                   0.06 DR
+    LIQUIDATION FEE              2.50 DR
+   OPEN TRADE EQUITY             0.00 CR
+""",
+        encoding="utf-8",
+    )
+    trades, days = reconcile_journal(_load_tv(tv), (parse_amp(amp.read_text()),))
+    assert days[0].status == RECON_RECONCILED
+    assert days[0].day_fees_extra == pytest.approx(2.50)
+    assert len(trades) == 2
+    closed = trades[trades["status"] == STATUS_CLOSED].iloc[0]
+    opened = trades[trades["status"] == "open"].iloc[0]
+    assert closed["day_fee_allocation"] == pytest.approx(2.50)
+    assert closed["commission_cost"] == pytest.approx(1.24)
+    assert closed["net_pnl_currency"] == pytest.approx(2.0 - 1.24 - 2.50)
+    assert opened["day_fee_allocation"] is None
+    assert opened["commission_cost"] is None
+
+
+def test_invalid_session_date_fails_closed() -> None:
+    with pytest.raises(JournalIngestError, match="session_date"):
+        recon_mod._as_date("not-a-date")
+
+
+def test_statements_must_be_amp_sequence() -> None:
+    fills = _load_tv()
+    with pytest.raises(JournalIngestError, match="AmpStatement"):
+        reconcile_journal(fills, ("not-a-statement",))  # type: ignore[arg-type]

@@ -516,7 +516,9 @@ Statuses: `reconciled` | `journal_missing` | `amp_missing` |
 unless `allow_unreconciled=True` (default false; UI shows the flag).
 
 Day-level extra fees allocate as `day_fee_allocation` equally across that
-instrument-day's trades (documented, not hidden in `commission_cost`).
+instrument-day's **closed imported** trades (documented, not hidden in
+`commission_cost`). Open leftovers and manual rows stay null so day extra
+cannot be diluted out of realized net.
 
 **Golden:** 27-May (redacted) is the TJ4 overlap golden — 40 fills, avg long
 `30132.87500`, avg short `30133.55000`, gross `$27.00`.
@@ -750,6 +752,11 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
       synthetic dates.
 - [x] CLI writes `reconcile.json` + `journal_trades.parquet` under an explicit
       `--output-dir`. No write into `results/studies/`.
+- [x] Review: recon fill multiset + journal gross stay imported-only
+      (`include_manual` is pairing-only); missing / non-integer imported qty
+      fails closed; non-finite gross is `pnl_mismatch`; `day_fee_allocation`
+      splits across closed imported trades so leftover opens cannot dilute
+      day extra fees; AMP costs do not land on manual rows.
 
 ### TJ5 — Join
 

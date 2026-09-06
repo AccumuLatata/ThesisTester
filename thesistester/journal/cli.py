@@ -43,7 +43,8 @@ def add_journal_subparser(subparsers: argparse._SubParsersAction) -> None:
     reconcile_parser.add_argument(
         "--include-manual",
         action="store_true",
-        help="Include manual FillRecord rows in pairing (default: exclude)",
+        help="Include manual FillRecord rows in pairing only (default: exclude). "
+        "AMP recon stays imported-only",
     )
     reconcile_parser.add_argument(
         "--journal-risk-ticks",
