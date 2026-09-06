@@ -1245,6 +1245,35 @@ other than the last bar in the dataset.
 - Desk TradesViz / AMP / Quantower exports contain PII and stay outside git.
   Tests use synthetic fixtures only.
 
+## Trade journal (TJ2 — AMP Daily Statement is the fee source of truth)
+
+- AMP Daily Statement PDFs are the cost SoT. TradesViz / Quantower
+  `commission` / `fees` stay unused even when non-zero.
+- TJ2 parses **Trades Confirmations** for the fill list. The Purchase & Sale
+  section is stored as `ps_pairs` + signed `ps_usd` (CR positive, DR
+  negative) for later recon only — it is not a journal-trade list and is
+  not chronological. **Open Positions**, journal entries, and delivery /
+  cash-settlement blocks are ignored: they can reuse the confirmation-row
+  layout and must not be absorbed into `fills` or `ps_pairs`.
+- BUY vs SELL is the confirmation-row layout (qty in the BUY xor SELL
+  column). A parse that disagrees with printed `AVERAGE LONG` /
+  `AVERAGE SHORT` fails closed.
+- The five standard fee lines `{Exchange, NFA, Clearing Client, Rithmic TRF,
+  Commission}` become `per_side_schedule` (total ÷ confirmation sides).
+  `Liquidation Fee` is a day-level extra (`day_fees_extra`) and is never
+  smeared into the per-side schedule. Unknown fee names fail closed.
+  Printed `TOTAL COMMISSION & FEES` must equal the sum of known fee lines
+  (1 cent). Distinct `P&S USD` amounts in one statement fail closed.
+- Confirmation `TOTAL` buy/sell counts must match confirmation qty sums.
+  A date + FCM-number row in Confirmations or P&S that is not an `MNQ`/`MES`
+  CME Future line fails closed (no silent drop of ES/NQ/other roots).
+- Confirmation fill dates must equal the statement date. P&S row dates may
+  predate it (prior-day open / liquidation). Fill price must be finite and
+  `> 0`. Invalid calendar dates raise `JournalIngestError`.
+- `pdfplumber` is imported only in `thesistester/journal/amp_statement.py`.
+  CI owns the text parser against redacted fixtures; PDF extraction is
+  tested on a synthetic PDF. Desk statements stay out of git.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

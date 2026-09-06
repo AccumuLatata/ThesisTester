@@ -1,4 +1,4 @@
-"""Journal typed records (TJ1: ``FillRecord`` only).
+"""Journal typed records (TJ1 ``FillRecord``, TJ2 ``AmpStatement``).
 
 Later TJ milestones add ``JournalTrade`` / recon artifacts here. This module
 does not pair fills, compute P&L, or call the engine.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 from datetime import date
-from typing import Final, Literal
+from typing import Final, Literal, Mapping
 
 import pandas as pd
 
@@ -70,3 +70,57 @@ class FillRecord:
 
 
 FILL_RECORD_COLUMNS: Final[tuple[str, ...]] = tuple(f.name for f in fields(FillRecord))
+
+# Locked AMP fee names (plan §3.2). Values are title-case as stored.
+AMP_STANDARD_FEE_NAMES: Final[tuple[str, ...]] = (
+    "Exchange",
+    "NFA",
+    "Clearing Client",
+    "Rithmic TRF",
+    "Commission",
+)
+AMP_EXTRA_FEE_NAMES: Final[tuple[str, ...]] = ("Liquidation Fee",)
+AMP_KNOWN_FEE_NAMES: Final[frozenset[str]] = frozenset(AMP_STANDARD_FEE_NAMES + AMP_EXTRA_FEE_NAMES)
+
+
+@dataclass(frozen=True)
+class AmpFill:
+    """One AMP confirmation or P&S row. Not a journal trade."""
+
+    fcm_number: str
+    session_date: date
+    market: str
+    instrument: str
+    contract_month: str
+    contract_year: int
+    side: Literal["buy", "sell"]
+    qty: int
+    price: float
+
+
+@dataclass(frozen=True)
+class AmpStatement:
+    """One AMP Daily Statement after TJ2 parse.
+
+    ``fills`` come from Trades Confirmations only. ``ps_pairs`` / ``ps_usd``
+    are the Purchase & Sale section (recon only). ``per_side_schedule`` is
+    the five standard fee lines divided by confirmation sides; ``Liquidation
+    Fee`` stays in ``day_fees_extra``.
+    """
+
+    session_date: date
+    fills: tuple[AmpFill, ...]
+    ps_pairs: tuple[AmpFill, ...]
+    ps_usd: float
+    average_long: float
+    average_short: float
+    fee_lines: tuple[tuple[str, float], ...]
+    per_side_schedule: tuple[tuple[str, float], ...]
+    day_fees_extra: float
+    currency: str = "USD"
+
+    def fee_map(self) -> Mapping[str, float]:
+        return dict(self.fee_lines)
+
+    def per_side_map(self) -> Mapping[str, float]:
+        return dict(self.per_side_schedule)

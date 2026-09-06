@@ -1,0 +1,56 @@
+                              DAILY STATEMENT
+
+
+     REDACTED CLIENT                                 27-MAY-26
+                                                     000000
+                           Introduced By: AMP Trading
+                                                                      PAGE : 1
+                           T R A D E S C O N F I R M A T I O N S
+ THE FOLLOWING TRADES HAVE BEEN EXECUTED THIS DAY FOR YOUR ACCOUNT AND RISK.
+   DATE NUMBER MARKET BUY   SELL CONTRACT DESCRIPTION      TRADE PRICE CCY DEBIT/CREDIT
+ 27-MAY-26 15000001 CME 1        MNQ Future JUN 26         30132.75 USD
+ 27-MAY-26 15000002 CME        1 MNQ Future JUN 26         30133.50 USD
+                                                                           ../..
+                                                                      PAGE : 2
+                           T R A D E S C O N F I R M A T I O N S
+ THE FOLLOWING TRADES HAVE BEEN EXECUTED THIS DAY FOR YOUR ACCOUNT AND RISK.
+   DATE NUMBER MARKET BUY   SELL CONTRACT DESCRIPTION      TRADE PRICE CCY DEBIT/CREDIT
+ 27-MAY-26 15000003 CME 1        MNQ Future JUN 26         30133.00 USD
+ 27-MAY-26 15000004 CME        1 MNQ Future JUN 26         30133.60 USD
+ TOTAL                  2      2 EX- 18-JUN-26
+                                                        Commission USD    0.08 DR
+                                             AVERAGE LONG 30132.87500
+                                             AVERAGE SHORT 30133.55000
+                                P U R C H A S E & S A L E
+   DATE TRADE NUMBER MARKET BUY SELL CONTRACT DESCRIPTION TRADE PRICE CCY DEBIT/CREDIT
+ 27-MAY-26 15000002 CME      1 MNQ Future JUN 26           30133.50 USD
+ 27-MAY-26 15000001 CME 1     MNQ Future JUN 26            30132.75 USD
+ 27-MAY-26 15000004 CME      1 MNQ Future JUN 26           30133.60 USD
+ 27-MAY-26 15000003 CME 1     MNQ Future JUN 26            30133.00 USD
+ TOTAL                  2     2 EX- 18-JUN-26         P&S         USD     27.00 CR
+                      Account Summary as of 05/27/26
+   Processed exchanges : CME
+      BASE CURRENCY USD     Reg.
+   ACCOUNT CASH BALANCE       1,000.00 CR
+   REALIZED PROFIT/LOSS         27.00 CR
+   TOTAL COMMISSION & FEES       2.48 DR
+    EXCHANGE                     1.40 DR
+    NFA                          0.08 DR
+    CLEARING CLIENT              0.52 DR
+    RITHMIC TRF                  0.40 DR
+    COMMISSION                   0.08 DR
+   OPEN TRADE EQUITY             0.00 CR
+   TOTAL EQUITY               1,024.52 CR
+                                                         PAGE: 3
+                      Account Summary as of 05/27/26
+      BASE CURRENCY USD     Reg.
+   ACCOUNT CASH BALANCE       1,000.00 CR
+   REALIZED PROFIT/LOSS         27.00 CR
+   TOTAL COMMISSION & FEES       2.48 DR
+    EXCHANGE                     1.40 DR
+    NFA                          0.08 DR
+    CLEARING CLIENT              0.52 DR
+    RITHMIC TRF                  0.40 DR
+    COMMISSION                   0.08 DR
+   OPEN TRADE EQUITY             0.00 CR
+   TOTAL EQUITY               1,024.52 CR

@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ1 landed.** TJ2 (AMP statement parser) is next. No pairing / recon / page yet.
+**Status:** **TJ2 landed.** TJ3 (pairing) is next. No recon / page yet.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -437,7 +437,9 @@ Profile token: `tradesviz_executions`. **No autodetect.**
 ### 3.2 AmpStatement (TJ2)
 
 Parse **Trades Confirmations** only for the fill list. P&S section stored as
-`ps_pairs` + `ps_usd` for recon, never as journal trades.
+`ps_pairs` + `ps_usd` for recon, never as journal trades. **Open Positions**,
+journal, delivery, expiration, and exercise blocks are ignored — they reuse
+the confirmation-row layout and must not enter `fills` or `ps_pairs`.
 
 Side from layout: the `1` in the BUY vs SELL column (gap heuristic verified on
 four PDFs). A parse that disagrees with printed `AVERAGE LONG` /
@@ -446,7 +448,14 @@ four PDFs). A parse that disagrees with printed `AVERAGE LONG` /
 Fee lines: known names `{Exchange, NFA, Clearing Client, Rithmic TRF,
 Commission, Liquidation Fee}`. Unknown fee names fail closed.
 `per_side_schedule` from the five standard lines only; `Liquidation Fee`
-stays `day_fees_extra`.
+stays `day_fees_extra`. Printed `TOTAL COMMISSION & FEES` must equal the
+sum of those lines (1 cent). Distinct `P&S USD` totals fail closed.
+
+Confirmation `TOTAL` buy/sell counts must match confirmation qty sums.
+A date + FCM-number row that is not `MNQ`/`MES` CME Future fails closed
+(no silent drop). Confirmation dates must match the statement date; P&S
+row dates may predate it (prior-day open / liquidation). Price must be
+finite and `> 0`.
 
 Two-stage: `extract_amp_pdf_text(path) -> str` (pdfplumber layout) then
 `parse_amp_statement_text(text) -> AmpStatement`. CI owns the text parser
@@ -710,11 +719,15 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ2 — AMP statement parser
 
-- Confirmations vs P&S split; side via layout; averages self-check.
-- `Liquidation Fee` kept extra; unknown fee fails.
-- Redacted text fixtures: MNQ JUN 3-page, MNQ SEP 2-page, MES SEP 2-page.
-- `pdfplumber` pinned in `pyproject.toml` / `requirements.txt`; import
-  confined to `journal/amp_statement.py`.
+- [x] Confirmations vs P&S split; side via layout; averages self-check.
+- [x] `Liquidation Fee` kept extra; unknown fee fails.
+- [x] Redacted text fixtures: MNQ JUN 3-page, MNQ SEP 2-page, MES SEP 2-page.
+- [x] `pdfplumber` pinned in `pyproject.toml` / `requirements.txt`; import
+      confined to `journal/amp_statement.py`.
+- [x] Review: unknown confirmation/P&S roots fail closed; fee lines must
+      sum to printed total; distinct `P&S USD` fail; confirmation `TOTAL`
+      qty self-check; P&S may predate statement date; price `> 0`; invalid
+      calendar dates are `JournalIngestError`.
 
 ### TJ3 — Pair
 
