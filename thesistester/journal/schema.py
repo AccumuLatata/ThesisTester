@@ -1,10 +1,12 @@
-"""Journal typed records (TJ1–TJ9, JS1 zones).
+"""Journal typed records (TJ1–TJ9, JS1 zones, JS2 trigger labels).
 
 Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
 
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from datetime import date
 from typing import Final, Literal, Mapping
@@ -259,6 +261,42 @@ ZONES_HONESTY: Final[str] = (
     "zone = detect_confluence_zones on the 1m bar completed before the "
     "fill; parameters declared (not searched); journal is not a study cell."
 )
+TRIGGER_NONE: Final[str] = "none"
+TRIGGER_RESOLUTION_1M: Final[str] = "1m"
+TRIGGER_RESOLUTION_15S_PROXY: Final[str] = "15s_proxy"
+TRIGGERS_HONESTY: Final[str] = (
+    "engine would-have-called on the completed bar before the fill; not the "
+    "trader's perception; 15s is a proxy (no engine 15s trigger lane); 3c "
+    "not inferred."
+)
+TRIGGER_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
+    "inferred_triggers_1m",
+    "inferred_triggers_15s",
+    "trigger_bar_lag_seconds",
+    "trigger_direction_consistent",
+    "trigger_resolution_1m",
+    "trigger_resolution_15s",
+)
+_TRIGGER_LABEL_SEP: Final[str] = "|"
+
+
+def encode_trigger_labels(labels: Sequence[str]) -> str:
+    """Stable ``|``-joined form of a sorted trigger tuple. Empty → ``""``."""
+    return _TRIGGER_LABEL_SEP.join(str(item) for item in sorted(labels))
+
+
+def decode_trigger_labels(value: object) -> tuple[str, ...]:
+    """Parse a stored trigger-label cell back to a sorted tuple."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return ()
+    if isinstance(value, tuple):
+        return tuple(sorted(str(item) for item in value))
+    text = str(value).strip()
+    if not text or text == TRIGGER_NONE:
+        return ()
+    return tuple(sorted(part for part in text.split(_TRIGGER_LABEL_SEP) if part))
+
+
 ZONE_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
     "zone_params_hash",
     "zone_id",

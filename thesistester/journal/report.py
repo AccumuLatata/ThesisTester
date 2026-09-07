@@ -38,6 +38,9 @@ from thesistester.journal.schema import (
     ZONE_WIDTH_3_4,
     ZONE_WIDTH_GE_5,
     ZONE_WIDTH_LE_2,
+    TRIGGER_NONE,
+    TRIGGER_RESOLUTION_1M,
+    TRIGGERS_HONESTY,
     ZONES_HONESTY,
     REPORT_SLICE_DAY_INTENSITY,
     REPORT_SLICE_DIRECTION,
@@ -47,6 +50,7 @@ from thesistester.journal.schema import (
     RESOLUTION_UNJOINED,
     STATUS_OPEN,
     JournalIngestError,
+    decode_trigger_labels,
 )
 from thesistester.persistence.local_store import get_store_root
 
@@ -58,6 +62,8 @@ MATCHES_PARQUET: str = "journal_matches.parquet"
 MATCH_JSON: str = "match.json"
 ZONES_PARQUET: str = "journal_zones.parquet"
 ZONES_JSON: str = "zones.json"
+TRIGGERS_PARQUET: str = "journal_triggers.parquet"
+TRIGGERS_JSON: str = "triggers.json"
 REPORT_JSON: str = "report.json"
 
 _DAY_INTENSITY_THRESHOLD: int = 60
@@ -79,6 +85,8 @@ class JournalArtifacts:
     match_payload: dict[str, object] | None
     zones: pd.DataFrame | None = None
     zone_payload: dict[str, object] | None = None
+    triggers: pd.DataFrame | None = None
+    trigger_payload: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -98,6 +106,7 @@ class JournalReport:
     q3_zones_width: pd.DataFrame
     q3_zones_relation: pd.DataFrame
     q3_zones_names: pd.DataFrame
+    q3_triggers: pd.DataFrame
     q4_brackets: pd.DataFrame
     q5_null: dict[str, object]
     q6_rules: pd.DataFrame
@@ -132,6 +141,8 @@ def load_journal_artifacts(journal_dir: str | Path) -> JournalArtifacts:
         match_payload=_optional_json(root / MATCH_JSON),
         zones=_optional_table(root / ZONES_PARQUET),
         zone_payload=_optional_json(root / ZONES_JSON),
+        triggers=_optional_table(root / TRIGGERS_PARQUET),
+        trigger_payload=_optional_json(root / TRIGGERS_JSON),
     )
 
 
@@ -145,6 +156,8 @@ def build_journal_report(
     match_payload: Mapping[str, object] | None = None,
     zones: pd.DataFrame | None = None,
     zone_payload: Mapping[str, object] | None = None,
+    triggers: pd.DataFrame | None = None,
+    trigger_payload: Mapping[str, object] | None = None,
     include_small_n: bool = False,
 ) -> JournalReport:
     """Build Q1–Q8 tables. Keyword-only after ``trades``. Default hides n < 30."""
@@ -157,6 +170,7 @@ def build_journal_report(
     q3_count, q3_width, q3_relation, q3_names = _q3_zones(
         work, zones, include_small_n=include_small_n
     )
+    q3_triggers = _q3_triggers(work, triggers, include_small_n=include_small_n)
     q4, q5, q6 = _q4_q6(counterfactual_payload, counterfactuals)
     q7, q8 = _q7_q8(matches, match_payload)
     captions = {
@@ -164,6 +178,7 @@ def build_journal_report(
         "q2": "Hold-time cuts are outcome-conditioned (losers cut fast). n < 30 hidden unless toggled.",
         "q3": "Tags are trader intent. Alignment is a distance check, not a trigger.",
         "q3_zones": ZONES_HONESTY,
+        "q3_triggers": TRIGGERS_HONESTY,
         "q4": "three brackets were looked at (not a single pre-registered test); no slippage model.",
         "q5": "Direction-shuffle preserves per-session long/short counts. Seeded. Not a global sign flip.",
         "q6": "Rules are declared, never searched. in_sample and forward are never blended.",
@@ -190,6 +205,7 @@ def build_journal_report(
             "counterfactual": counterfactual_payload is not None or counterfactuals is not None,
             "match": match_payload is not None or matches is not None,
             "zones": zones is not None or zone_payload is not None,
+            "triggers": triggers is not None or trigger_payload is not None,
         },
         q1_days=q1,
         q2_slices=slices,
@@ -200,6 +216,7 @@ def build_journal_report(
         q3_zones_width=q3_width,
         q3_zones_relation=q3_relation,
         q3_zones_names=q3_names,
+        q3_triggers=q3_triggers,
         q4_brackets=q4,
         q5_null=q5,
         q6_rules=q6,
@@ -245,6 +262,8 @@ def report_from_artifacts(
         match_payload=artifacts.match_payload,
         zones=artifacts.zones,
         zone_payload=artifacts.zone_payload,
+        triggers=artifacts.triggers,
+        trigger_payload=artifacts.trigger_payload,
         include_small_n=include_small_n,
     )
 
@@ -495,6 +514,95 @@ def _q3_zones(
         attributed, "zone_level_names", names_cols, include_small_n=include_small_n
     )
     return count, width, relation, names
+
+
+def _q3_triggers(
+    trades: pd.DataFrame,
+    triggers: pd.DataFrame | None,
+    *,
+    include_small_n: bool,
+) -> pd.DataFrame:
+    """Distribution and net ticks per 1m label. Multi-label counted once per label."""
+    columns = [
+        "inferred_trigger",
+        "n",
+        "mean_net_ticks",
+        "resolution",
+        "recon_status",
+        "zone_params_hash",
+        "trigger_resolution",
+    ]
+    if triggers is None or not isinstance(triggers, pd.DataFrame) or triggers.empty:
+        return pd.DataFrame(columns=columns)
+    work = triggers.copy()
+    if "trade_id" in work.columns and not trades.empty and "trade_id" in trades.columns:
+        keep = [
+            column
+            for column in ("trade_id", "resolution", "recon_status", "net_ticks")
+            if column in trades.columns
+        ]
+        meta = trades[keep].drop_duplicates("trade_id")
+        work["trade_id"] = work["trade_id"].map(str)
+        work = work.merge(meta, on="trade_id", how="left", suffixes=("", "_trade"))
+        work["resolution"] = _coalesce_meta(work, "resolution", default=RESOLUTION_UNJOINED)
+        work["recon_status"] = _coalesce_meta(work, "recon_status", default=RECON_UNKNOWN)
+        if "net_ticks" not in work.columns or work["net_ticks"].isna().all():
+            if "net_ticks_trade" in work.columns:
+                work["net_ticks"] = work["net_ticks_trade"]
+    if "resolution" not in work.columns:
+        work["resolution"] = RESOLUTION_UNJOINED
+    if "recon_status" not in work.columns:
+        work["recon_status"] = RECON_UNKNOWN
+    work["resolution"] = work["resolution"].map(_as_resolution)
+    work["recon_status"] = work["recon_status"].map(_as_recon)
+    if "zone_params_hash" not in work.columns:
+        work["zone_params_hash"] = ""
+    if "net_ticks" not in work.columns:
+        work["net_ticks"] = None
+    work["net_ticks"] = work["net_ticks"].map(_optional_float)
+    exploded_rows: list[dict[str, object]] = []
+    filter_zone_id = "zone_id" in work.columns
+    for raw in work.to_dict(orient="records"):
+        if filter_zone_id and _is_missing(raw.get("zone_id")):
+            continue
+        labels = decode_trigger_labels(raw.get("inferred_triggers_1m"))
+        names = labels if labels else (TRIGGER_NONE,)
+        for label in names:
+            exploded_rows.append(
+                {
+                    "inferred_trigger": label,
+                    "net_ticks": raw.get("net_ticks"),
+                    "resolution": raw.get("resolution"),
+                    "recon_status": raw.get("recon_status"),
+                    "zone_params_hash": raw.get("zone_params_hash") or "",
+                    "trigger_resolution": TRIGGER_RESOLUTION_1M,
+                }
+            )
+    exploded = pd.DataFrame(exploded_rows)
+    if exploded.empty:
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, object]] = []
+    grouped = exploded.groupby(
+        ["inferred_trigger", "zone_params_hash", "trigger_resolution"],
+        sort=True,
+        dropna=False,
+    )
+    for (label, digest, trig_res), group in grouped:
+        n_value = int(len(group))
+        if n_value < REPORT_MIN_N and not include_small_n:
+            continue
+        rows.append(
+            {
+                "inferred_trigger": str(label),
+                "n": n_value,
+                "mean_net_ticks": _mean(group.get("net_ticks")),
+                "resolution": _unique_or_mixed(group["resolution"]),
+                "recon_status": _unique_or_mixed(group["recon_status"]),
+                "zone_params_hash": str(digest or ""),
+                "trigger_resolution": str(trig_res),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def _zone_groups(
@@ -807,6 +915,7 @@ def _report_payload(report: JournalReport) -> dict[str, object]:
         "q3_zones_width": _records(report.q3_zones_width),
         "q3_zones_relation": _records(report.q3_zones_relation),
         "q3_zones_names": _records(report.q3_zones_names),
+        "q3_triggers": _records(report.q3_triggers),
         "q4_brackets": _records(report.q4_brackets),
         "q5_null": {key: _jsonable(value) for key, value in report.q5_null.items()},
         "q6_rules": _records(report.q6_rules),

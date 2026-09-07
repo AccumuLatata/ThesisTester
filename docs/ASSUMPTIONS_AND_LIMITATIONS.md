@@ -1416,6 +1416,29 @@ other than the last bar in the dataset.
   refuses days that are not `reconciled` unless `--allow-unreconciled`.
   Page 17 Q3 **Zones** omits when the file is missing.
 
+## Journal → Study (JS2 — trigger inference ≠ perception)
+
+- Inference is what `classify_zone_triggers` would have printed on the
+  completed bar before the fill. It is **not** the trader's perception
+  and not a live trigger tape.
+- 1m uses the previous completed 1m bar (`open + 1min ≤ entry`; exact
+  `09:30:00` → `09:29`). `15s_proxy` uses the last completed 15s bar
+  (`open + 15s ≤ entry`) and is labelled a proxy because the engine has
+  no 15s trigger lane. The two resolutions are stamped separately and
+  never averaged. The 15s call uses `trigger_timeframe="base"` — never
+  `"1min"` (that would resample).
+- `3c` / `_check_confirm_3bar` is not inferred (later bars can close
+  after the fill). An empty tuple is a valid `none` outcome, counted,
+  not dropped — only among trades with a non-null `zone_id`. No-zone /
+  gap rows are omitted from the Q3 Inferred trigger table, not mixed
+  into `none`. `trigger_direction_consistent` is null when the 1m tuple
+  is empty or touch-only (`_check_touch` is direction-agnostic).
+- `python -m thesistester journal triggers` writes
+  `journal_triggers.parquet` + `triggers.json` under `--output-dir`.
+  It refuses `results/studies/` and refuses days that are not
+  `reconciled` unless `--allow-unreconciled`. Page 17 Q3 **Inferred
+  trigger** omits when the file is missing.
+
 ## Trade journal (TJ7 — own-entry counterfactuals; no slippage)
 
 - Counterfactuals assume fills at the bar or Last-print price. There is **no

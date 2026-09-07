@@ -739,6 +739,16 @@ JS1 zone columns are **not** TJ6 token-near. They come from `detect_confluence_z
 | `entry_zone_relation` | `inside` (`zone_low ≤ entry ≤ zone_high`), `above_within_tol` / `below_within_tol` (same declared `tolerance_ticks` of the near edge), or `no_zone`. A **containing** zone wins over a closer foreign mid; else nearest mid (tie: `zone_low`, `level_names`). Not TJ6 `level_context`. |
 | `nearest_zone_distance_ticks` | Absolute `\|entry − zone_mid\| / tick_size` when `no_zone` and a zone exists on that bar; else null. |
 
+## Trade journal metrics (JS2)
+
+JS2 trigger columns are engine would-have-called labels, not trader perception. 1m and `15s_proxy` are never averaged.
+
+| Key | Definition |
+|---|---|
+| `inferred_triggers_1m` | Sorted tuple of trigger names `classify_zone_triggers` returned on the previous completed 1m bar (`open + 1min ≤ entry`). Empty tuple is valid (`none`) on rows with a non-null `zone_id`. Unevaluated / `no_zone` rows are not counted as `none`. `3c` is not inferred. |
+| `inferred_triggers_15s` | Same classifier on the last completed 15s bar (`open + 15s ≤ entry`). Resolution stamp `15s_proxy` — the engine has no 15s trigger lane. Wrapper is called with `trigger_timeframe="base"`, never `"1min"`. |
+| `trigger_bar_lag_seconds` | `entry_timestamp − (evaluated_1m_bar_open + 1min)`. Exact `09:30:00` vs the `09:29` bar → `0`. |
+
 ## Trade journal metrics (TJ8)
 
 Named-cell match is not a study rank key and does not rewrite `results_index`.

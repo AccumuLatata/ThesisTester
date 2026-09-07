@@ -94,6 +94,7 @@ def test_report_module_does_not_import_engine_or_index_keys() -> None:
             imported.add(node.module.split(".")[0])
             imported.add(node.module)
     assert "thesistester.engine" not in imported
+    assert "thesistester.journal.triggers" not in imported
     assert "thesistester.study.execute" not in imported
     assert "simulate_trades(" not in source
     assert "compute_all_levels(" not in source
@@ -190,8 +191,10 @@ def test_missing_later_artifacts_are_omitted() -> None:
     assert report.present["counterfactual"] is False
     assert report.present["match"] is False
     assert report.present["zones"] is False
+    assert report.present["triggers"] is False
     assert report.q3_levels.empty
     assert report.q3_zones_relation.empty
+    assert report.q3_triggers.empty
     assert report.q4_brackets.empty
     assert report.q5_null["direction_null_pct"] is None
     assert report.q6_rules.empty
@@ -469,6 +472,8 @@ def test_journal_page_ast_and_contract() -> None:
     assert "Q8 · Forward ledger" in source
     assert "**Zones**" in source
     assert "journal_zones.parquet" in source
+    assert "**Inferred trigger**" in source
+    assert "journal_triggers.parquet" in source
     assert "Show slices with n < 30" in source
     assert "REPORT_HONESTY" in source
     assert "journal_store_dir" in source

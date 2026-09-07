@@ -28,7 +28,7 @@ _EMPTY = (
     "No `journal_trades.parquet` in this directory. Run "
     "`python -m thesistester journal reconcile` (then attribute / "
     "counterfactual / match as needed) and point here. "
-    "Missing later artifacts omit Q3–Q8 (including Zones); they are not errors."
+    "Missing later artifacts omit Q3–Q8 (including Zones / Inferred trigger); they are not errors."
 )
 _Q_TITLES = (
     ("Q1 · Costs and reconciled net", "q1"),
@@ -80,7 +80,10 @@ st.text_input(
 include_small = st.checkbox(
     "Show slices with n < 30",
     key=JOURNAL_INCLUDE_SMALL_N_KEY,
-    help="Q2 and Q3 Zones rows with n < 30 stay hidden unless this is on. Applies after Load without a second click.",
+    help=(
+        "Q2, Q3 Zones, and Q3 Inferred trigger rows with n < 30 stay hidden "
+        "unless this is on. Applies after Load without a second click."
+    ),
 )
 load = st.button("Load report")
 
@@ -150,6 +153,15 @@ else:
     _show_table(report.q3_zones_count, empty="No zone_level_count rows at the current n gate.")
     _show_table(report.q3_zones_width, empty="No zone-width rows at the current n gate.")
     _show_table(report.q3_zones_names, empty="No zone_level_names sets at the current n gate.")
+st.markdown("**Inferred trigger**")
+st.caption(report.captions.get("q3_triggers") or "")
+if not present.get("triggers"):
+    st.caption("Q3 Inferred trigger omitted — journal_triggers.parquet not present.")
+else:
+    _show_table(
+        report.q3_triggers,
+        empty="No inferred-trigger rows at the current n gate.",
+    )
 
 st.subheader(_Q_TITLES[3][0])
 st.caption(report.captions["q4"])
