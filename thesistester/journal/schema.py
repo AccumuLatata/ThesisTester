@@ -259,6 +259,22 @@ ZONES_HONESTY: Final[str] = (
     "zone = detect_confluence_zones on the 1m bar completed before the "
     "fill; parameters declared (not searched); journal is not a study cell."
 )
+TRIGGER_NONE: Final[str] = "none"
+TRIGGER_RESOLUTION_1M: Final[str] = "1m"
+TRIGGER_RESOLUTION_15S_PROXY: Final[str] = "15s_proxy"
+TRIGGERS_HONESTY: Final[str] = (
+    "engine would-have-called on the completed bar before the fill; not the "
+    "trader's perception; 15s is a proxy (no engine 15s trigger lane); 3c "
+    "not inferred."
+)
+TRIGGER_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
+    "inferred_triggers_1m",
+    "inferred_triggers_15s",
+    "trigger_bar_lag_seconds",
+    "trigger_direction_consistent",
+    "trigger_resolution_1m",
+    "trigger_resolution_15s",
+)
 ZONE_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
     "zone_params_hash",
     "zone_id",

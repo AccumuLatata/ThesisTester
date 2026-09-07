@@ -1,7 +1,7 @@
 # Journal → Study Implementation Plan (JS)
 
 **Series code:** JS
-**Status:** JS1 landed (zone attribution + Q3 Zones + `journal zones`). JS0 locked.
+**Status:** JS2 landed (trigger inference + Q3 Inferred trigger + `journal triggers`). JS0 locked; JS1 landed.
 **Date:** 2026-09-07 (rev 2 — review locks vs live engine/schema)
 **Depends on:** TJ9 landed (`docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md`).
 **Regression frame:** `docs/ENGINEERING_PROPOSAL.md` §4 (additive, keyword-only,
@@ -727,20 +727,20 @@ Quantower / 15s-lane / Study Builder prefill stay parked (§9).
 
 ### JS2 — Trigger inference
 
-- [ ] Wrapper calls `_prepare_trigger_dataframe`; `git diff` on `_check_*`
+- [x] Wrapper calls `_prepare_trigger_dataframe`; `git diff` on `_check_*`
       bodies is empty; fade/continuation are invoked without `direction`.
-- [ ] `generate_signals` does not call the wrapper.
-- [ ] New synthetic inclusion fixture (expected ⊆ returned labels).
+- [x] `generate_signals` does not call the wrapper.
+- [x] New synthetic inclusion fixture (expected ⊆ returned labels).
       Existing golden files byte-identical (legacy + fade / OTF /
       entry-window families). Do not reconstruct zones from projected
       `signals.csv`.
-- [ ] 3c not inferred; empty tuple is valid.
-- [ ] 1m vs `15s_proxy` never averaged; both stamped; 15s call uses
+- [x] 3c not inferred; empty tuple is valid.
+- [x] 1m vs `15s_proxy` never averaged; both stamped; 15s call uses
       `trigger_timeframe="base"`.
-- [ ] `trigger_direction_consistent` is null for touch-only.
-- [ ] PIT future-shock on inferred columns.
-- [ ] Q3 Inferred trigger subsection; caption locked in §3.2.
-- [ ] Same-PR docs: §7 JS2 row + `ASSUMPTIONS` (inference ≠ perception).
+- [x] `trigger_direction_consistent` is null for touch-only.
+- [x] PIT future-shock on inferred columns.
+- [x] Q3 Inferred trigger subsection; caption locked in §3.2.
+- [x] Same-PR docs: §7 JS2 row + `ASSUMPTIONS` (inference ≠ perception).
 
 ### JS3 — Proposal
 

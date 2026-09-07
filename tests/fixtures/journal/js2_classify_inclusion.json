@@ -1,0 +1,192 @@
+{
+  "note": "JS2 synthetic inclusion fixture. expected ⊆ classify_zone_triggers(...). Not reconstructed from signals.csv goldens.",
+  "cases": [
+    {
+      "name": "touch_overlap",
+      "direction": "long",
+      "trigger_bar_idx": 1,
+      "expected": ["touch"],
+      "zone": {
+        "zone_low": 100.0,
+        "zone_high": 100.5,
+        "zone_mid": 100.25,
+        "level_count": 2,
+        "level_names": "pdVAL|pdHigh"
+      },
+      "bars": [
+        {
+          "timestamp": "2026-05-14T09:28:00Z",
+          "open": 99.0,
+          "high": 99.5,
+          "low": 98.8,
+          "close": 99.2,
+          "volume": 1
+        },
+        {
+          "timestamp": "2026-05-14T09:29:00Z",
+          "open": 100.0,
+          "high": 100.4,
+          "low": 99.9,
+          "close": 100.2,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "name": "reject_long",
+      "direction": "long",
+      "trigger_bar_idx": 1,
+      "expected": ["reject"],
+      "zone": {
+        "zone_low": 100.0,
+        "zone_high": 100.5,
+        "zone_mid": 100.25,
+        "level_count": 2,
+        "level_names": "pdVAL|pdHigh"
+      },
+      "bars": [
+        {
+          "timestamp": "2026-05-14T09:28:00Z",
+          "open": 100.2,
+          "high": 100.4,
+          "low": 100.1,
+          "close": 100.3,
+          "volume": 1
+        },
+        {
+          "timestamp": "2026-05-14T09:29:00Z",
+          "open": 100.3,
+          "high": 101.0,
+          "low": 100.2,
+          "close": 100.8,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "name": "fade_from_above",
+      "direction": "long",
+      "trigger_bar_idx": 1,
+      "expected": ["fade"],
+      "zone": {
+        "zone_low": 100.0,
+        "zone_high": 100.5,
+        "zone_mid": 100.25,
+        "level_count": 2,
+        "level_names": "pdVAL|pdHigh"
+      },
+      "bars": [
+        {
+          "timestamp": "2026-05-14T09:28:00Z",
+          "open": 101.2,
+          "high": 101.5,
+          "low": 101.0,
+          "close": 101.1,
+          "volume": 1
+        },
+        {
+          "timestamp": "2026-05-14T09:29:00Z",
+          "open": 100.8,
+          "high": 100.9,
+          "low": 100.2,
+          "close": 100.4,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "name": "empty_no_touch",
+      "direction": "long",
+      "trigger_bar_idx": 1,
+      "expected": [],
+      "zone": {
+        "zone_low": 100.0,
+        "zone_high": 100.5,
+        "zone_mid": 100.25,
+        "level_count": 2,
+        "level_names": "pdVAL|pdHigh"
+      },
+      "bars": [
+        {
+          "timestamp": "2026-05-14T09:28:00Z",
+          "open": 90.0,
+          "high": 90.5,
+          "low": 89.5,
+          "close": 90.2,
+          "volume": 1
+        },
+        {
+          "timestamp": "2026-05-14T09:29:00Z",
+          "open": 90.2,
+          "high": 90.8,
+          "low": 90.0,
+          "close": 90.4,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "name": "one_row_no_crash",
+      "direction": "long",
+      "trigger_bar_idx": 0,
+      "expected": [],
+      "zone": {
+        "zone_low": 100.0,
+        "zone_high": 100.5,
+        "zone_mid": 100.25,
+        "level_count": 2,
+        "level_names": "pdVAL|pdHigh"
+      },
+      "bars": [
+        {
+          "timestamp": "2026-05-14T09:29:00Z",
+          "open": 90.0,
+          "high": 90.5,
+          "low": 89.5,
+          "close": 90.2,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "name": "three_bar_looks_like_3c_but_3c_absent",
+      "direction": "long",
+      "trigger_bar_idx": 2,
+      "expected": [],
+      "forbid": ["3c"],
+      "zone": {
+        "zone_low": 100.0,
+        "zone_high": 100.5,
+        "zone_mid": 100.25,
+        "level_count": 2,
+        "level_names": "pdVAL|pdHigh"
+      },
+      "bars": [
+        {
+          "timestamp": "2026-05-14T09:27:00Z",
+          "open": 99.0,
+          "high": 100.6,
+          "low": 98.8,
+          "close": 100.4,
+          "volume": 1
+        },
+        {
+          "timestamp": "2026-05-14T09:28:00Z",
+          "open": 100.4,
+          "high": 100.5,
+          "low": 99.2,
+          "close": 99.4,
+          "volume": 1
+        },
+        {
+          "timestamp": "2026-05-14T09:29:00Z",
+          "open": 99.4,
+          "high": 99.8,
+          "low": 99.0,
+          "close": 99.6,
+          "volume": 1
+        }
+      ]
+    }
+  ]
+}

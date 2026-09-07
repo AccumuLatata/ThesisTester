@@ -1510,3 +1510,176 @@ def generate_signals(
     if not signals:
         return _empty_signals_df()
     return pd.DataFrame(signals)
+
+
+def classify_zone_triggers(
+    df: pd.DataFrame,
+    zone: pd.Series,
+    trigger_bar_idx: int,
+    direction: str,
+    *,
+    trigger_timeframe: str = "base",
+    trigger_params: dict | None = None,
+) -> tuple[str, ...]:
+    """Read-only trigger labels on one prepared bar. Not a signal factory.
+
+    Prepares the trigger frame, then delegates to the existing ``_check_*``
+    helpers with bookkeeping dummies. Does not call ``_check_confirm_3bar``,
+    apply naked / entry-window / candidate-sort / direction-collision gates,
+    or get invoked from ``generate_signals``.
+    """
+    labels, _implied = _classify_zone_triggers_detail(
+        df,
+        zone,
+        trigger_bar_idx,
+        direction,
+        trigger_timeframe=trigger_timeframe,
+        trigger_params=trigger_params,
+    )
+    return labels
+
+
+def _classify_zone_triggers_detail(
+    df: pd.DataFrame,
+    zone: pd.Series,
+    trigger_bar_idx: int,
+    direction: str,
+    *,
+    trigger_timeframe: str = "base",
+    trigger_params: dict | None = None,
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """Return sorted labels plus fade/continuation implied sides."""
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return (), {}
+    zone_row = _zone_series_for_classify(zone)
+    prepared = _prepare_trigger_dataframe(df, trigger_timeframe)
+    if prepared.empty:
+        return (), {}
+    trigger_rows_by_base_end = {
+        int(row["base_end_bar_index"]): row for _, row in prepared.iterrows()
+    }
+    trigger_row = trigger_rows_by_base_end.get(int(trigger_bar_idx))
+    if trigger_row is None:
+        return (), {}
+    mapped_idx = int(trigger_row["trigger_bar_index"])
+    base_bar_idx = int(trigger_row["base_end_bar_index"])
+    params = _normalize_approach_side_params(trigger_params)
+    require_close = bool(params.get("require_close_confirmation", False))
+    dummy_sid = 0
+    dummy_naked = 0
+    dummy_req = "any"
+    labels: list[str] = []
+    implied: dict[str, str] = {}
+    effective_tf = str(trigger_row.get("trigger_timeframe", trigger_timeframe))
+    if (
+        _check_touch(
+            prepared,
+            zone_row,
+            mapped_idx,
+            base_bar_idx,
+            effective_tf,
+            direction,
+            dummy_sid,
+            dummy_naked,
+            dummy_req,
+        )
+        is not None
+    ):
+        labels.append("touch")
+    if (
+        _check_reject(
+            prepared,
+            zone_row,
+            mapped_idx,
+            base_bar_idx,
+            effective_tf,
+            direction,
+            dummy_sid,
+            dummy_naked,
+            dummy_req,
+        )
+        is not None
+    ):
+        labels.append("reject")
+    if (
+        _check_break(
+            prepared,
+            zone_row,
+            mapped_idx,
+            base_bar_idx,
+            effective_tf,
+            direction,
+            dummy_sid,
+            dummy_naked,
+            dummy_req,
+        )
+        is not None
+    ):
+        labels.append("break")
+    if (
+        _check_reclaim(
+            prepared,
+            zone_row,
+            mapped_idx,
+            base_bar_idx,
+            effective_tf,
+            direction,
+            dummy_sid,
+            dummy_naked,
+            dummy_req,
+        )
+        is not None
+    ):
+        labels.append("reclaim")
+    if mapped_idx >= 1:
+        fade = _check_fade(
+            prepared,
+            zone_row,
+            mapped_idx,
+            base_bar_idx,
+            effective_tf,
+            dummy_sid,
+            dummy_naked,
+            dummy_req,
+            require_close_confirmation=require_close,
+        )
+        if fade is not None:
+            labels.append("fade")
+            implied["fade"] = str(fade["direction"])
+        continuation = _check_continuation(
+            prepared,
+            zone_row,
+            mapped_idx,
+            base_bar_idx,
+            effective_tf,
+            dummy_sid,
+            dummy_naked,
+            dummy_req,
+            require_close_confirmation=require_close,
+        )
+        if continuation is not None:
+            labels.append("continuation")
+            implied["continuation"] = str(continuation["direction"])
+    return tuple(sorted(labels)), implied
+
+
+def _zone_series_for_classify(zone: pd.Series) -> pd.Series:
+    """Accept engine zone rows or JS1 journal zone columns."""
+    if not isinstance(zone, pd.Series):
+        zone = pd.Series(zone)
+    low = zone["zone_low"] if "zone_low" in zone.index else zone.get("low")
+    high = zone["zone_high"] if "zone_high" in zone.index else zone.get("high")
+    mid = zone["zone_mid"] if "zone_mid" in zone.index else None
+    if mid is None or (isinstance(mid, float) and pd.isna(mid)):
+        mid = (float(low) + float(high)) / 2.0
+    names = zone["level_names"] if "level_names" in zone.index else zone.get("zone_level_names", "")
+    count = zone["level_count"] if "level_count" in zone.index else zone.get("zone_level_count", 0)
+    return pd.Series(
+        {
+            "zone_low": float(low),
+            "zone_high": float(high),
+            "zone_mid": float(mid),
+            "level_count": 0 if count is None or pd.isna(count) else int(count),
+            "level_names": "" if names is None or (isinstance(names, float) and pd.isna(names)) else str(names),
+        }
+    )

@@ -1,4 +1,4 @@
-"""Post-trade journal ingest (TJ series + JS1 zones).
+"""Post-trade journal ingest (TJ series + JS1 zones + JS2 triggers).
 
 Additive package. Does not call ``simulate_trades`` or ``compute_all_levels``.
 TJ1 ships the TradesViz executions loader. TJ2 adds the AMP statement parser.
@@ -9,6 +9,7 @@ TJ7 replays entries under fixed brackets, a direction-shuffle null, and declared
 TJ8 matches a named cell and builds a forward ledger.
 TJ9 builds the Q1–Q8 report and page 17 (read-only).
 JS1 attributes engine confluence zones on the previous completed 1m bar.
+JS2 infers engine trigger labels on that 1m bar and a 15s_proxy.
 """
 
 from __future__ import annotations
@@ -64,6 +65,7 @@ from thesistester.journal.schema import (
     DEFAULT_ZONE_MAX_CONFLUENCES,
     DEFAULT_ZONE_MIN_CONFLUENCES,
     DEFAULT_ZONE_TOLERANCE_TICKS,
+    TRIGGERS_HONESTY,
     ZONES_HONESTY,
     FILL_RECORD_COLUMNS,
     JOURNAL_TRADE_COLUMNS,
@@ -86,6 +88,11 @@ from thesistester.journal.rules import (
 )
 from thesistester.journal.tags import TagMapping, load_tag_map, mapped_engine_tokens, resolve_tag
 from thesistester.journal.tradesviz import load_tradesviz_executions
+from thesistester.journal.triggers import (
+    infer_journal_triggers,
+    trigger_files,
+    write_trigger_artifacts,
+)
 from thesistester.journal.zones import (
     attribute_journal_zones,
     canonical_zone_params_hash,
@@ -106,6 +113,7 @@ __all__ = [
     "DEFAULT_ZONE_TOLERANCE_TICKS",
     "REPORT_HONESTY",
     "REPORT_MIN_N",
+    "TRIGGERS_HONESTY",
     "ZONES_HONESTY",
     "FILL_RECORD_COLUMNS",
     "JOURNAL_TRADE_COLUMNS",
@@ -161,6 +169,9 @@ __all__ = [
     "write_counterfactual_artifacts",
     "write_match_artifacts",
     "write_reconcile_artifacts",
+    "infer_journal_triggers",
+    "trigger_files",
+    "write_trigger_artifacts",
     "write_zone_artifacts",
     "zone_files",
 ]

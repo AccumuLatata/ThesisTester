@@ -1163,6 +1163,16 @@ not call `run_experiment` / `run_study` and does not hydrate classic
 session keys. Journal code must not call `simulate_trades` or
 `compute_all_levels`.
 
+**JS2 landed.** `classify_zone_triggers` in `thesistester/engine/signals.py`
+is an unused-by-default public wrapper: it calls
+`_prepare_trigger_dataframe` then the existing `_check_*` helpers and
+does **not** get invoked from `generate_signals`. `_check_*` bodies are
+untouched. `thesistester/journal/triggers.py` / `python -m thesistester
+journal triggers` infer 1m + `15s_proxy` labels on the previous
+completed bars (`open + duration ≤ entry`) and write
+`journal_triggers.parquet` + `triggers.json`. Page 17 Q3 **Inferred
+trigger** reads that optional file. No new session keys.
+
 ## R22 simulation-core boundary
 
 `thesistester.engine.sim_core` is an internal-only hot-path boundary. It owns
@@ -1318,7 +1328,8 @@ not part of the classic research mutate path),
 `pages/16_Study_Observatory.py` (SO2 corpus readout + Inspect drill; not
 classic mutate),
 `pages/17_Journal.py` (TJ9 Q1–Q8 readout over ingested journal/v1
-artifacts; JS1 Q3 Zones over optional `journal_zones.parquet`; not
+artifacts; JS1 Q3 Zones over optional `journal_zones.parquet`; JS2 Q3
+Inferred trigger over optional `journal_triggers.parquet`; not
 classic mutate). Do not grow Inspect into a corpus page. Studies builder session keys
 are `studies_builder_draft` and `studies_builder_pending_sync` only.
 
@@ -1412,8 +1423,10 @@ does the same and assigns empty leftover `studies_viewer_selected_run`
 Journal TJ9 adds `journal_dir`, `journal_include_small_n`, and
 `journal_cached_artifacts` on `pages/17_Journal.py` only — still not classic
 research state. The n < 30 toggle rebuilds Q2 and JS1 Q3 Zones from the
-cached artifacts without a second Load. JS1 adds no new session keys;
-`load_journal_artifacts` optionally reads `journal_zones.parquet`.
+cached artifacts without a second Load. JS1/JS2 add no new session keys;
+`load_journal_artifacts` optionally reads `journal_zones.parquet` and
+`journal_triggers.parquet`. The n < 30 toggle also rebuilds JS2 Q3
+Inferred trigger from the cached artifacts.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when
