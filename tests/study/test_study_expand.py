@@ -18,7 +18,6 @@ from thesistester.study.expand import (
     write_expansion_artifacts,
 )
 from thesistester.study.apoc_provenance import (
-    APOC_OBJECT_LEGACY_TYPICAL,
     APOC_OBJECT_TICK_LAST_VOLUME,
     RECORDED_EXPLICIT,
     RECORDED_INFERRED,

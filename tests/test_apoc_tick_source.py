@@ -116,9 +116,7 @@ def _assert_session_poc(
 
 def test_library_default_source_matches_explicit_tick():
     df = _two_session_bars()
-    implicit = compute_apoc_levels(
-        df, instrument="ES", enabled=True, tick_paths=[FIXTURE_TICKS]
-    )
+    implicit = compute_apoc_levels(df, instrument="ES", enabled=True, tick_paths=[FIXTURE_TICKS])
     explicit = compute_apoc_levels(
         df,
         instrument="ES",

@@ -293,12 +293,8 @@ def test_zero_volume_bracket_produces_no_freeze():
 def test_eth_emits_when_freeze_exists_unlike_dvwap():
     df = _two_bracket_fixture()
     out = compute_all_levels(
-        df,
-        instrument="ES",
-        session_vwap_enabled=True,
-        prev30m_vwap_enabled=True,
-    
-        poc_windows=[])
+        df, instrument="ES", session_vwap_enabled=True, prev30m_vwap_enabled=True, poc_windows=[]
+    )
     eth_mask = out["session"].eq("ETH")
     assert eth_mask.any()
     # prev30mVWAP non-NaN on ETH after freeze; dVWAP_RTH stays NaN on ETH

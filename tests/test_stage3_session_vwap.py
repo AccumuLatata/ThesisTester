@@ -144,8 +144,8 @@ def test_compute_all_levels_session_vwap_disabled_produces_no_dvwap_column():
         sma_lengths=[2],
         ema_lengths=[2],
         session_vwap_enabled=False,
-    
-        poc_windows=[])
+        poc_windows=[],
+    )
     assert "dVWAP_RTH" not in out.columns
     assert "dVWAP" not in out.columns
     assert "wVWAP" not in out.columns
@@ -384,8 +384,13 @@ def test_existing_level_columns_unchanged_when_vwap_disabled():
         "ES",
     )
     out_no_vwap = compute_all_levels(
-        df, instrument="ES", opening_range_minutes=5, sma_lengths=[2], session_vwap_enabled=False
-    , poc_windows=[])
+        df,
+        instrument="ES",
+        opening_range_minutes=5,
+        sma_lengths=[2],
+        session_vwap_enabled=False,
+        poc_windows=[],
+    )
     out_with_vwap = compute_all_levels(
         df,
         instrument="ES",
@@ -393,8 +398,8 @@ def test_existing_level_columns_unchanged_when_vwap_disabled():
         sma_lengths=[2],
         session_vwap_enabled=True,
         session_vwap_anchor="RTH",
-    
-        poc_windows=[])
+        poc_windows=[],
+    )
 
     # All columns from the disabled run must be present and identical in the enabled run.
     for col in out_no_vwap.columns:
@@ -423,8 +428,8 @@ def test_dvwap_column_present_when_enabled():
         opening_range_minutes=5,
         session_vwap_enabled=True,
         session_vwap_anchor="RTH",
-    
-        poc_windows=[])
+        poc_windows=[],
+    )
     assert "dVWAP_RTH" in out.columns
     assert "dVWAP" in out.columns
     assert "wVWAP" in out.columns

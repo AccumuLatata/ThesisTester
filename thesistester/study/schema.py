@@ -241,9 +241,7 @@ def _require_ticks_for_named_va(
         return
     if dataset_has_tick_paths(dataset):
         return
-    raise StudySpecError(
-        named_va_requires_ticks_message(tokens, prefix="study.dataset.tick_paths")
-    )
+    raise StudySpecError(named_va_requires_ticks_message(tokens, prefix="study.dataset.tick_paths"))
 
 
 def _require_ticks_for_named_apoc_and_rolling(
@@ -259,14 +257,10 @@ def _require_ticks_for_named_apoc_and_rolling(
         return
     if apoc_tokens:
         raise StudySpecError(
-            named_apoc_requires_ticks_message(
-                apoc_tokens, prefix="study.dataset.tick_paths"
-            )
+            named_apoc_requires_ticks_message(apoc_tokens, prefix="study.dataset.tick_paths")
         )
     raise StudySpecError(
-        named_rolling_poc_requires_ticks_message(
-            rolling_tokens, prefix="study.dataset.tick_paths"
-        )
+        named_rolling_poc_requires_ticks_message(rolling_tokens, prefix="study.dataset.tick_paths")
     )
 
 

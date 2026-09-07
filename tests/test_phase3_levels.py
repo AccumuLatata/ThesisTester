@@ -589,9 +589,7 @@ def test_prior_profile_aggregation_settings_are_independent(
 def test_rolling_poc_without_ticks_refuses_regardless_of_aggregation_settings():
     df = _multi_period_profile_df()
     with pytest.raises(ValueError, match="rolling POC requires ticks"):
-        compute_profile_levels(
-            df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
-        )
+        compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
     with pytest.raises(ValueError, match="rolling POC requires ticks"):
         compute_profile_levels(
             df,

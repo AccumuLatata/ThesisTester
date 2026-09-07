@@ -14,7 +14,6 @@ from typing import Any, Final
 
 from thesistester.levels.catalog import (
     named_apoc_tokens,
-    named_prior_profile_tokens,
     named_rolling_poc_tokens,
 )
 
@@ -78,7 +77,9 @@ def settings_require_apoc_ticks(
     enabled = payload.get("apoc_enabled") if apoc_enabled is None else apoc_enabled
     if not enabled:
         return False
-    source = payload.get("apoc_profile_source") if apoc_profile_source is None else apoc_profile_source
+    source = (
+        payload.get("apoc_profile_source") if apoc_profile_source is None else apoc_profile_source
+    )
     return resolve_apoc_profile_source(source) == APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
 
 
