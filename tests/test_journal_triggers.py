@@ -230,7 +230,9 @@ def test_wrapper_calls_prepare_then_checkers_without_mutating_bodies() -> None:
         positional = [ast.unparse(arg) for arg in call.args]
         assert "direction" not in positional
     generate = next(
-        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "generate_signals"
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "generate_signals"
     )
     generate_calls = [
         node.func.id
@@ -238,8 +240,11 @@ def test_wrapper_calls_prepare_then_checkers_without_mutating_bodies() -> None:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     ]
     assert "classify_zone_triggers" not in generate_calls
-    assert "classify_zone_triggers(" not in ast.get_source_segment(source, generate) or True
-    assert "classify_zone_triggers(" not in inspect.getsource(generate_signals)
+    generate_source = inspect.getsource(generate_signals)
+    assert "classify_zone_triggers" not in generate_source
+    generate_segment = ast.get_source_segment(source, generate)
+    assert generate_segment is not None
+    assert "classify_zone_triggers" not in generate_segment
     wrapper_calls = [
         node.func.id
         for node in ast.walk(wrapper)
@@ -289,6 +294,36 @@ def test_synthetic_inclusion_fixture() -> None:
             assert isinstance(returned, tuple)
 
 
+def test_wrapper_rejects_non_trade_direction() -> None:
+    with pytest.raises(ValueError, match="direction"):
+        classify_zone_triggers(
+            _bars(
+                [
+                    {
+                        "timestamp": "2026-05-14T09:29:00Z",
+                        "open": 100.0,
+                        "high": 100.2,
+                        "low": 99.8,
+                        "close": 100.1,
+                        "volume": 1,
+                    }
+                ]
+            ),
+            pd.Series(
+                {
+                    "zone_low": 100.0,
+                    "zone_high": 100.5,
+                    "zone_mid": 100.25,
+                    "level_count": 2,
+                    "level_names": "pdVAL|pdHigh",
+                }
+            ),
+            0,
+            "both",
+            trigger_timeframe="base",
+        )
+
+
 def test_existing_golden_files_byte_identical() -> None:
     diff = subprocess.check_output(
         ["git", "diff", "--name-only", "origin/main", "--", "tests/fixtures/golden"],
@@ -319,7 +354,9 @@ def test_exact_minute_uses_previous_1m_and_last_15s() -> None:
     assert labels_1m != labels_15s or labels_1m == labels_15s
     # Containing 09:30 prices must not be used.
     assert 200.0 not in {
-        float(_ohlcv_1m().loc[_ohlcv_1m()["timestamp"] == _ts("2026-05-14T09:29:00"), "close"].iloc[0])
+        float(
+            _ohlcv_1m().loc[_ohlcv_1m()["timestamp"] == _ts("2026-05-14T09:29:00"), "close"].iloc[0]
+        )
     }
 
 
@@ -332,7 +369,6 @@ def test_15s_proxy_uses_base_never_1min(monkeypatch: pytest.MonkeyPatch) -> None
         return original(df, trigger_timeframe)
 
     monkeypatch.setattr(signals_mod, "_prepare_trigger_dataframe", _spy)
-    monkeypatch.setattr(triggers_mod, "classify_zone_triggers", signals_mod.classify_zone_triggers)
     monkeypatch.setattr(
         triggers_mod, "_classify_zone_triggers_detail", signals_mod._classify_zone_triggers_detail
     )
@@ -417,7 +453,14 @@ def test_empty_tuple_is_valid_and_counted() -> None:
     assert all(decode_trigger_labels(value) == () for value in out["inferred_triggers_1m"])
     report = build_journal_report(out, triggers=out, include_small_n=True)
     assert TRIGGER_NONE in set(report.q3_triggers["inferred_trigger"])
-    assert int(report.q3_triggers.loc[report.q3_triggers["inferred_trigger"] == TRIGGER_NONE, "n"].iloc[0]) == 30
+    assert (
+        int(
+            report.q3_triggers.loc[
+                report.q3_triggers["inferred_trigger"] == TRIGGER_NONE, "n"
+            ].iloc[0]
+        )
+        == 30
+    )
 
 
 def test_gap_omits_triggers_not_stale_walkback() -> None:
@@ -501,7 +544,9 @@ def test_future_shock_does_not_change_inferred_columns() -> None:
 
 def test_no_zone_id_stays_empty() -> None:
     out = infer_journal_triggers(
-        pd.DataFrame([_zone_row(entry="2026-05-14T09:30:00", zone_id=None, zone_low=None, zone_high=None)]),
+        pd.DataFrame(
+            [_zone_row(entry="2026-05-14T09:30:00", zone_id=None, zone_low=None, zone_high=None)]
+        ),
         bars=_ohlcv_1m(),
         bars_15s=_ohlcv_15s(),
     )
@@ -589,7 +634,7 @@ def test_cli_writes_artifacts_and_refuses_studies_dir(tmp_path: Path) -> None:
 def test_triggers_module_does_not_call_engine_mutators() -> None:
     source = Path("thesistester/journal/triggers.py").read_text(encoding="utf-8")
     assert "classify_zone_triggers" in source
-    assert "trigger_timeframe=\"base\"" in source or "trigger_timeframe='base'" in source
+    assert 'trigger_timeframe="base"' in source or "trigger_timeframe='base'" in source
     assert 'trigger_timeframe="1min"' not in source
     assert "compute_all_levels(" not in source
     assert "simulate_trades(" not in source
@@ -602,3 +647,89 @@ def test_encode_decode_roundtrip() -> None:
     assert encode_trigger_labels(()) == ""
     assert decode_trigger_labels("") == ()
     assert decode_trigger_labels("fade|touch") == ("fade", "touch")
+    assert encode_trigger_labels(("touch", "fade")) == "fade|touch"
+    assert decode_trigger_labels("touch|fade") == ("fade", "touch")
+
+
+def test_q3_none_excludes_unevaluated_no_zone_rows() -> None:
+    zoned = [
+        _zone_row(entry="2026-05-14T09:30:00", trade_id=f"z{index}", net_ticks=2.0)
+        for index in range(30)
+    ]
+    no_zone = [
+        _zone_row(
+            entry="2026-05-14T09:30:00",
+            trade_id=f"n{index}",
+            zone_id=None,
+            zone_low=None,
+            zone_high=None,
+        )
+        for index in range(30)
+    ]
+    out = infer_journal_triggers(pd.DataFrame(zoned + no_zone), bars=_ohlcv_1m())
+    report = build_journal_report(out, triggers=out, include_small_n=True)
+    labels = set(report.q3_triggers["inferred_trigger"])
+    assert TRIGGER_NONE not in labels
+    assert "fade" in labels
+    payload_counts = triggers_mod._label_counts(out, "inferred_triggers_1m")
+    assert TRIGGER_NONE not in payload_counts
+
+
+def test_invalid_direction_on_zoned_row_fails_closed() -> None:
+    zones = pd.DataFrame([_zone_row(entry="2026-05-14T09:30:00", direction="both")])
+    with pytest.raises(JournalIngestError, match="direction"):
+        infer_journal_triggers(zones, bars=_ohlcv_1m())
+
+
+def test_misaligned_15s_timestamps_fail_closed() -> None:
+    bars_15s = _bars(
+        [
+            {
+                "timestamp": "2026-05-14T09:29:47Z",
+                "open": 100.8,
+                "high": 100.9,
+                "low": 100.2,
+                "close": 100.4,
+                "volume": 1,
+            }
+        ]
+    )
+    with pytest.raises(JournalIngestError, match="15-second bar opens"):
+        infer_journal_triggers(
+            pd.DataFrame([_zone_row(entry="2026-05-14T09:30:00")]),
+            bars=_ohlcv_1m(),
+            bars_15s=bars_15s,
+        )
+
+
+def test_fade_only_opposite_side_is_direction_inconsistent() -> None:
+    bars = _bars(
+        [
+            {
+                "timestamp": "2026-05-14T09:28:00Z",
+                "open": 101.2,
+                "high": 101.5,
+                "low": 101.0,
+                "close": 101.1,
+                "volume": 1,
+            },
+            {
+                "timestamp": "2026-05-14T09:29:00Z",
+                "open": 100.8,
+                "high": 100.9,
+                "low": 100.2,
+                "close": 100.6,
+                "volume": 1,
+            },
+        ]
+    )
+    zones = pd.DataFrame([_zone_row(entry="2026-05-14T09:30:00", direction="short")])
+    out = infer_journal_triggers(
+        zones,
+        bars=bars,
+        trigger_params={"require_close_confirmation": True},
+    )
+    labels = decode_trigger_labels(out.iloc[0]["inferred_triggers_1m"])
+    assert "fade" in labels
+    assert "continuation" not in labels
+    assert out.iloc[0]["trigger_direction_consistent"] is False

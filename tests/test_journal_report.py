@@ -94,6 +94,7 @@ def test_report_module_does_not_import_engine_or_index_keys() -> None:
             imported.add(node.module.split(".")[0])
             imported.add(node.module)
     assert "thesistester.engine" not in imported
+    assert "thesistester.journal.triggers" not in imported
     assert "thesistester.study.execute" not in imported
     assert "simulate_trades(" not in source
     assert "compute_all_levels(" not in source

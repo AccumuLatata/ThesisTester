@@ -1429,7 +1429,9 @@ other than the last bar in the dataset.
   `"1min"` (that would resample).
 - `3c` / `_check_confirm_3bar` is not inferred (later bars can close
   after the fill). An empty tuple is a valid `none` outcome, counted,
-  not dropped. `trigger_direction_consistent` is null when the 1m tuple
+  not dropped — only among trades with a non-null `zone_id`. No-zone /
+  gap rows are omitted from the Q3 Inferred trigger table, not mixed
+  into `none`. `trigger_direction_consistent` is null when the 1m tuple
   is empty or touch-only (`_check_touch` is direction-agnostic).
 - `python -m thesistester journal triggers` writes
   `journal_triggers.parquet` + `triggers.json` under `--output-dir`.

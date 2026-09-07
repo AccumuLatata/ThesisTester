@@ -1154,7 +1154,7 @@ product mismatch, adherence, forward ledger, n < 30
 |---|---|---|
 | Journal directory | Ingested artifacts; default `.thesistester_store/journal/v1/` | Not under `execution_artifacts/` or `results/studies/` |
 | Load report | Rebuild Q1–Q8 from files on disk | Does not run experiments or studies |
-| Show slices with n < 30 | Reveal Q2 and Q3 Zones rows below the n gate | Hidden by default. Applies after Load without clicking Load again. Every table still shows n |
+| Show slices with n < 30 | Reveal Q2, Q3 Zones, and Q3 Inferred trigger rows below the n gate | Hidden by default. Applies after Load without clicking Load again. Every table still shows n |
 | Q1 | Per instrument-day net / fee / break-even gross | Qty-scaled dollar-ticks. Fees from AMP, not TradesViz |
 | Q2 | Direction × NY hour × hold × day intensity | Hold-time cuts are outcome-conditioned |
 | Q3–Q8 | Attribution / Zones / Inferred trigger / brackets / null / rules / match / ledger | Missing later files omit the section; not an error |

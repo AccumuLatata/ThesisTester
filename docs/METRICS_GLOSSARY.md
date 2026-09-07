@@ -745,7 +745,7 @@ JS2 trigger columns are engine would-have-called labels, not trader perception. 
 
 | Key | Definition |
 |---|---|
-| `inferred_triggers_1m` | Sorted tuple of trigger names `classify_zone_triggers` returned on the previous completed 1m bar (`open + 1min ≤ entry`). Empty tuple is valid (`none`). `3c` is not inferred. |
+| `inferred_triggers_1m` | Sorted tuple of trigger names `classify_zone_triggers` returned on the previous completed 1m bar (`open + 1min ≤ entry`). Empty tuple is valid (`none`) on rows with a non-null `zone_id`. Unevaluated / `no_zone` rows are not counted as `none`. `3c` is not inferred. |
 | `inferred_triggers_15s` | Same classifier on the last completed 15s bar (`open + 15s ≤ entry`). Resolution stamp `15s_proxy` — the engine has no 15s trigger lane. Wrapper is called with `trigger_timeframe="base"`, never `"1min"`. |
 | `trigger_bar_lag_seconds` | `entry_timestamp − (evaluated_1m_bar_open + 1min)`. Exact `09:30:00` vs the `09:29` bar → `0`. |
 
