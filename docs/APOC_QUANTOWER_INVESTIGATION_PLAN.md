@@ -245,8 +245,9 @@ rewritten; a missing sidecar is inferred typical. VA manifests and
 non-Wave-7 rows are unchanged.
 
 Merge order is AP0 → AP1 → AP2 → AP3. AP1’s written evidence gate selected
-``tick_last_volume_v1`` (4/4 exact; bar-range uniform 2/4). AP2 implements
-that source as an explicit opt-in.
+``tick_last_volume_v1`` (4/4 exact; bar-range uniform 2/4). AP2 shipped it
+as opt-in; the 2026-09-07 desk lock made it the library/product default
+and removed ``typical_mvp_v1`` from production sources.
 
 ## 6. Regression-safety checklist
 
