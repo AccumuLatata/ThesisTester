@@ -322,17 +322,27 @@ def _attribute_trade(
         "entry_zone_relation": relation,
         "entry_offset_ticks": offset if at_zone else None,
         "approach_side": approach,
-        "nearest_zone_distance_ticks": offset if not at_zone else None,
+        "nearest_zone_distance_ticks": abs(offset) if not at_zone else None,
     }
 
 
 def _pick_zone(zones: pd.DataFrame, *, entry_price: float) -> pd.Series:
+    """Prefer a zone that contains the fill; else nearest mid.
+
+    Closest-mid first can label an in-zone fill ``below_within_tol`` of a
+    tighter foreign cluster. Containing wins; among that class (or among
+    all zones when none contain), tie-break by mid distance, ``zone_low``,
+    then ``level_names``.
+    """
     ranked = zones.copy()
     ranked["_dist"] = (ranked["zone_mid"].map(float) - entry_price).abs()
     ranked["_low"] = ranked["zone_low"].map(float)
+    ranked["_high"] = ranked["zone_high"].map(float)
     ranked["_names"] = ranked["level_names"].map(str)
-    ranked = ranked.sort_values(["_dist", "_low", "_names"], kind="mergesort")
-    return ranked.iloc[0]
+    inside = ranked.loc[(ranked["_low"] <= entry_price) & (entry_price <= ranked["_high"])]
+    candidates = inside if not inside.empty else ranked
+    candidates = candidates.sort_values(["_dist", "_low", "_names"], kind="mergesort")
+    return candidates.iloc[0]
 
 
 def _relation(
@@ -368,6 +378,7 @@ def _approach_side(
     last = _lookup_bar(stamps, bars, last_open)
     if earlier is None or last is None:
         return APPROACH_UNKNOWN
+    # Origin of the two-bar approach (not the last close; not fade _approach_side).
     close = _finite_close(earlier.get("close"))
     if close is None:
         return APPROACH_UNKNOWN
@@ -444,6 +455,8 @@ def _coerce_trades(trades: pd.DataFrame) -> pd.DataFrame:
         raise JournalIngestError("trades frame missing columns: " + ", ".join(missing))
     work = trades.copy()
     work["entry_timestamp"] = _as_utc_series(work["entry_timestamp"])
+    if work["entry_timestamp"].isna().any():
+        raise JournalIngestError("trades frame has missing entry_timestamp")
     work["entry_price"] = pd.to_numeric(work["entry_price"], errors="coerce")
     if (
         work["entry_price"].isna().any()

@@ -30,6 +30,7 @@ from thesistester.journal.schema import (
     RECON_UNKNOWN,
     REPORT_HONESTY,
     REPORT_MIN_N,
+    ZONE_COUNT_1,
     ZONE_COUNT_2,
     ZONE_COUNT_3,
     ZONE_COUNT_4_PLUS,
@@ -480,7 +481,7 @@ def _q3_zones(
         work["zone_level_count"] = None
     if "entry_zone_relation" not in work.columns:
         work["entry_zone_relation"] = None
-    attributed = work.loc[work["entry_zone_relation"].map(str) != ZONE_REL_NONE].copy()
+    attributed = work.loc[work["entry_zone_relation"].map(_is_attributed_zone)].copy()
     count = _zone_groups(
         attributed, "zone_level_count", count_cols, include_small_n=include_small_n
     )
@@ -544,6 +545,8 @@ def _zone_count_bucket(value: object) -> str | None:
         count = int(value)
     except (TypeError, ValueError):
         return None
+    if count == 1:
+        return ZONE_COUNT_1
     if count == 2:
         return ZONE_COUNT_2
     if count == 3:
@@ -551,6 +554,12 @@ def _zone_count_bucket(value: object) -> str | None:
     if count >= 4:
         return ZONE_COUNT_4_PLUS
     return None
+
+
+def _is_attributed_zone(value: object) -> bool:
+    if _is_missing(value):
+        return False
+    return str(value) != ZONE_REL_NONE
 
 
 def _q4_q6(

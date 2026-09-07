@@ -418,6 +418,8 @@ def test_load_tolerates_missing_optional_files(tmp_path: Path) -> None:
     assert artifacts.attribution is None
     assert artifacts.counterfactual_payload is None
     assert artifacts.match_payload is None
+    assert artifacts.zones is None
+    assert artifacts.zone_payload is None
 
 
 def test_cli_writes_report_and_refuses_studies_dir(tmp_path: Path) -> None:

@@ -251,6 +251,7 @@ DEFAULT_ZONE_MAX_CONFLUENCES: Final[int] = 5
 ZONE_WIDTH_LE_2: Final[str] = "<=2t"
 ZONE_WIDTH_3_4: Final[str] = "3-4t"
 ZONE_WIDTH_GE_5: Final[str] = "5+t"
+ZONE_COUNT_1: Final[str] = "1"
 ZONE_COUNT_2: Final[str] = "2"
 ZONE_COUNT_3: Final[str] = "3"
 ZONE_COUNT_4_PLUS: Final[str] = "4+"

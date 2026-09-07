@@ -27,7 +27,9 @@ from thesistester.journal.schema import (
     JOURNAL_TICK_SIZE,
     RECON_AMP_MISSING,
     RECON_RECONCILED,
+    ZONE_COUNT_1,
     ZONE_REL_ABOVE,
+    ZONE_REL_BELOW,
     ZONE_REL_INSIDE,
     ZONE_REL_NONE,
     JournalIngestError,
@@ -427,3 +429,93 @@ def test_params_file_requires_level_columns(tmp_path: Path) -> None:
     path.write_text("tolerance_ticks: 2\n", encoding="utf-8")
     with pytest.raises(JournalIngestError, match="level_columns"):
         zones_mod.load_zone_params(path)
+
+
+def test_containing_zone_wins_over_closer_foreign_mid() -> None:
+    """A fill inside 100–101 must not be stolen by a tighter 101.1 cluster."""
+    frame = _levels(
+        [
+            {
+                "timestamp": "2026-05-14T09:29:00",
+                "L1": 100.00,
+                "L2": 101.00,
+                "L3": 101.10,
+                "L4": 101.10,
+            }
+        ]
+    )
+    params = _params(
+        level_columns=["L1", "L2", "L3", "L4"],
+        tolerance_ticks=4,
+    )
+    out = attribute_journal_zones(
+        _trades(_trade(entry="2026-05-14T09:30:00", price=101.00)),
+        levels=frame,
+        zone_params=params,
+    )
+    row = out.iloc[0]
+    assert row["entry_zone_relation"] == ZONE_REL_INSIDE
+    assert row["zone_low"] == pytest.approx(100.00)
+    assert row["zone_high"] == pytest.approx(101.00)
+    assert row["zone_level_names"] == "L1|L2"
+    assert row["zone_id"] is not None and not pd.isna(row["zone_id"])
+
+
+def test_nearest_zone_distance_is_absolute() -> None:
+    frame = _frame_three()
+    below = attribute_journal_zones(
+        _trades(_trade(entry="2026-05-14T09:30:00", price=90.00, trade_id="below")),
+        levels=frame,
+        zone_params=_params(),
+    )
+    assert below.iloc[0]["entry_zone_relation"] == ZONE_REL_NONE
+    assert below.iloc[0]["nearest_zone_distance_ticks"] == pytest.approx(
+        abs(90.00 - 100.125) / JOURNAL_TICK_SIZE
+    )
+    assert below.iloc[0]["nearest_zone_distance_ticks"] > 0
+    above = attribute_journal_zones(
+        _trades(_trade(entry="2026-05-14T09:30:00", price=110.00, trade_id="above")),
+        levels=frame,
+        zone_params=_params(),
+    )
+    assert above.iloc[0]["nearest_zone_distance_ticks"] == pytest.approx(
+        abs(110.00 - 100.125) / JOURNAL_TICK_SIZE
+    )
+
+
+def test_one_level_zone_appears_in_count_cut() -> None:
+    frame = _levels([{"timestamp": "2026-05-14T09:29:00", "pdHigh": 100.00}])
+    params = _params(level_columns=["pdHigh"], min_confluences=1)
+    trades = _trades(
+        *[
+            _trade(entry="2026-05-14T09:30:00", price=100.00, trade_id=f"t{index}")
+            for index in range(30)
+        ]
+    )
+    zones = attribute_journal_zones(trades, levels=frame, zone_params=params)
+    assert set(zones["zone_level_count"]) == {1}
+    report = build_journal_report(trades, zones=zones, include_small_n=False)
+    assert list(report.q3_zones_count["zone_level_count"]) == [ZONE_COUNT_1]
+    assert int(report.q3_zones_count.iloc[0]["n"]) == 30
+
+
+def test_missing_entry_timestamp_is_refused() -> None:
+    frame = _frame_three()
+    trades = _trades(_trade(entry="2026-05-14T09:30:00", price=100.10))
+    trades.loc[0, "entry_timestamp"] = pd.NaT
+    with pytest.raises(JournalIngestError, match="entry_timestamp"):
+        attribute_journal_zones(trades, levels=frame, zone_params=_params())
+
+
+def test_below_within_tol_uses_same_tolerance() -> None:
+    frame = _frame_three()
+    out = attribute_journal_zones(
+        _trades(_trade(entry="2026-05-14T09:30:00", price=99.75)),
+        levels=frame,
+        zone_params=_params(),
+    )
+    assert out.iloc[0]["entry_zone_relation"] == ZONE_REL_BELOW
+    assert out.iloc[0]["zone_id"] is not None and not pd.isna(out.iloc[0]["zone_id"])
+    assert pd.isna(out.iloc[0]["nearest_zone_distance_ticks"]) or (
+        out.iloc[0]["nearest_zone_distance_ticks"] is None
+    )
