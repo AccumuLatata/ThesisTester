@@ -17,7 +17,7 @@ import pandas as pd
 from thesistester.api import load_dataset, validate_run_spec
 from thesistester.data.loader import DataValidationError, format_interval, validate_ohlcv
 from thesistester.engine.exit_management import validate_exit_management_config
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.apoc_tick import LEVELS_APOC_IDENTITY_KEYS
 from thesistester.levels.tick_vap import LEVELS_TICK_IDENTITY_KEYS
 from thesistester.persistence.execution_artifacts import (
@@ -160,7 +160,7 @@ def _levels_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExportG
             and key not in LEVELS_APOC_IDENTITY_KEYS
         )
     }
-    unknown = sorted(set(levels) - set(DEFAULT_LEVELS_SETTINGS))
+    unknown = sorted(set(levels) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS)
     if unknown:
         return _gap(
             "unknown_levels_keys",

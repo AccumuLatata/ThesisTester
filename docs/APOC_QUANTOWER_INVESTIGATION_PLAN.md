@@ -189,18 +189,19 @@ skipped in CI because the proprietary desk oracle is not committed.
 | Forbidden | Prior VA changes, tick simulation clock, rolling-POC rewrite, execution changes, golden regeneration |
 
 **AP2 implementation record:** `apoc_profile_source` is keyword-only. Library
-and product default is `typical_mvp_v1` (legacy typical-price; no
-`LEVEL_ENGINE_VERSION` bump). `tick_last_volume_v1` is the AP1-selected
-Quantower source and is explicit opt-in. It builds an A-period
-`APeriodTickProfileTable` from the Quantower Tick–Tick–Last loader, filtered
-to `[RTH open, RTH open + 30 min)` in exchange time; `PriorProfileTable` is
-not a substitute. Tick histogram math is reused from
-`apoc_candidates.compute_tick_last_volume_profile`. Missing, malformed, or
-off-grid tick inputs emit `NaN` APOC/pAPOC with no typical fallback.
-Settings identity includes source, algorithm version, allocation, and
-A-period tick-file id. Desk scorecard (proprietary CSVs not committed):
-2026-09-01=29120, 09-02=29060, 09-03=29350, 09-04=29625; tick source 4/4
-exact; uniform bar-range 2/4 (not shipped).
+default and omitted product config remain implicit `typical_mvp_v1` (legacy
+typical-price; no `LEVEL_ENGINE_VERSION` bump; pre-AP2 settings hashes
+unchanged). `tick_last_volume_v1` is the AP1-selected Quantower source and
+is explicit opt-in. It builds an A-period `APeriodTickProfileTable` from the
+Quantower Tick–Tick–Last loader, filtered to `[RTH open, RTH open + 30 min)`
+in exchange time; `PriorProfileTable` is not a substitute. Tick histogram
+math is reused from `apoc_candidates.compute_tick_last_volume_profile`.
+Missing, malformed, or off-grid tick inputs emit `NaN` APOC/pAPOC with no
+typical fallback. Source / algorithm / allocation / A-period tick-file id
+enter settings identity only when the source key is explicit. Desk
+scorecard (proprietary CSVs not committed): 2026-09-01=29120, 09-02=29060,
+09-03=29350, 09-04=29625; tick source 4/4 exact; uniform bar-range 2/4
+(not shipped).
 
 ### AP3 — Program B provenance
 

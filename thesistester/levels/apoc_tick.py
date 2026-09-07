@@ -148,8 +148,15 @@ def attach_apoc_identity(
     tick_paths: Sequence[str | Path] | None = None,
     apoc_tick_source_id: str | None = None,
 ) -> dict[str, Any]:
-    """Put APOC source / algorithm / allocation / tick-input id in the hash dict."""
+    """Put APOC source / algorithm / allocation / tick-input id in the hash dict.
+
+    Implicit typical (key omitted) is a no-op so pre-AP2 settings hashes and
+    persisted typical APOC identity stay unchanged. Identity keys attach only
+    when ``apoc_profile_source`` is explicit.
+    """
     attached = dict(settings)
+    if "apoc_profile_source" not in attached:
+        return attached
     source = str(attached.get("apoc_profile_source") or APOC_PROFILE_SOURCE_TYPICAL_MVP_V1)
     algorithm, allocation = _SOURCE_META.get(
         source,
@@ -159,9 +166,7 @@ def attach_apoc_identity(
     attached["apoc_allocation"] = allocation
     if source == APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1:
         attached["apoc_tick_source_id"] = (
-            apoc_tick_source_id
-            if apoc_tick_source_id
-            else compute_apoc_tick_source_id(tick_paths)
+            apoc_tick_source_id if apoc_tick_source_id else compute_apoc_tick_source_id(tick_paths)
         )
     else:
         attached["apoc_tick_source_id"] = TICK_SOURCE_NONE
@@ -216,8 +221,7 @@ def build_a_period_tick_profile_table_from_chunks(
     """Aggregate already-loaded session chunks into A-period Last×Volume POCs."""
     if instrument not in INSTRUMENTS:
         raise ValueError(
-            f"Unsupported instrument: {instrument!r}.  "
-            f"Supported instruments: {sorted(INSTRUMENTS)}"
+            f"Unsupported instrument: {instrument!r}.  Supported instruments: {sorted(INSTRUMENTS)}"
         )
     inst = INSTRUMENTS[instrument]
     parts: dict[date, list[pd.DataFrame]] = {}

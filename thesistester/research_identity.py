@@ -15,7 +15,7 @@ from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.apoc_tick import (
     LEVELS_APOC_IDENTITY_KEYS,
     attach_apoc_identity,
@@ -78,7 +78,7 @@ def normalize_levels_config(
     # the product-key allowlist (classic page / artifact round-trip).
     for key in (*LEVELS_TICK_IDENTITY_KEYS, *LEVELS_APOC_IDENTITY_KEYS):
         raw.pop(key, None)
-    unknown = sorted(set(raw) - set(DEFAULT_LEVELS_SETTINGS))
+    unknown = sorted(set(raw) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS)
     if unknown:
         raise ValueError(f"Unknown levels configuration keys: {unknown}")
     settings = {**DEFAULT_LEVELS_SETTINGS, **raw}

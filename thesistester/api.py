@@ -61,7 +61,7 @@ from thesistester.engine import (
 )
 from thesistester.levels.all import compute_all_levels
 from thesistester.levels.catalog import named_prior_profile_tokens
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.sessions import compute_session_levels
 from thesistester.levels.apoc_tick import (
     APOC_PROFILE_SOURCES,
@@ -619,7 +619,10 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     _require_mapping(levels, section="levels")
     _validate_keys(
         levels,
-        set(_LEVEL_DEFAULTS) | set(LEVELS_TICK_IDENTITY_KEYS) | set(LEVELS_APOC_IDENTITY_KEYS),
+        set(_LEVEL_DEFAULTS)
+        | set(LEVELS_TICK_IDENTITY_KEYS)
+        | set(LEVELS_APOC_IDENTITY_KEYS)
+        | OPTIONAL_LEVELS_SETTINGS,
         section="levels",
     )
     _validate_bool_fields(

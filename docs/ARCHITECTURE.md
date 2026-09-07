@@ -1686,10 +1686,11 @@ Direct low-level `compute_all_levels` calls retain disabled keyword defaults; th
 product configuration is applied by the page and headless API.
 APOC / pAPOC are independent from Single Prints and are not routed through `compute_tpo_levels`.
 Single Prints are implemented in `thesistester/levels/tpo.py`; APOC / pAPOC are implemented in `thesistester/levels/apoc.py`.
-`apoc_profile_source` is a versioned settings key (default `typical_mvp_v1`). Opt-in
-`tick_last_volume_v1` builds an A-period tick table (`thesistester/levels/apoc_tick.py`)
-from Quantower Tick–Tick–Last files; it is not `PriorProfileTable`. Settings identity
-also records `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id`.
+`apoc_profile_source` is an optional versioned settings key. Omitted config is
+implicit `typical_mvp_v1` (pre-AP2 identity). Opt-in `tick_last_volume_v1` builds
+an A-period tick table (`thesistester/levels/apoc_tick.py`) from Quantower
+Tick–Tick–Last files; it is not `PriorProfileTable`. Explicit sources also record
+`apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id`.
 `LEVEL_ENGINE_VERSION` remains 11 because the product default algorithm did not change.
 Previous 30m VWAP is implemented in `thesistester/levels/prev30m_vwap.py` (`prev30m_vwap_enabled`, `prev30m_vwap_validity_periods`).
 When `prev30m_vwap_validity_periods > 1`, Phase 3 emits stack columns `prev30mVWAP_2`…`prev30mVWAP_N` (setup-selectable); age-1 `prev30mVWAP` semantics are unchanged.

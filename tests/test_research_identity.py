@@ -88,6 +88,15 @@ def test_normalize_levels_config_rejects_unknown_keys():
         normalize_levels_config({"lookahead": True}, instrument="ES")
 
 
+def test_normalize_levels_config_accepts_explicit_apoc_profile_source():
+    implicit = normalize_levels_config({}, instrument="ES")
+    explicit = normalize_levels_config(
+        {"apoc_profile_source": "tick_last_volume_v1"}, instrument="ES"
+    )
+    assert "apoc_profile_source" not in implicit
+    assert explicit["apoc_profile_source"] == "tick_last_volume_v1"
+
+
 def test_compute_levels_uses_shared_normalizer():
     result = compute_levels(
         _bars(),

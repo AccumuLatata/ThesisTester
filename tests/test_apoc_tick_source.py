@@ -33,7 +33,6 @@ from thesistester.levels.apoc_tick import (
 )
 from thesistester.levels.tick_vap import (
     TICK_SOURCE_NONE,
-    attach_tick_identity,
     build_prior_profile_table_from_paths,
     compute_tick_source_id,
 )
@@ -297,11 +296,16 @@ def test_prior_profile_table_is_not_an_apoc_substitute():
 
 
 def test_settings_identity_includes_source_algorithm_allocation_and_tick_id():
-    typical = attach_apoc_identity(normalize_levels_config({}, instrument="ES"))
+    implicit = attach_apoc_identity(normalize_levels_config({}, instrument="ES"))
+    typical = attach_apoc_identity(
+        normalize_levels_config({"apoc_profile_source": TYPICAL_MVP_V1}, instrument="ES")
+    )
     tick = attach_apoc_identity(
         normalize_levels_config({"apoc_profile_source": TICK_LAST_VOLUME_V1}, instrument="ES"),
         tick_paths=[FIXTURE_TICKS],
     )
+    assert "apoc_profile_source" not in implicit
+    assert "apoc_algorithm_version" not in implicit
     assert typical["apoc_profile_source"] == TYPICAL_MVP_V1
     assert typical["apoc_algorithm_version"] == TYPICAL_MVP_V1
     assert typical["apoc_allocation"] == "typical_hlc3_full_volume"
@@ -311,6 +315,7 @@ def test_settings_identity_includes_source_algorithm_allocation_and_tick_id():
     assert tick["apoc_tick_source_id"] != TICK_SOURCE_NONE
     assert tick["apoc_tick_source_id"] != compute_tick_source_id([FIXTURE_TICKS])
     assert APOC_A_PERIOD_POLICY_ID
+    assert compute_levels_settings_hash(implicit) != compute_levels_settings_hash(typical)
     assert compute_levels_settings_hash(typical) != compute_levels_settings_hash(tick)
 
 
@@ -336,9 +341,7 @@ def test_tick_source_future_shock_does_not_change_prior_apoc():
         apoc_profile_source=TICK_LAST_VOLUME_V1,
         tick_paths=[FIXTURE_TICKS],
     )
-    extra = pd.DataFrame(
-        [_rth_bar(_rth_ts("2026-06-04", 9, 30), 300.0, 200.0, 250.0, 9999)]
-    )
+    extra = pd.DataFrame([_rth_bar(_rth_ts("2026-06-04", 9, 30), 300.0, 200.0, 250.0, 9999)])
     extended_bars = pd.concat([df, extra], ignore_index=True)
     extended = compute_apoc_levels(
         extended_bars,
@@ -380,7 +383,9 @@ def test_tick_source_does_not_change_unrelated_level_families():
         tick_paths=[FIXTURE_TICKS],
         **kwargs,
     )
-    shared = [col for col in typical.columns if col in tick.columns and col not in {COL_APOC, COL_PAPOC}]
+    shared = [
+        col for col in typical.columns if col in tick.columns and col not in {COL_APOC, COL_PAPOC}
+    ]
     assert "APOC" in typical.columns
     assert any(col.startswith("pd") for col in typical.columns)
     for col in shared:
