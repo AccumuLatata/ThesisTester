@@ -180,6 +180,13 @@ def test_tag_map_is_data_not_code() -> None:
     assert resolve_tag("p30POC").token is None
     assert resolve_tag("ITR").tag_class == TAG_CLASS_CONTEXT
     assert resolve_tag("ITR").token is None
+    exact = payload.get("exact")
+    assert isinstance(exact, dict)
+    assert "touch" not in exact
+    assert "3c" not in exact
+    tokens = mapped_engine_tokens()
+    assert "touch" not in tokens
+    assert "3c" not in tokens
     for raw in ("touch", "3c"):
         mapped = resolve_tag(raw)
         assert mapped.tag_class == TAG_CLASS_CONTEXT
@@ -187,8 +194,29 @@ def test_tag_map_is_data_not_code() -> None:
         assert mapped.qualifier is None
     context = payload.get("context")
     assert isinstance(context, list)
-    assert "touch" in context
-    assert "3c" in context
+    assert all(isinstance(item, str) for item in context)
+    assert context == [
+        "ITR",
+        "ITR-C",
+        "CTR",
+        "CTR-R",
+        "3c",
+        "touch",
+        "DeltaNode",
+        "GEX2",
+        "5mCOT",
+        "5mSFP",
+    ]
+    stripped_touch = resolve_tag("touch_retest")
+    assert stripped_touch.tag_class == TAG_CLASS_CONTEXT
+    assert stripped_touch.token is None
+    assert stripped_touch.qualifier == "_retest"
+    stripped_3c = resolve_tag("3c_SFP")
+    assert stripped_3c.tag_class == TAG_CLASS_CONTEXT
+    assert stripped_3c.token is None
+    assert stripped_3c.qualifier == "_SFP"
+    assert resolve_tag("Touch").tag_class == TAG_CLASS_UNMAPPED
+    assert resolve_tag("3C").tag_class == TAG_CLASS_UNMAPPED
     assert resolve_tag("5m21EMA").tag_class == TAG_CLASS_CONFIRM
     assert resolve_tag("5m21EMA").token == "EMA_21_5min"
     unknown = resolve_tag("notADeskTag")
@@ -417,6 +445,8 @@ def test_confirm_and_context_tags_do_not_drive_alignment() -> None:
     assert entry["tag_alignment"] == TAG_ALIGN_UNVERIFIABLE
     assert entry["tag_verifications"] == []
     assert list(entry["unmapped_tags"]) == []
+    assert entry["intent_mismatch"] is False
+    assert entry["level_context"] == LEVEL_CONTEXT_AT_LEVEL
 
 
 def test_refuses_unreconciled_days_by_default() -> None:
