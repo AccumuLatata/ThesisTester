@@ -168,9 +168,7 @@ def test_compute_levels_uses_shared_product_defaults(tmp_path):
     ):
         expected[key] = sorted(expected[key])
     expected["instrument"] = "ES"
-    expected = attach_apoc_identity(
-        attach_tick_identity(expected, tick_source_id=TICK_SOURCE_NONE)
-    )
+    expected = attach_apoc_identity(attach_tick_identity(expected, tick_source_id=TICK_SOURCE_NONE))
     assert result["levels_settings"] == expected
     assert "dVWAP_RTH" in result["levels"]
     assert "APOC" in result["levels"]

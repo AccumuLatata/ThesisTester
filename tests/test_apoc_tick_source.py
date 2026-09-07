@@ -593,9 +593,10 @@ def test_run_experiment_keeps_tick_paths_when_prior_va_table_is_present(tmp_path
     _assert_session_poc(state["levels"], state["data"], date(2026, 6, 2), 100.25)
     assert state["levels_settings"]["apoc_tick_source_id"] != TICK_SOURCE_NONE
     assert state["levels_settings"]["tick_source_id"] != TICK_SOURCE_NONE
-    assert state["levels_settings"]["apoc_tick_source_id"] != state["levels_settings"][
-        "tick_source_id"
-    ]
+    assert (
+        state["levels_settings"]["apoc_tick_source_id"]
+        != state["levels_settings"]["tick_source_id"]
+    )
 
 
 def test_run_spec_identity_matches_compute_levels_tick_source_hash():

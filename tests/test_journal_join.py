@@ -412,9 +412,7 @@ def test_segmented_roll_uses_cme_session_not_utc_date(tmp_path: Path) -> None:
             }
         ],
     }
-    covered = join_journal_bars(
-        trades, data=parent, subtimeframe_data=bars, roll_metadata=covers
-    )
+    covered = join_journal_bars(trades, data=parent, subtimeframe_data=bars, roll_metadata=covers)
     assert FLAG_ROLL_MISMATCH not in covered.iloc[0]["join_flags"]
 
 

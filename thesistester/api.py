@@ -903,9 +903,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     )
     if backtest.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
         raise ValueError(f"backtest.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
-    _require_same_bar_opposite_direction(
-        backtest.get("same_bar_opposite_direction", "legacy")
-    )
+    _require_same_bar_opposite_direction(backtest.get("same_bar_opposite_direction", "legacy"))
     validate_exit_management_config(
         breakeven_after_r=backtest.get("breakeven_after_r"),
         trailing_after_r=backtest.get("trailing_after_r"),
@@ -2866,9 +2864,7 @@ def run_experiment(
     table_path = dataset_config.get("prior_profile_table_path")
     # Always resolve tick files. A prebuilt PriorProfileTable is not an APOC
     # input; starving tick_paths here made tick_last_volume_v1 emit all-NaN.
-    resolved_tick_paths = _resolve_dataset_tick_paths(
-        dataset_config, base_directory=base_directory
-    )
+    resolved_tick_paths = _resolve_dataset_tick_paths(dataset_config, base_directory=base_directory)
     tick_format_profile = (
         str(dataset_config["tick_format_profile"])
         if dataset_config.get("tick_format_profile") is not None
