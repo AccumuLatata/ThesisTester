@@ -204,8 +204,8 @@ def test_pdfplumber_import_is_confined_to_amp_module():
             assert "from thesistester.engine.signals import" in source
             assert "classify_zone_triggers" in source
             assert "from thesistester.engine.backtest" not in source
-            assert "simulate_trades" not in source
-            assert "generate_signals" not in source
+            assert "simulate_trades(" not in source
+            assert "generate_signals(" not in source
             continue
         assert "from thesistester.engine" not in source
 

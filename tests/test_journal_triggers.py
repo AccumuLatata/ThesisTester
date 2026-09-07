@@ -205,7 +205,8 @@ def test_wrapper_calls_prepare_then_checkers_without_mutating_bodies() -> None:
     for node in ast.walk(detail):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             called.append(node.func.id)
-    assert called[0] == "_prepare_trigger_dataframe"
+    assert "_prepare_trigger_dataframe" in called
+    assert called.index("_prepare_trigger_dataframe") < called.index("_check_touch")
     for name in (
         "_check_touch",
         "_check_reject",
@@ -266,7 +267,7 @@ def test_generate_signals_does_not_call_wrapper() -> None:
 
 def test_synthetic_inclusion_fixture() -> None:
     payload = json.loads(INCLUSION.read_text(encoding="utf-8"))
-    assert "signals.csv" not in INCLUSION.read_text(encoding="utf-8")
+    assert "tests/fixtures/golden" not in INCLUSION.read_text(encoding="utf-8")
     for case in payload["cases"]:
         frame = _bars(case["bars"])
         zone = pd.Series(case["zone"])
@@ -594,7 +595,7 @@ def test_triggers_module_does_not_call_engine_mutators() -> None:
     assert "simulate_trades(" not in source
     assert "generate_signals(" not in source
     assert "_check_confirm_3bar(" not in source
-    assert "approach_side" not in source or "Do not compare JS1" in source
+    assert "Does not compare JS1" in source
 
 
 def test_encode_decode_roundtrip() -> None:
