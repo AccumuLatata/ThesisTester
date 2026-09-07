@@ -334,13 +334,14 @@ def test_comparator_without_ticks_does_not_emit_tick_candidate():
     assert TICK_LAST_VOLUME_V1 not in results
 
 
-def test_production_apoc_module_does_not_import_harness():
+def test_production_apoc_does_not_route_bar_proxy_candidates():
     import thesistester.levels.all as all_levels
     import thesistester.levels.apoc as apoc
 
-    assert "apoc_candidates" not in inspect.getsource(apoc)
-    assert "apoc_candidates" not in inspect.getsource(all_levels)
-    assert "apoc_candidates" not in apoc.__dict__
+    assert "compute_bar_candidate_profile" not in inspect.getsource(apoc)
+    assert "bar_range_uniform_volume_v1" not in inspect.getsource(apoc)
+    assert "bar_range_tpo_v1" not in inspect.getsource(apoc)
+    assert "compute_bar_candidate_profile" not in inspect.getsource(all_levels)
     assert "compute_bar_candidate_profile" not in apoc.__dict__
 
 

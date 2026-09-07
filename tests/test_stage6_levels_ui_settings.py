@@ -200,6 +200,7 @@ class TestNormalizeStage6Defaults:
             "session_vwap_anchor": "RTH",
             "single_prints_enabled": True,
             "apoc_enabled": True,
+            "apoc_profile_source": "typical_mvp_v1",
             "prev30m_vwap_enabled": True,
             "prev30m_vwap_validity_periods": 1,
         }

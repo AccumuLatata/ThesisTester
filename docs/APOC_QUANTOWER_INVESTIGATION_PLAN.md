@@ -2,8 +2,10 @@
 
 **Document type:** Focused investigation plan  
 **Date:** 2026-09-05  
-**Status:** **AP1 implemented — external evidence collection pending.** No production
-APOC behavior has changed.
+**Status:** **AP2 implemented.** Desk evidence selected ``tick_last_volume_v1``
+(4/4 exact on Levels2test 2026-09-01…09-04). Product/library default remains
+``typical_mvp_v1``. ``bar_range_uniform_volume_v1`` is a proxy only and is not
+a production source.
 **Series code:** **AP** (A-Period POC)  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including the
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).
@@ -186,6 +188,20 @@ skipped in CI because the proprietary desk oracle is not committed.
 | Acceptance | Reference fixture gate, complete current Stage 5 coverage, source-specific PIT tests, and series equality for unrelated level families |
 | Forbidden | Prior VA changes, tick simulation clock, rolling-POC rewrite, execution changes, golden regeneration |
 
+**AP2 implementation record:** `apoc_profile_source` is keyword-only. Library
+and product default is `typical_mvp_v1` (legacy typical-price; no
+`LEVEL_ENGINE_VERSION` bump). `tick_last_volume_v1` is the AP1-selected
+Quantower source and is explicit opt-in. It builds an A-period
+`APeriodTickProfileTable` from the Quantower Tick–Tick–Last loader, filtered
+to `[RTH open, RTH open + 30 min)` in exchange time; `PriorProfileTable` is
+not a substitute. Tick histogram math is reused from
+`apoc_candidates.compute_tick_last_volume_profile`. Missing, malformed, or
+off-grid tick inputs emit `NaN` APOC/pAPOC with no typical fallback.
+Settings identity includes source, algorithm version, allocation, and
+A-period tick-file id. Desk scorecard (proprietary CSVs not committed):
+2026-09-01=29120, 09-02=29060, 09-03=29350, 09-04=29625; tick source 4/4
+exact; uniform bar-range 2/4 (not shipped).
+
 ### AP3 — Program B provenance
 
 | Field | Scope |
@@ -196,8 +212,9 @@ skipped in CI because the proprietary desk oracle is not committed.
 | Acceptance | YAML generation/validation remains deterministic; no historical ZIP rewrite; no non-APOC wave changes |
 | Forbidden | Rerunning studies, changing Program B research locks, or modifying VA waves |
 
-Merge order is AP0 → AP1 → AP2 → AP3. AP2 is blocked until AP1’s written
-evidence gate selects a source.
+Merge order is AP0 → AP1 → AP2 → AP3. AP1’s written evidence gate selected
+``tick_last_volume_v1`` (4/4 exact; bar-range uniform 2/4). AP2 implements
+that source as an explicit opt-in.
 
 ## 6. Regression-safety checklist
 

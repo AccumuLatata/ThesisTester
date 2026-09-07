@@ -1,10 +1,10 @@
-"""Pure candidate profiles for investigating Quantower A-period POC.
+"""Pure candidate profiles for Quantower A-period POC (AP1 harness + AP2 math).
 
-This module is intentionally not imported by :mod:`thesistester.levels.apoc`.
-It supports AP1 evidence collection only and cannot change production APOC or
-pAPOC output.  Candidates use a fixed lowest-price POC tie rule so their
-histograms are deterministic; Quantower's tie behavior remains an empirical
-question for the desk oracle.
+AP2 production tick APOC imports only ``select_a_period_rows`` and
+``compute_tick_last_volume_profile`` via :mod:`thesistester.levels.apoc_tick`.
+Bar-proxy candidates stay comparison-only and are not production sources.
+Candidates use a fixed lowest-price POC tie rule so their histograms are
+deterministic.
 
 AP1 locks (§3.2)
 ----------------

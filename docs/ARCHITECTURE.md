@@ -1667,7 +1667,7 @@ existing profile settings. Controls inside it:
 | Enable confirmed pivots | `True` | `1min`, `5min`, `30min`, `4h`; left/right `2` |
 | Enable developing session VWAPs (dVWAP_RTH + dVWAP + wVWAP + mVWAP) | `True` | RTH column anchor fixed to RTH; `dVWAP` is full CME session; `wVWAP` / `mVWAP` are developing week/month (same `W-SUN` / `M` keys as `wOpen` / `mOpen`) |
 | Enable TPO 30m Single Prints | `True` | No additional config exposed |
-| Enable APOC / pAPOC | `True` | Independent of Single Prints |
+| Enable APOC / pAPOC | `True` | Independent of Single Prints; product source default `typical_mvp_v1` |
 | Enable previous 30m VWAP (`prev30mVWAP`) | `True` | Session-open ETH+RTH brackets; validity periods default `1` |
 
 `thesistester/levels/defaults.py` is the canonical product configuration used by both the
@@ -1686,6 +1686,11 @@ Direct low-level `compute_all_levels` calls retain disabled keyword defaults; th
 product configuration is applied by the page and headless API.
 APOC / pAPOC are independent from Single Prints and are not routed through `compute_tpo_levels`.
 Single Prints are implemented in `thesistester/levels/tpo.py`; APOC / pAPOC are implemented in `thesistester/levels/apoc.py`.
+`apoc_profile_source` is a versioned settings key (default `typical_mvp_v1`). Opt-in
+`tick_last_volume_v1` builds an A-period tick table (`thesistester/levels/apoc_tick.py`)
+from Quantower Tick–Tick–Last files; it is not `PriorProfileTable`. Settings identity
+also records `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id`.
+`LEVEL_ENGINE_VERSION` remains 11 because the product default algorithm did not change.
 Previous 30m VWAP is implemented in `thesistester/levels/prev30m_vwap.py` (`prev30m_vwap_enabled`, `prev30m_vwap_validity_periods`).
 When `prev30m_vwap_validity_periods > 1`, Phase 3 emits stack columns `prev30mVWAP_2`…`prev30mVWAP_N` (setup-selectable); age-1 `prev30mVWAP` semantics are unchanged.
 Diagnostic companions `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are excluded from setup/chart eligibility via `NON_LEVEL_OUTPUT_COLUMNS` in `thesistester/setup.py`.

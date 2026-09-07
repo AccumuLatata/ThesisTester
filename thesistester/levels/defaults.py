@@ -33,6 +33,9 @@ DEFAULT_LEVELS_SETTINGS: dict[str, Any] = {
     "session_vwap_anchor": "RTH",
     "single_prints_enabled": True,
     "apoc_enabled": True,
+    # Versioned APOC source. Product default stays legacy typical-price so
+    # persisted APOC meaning does not change. tick_last_volume_v1 is opt-in.
+    "apoc_profile_source": "typical_mvp_v1",
     "prev30m_vwap_enabled": True,
     "prev30m_vwap_validity_periods": 1,
 }

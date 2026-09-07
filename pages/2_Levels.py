@@ -94,6 +94,7 @@ def _normalize_levels_settings(settings: dict | None) -> dict | None:
     out.setdefault("session_vwap_anchor", "RTH")
     out.setdefault("single_prints_enabled", False)
     out.setdefault("apoc_enabled", False)
+    out.setdefault("apoc_profile_source", DEFAULT_LEVELS_SETTINGS["apoc_profile_source"])
     out.setdefault("prev30m_vwap_enabled", False)
     out.setdefault("prev30m_vwap_validity_periods", 1)
     for key in (
@@ -619,6 +620,7 @@ current_settings = _normalize_levels_settings(
         "session_vwap_anchor": "RTH",
         "single_prints_enabled": single_prints_enabled,
         "apoc_enabled": apoc_enabled,
+        "apoc_profile_source": DEFAULT_LEVELS_SETTINGS["apoc_profile_source"],
         "prev30m_vwap_enabled": prev30m_vwap_enabled,
         "prev30m_vwap_validity_periods": int(prev30m_vwap_validity_periods),
     }

@@ -219,6 +219,23 @@ def test_disabled_accepts_unsupported_instrument():
     assert len(result.columns) == 0
 
 
+def test_disabled_ignores_unknown_profile_source():
+    result = compute_apoc_levels(
+        _naive_df(), enabled=False, apoc_profile_source="bar_range_uniform_volume_v1"
+    )
+    assert isinstance(result, pd.DataFrame)
+    assert len(result.columns) == 0
+
+
+def test_explicit_typical_source_matches_unnamed_default():
+    df = _single_session_fixture()
+    unnamed = compute_apoc_levels(df, instrument="ES", enabled=True)
+    named = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
+    pd.testing.assert_frame_equal(unnamed, named)
+
+
 def test_compute_all_levels_apoc_disabled_no_apoc_columns():
     df = tag_session(_base_df(), "ES")
     out = compute_all_levels(df, instrument="ES", apoc_enabled=False)
