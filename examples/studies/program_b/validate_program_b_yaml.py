@@ -160,7 +160,7 @@ def validate_study_file(
     try:
         spec = load_study_spec(path)
     except StudySpecError as exc:
-        if "requires ticks" in str(exc):
+        if "requires ticks" in str(exc) or (wave7 and "apoc_profile_source" in str(exc)):
             raw = yaml.safe_load(path.read_text(encoding="utf-8"))
             spec = normalize_study_spec(raw if isinstance(raw, Mapping) else {})
         else:
