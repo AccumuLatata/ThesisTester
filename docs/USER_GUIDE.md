@@ -1181,9 +1181,12 @@ product mismatch, adherence, forward ledger, n < 30
 
 - Not a study cell, Observatory corpus match, or `results_index` rank key.
 - Not an in-process runner. No classic session hydrate.
-- Tags are trader intent. Alignment is a distance check, not a trigger.
-  Zones are `detect_confluence_zones` on the 1m bar completed before the
-  fill; parameters declared, not searched.
+- Tags are comma-separated TradesViz tokens (trader intent). Level-class
+  tags are thesis confluence; one of ITR/CTR/ITR-C/CTR-R is the plan
+  horizon; `touch`/`3c` are entry-style context (`3c` is desk-labeled —
+  the engine does not infer it). Alignment is a distance check, not a
+  trigger. Zones are `detect_confluence_zones` on the 1m bar completed
+  before the fill; parameters declared, not searched.
 - Counterfactuals assume bar/tick fills; no slippage model. Rules are
   declared, never searched. `in_sample` and `forward` are never blended.
 - Adherence is `executed_cell / (executed_cell + systematic_unfilled)`.

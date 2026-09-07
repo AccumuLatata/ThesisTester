@@ -59,6 +59,8 @@ context:
   - ITR-C
   - CTR
   - CTR-R
+  - 3c
+  - touch
   - DeltaNode
   - GEX2
   - 5mCOT

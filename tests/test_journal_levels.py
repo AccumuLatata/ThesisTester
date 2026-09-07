@@ -179,6 +179,16 @@ def test_tag_map_is_data_not_code() -> None:
     assert resolve_tag("p30POC").tag_class == TAG_CLASS_UNMAPPED
     assert resolve_tag("p30POC").token is None
     assert resolve_tag("ITR").tag_class == TAG_CLASS_CONTEXT
+    assert resolve_tag("ITR").token is None
+    for raw in ("touch", "3c"):
+        mapped = resolve_tag(raw)
+        assert mapped.tag_class == TAG_CLASS_CONTEXT
+        assert mapped.token is None
+        assert mapped.qualifier is None
+    context = payload.get("context")
+    assert isinstance(context, list)
+    assert "touch" in context
+    assert "3c" in context
     assert resolve_tag("5m21EMA").tag_class == TAG_CLASS_CONFIRM
     assert resolve_tag("5m21EMA").token == "EMA_21_5min"
     unknown = resolve_tag("notADeskTag")
@@ -300,13 +310,15 @@ def test_unmapped_tags_are_counted_never_dropped() -> None:
         _trade(
             entry="2026-05-14T14:00:24",
             price=100.00,
-            tags=("pdH", "p30POC", "ITR", "mystery"),
+            tags=("pdH", "p30POC", "ITR", "touch", "3c", "mystery"),
         )
     )
     out = attribute_journal_trades(trades, levels=frame)
     row = out.iloc[0]
     assert list(row["unmapped_tags"]) == ["p30POC", "mystery"]
     assert "ITR" not in list(row["unmapped_tags"])
+    assert "touch" not in list(row["unmapped_tags"])
+    assert "3c" not in list(row["unmapped_tags"])
     assert row["tag_alignment"] == TAG_ALIGN_ALL
     assert resolve_tag("pdH").raw == "pdH"
 
@@ -382,12 +394,29 @@ def test_tagged_a_but_at_b_when_named_level_is_far() -> None:
 
 def test_confirm_and_context_tags_do_not_drive_alignment() -> None:
     frame = _frame_14()
-    trades = _trades(_trade(entry="2026-05-14T14:00:24", price=100.00, tags=("ITR-C", "5m50SMA")))
+    trades = _trades(
+        _trade(
+            entry="2026-05-14T14:00:24",
+            price=100.00,
+            tags=("ITR-C", "5m50SMA"),
+            trade_id="jt:confirm-ctx:1",
+        ),
+        _trade(
+            entry="2026-05-14T14:00:24",
+            price=100.00,
+            tags=("touch", "3c"),
+            trade_id="jt:entry-style:1",
+        ),
+    )
     out = attribute_journal_trades(trades, levels=frame)
-    row = out.iloc[0]
+    row = out.loc[out["trade_id"] == "jt:confirm-ctx:1"].iloc[0]
     assert row["tag_alignment"] == TAG_ALIGN_UNVERIFIABLE
     assert row["tag_verifications"] == []
     assert list(row["unmapped_tags"]) == []
+    entry = out.loc[out["trade_id"] == "jt:entry-style:1"].iloc[0]
+    assert entry["tag_alignment"] == TAG_ALIGN_UNVERIFIABLE
+    assert entry["tag_verifications"] == []
+    assert list(entry["unmapped_tags"]) == []
 
 
 def test_refuses_unreconciled_days_by_default() -> None:
