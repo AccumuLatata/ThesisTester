@@ -400,6 +400,56 @@ def test_program_b_validator_rejects_wave7_without_manifest_provenance(tmp_path)
     assert any("apoc_provenance" in item for item in failures)
 
 
+def test_program_b_wave7_identity_hashes_match_pre_ap3_pins():
+    """Committed Wave 7 study.levels identity must stay pre-AP3 (comments only)."""
+    pins = {
+        PROGRAM_B / "progB_w7_apoc_ma.yaml": (
+            "c70c36faabb2873c85dcb8e47436567bfb3c2d49e017eb91b73a895571ae7425"
+        ),
+        PROGRAM_B / "progB_w7_apoc_rvwap.yaml": (
+            "1f4aa6c91382519014e347de7a9744ad40e6273d5cedba92e5bbc0533a06cbf2"
+        ),
+        PROGRAM_B / "progB_w7_apoc_pivot.yaml": (
+            "20df377a30b40ca0513b334ab9caeb96de3fe205fe2f38e956dc17b8e78ad157"
+        ),
+        PROGRAM_B_RUN2 / "progB_w7_apoc_ma.yaml": (
+            "e44bf0fb3e7c32e5f1a4113abc13205d8eb50e8da310aea1d70dfd6617ccd715"
+        ),
+        PROGRAM_B_RUN2 / "progB_w7_apoc_rvwap.yaml": (
+            "52735f3acd60105d1af1d86c50701ea2a12a79e084b4df00780c6c5240aa9f53"
+        ),
+        PROGRAM_B_RUN2 / "progB_w7_apoc_pivot.yaml": (
+            "81fcc0a6b01d6577abefc0f451b05ded0948e66ccfca4831b3ce8bd8d769e4e8"
+        ),
+    }
+    for path, expected in pins.items():
+        spec = yaml.safe_load(path.read_text(encoding="utf-8"))
+        levels = spec["study"]["levels"]
+        assert "apoc_profile_source" not in levels, path.name
+        assert levels["apoc_enabled"] is True, path.name
+        identity = study_identity_hash(validate_study_spec(normalize_study_spec(spec)))
+        assert identity == expected, path
+
+
+def test_program_b_validator_rejects_wave7_disabled_apoc(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_w7_apoc_ma.yaml").read_text(encoding="utf-8"))
+    spec["study"]["levels"]["apoc_enabled"] = False
+    drifted = tmp_path / "progB_w7_apoc_ma.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted,
+        {
+            "file": drifted.name,
+            "cells": 24,
+            "min_valid": 1,
+            "apoc_provenance": dict(WAVE7_HISTORICAL_PROVENANCE),
+        },
+        packet="15s",
+    )
+    assert any("apoc_enabled: true" in item for item in failures)
+
+
 def test_program_b_validator_rejects_wave7_explicit_source_in_levels(tmp_path):
     validate = _validator()
     spec = yaml.safe_load((PROGRAM_B / "progB_w7_apoc_ma.yaml").read_text(encoding="utf-8"))

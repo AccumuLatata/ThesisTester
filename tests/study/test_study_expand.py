@@ -600,6 +600,16 @@ def test_expansion_records_inferred_typical_when_apoc_enabled(tmp_path: Path):
     assert payload["study_identity_hash"] == identity == expansion.study_identity_hash
 
 
+def test_expansion_omits_apoc_provenance_when_apoc_disabled(tmp_path: Path):
+    raw = yaml.safe_load((FIXTURES / "golden_study.yaml").read_text(encoding="utf-8"))
+    raw["study"]["levels"]["apoc_enabled"] = False
+    raw["study"]["levels"]["apoc_profile_source"] = "tick_last_volume_v1"
+    expansion = expand_study_to_directory(raw, tmp_path)
+    payload = json.loads((tmp_path / "study.expansion.json").read_text(encoding="utf-8"))
+    assert "apoc_provenance" not in payload
+    assert payload["study_identity_hash"] == expansion.study_identity_hash
+
+
 def test_expansion_records_explicit_tick_source(tmp_path: Path):
     raw = yaml.safe_load((FIXTURES / "golden_study.yaml").read_text(encoding="utf-8"))
     raw["study"]["levels"]["apoc_profile_source"] = "tick_last_volume_v1"

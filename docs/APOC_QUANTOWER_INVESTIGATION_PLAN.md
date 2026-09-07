@@ -220,10 +220,14 @@ scorecard (proprietary CSVs not committed): 2026-09-01=29120, 09-02=29060,
 ``study_identity_hash`` and research locks stay pre-AP2. Generator comments
 and ``manifest.yaml`` Wave 7 rows stamp
 ``apoc_object: legacy_typical_price``. Fresh ``study.expansion.json`` writes
-an additive ``apoc_provenance`` sidecar when the spec names ``apoc_enabled``
-or an explicit source; the sidecar is not hashed. Historical ZIPs and
-pre-AP3 expansions are not rewritten; a missing sidecar is inferred typical.
-VA manifests and non-Wave-7 rows are unchanged.
+an additive ``apoc_provenance`` sidecar when the spec enables APOC
+(``apoc_enabled: true``) or names an explicit source while APOC is not
+disabled; the sidecar is not hashed. Explicit ``apoc_enabled: false``
+does not write a sidecar. ``read_apoc_provenance`` derives object from
+source (fail-closed on contradiction) so a tick sidecar cannot be
+relabeled typical. Historical ZIPs and pre-AP3 expansions are not
+rewritten; a missing sidecar is inferred typical. VA manifests and
+non-Wave-7 rows are unchanged.
 
 Merge order is AP0 → AP1 → AP2 → AP3. AP1’s written evidence gate selected
 ``tick_last_volume_v1`` (4/4 exact; bar-range uniform 2/4). AP2 implements

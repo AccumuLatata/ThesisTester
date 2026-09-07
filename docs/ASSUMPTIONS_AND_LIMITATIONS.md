@@ -399,11 +399,14 @@ This engine is for **research screening**, not proof of a durable edge.
 - Implicit typical (key omitted) keeps the pre-AP2 settings hash. When `apoc_profile_source` is explicit, settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). Product default algorithm is unchanged; `LEVEL_ENGINE_VERSION` stays 11.
 - Program B Wave 7 packets omit `apoc_profile_source` and are labeled
   `legacy_typical_price` on the 15s manifest. Fresh `study.expansion.json`
-  writes an additive `apoc_provenance` sidecar when the spec names
-  `apoc_enabled` or an explicit source; the sidecar is **not** part of
-  `study_identity_hash`. Pre-AP3 expansions and research ZIPs are not
-  rewritten: a missing sidecar is inferred typical. Do not treat Wave 7
-  typical-price results as Quantower A-period POC.
+  writes an additive `apoc_provenance` sidecar when the spec enables APOC
+  (`apoc_enabled: true`) or names an explicit source while APOC is not
+  disabled; the sidecar is **not** part of `study_identity_hash`.
+  Explicit `apoc_enabled: false` is a no-op and does not write a sidecar.
+  A present sidecar is fail-closed: object/algorithm follow the recorded
+  source; a missing sidecar is inferred typical. Pre-AP3 expansions and
+  research ZIPs are not rewritten. Do not treat Wave 7 typical-price
+  results as Quantower A-period POC.
 - APOC availability: `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after that timestamp. Non-RTH bars always emit `NaN`.
 - pAPOC availability: available from the first RTH bar of each session; frozen throughout. NaN on non-RTH bars and if the prior session produced no valid APOC.
 - ETH bars/ticks never contribute to APOC computation; only the A-period window is included.

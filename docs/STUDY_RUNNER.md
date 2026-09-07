@@ -223,8 +223,10 @@ result = expand_study(spec)  # ExpansionResult
 
 expand_study_to_directory(spec, "out/study1")
 # writes study.spec.yaml, study.expansion.json, experiment.yaml
-# study.expansion.json may include additive apoc_provenance (AP3);
-# it is not part of study_identity_hash. Golden RS2 fixture omits it.
+# study.expansion.json may include additive apoc_provenance (AP3)
+# when apoc_enabled is true or an explicit source is named while
+# APOC is not disabled; it is not part of study_identity_hash.
+# Golden RS2 fixture omits it.
 ```
 
 No backtests are executed. Every expanded run passes `validate_run_spec`.
