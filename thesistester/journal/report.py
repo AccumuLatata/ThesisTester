@@ -16,7 +16,6 @@ import math
 
 import pandas as pd
 
-from thesistester.journal.triggers import decode_trigger_labels
 from thesistester.journal.schema import (
     DAY_INTENSE,
     DAY_QUIET,
@@ -51,6 +50,7 @@ from thesistester.journal.schema import (
     RESOLUTION_UNJOINED,
     STATUS_OPEN,
     JournalIngestError,
+    decode_trigger_labels,
 )
 from thesistester.persistence.local_store import get_store_root
 
@@ -561,7 +561,10 @@ def _q3_triggers(
         work["net_ticks"] = None
     work["net_ticks"] = work["net_ticks"].map(_optional_float)
     exploded_rows: list[dict[str, object]] = []
+    filter_zone_id = "zone_id" in work.columns
     for raw in work.to_dict(orient="records"):
+        if filter_zone_id and _is_missing(raw.get("zone_id")):
+            continue
         labels = decode_trigger_labels(raw.get("inferred_triggers_1m"))
         names = labels if labels else (TRIGGER_NONE,)
         for label in names:

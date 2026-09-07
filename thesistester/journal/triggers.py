@@ -1,6 +1,7 @@
 """Trigger inference on the previous completed 1m bar and 15s_proxy (JS2).
 
-Calls ``classify_zone_triggers`` (prepare + delegate). Does not call
+Calls ``classify_zone_triggers`` via ``_classify_zone_triggers_detail``
+(prepare + delegate). Does not call
 ``simulate_trades``, ``generate_signals``, or ``_check_confirm_3bar``.
 Does not compare JS1 ``approach_side`` to fade ``_approach_side``.
 """
@@ -15,11 +16,9 @@ import math
 
 import pandas as pd
 
-from thesistester.engine.signals import (
-    _classify_zone_triggers_detail,
-    classify_zone_triggers,
-)
+from thesistester.engine.signals import _classify_zone_triggers_detail
 from thesistester.journal.schema import (
+    JOIN_BAR_SECONDS,
     JOURNAL_STORE_SCHEMA,
     RECON_RECONCILED,
     TRIGGER_NONE,
@@ -28,6 +27,8 @@ from thesistester.journal.schema import (
     TRIGGER_RESOLUTION_1M,
     TRIGGERS_HONESTY,
     JournalIngestError,
+    decode_trigger_labels,
+    encode_trigger_labels,
 )
 from thesistester.journal.zones import (
     _as_date,
@@ -45,24 +46,7 @@ _TRIGGERS_PARQUET = "journal_triggers.parquet"
 _TRIGGERS_JSON = "triggers.json"
 _DIRECTIONAL = frozenset({"reject", "break", "reclaim"})
 _IMPLIED = frozenset({"fade", "continuation"})
-_LABEL_SEP = "|"
-
-
-def encode_trigger_labels(labels: Sequence[str]) -> str:
-    """Stable ``|``-joined form of a sorted trigger tuple. Empty → ``""``."""
-    return _LABEL_SEP.join(str(item) for item in labels)
-
-
-def decode_trigger_labels(value: object) -> tuple[str, ...]:
-    """Parse a stored trigger-label cell back to a sorted tuple."""
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        return ()
-    if isinstance(value, tuple):
-        return tuple(str(item) for item in value)
-    text = str(value).strip()
-    if not text or text == TRIGGER_NONE:
-        return ()
-    return tuple(part for part in text.split(_LABEL_SEP) if part)
+_TRADE_SIDES = frozenset({"long", "short"})
 
 
 def infer_journal_triggers(
@@ -176,34 +160,31 @@ def _infer_trade(
     labels_15s: tuple[str, ...] = ()
     implied: dict[str, str] = {}
     if zone_id is not None:
-        zone = _zone_from_row(raw)
         direction = str(raw.get("direction") or "")
-        idx_1m = _index_of_timestamp(frame_1m, wanted_1m)
+        if direction not in _TRADE_SIDES:
+            raise JournalIngestError(
+                "journal triggers requires direction 'long' or 'short' when zone_id is set"
+            )
+        zone = _zone_from_row(raw)
+        hist_1m = frame_1m.loc[frame_1m["timestamp"] <= wanted_1m].reset_index(drop=True)
+        idx_1m = _index_of_timestamp(hist_1m, wanted_1m)
         if idx_1m is not None:
-            labels_1m = classify_zone_triggers(
-                frame_1m,
+            # classify_zone_triggers delegates here; one call returns labels + implied.
+            labels_1m, implied = _classify_zone_triggers_detail(
+                hist_1m,
                 zone,
                 idx_1m,
                 direction,
                 trigger_timeframe="base",
                 trigger_params=trigger_params,
             )
-            _labels, implied = _classify_zone_triggers_detail(
-                frame_1m,
-                zone,
-                idx_1m,
-                direction,
-                trigger_timeframe="base",
-                trigger_params=trigger_params,
-            )
-            if _labels != labels_1m:
-                raise JournalIngestError("classify_zone_triggers detail mismatch")
         if frame_15s is not None:
             _first, last_15 = previous_completed_15s_opens(entry_ts)
-            idx_15 = _index_of_timestamp(frame_15s, last_15)
+            hist_15 = frame_15s.loc[frame_15s["timestamp"] <= last_15].reset_index(drop=True)
+            idx_15 = _index_of_timestamp(hist_15, last_15)
             if idx_15 is not None:
-                labels_15s = classify_zone_triggers(
-                    frame_15s,
+                labels_15s, _implied_15s = _classify_zone_triggers_detail(
+                    hist_15,
                     zone,
                     idx_15,
                     direction,
@@ -256,7 +237,11 @@ def _zone_from_row(raw: Mapping[str, object]) -> pd.Series:
             "zone_high": float(high),
             "zone_mid": float(mid),
             "level_count": 0 if not _is_finite(count) else int(count),
-            "level_names": "" if names is None or (isinstance(names, float) and math.isnan(names)) else str(names),
+            "level_names": (
+                ""
+                if names is None or (isinstance(names, float) and math.isnan(names))
+                else str(names)
+            ),
         }
     )
 
@@ -331,6 +316,10 @@ def _normalize_ohlcv(bars: pd.DataFrame, *, name: str, grid: str) -> pd.DataFram
         frame["volume"] = 0.0
     if grid == "1m" and not frame["timestamp"].map(lambda value: value == value.floor("min")).all():
         raise JournalIngestError("1m bars timestamps must be 1-minute bar opens")
+    if grid == "15s":
+        freq = f"{JOIN_BAR_SECONDS}s"
+        if not frame["timestamp"].map(lambda value: value == value.floor(freq)).all():
+            raise JournalIngestError("15s bars timestamps must be 15-second bar opens")
     return frame
 
 
@@ -348,8 +337,11 @@ def _label_counts(trades: pd.DataFrame, column: str) -> Counter[str]:
     counts: Counter[str] = Counter()
     if column not in trades.columns:
         return counts
-    for value in trades[column]:
-        labels = decode_trigger_labels(value)
+    filter_zone_id = "zone_id" in trades.columns
+    for raw in trades.to_dict(orient="records"):
+        if filter_zone_id and _as_optional_str(raw.get("zone_id")) is None:
+            continue
+        labels = decode_trigger_labels(raw.get(column))
         if not labels:
             counts[TRIGGER_NONE] += 1
             continue

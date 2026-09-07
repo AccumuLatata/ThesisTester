@@ -1549,6 +1549,10 @@ def _classify_zone_triggers_detail(
     trigger_params: dict | None = None,
 ) -> tuple[tuple[str, ...], dict[str, str]]:
     """Return sorted labels plus fade/continuation implied sides."""
+    if direction not in {"long", "short"}:
+        raise ValueError(
+            f"classify_zone_triggers direction must be 'long' or 'short', got {direction!r}"
+        )
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         return (), {}
     zone_row = _zone_series_for_classify(zone)
@@ -1680,6 +1684,8 @@ def _zone_series_for_classify(zone: pd.Series) -> pd.Series:
             "zone_high": float(high),
             "zone_mid": float(mid),
             "level_count": 0 if count is None or pd.isna(count) else int(count),
-            "level_names": "" if names is None or (isinstance(names, float) and pd.isna(names)) else str(names),
+            "level_names": (
+                "" if names is None or (isinstance(names, float) and pd.isna(names)) else str(names)
+            ),
         }
     )
