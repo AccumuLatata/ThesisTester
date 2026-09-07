@@ -496,10 +496,10 @@ def _lean_tick_apoc_spec(*, bars_name: str, tick_name: str, table_path: str | No
         "name": "apoc-tick-wiring",
         "dataset": dataset,
         "levels": {
-            "sma_lengths": [],
-            "ema_lengths": [],
-            "sma_timeframes": [],
-            "ema_timeframes": [],
+            "sma_lengths": [2],
+            "ema_lengths": [2],
+            "sma_timeframes": ["30min"],
+            "ema_timeframes": ["30min"],
             "vwap_windows": [],
             "poc_windows": [],
             "pivots_enabled": False,
@@ -511,6 +511,7 @@ def _lean_tick_apoc_spec(*, bars_name: str, tick_name: str, table_path: str | No
         },
         "setup": {
             "name": "apoc-tick-wiring",
+            "description": "AP2 tick-source wiring",
             "instrument": "ES",
             "selected_levels": ["dOpen", "RTH_Open"],
             "tolerance_ticks": 0,
@@ -545,10 +546,10 @@ def test_compute_levels_tick_source_uses_tick_paths():
         df,
         instrument="ES",
         config={
-            "sma_lengths": [],
-            "ema_lengths": [],
-            "sma_timeframes": [],
-            "ema_timeframes": [],
+            "sma_lengths": [2],
+            "ema_lengths": [2],
+            "sma_timeframes": ["30min"],
+            "ema_timeframes": ["30min"],
             "vwap_windows": [],
             "poc_windows": [],
             "pivots_enabled": False,
@@ -599,7 +600,19 @@ def test_run_experiment_keeps_tick_paths_when_prior_va_table_is_present(tmp_path
 
 def test_run_spec_identity_matches_compute_levels_tick_source_hash():
     df = _two_session_bars()
-    config = {"apoc_profile_source": TICK_LAST_VOLUME_V1, "poc_windows": []}
+    config = {
+        "apoc_profile_source": TICK_LAST_VOLUME_V1,
+        "poc_windows": [],
+        "sma_lengths": [2],
+        "ema_lengths": [2],
+        "sma_timeframes": ["30min"],
+        "ema_timeframes": ["30min"],
+        "vwap_windows": [],
+        "pivots_enabled": False,
+        "session_vwap_enabled": False,
+        "single_prints_enabled": False,
+        "prev30m_vwap_enabled": False,
+    }
     computed = compute_levels(
         df,
         instrument="ES",
