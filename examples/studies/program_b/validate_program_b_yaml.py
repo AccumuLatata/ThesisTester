@@ -232,8 +232,7 @@ def validate_study_file(
         provenance = row.get("apoc_provenance")
         if provenance != WAVE7_TICK_PROVENANCE:
             failures.append(
-                f"{path.name}: Wave 7 manifest apoc_provenance must be "
-                f"{WAVE7_TICK_PROVENANCE!r}"
+                f"{path.name}: Wave 7 manifest apoc_provenance must be {WAVE7_TICK_PROVENANCE!r}"
             )
     elif "apoc_provenance" in row:
         failures.append(f"{path.name}: apoc_provenance is Wave 7 only")

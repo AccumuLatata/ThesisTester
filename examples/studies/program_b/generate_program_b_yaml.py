@@ -446,8 +446,7 @@ def generate_packet(
         solo = _shared(
             name=solo_name,
             description=(
-                "Program B Wave 0 (15s): 39 non-tick anchors alone "
-                "(AO1 point zone, min_valid 0)."
+                "Program B Wave 0 (15s): 39 non-tick anchors alone (AO1 point zone, min_valid 0)."
             ),
             min_valid=0,
             **shared_kw,
@@ -502,8 +501,7 @@ def generate_packet(
         solo_apoc = _shared(
             name=study_name("progB_w0_apoc", study_prefix),
             description=(
-                "Program B Wave 0 APOC: APOC/pAPOC alone "
-                "(AO1 point zone, min_valid 0). Tick-gated."
+                "Program B Wave 0 APOC: APOC/pAPOC alone (AO1 point zone, min_valid 0). Tick-gated."
             ),
             min_valid=0,
             tick_paths=TICK_PATHS,
