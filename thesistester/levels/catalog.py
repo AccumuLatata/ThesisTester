@@ -91,6 +91,31 @@ def named_prior_profile_tokens(names: Sequence[object]) -> list[str]:
     return found
 
 
+def named_apoc_tokens(names: Sequence[object]) -> list[str]:
+    """Return named ``APOC`` / ``pAPOC`` tokens (order-preserving, unique)."""
+    wanted = set(APOC_LEVEL_NAMES)
+    found: list[str] = []
+    seen: set[str] = set()
+    for raw in names:
+        token = str(raw)
+        if token in wanted and token not in seen:
+            seen.add(token)
+            found.append(token)
+    return found
+
+
+def named_rolling_poc_tokens(names: Sequence[object]) -> list[str]:
+    """Return named ``POC_rolling_*`` tokens (order-preserving, unique)."""
+    found: list[str] = []
+    seen: set[str] = set()
+    for raw in names:
+        token = str(raw)
+        if token.startswith("POC_rolling_") and token not in seen:
+            seen.add(token)
+            found.append(token)
+    return found
+
+
 def pivot_column_names(timeframes: Iterable[str]) -> tuple[str, ...]:
     """Return engine pivot column names for *timeframes* settings keys.
 

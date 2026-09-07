@@ -60,19 +60,36 @@ from thesistester.engine import (
     validate_exit_management_config,
 )
 from thesistester.levels.all import compute_all_levels
-from thesistester.levels.catalog import named_prior_profile_tokens
+from thesistester.levels.catalog import (
+    named_apoc_tokens,
+    named_prior_profile_tokens,
+    named_rolling_poc_tokens,
+)
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.sessions import compute_session_levels
 from thesistester.levels.apoc_tick import (
     APOC_PROFILE_SOURCES,
+    APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
     LEVELS_APOC_IDENTITY_KEYS,
     attach_apoc_identity,
     build_a_period_tick_profile_table,
+    resolve_apoc_profile_source,
 )
 from thesistester.levels.rolling_poc_tick import (
     LEVELS_ROLLING_POC_IDENTITY_KEYS,
     ROLLING_POC_PROFILE_SOURCES,
     attach_rolling_poc_identity,
+)
+from thesistester.levels.tick_requirements import (
+    dataset_has_tick_paths,
+    disable_unneeded_tick_families,
+    named_apoc_requires_ticks_message,
+    named_rolling_poc_requires_ticks_message,
+    named_va_requires_ticks_message,
+    product_tick_family_message,
+    settings_require_apoc_ticks,
+    settings_require_rolling_poc_ticks,
+    tick_paths_present,
 )
 from thesistester.levels.tick_vap import (
     LEVELS_TICK_IDENTITY_KEYS,
@@ -1475,8 +1492,8 @@ def load_dataset(
     return tag_session(data, instrument)
 
 
-def _named_prior_profile_from_setup(setup: Mapping[str, Any] | None) -> list[str]:
-    """Collect prior-profile VA tokens named by a setup (selected / anchor / rules)."""
+def _named_level_tokens_from_setup(setup: Mapping[str, Any] | None) -> list[object]:
+    """Collect level tokens named by a setup (selected / anchor / rules)."""
     if not setup:
         return []
     names: list[object] = []
@@ -1487,7 +1504,12 @@ def _named_prior_profile_from_setup(setup: Mapping[str, Any] | None) -> list[str
     for rule in setup.get("confluence_rules") or []:
         if isinstance(rule, Mapping) and rule.get("level"):
             names.append(rule.get("level"))
-    return named_prior_profile_tokens(names)
+    return names
+
+
+def _named_prior_profile_from_setup(setup: Mapping[str, Any] | None) -> list[str]:
+    """Collect prior-profile VA tokens named by a setup (selected / anchor / rules)."""
+    return named_prior_profile_tokens(_named_level_tokens_from_setup(setup))
 
 
 def _require_ticks_for_named_va(
@@ -1500,7 +1522,35 @@ def _require_ticks_for_named_va(
         return
     if dataset_has_tick_inputs(dict(dataset)):
         return
-    raise ValueError(f"VA requires ticks: dataset.tick_paths is missing or empty (named {tokens})")
+    raise ValueError(
+        named_va_requires_ticks_message(tokens, prefix="dataset.tick_paths")
+    )
+
+
+def _require_ticks_for_named_apoc_and_rolling(
+    dataset: Mapping[str, Any],
+    setup: Mapping[str, Any] | None,
+) -> None:
+    """Layer-1: named APOC / rolling POC without tick files refuse.
+
+    A prior-VA parquet is not a substitute. Do not weaken the VA message.
+    """
+    named = _named_level_tokens_from_setup(setup)
+    apoc_tokens = named_apoc_tokens(named)
+    rolling_tokens = named_rolling_poc_tokens(named)
+    if not apoc_tokens and not rolling_tokens:
+        return
+    if dataset_has_tick_paths(dataset):
+        return
+    if apoc_tokens:
+        raise ValueError(
+            named_apoc_requires_ticks_message(apoc_tokens, prefix="dataset.tick_paths")
+        )
+    raise ValueError(
+        named_rolling_poc_requires_ticks_message(
+            rolling_tokens, prefix="dataset.tick_paths"
+        )
+    )
 
 
 def _resolve_dataset_tick_paths(
@@ -1585,6 +1635,10 @@ def compute_levels(
     """
     _instrument(instrument)
     settings = normalize_levels_config(config, instrument=instrument)
+    need_apoc = settings_require_apoc_ticks(settings)
+    need_rolling = settings_require_rolling_poc_ticks(settings)
+    if (need_apoc or need_rolling) and not tick_paths_present(tick_paths):
+        raise ValueError(product_tick_family_message(apoc=need_apoc, rolling=need_rolling))
     table, resolved_tick_source_id = _resolve_prior_profile_table(
         instrument=instrument,
         settings=settings,
@@ -1635,7 +1689,9 @@ def compute_levels(
         and key not in LEVELS_ROLLING_POC_IDENTITY_KEYS
     }
     apoc_tick_table = None
-    if str(settings.get("apoc_profile_source") or "") == "tick_last_volume_v1":
+    if resolve_apoc_profile_source(settings.get("apoc_profile_source")) == (
+        APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
+    ) and bool(settings.get("apoc_enabled")):
         apoc_tick_table = build_a_period_tick_profile_table(
             tick_paths,
             instrument=instrument,
@@ -2821,7 +2877,11 @@ def run_experiment(
     dataset_config = dict(run.get("dataset") or {})
     if "path" not in dataset_config:
         raise ValueError("Experiment dataset.path is required")
-    _require_ticks_for_named_va(dataset_config, dict(run.get("setup") or {}))
+    setup = dict(run.get("setup") or {})
+    _require_ticks_for_named_va(dataset_config, setup)
+    _require_ticks_for_named_apoc_and_rolling(dataset_config, setup)
+    if not dataset_has_tick_paths(dataset_config):
+        run["levels"] = disable_unneeded_tick_families(run.get("levels"), setup)
     instrument = str(dataset_config.get("instrument", "ES"))
     inst = _instrument(instrument)
     dataset_path = Path(dataset_config["path"])

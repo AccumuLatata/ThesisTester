@@ -16,6 +16,7 @@ from .rolling_poc_tick import (
     compute_rolling_poc_tick_levels,
     resolve_rolling_poc_profile_source,
 )
+from .tick_requirements import ROLLING_POC_REQUIRES_TICKS, tick_paths_present
 from .session_date import trading_session_date
 
 if TYPE_CHECKING:
@@ -129,10 +130,11 @@ def compute_profile_levels(
     """Compute rolling POC and, when a tick table is supplied, prior-profile VA.
 
     Rolling POC is tick Last×Volume on ``[now - W + 1min, now + 1min)``
-    (desk default ``tick_last_volume_v1``). Missing / empty / unsound
-    ``tick_paths`` emit all-NaN ``POC_rolling_*`` columns; they never fall
-    back to typical ``_rolling_poc``. ``PriorProfileTable`` is not a rolling
-    tick input. The nine ``pd*`` / ``pw*`` / ``pm*`` VA columns are tick
+    (desk default ``tick_last_volume_v1``). Missing or empty ``tick_paths``
+    refuse with ``rolling POC requires ticks`` when windows are in play;
+    they never fall back to typical ``_rolling_poc``. Unsound prints still
+    emit ``NaN`` for that bar. ``PriorProfileTable`` is not a rolling tick
+    input. The nine ``pd*`` / ``pw*`` / ``pm*`` VA columns are tick
     Last×Volume when ``prior_profile_table`` is set and **absent** when it is
     ``None``.
 
@@ -162,6 +164,8 @@ def compute_profile_levels(
     rolling_windows = (
         DEFAULT_ROLLING_POC_WINDOWS if rolling_windows is None else tuple(rolling_windows)
     )
+    if rolling_windows and not tick_paths_present(tick_paths):
+        raise ValueError(f"{ROLLING_POC_REQUIRES_TICKS}: tick_paths is missing or empty")
 
     out = df.sort_values("timestamp").reset_index(drop=True).copy()
     levels = pd.DataFrame(index=out.index)

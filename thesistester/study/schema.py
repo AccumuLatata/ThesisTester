@@ -16,8 +16,16 @@ import yaml
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.levels.catalog import (
     STATIC_STUDY_LEVEL_NAMES,
+    named_apoc_tokens,
     named_prior_profile_tokens,
+    named_rolling_poc_tokens,
     pivot_column_names,
+)
+from thesistester.levels.tick_requirements import (
+    dataset_has_tick_paths,
+    named_apoc_requires_ticks_message,
+    named_rolling_poc_requires_ticks_message,
+    named_va_requires_ticks_message,
 )
 from thesistester.levels.tick_vap import resolve_tick_format_profile
 from thesistester.levels.common import normalized_window_label
@@ -231,14 +239,34 @@ def _require_ticks_for_named_va(
     tokens = named_prior_profile_tokens(_factor_level_tokens(factors))
     if not tokens:
         return
-    raw_paths = dataset.get("tick_paths")
-    has_paths = isinstance(raw_paths, list) and any(
-        isinstance(item, (str, Path)) and str(item).strip() for item in raw_paths
-    )
-    if has_paths:
+    if dataset_has_tick_paths(dataset):
         return
     raise StudySpecError(
-        f"VA requires ticks: study.dataset.tick_paths is missing or empty (named {tokens})"
+        named_va_requires_ticks_message(tokens, prefix="study.dataset.tick_paths")
+    )
+
+
+def _require_ticks_for_named_apoc_and_rolling(
+    dataset: Mapping[str, Any],
+    factors: Mapping[str, Any],
+) -> None:
+    named = _factor_level_tokens(factors)
+    apoc_tokens = named_apoc_tokens(named)
+    rolling_tokens = named_rolling_poc_tokens(named)
+    if not apoc_tokens and not rolling_tokens:
+        return
+    if dataset_has_tick_paths(dataset):
+        return
+    if apoc_tokens:
+        raise StudySpecError(
+            named_apoc_requires_ticks_message(
+                apoc_tokens, prefix="study.dataset.tick_paths"
+            )
+        )
+    raise StudySpecError(
+        named_rolling_poc_requires_ticks_message(
+            rolling_tokens, prefix="study.dataset.tick_paths"
+        )
     )
 
 
@@ -468,7 +496,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     levels_map = _require_mapping(levels, section="study.levels")
     # Levels keys are pass-through to R18; reject non-product keys lightly via
     # DEFAULT_LEVELS_SETTINGS + OPTIONAL_LEVELS_SETTINGS so typos fail closed
-    # at study authoring. apoc_profile_source is optional opt-in (AP2).
+    # at study authoring. apoc_profile_source is optional (omitted = tick).
     unknown_levels = sorted(
         set(levels_map) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS
     )
@@ -499,6 +527,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     factors = _require_mapping(study.get("factors"), section="study.factors")
     _validate_factors(factors, closed_tokens=closed_tokens, constants=constants)
     _require_ticks_for_named_va(dataset, factors)
+    _require_ticks_for_named_apoc_and_rolling(dataset, factors)
 
     mode_rules = study.get("mode_rules")
     if "confluence_mode" in factors and mode_rules is None:

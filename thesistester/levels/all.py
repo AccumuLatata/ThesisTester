@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from .apoc import compute_apoc_levels
-from .apoc_tick import APOC_PROFILE_SOURCE_TYPICAL_MVP_V1
+from .apoc_tick import APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
 from .indicators import compute_indicator_levels
 from .pivots import compute_pivot_levels
 from .prev30m_vwap import compute_prev30m_vwap_levels
@@ -48,7 +48,7 @@ def compute_all_levels(
     session_vwap_anchor: str = "RTH",
     single_prints_enabled: bool = False,
     apoc_enabled: bool = False,
-    apoc_profile_source: str = APOC_PROFILE_SOURCE_TYPICAL_MVP_V1,
+    apoc_profile_source: str = APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
     apoc_tick_table: APeriodTickProfileTable | None = None,
     tick_paths: Sequence[str | Path] | None = None,
     prev30m_vwap_enabled: bool = False,
@@ -67,23 +67,23 @@ def compute_all_levels(
       ``session_vwap_anchor`` remains ``"RTH"`` for the RTH column gate
     - ``single_prints_enabled`` — TPO single print nearest-above/below
       (Stage 4, **implemented**)
-    - ``apoc_enabled`` — APOC / pAPOC profile-based levels (Stage 5 / AP2,
-      **implemented**; routes to ``compute_apoc_levels``, independent of
-      ``single_prints_enabled``). Library default source is
-      ``typical_mvp_v1``. ``tick_last_volume_v1`` is an explicit opt-in and
-      requires Quantower Tick–Tick–Last inputs (or a prebuilt A-period
-      table). ``apoc_enabled=False`` remains a true no-op.
+    - ``apoc_enabled`` — APOC / pAPOC profile-based levels (Stage 5 / desk
+      default-tick amendment; routes to ``compute_apoc_levels``, independent
+      of ``single_prints_enabled``). Library default source is
+      ``tick_last_volume_v1``. Missing or empty ``tick_paths`` refuse with
+      ``APOC requires ticks`` when APOC is enabled. ``apoc_enabled=False``
+      remains a true no-op.
     - ``prev30m_vwap_enabled`` — previous 30m VWAP (``prev30mVWAP``) with
         early-window hit diagnostics; ``prev30m_vwap_validity_periods > 1``
         also emits stack columns ``prev30mVWAP_2``…``_N`` (Stage 8 /
         Phases 1–3, **implemented**)
     - Rolling POC is tick Last×Volume by default (``tick_last_volume_v1``).
-      Missing ticks emit all-NaN ``POC_rolling_*``; they never fall back to
-      typical. APOC library default remains typical (separate follow-up).
+      Missing ticks refuse with ``rolling POC requires ticks`` when windows
+      are in play; they never fall back to typical.
 
     With all new gates at their defaults, session / indicator / VA-omit /
     APOC-off output matches the pre-Stage-1 additive contract. Rolling POC
-    is the exception: default is now tick (NaN without ``tick_paths``).
+    is the exception: default is tick (refuse without ``tick_paths``).
 
     Single Prints and APOC/pAPOC are independent level families.  Single Prints
     are TPO auction-structure levels implemented in ``tpo.py``.  APOC/pAPOC are

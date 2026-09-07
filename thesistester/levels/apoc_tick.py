@@ -169,16 +169,18 @@ def attach_apoc_identity(
     apoc_tick_source_id: str | None = None,
     format_profile: str = TICK_FORMAT_PROFILE,
 ) -> dict[str, Any]:
-    """Put APOC source / algorithm / allocation / tick-input id in the hash dict.
+    """Stamp APOC tick identity into the hashed settings dict.
 
-    Implicit typical (key omitted) is a no-op so pre-AP2 settings hashes and
-    persisted typical APOC identity stay unchanged. Identity keys attach only
-    when ``apoc_profile_source`` is explicit.
+    Always attaches. Implicit omitted source is tick Last×Volume (desk
+    default), not typical. Identity keys are stripped before
+    ``compute_all_levels``. ``LEVEL_ENGINE_VERSION`` stays 11; the settings
+    hash changes via these keys.
     """
     attached = dict(settings)
-    if "apoc_profile_source" not in attached:
-        return attached
-    source = str(attached.get("apoc_profile_source") or APOC_PROFILE_SOURCE_TYPICAL_MVP_V1)
+    if "apoc_profile_source" in attached:
+        source = resolve_apoc_profile_source(attached.get("apoc_profile_source"))
+    else:
+        source = APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
     algorithm, allocation = _SOURCE_META.get(
         source,
         (source, "unknown"),
@@ -197,9 +199,13 @@ def attach_apoc_identity(
 
 
 def resolve_apoc_profile_source(value: object | None) -> str:
-    """Return a supported versioned source, or raise."""
+    """Return a supported versioned source, or raise.
+
+    Blank / omitted resolves to ``tick_last_volume_v1``. Explicit
+    ``typical_mvp_v1`` remains a non-default historical token.
+    """
     if value is None or (isinstance(value, str) and not value.strip()):
-        return APOC_PROFILE_SOURCE_TYPICAL_MVP_V1
+        return APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
     source = str(value)
     if source not in APOC_PROFILE_SOURCES:
         raise ValueError(
