@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester journal …`` (TJ4 / TJ6 / TJ7)."""
+"""CLI handlers for ``python -m thesistester journal …`` (TJ4 / TJ6 / TJ7 / TJ8)."""
 
 from __future__ import annotations
 
@@ -7,12 +7,15 @@ from pathlib import Path
 
 from thesistester.journal.counterfactual import counterfactual_files
 from thesistester.journal.levels import attribute_files
+from thesistester.journal.match import match_files
 from thesistester.journal.reconcile import reconcile_files
 from thesistester.journal.schema import (
     DEFAULT_CF_K,
     DEFAULT_CF_SEED,
     DEFAULT_JOURNAL_RISK_TICKS,
     DEFAULT_LEVEL_TOLERANCE_TICKS,
+    DEFAULT_MATCH_TICKS,
+    DEFAULT_MATCH_WINDOW_SECONDS,
     DEFAULT_TAG_TOLERANCE_TICKS,
     JOIN_RESOLUTION_15S,
     JournalIngestError,
@@ -172,10 +175,72 @@ def add_journal_subparser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Allow days that are not reconciled (default: refuse)",
     )
+    match_parser = journal_sub.add_parser(
+        "match",
+        help="Match journal trades to one named cell and emit a forward ledger",
+    )
+    match_parser.add_argument(
+        "--trades",
+        type=Path,
+        required=True,
+        help="Journal trades parquet/CSV (typically journal_trades.parquet)",
+    )
+    match_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="Output directory for journal_matches.parquet + match.json "
+        "(must not be results/studies/)",
+    )
+    match_parser.add_argument(
+        "--bundle",
+        type=Path,
+        default=None,
+        help="Named completed research bundle zip (hash-verified)",
+    )
+    match_parser.add_argument(
+        "--runspec",
+        type=Path,
+        default=None,
+        help="Named RunSpec YAML/JSON pointing at exactly one bundle",
+    )
+    match_parser.add_argument(
+        "--bundle-hash",
+        default=None,
+        help="Expected canonical_bundle_hash (mismatch fails closed)",
+    )
+    match_parser.add_argument(
+        "--live-since",
+        default=None,
+        help="Forward-ledger start date YYYY-MM-DD (sessions before are omitted)",
+    )
+    match_parser.add_argument(
+        "--live-declarations",
+        type=Path,
+        default=None,
+        help="Read-only YAML/JSON of promoted cells with live_since (never written)",
+    )
+    match_parser.add_argument(
+        "--match-window",
+        type=float,
+        default=DEFAULT_MATCH_WINDOW_SECONDS,
+        help="Max |Δentry| in seconds (default: 60)",
+    )
+    match_parser.add_argument(
+        "--match-ticks",
+        type=float,
+        default=DEFAULT_MATCH_TICKS,
+        help="Max distance to zone / theoretical entry in ticks (default: 8)",
+    )
+    match_parser.add_argument(
+        "--allow-unreconciled",
+        action="store_true",
+        help="Allow days that are not reconciled (default: refuse)",
+    )
 
 
 def dispatch_journal(args: argparse.Namespace) -> int:
-    """Dispatch ``journal reconcile``, ``journal attribute``, and ``journal counterfactual``."""
+    """Dispatch ``journal reconcile`` / ``attribute`` / ``counterfactual`` / ``match``."""
     if args.journal_command == "reconcile":
         try:
             paths = reconcile_files(
@@ -227,5 +292,25 @@ def dispatch_journal(args: argparse.Namespace) -> int:
             return 2
         print(f"Wrote {paths['journal_counterfactuals.parquet']}")
         print(f"      {paths['counterfactual.json']}")
+        return 0
+    if args.journal_command == "match":
+        try:
+            paths = match_files(
+                trades=args.trades,
+                output_dir=args.output_dir,
+                bundle=args.bundle,
+                runspec=args.runspec,
+                expected_hash=args.bundle_hash,
+                live_since=args.live_since,
+                live_declarations=args.live_declarations,
+                match_window_seconds=float(args.match_window),
+                match_ticks=float(args.match_ticks),
+                allow_unreconciled=bool(args.allow_unreconciled),
+            )
+        except (JournalIngestError, ValueError) as exc:
+            print(f"journal match failed: {exc}")
+            return 2
+        print(f"Wrote {paths['journal_matches.parquet']}")
+        print(f"      {paths['match.json']}")
         return 0
     raise AssertionError(f"Unhandled journal command: {args.journal_command!r}")

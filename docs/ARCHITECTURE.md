@@ -1137,7 +1137,19 @@ instrument / entry price fail closed. Writes
 `journal_counterfactuals.parquet` + `counterfactual.json`. Refuses
 `results/studies/`. No `simulate_trades`.
 
-Later TJ milestones (named-cell match, page 17) add siblings in the
+**TJ8 landed.** `match_journal_to_cell` / `build_forward_ledger` and
+`python -m thesistester journal match` classify journal trades against
+**one** hash-verified bundle or named RunSpec (never the Observatory
+corpus). `executed_cell` requires hold/risk compatibility; otherwise
+`product_mismatch` names the failing dimension. A lock-fail pair is not
+also `systematic_unfilled`. `near_level` is same-session. Qty /
+direction / instrument / entry price fail closed. Writes
+`journal_matches.parquet` + `match.json` (ledger rows, adherence).
+Refuses `results/studies/` as output. Does not write the promotion
+registry, `results_index`, or research bundles. No
+`STUDY_INDEX_KEYS` / `R18_INDEX_METRIC_KEYS` edits.
+
+Later TJ milestone (page 17) adds siblings in the
 same package. Persistence, when it lands (TJ9), is
 `.thesistester_store/journal/v1/` — sibling of `datasets/` / `setups/`,
 **not** under `execution_artifacts/` (CAI-10 LRU does not scan it).

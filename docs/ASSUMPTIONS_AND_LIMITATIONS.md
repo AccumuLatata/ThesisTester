@@ -1401,6 +1401,33 @@ other than the last bar in the dataset.
   `--output-dir`. It refuses `results/studies/` and days that are not
   `reconciled` unless `--allow-unreconciled`.
 
+## Trade journal (TJ8 — named-cell match + forward ledger)
+
+- Match is **named-cell only**: one hash-verified bundle zip or a RunSpec
+  that points at exactly one cell. The Observatory corpus is out.
+- Classes: `executed_cell` (time + price + instrument + direction, and
+  hold/risk compatible with the cell lock), `near_level` (same
+  `session_date`, price within `match_ticks` of the zone / theoretical
+  entry but `|Δentry|` outside `match_window`), `discretionary_only`,
+  `systematic_unfilled`.
+- `product_mismatch` names the failing dimension (`hold`, `risk`,
+  `trigger`, or a comma-joined subset). Hold uses the cell's parent bar
+  clock × `bars_held` band. Risk requires `journal_risk_ticks` within
+  ±50% of the cell SL. `trigger` is compared only when both sides name
+  one. A time+price pair that fails the lock is not also
+  `systematic_unfilled`. A 10-tick scalp is not an 80-tick study lock.
+- Adherence = `executed_cell / (executed_cell + systematic_unfilled)`.
+  The forward ledger is per `session_date` for cells declared live
+  (`live_since`). Sessions before that date are omitted. Live ticks are
+  qty-scaled journal; cell expectancy is 1-lot `R × SL` in ticks.
+  Bundle files named `{run_name}.research.zip` resolve `run_name` by
+  stripping `.research`.
+- The promotion / live-declaration file is **read-only**. Journal match
+  does not write the registry, `results_index`, or research bundles.
+- `python -m thesistester journal match` writes `journal_matches.parquet`
+  + `match.json`. It refuses `results/studies/` as an output directory
+  and days that are not `reconciled` unless `--allow-unreconciled`.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

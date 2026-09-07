@@ -6,6 +6,7 @@ TJ3 pairs fills into ``JournalTrade``. TJ4 reconciles AMP per instrument-day.
 TJ5 joins trades to the 15s / derived-1m clock (ticks when present).
 TJ6 attributes every entry bar and verifies level-class tags.
 TJ7 replays entries under fixed brackets, a direction-shuffle null, and declared rules.
+TJ8 matches a named cell and builds a forward ledger.
 """
 
 from __future__ import annotations
@@ -22,10 +23,18 @@ from thesistester.journal.counterfactual import (
     write_counterfactual_artifacts,
 )
 from thesistester.journal.join import join_journal_bars
+from thesistester.journal.ledger import build_forward_ledger, load_live_declarations
 from thesistester.journal.levels import (
     attribute_files,
     attribute_journal_trades,
     write_attribution_artifacts,
+)
+from thesistester.journal.match import (
+    NamedCell,
+    load_named_cell,
+    match_files,
+    match_journal_to_cell,
+    write_match_artifacts,
 )
 from thesistester.journal.pair import pair_journal_trades
 from thesistester.journal.reconcile import (
@@ -79,17 +88,23 @@ __all__ = [
     "FillRecord",
     "TagMapping",
     "apply_journal_rules",
+    "NamedCell",
     "attribute_files",
     "attribute_journal_trades",
+    "build_forward_ledger",
     "counterfactual_files",
     "direction_shuffle_null",
     "extract_amp_pdf_text",
     "load_amp_statement",
     "join_journal_bars",
     "load_journal_rules",
+    "load_live_declarations",
+    "load_named_cell",
     "load_tag_map",
     "load_tradesviz_executions",
     "mapped_engine_tokens",
+    "match_files",
+    "match_journal_to_cell",
     "pair_journal_trades",
     "parse_amp_statement_text",
     "parse_journal_rule",
@@ -100,5 +115,6 @@ __all__ = [
     "resolve_tag",
     "write_attribution_artifacts",
     "write_counterfactual_artifacts",
+    "write_match_artifacts",
     "write_reconcile_artifacts",
 ]

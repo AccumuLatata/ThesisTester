@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ7 landed.** TJ8 (named-cell match + forward ledger) is next. No page yet.
+**Status:** **TJ8 landed.** TJ9 (page 17 / USER_GUIDE H2) is next.
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -800,13 +800,13 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ8 — Match + ledger
 
-- Requires a hash-verified bundle or RunSpec path. Corpus-wide matching is
+- [x] Requires a hash-verified bundle or RunSpec path. Corpus-wide matching is
   out (do not unpark SO6).
-- `product_mismatch` names the failing dimension; `executed_cell` requires
+- [x] `product_mismatch` names the failing dimension; `executed_cell` requires
   hold/risk compatibility.
-- Ledger is derived from artifacts; a test asserts no write to the promotion
+- [x] Ledger is derived from artifacts; a test asserts no write to the promotion
   registry.
-- Does not modify `STUDY_INDEX_KEYS` or `R18_INDEX_METRIC_KEYS`.
+- [x] Does not modify `STUDY_INDEX_KEYS` or `R18_INDEX_METRIC_KEYS`.
 
 ### TJ9 — UX
 
