@@ -528,8 +528,8 @@ def test_disabled_discuss_chat_input_does_not_call_handle_results_turn(workspace
     app = _render(thesis.thesis_id)
     assert not app.exception
     assert app.chat_input[0].proto.disabled is True
-    _run_app(app.chat_input[0].set_value("Should not submit"))
-    assert not app.exception, app.exception
+    # Streamlit AppTest refuses set_value on a disabled widget (a browser
+    # user cannot submit). Disabled + no handler calls is the product lock.
     assert calls == []
 
 

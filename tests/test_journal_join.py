@@ -476,7 +476,10 @@ def test_nullable_join_columns_stay_object_none(tmp_path: Path) -> None:
     held_row = joined.iloc[1]
     assert same_row["mae_points"] is None
     assert same_row["mfe_points"] is None
-    assert same_row["commission_cost"] is None
+    # Pass-through extra column: same-bar row never set commission_cost.
+    # pandas 2 concat leaves NaN; pandas 3 to_dict may yield None. Both
+    # are missing — do not require identity-None on every major.
+    assert pd.isna(same_row["commission_cost"]) or same_row["commission_cost"] is None
     assert held_row["mae_points"] == pytest.approx(1.5)
     assert held_row["commission_cost"] == pytest.approx(1.24)
     assert joined["mae_points"].dtype == object
