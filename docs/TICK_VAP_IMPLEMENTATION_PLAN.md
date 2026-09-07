@@ -95,7 +95,7 @@ Desk session 20 (MNQ, 15s engine, product OR 15):
 | `OR_High` | 4.00 off; **not in either 15s file** | Out of scope (file vs chart, not 1m math) |
 | `dVWAP` @ 10:00 NY | 29484.34 vs QT ~29484.50 | Untouched. Do **not** switch to tick VWAP |
 | `prevSettlement` | Last RTH 1m close ≠ CME/QT settle | Out of scope (different definition) |
-| `APOC` / `pAPOC` / `POC_rolling_*` | Still 1m typical | Untouched; honesty must say so |
+| `APOC` / `pAPOC` / `POC_rolling_*` | Still 1m typical | Untouched; honesty must say so. Rolling rewrite is **RP**, not TV |
 
 ### 3.3 Evidence lock (session 20 Aug 2026, MNQ)
 
@@ -364,7 +364,7 @@ Maps to `ENGINEERING_PROPOSAL.md` §4:
 |---|---|
 | `dVWAP_RTH` / `dVWAP` / `wVWAP` / `mVWAP` | **Value-identical** on overlapping rows |
 | Session marks / OR / Asia / London / opens | **Value-identical** |
-| `POC_rolling_*` | **Value-identical** (still 1m typical) |
+| `POC_rolling_*` | **Value-identical** (still 1m typical; later rewrite is **RP**, not TV) |
 | `APOC` / `pAPOC` | **Value-identical** (still 1m typical) |
 | Signal / 3c / OTF / `simulate_trades` / R12 | **Untouched** |
 | `_compute_profile` expander | **Value-identical** on the existing typical fixtures when fed the same price/volume vectors |
@@ -724,7 +724,7 @@ Keep Help paths unchanged. Mark this plan series complete.
 - Tick `dVWAP*` / `wVWAP` / `mVWAP`
 - Touch / 3c / R12 on ticks
 - Developing `dVAH` / `dVAL` / `dPOC`
-- APOC / rolling-POC allocation change
+- APOC / rolling-POC allocation change (rolling is the **RP** series, not TV)
 - Bid/ask / aggressor VAP; TPO
 - `va_source: typical_mvp` same-name alias
 - 8-tick weekly as a substitute for tick allocation

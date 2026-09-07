@@ -45,8 +45,10 @@ sufficient evidence to label that method Quantower-compatible.
 ### Out of scope
 
 - `pd*` / `pw*` / `pm*` tick VAP, including its TV-series identity contract.
-- Rolling POC, VA, VWAP, opening range, session marks, TPO single prints,
-  signals, confluence, fills, or simulation.
+- Rolling POC (see `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md` — **RP**
+  series; AP1’s 4/4 does not authorize a rolling cutover), VA, VWAP, opening
+  range, session marks, TPO single prints, signals, confluence, fills, or
+  simulation.
 - Replacing the 15-second-primary / derived-1-minute product clock.
 - Retrospective mutation, deletion, or reinterpretation of Program B results.
 - Claiming agreement with Quantower from an unverified proxy.
