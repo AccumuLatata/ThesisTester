@@ -230,7 +230,11 @@ def compute_rolling_poc_from_ticks(
 
 def _prepare_ticks(ticks: pd.DataFrame, *, tick_size: float) -> pd.DataFrame:
     work = ticks.copy()
-    if "timestamp" not in work.columns or "price" not in work.columns or "volume" not in work.columns:
+    if (
+        "timestamp" not in work.columns
+        or "price" not in work.columns
+        or "volume" not in work.columns
+    ):
         return pd.DataFrame(
             {
                 "timestamp": pd.Series(dtype="datetime64[ns, UTC]"),

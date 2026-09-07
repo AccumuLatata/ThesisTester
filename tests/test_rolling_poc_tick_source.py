@@ -10,7 +10,11 @@ import pandas as pd
 import pytest
 
 from thesistester.api import compute_levels, run_experiment
-from thesistester.levels import PRIOR_PROFILE_LEVEL_NAMES, compute_all_levels, compute_profile_levels
+from thesistester.levels import (
+    PRIOR_PROFILE_LEVEL_NAMES,
+    compute_all_levels,
+    compute_profile_levels,
+)
 from thesistester.levels.apoc import COL_APOC
 from thesistester.levels.apoc_tick import (
     APeriodTickProfileTable,
@@ -274,15 +278,11 @@ def test_future_shock_prefix_stable_with_future_bars_and_ticks():
     ticks = _window_ticks()
     aligned = bars.sort_values("timestamp").reset_index(drop=True)
     prefix_n = len(aligned)
-    base, _ = compute_rolling_poc_from_ticks(
-        aligned, ticks, windows=["30min"], tick_size=TICK_SIZE
-    )
+    base, _ = compute_rolling_poc_from_ticks(aligned, ticks, windows=["30min"], tick_size=TICK_SIZE)
     future_bars = pd.concat(
         [
             aligned,
-            pd.DataFrame(
-                [{"timestamp": _ts(11, 0), **_ohlc(300.0, 50.0), "session": "RTH"}]
-            ),
+            pd.DataFrame([{"timestamp": _ts(11, 0), **_ohlc(300.0, 50.0), "session": "RTH"}]),
         ],
         ignore_index=True,
     )

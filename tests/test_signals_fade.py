@@ -24,8 +24,17 @@ from thesistester.setup import VALID_TRIGGERS as SETUP_VALID_TRIGGERS
 TZ = "America/New_York"
 TICK = 0.25
 POINT_VALUE = 50.0
-# Pre-DA4 capture of tests.fixtures.assistant_parity touch run_experiment bundle.
-_PRE_DA4_TOUCH_BUNDLE_HASH = "50f9d271d70c8fbc297a0cc3e9992bc096b997e9fd66d858fe101e2520a27807"
+# Touch-run bundle pin for tests.fixtures.assistant_parity.
+# Job: pin the current touch run_experiment hash so DA4 fade cannot leak
+# ``approach_side`` into touch. Pre-DA4 capture was 50f9d271…; pre-RP2 main
+# already drifted (07d5304f… on some trees). RP2 always stamps rolling
+# identity keys (tick Last×Volume; typical rolling is obsolete), so this is
+# the post-RP2 identity-aware pin. Scoped by pandas major — frame bytes
+# differ on 2 vs 3 (same rule as test_golden_master.py).
+_POST_RP2_TOUCH_BUNDLE_HASH_BY_PANDAS_MAJOR = {
+    2: "2628bb5c2bf0d2469f0cf76bc73657cbd042556e535d78c60de8dd49c923f4c1",
+    3: "6af2f3fc670414a798733dccd70559eaf1154489cb43cb415f139b61de1ec949",
+}
 
 
 def _bar(ts: str, o: float, h: float, l: float, c: float, vol: float = 100.0) -> dict:
@@ -289,8 +298,15 @@ def test_touch_run_experiment_bundle_hash_matches_pre_da4_capture():
         bars = write_parity_bars(Path(tmp) / "bars.csv")
         state = run_experiment(parity_run_spec(dataset_path=str(bars)), base_directory=Path(tmp))
         assert "approach_side" not in state["signals"].columns
+        settings = state["levels_settings"]
+        assert settings["rolling_poc_algorithm_version"] == "tick_last_volume_v1"
+        assert settings["rolling_poc_allocation"] == "last_times_volume"
         digest = canonical_bundle_hash(build_research_bundle(state))
-        assert digest == _PRE_DA4_TOUCH_BUNDLE_HASH
+        pandas_major = int(pd.__version__.split(".", maxsplit=1)[0])
+        expected = _POST_RP2_TOUCH_BUNDLE_HASH_BY_PANDAS_MAJOR.get(pandas_major)
+        if expected is None:
+            pytest.skip(f"touch bundle hash is pandas-major-scoped: current={pandas_major}")
+        assert digest == expected
 
 
 def _fade_run_spec(*, trigger_params: dict) -> dict:

@@ -528,9 +528,7 @@ def test_rolling_poc_future_shock():
             "volume": base["volume"].to_numpy(dtype="float64"),
         }
     )
-    tick_base, _ = compute_rolling_poc_from_ticks(
-        base, ticks, windows=["1h"], tick_size=TICK
-    )
+    tick_base, _ = compute_rolling_poc_from_ticks(base, ticks, windows=["1h"], tick_size=TICK)
     assert tick_base["POC_rolling_1h"].notna().any()
     future_ticks = pd.concat(
         [
