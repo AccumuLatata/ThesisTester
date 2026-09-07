@@ -94,9 +94,7 @@ def read_apoc_provenance(
         if isinstance(raw, Mapping):
             return {
                 "apoc_profile_source": str(raw.get("apoc_profile_source") or TYPICAL_MVP_V1),
-                "apoc_algorithm_version": str(
-                    raw.get("apoc_algorithm_version") or TYPICAL_MVP_V1
-                ),
+                "apoc_algorithm_version": str(raw.get("apoc_algorithm_version") or TYPICAL_MVP_V1),
                 "apoc_object": str(raw.get("apoc_object") or APOC_OBJECT_LEGACY_TYPICAL),
                 "recorded": str(raw.get("recorded") or RECORDED_INFERRED),
             }

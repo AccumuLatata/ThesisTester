@@ -17,7 +17,11 @@ from thesistester.study.apoc_provenance import (
     is_wave7_study_file,
 )
 from thesistester.study.expand import expand_study_to_directory, study_identity_hash
-from thesistester.study.schema import closed_level_token_set, normalize_study_spec, validate_study_spec
+from thesistester.study.schema import (
+    closed_level_token_set,
+    normalize_study_spec,
+    validate_study_spec,
+)
 
 PROGRAM_B = Path("examples/studies/program_b")
 PROGRAM_B_RUN2 = Path("examples/studies/program_b_run2")

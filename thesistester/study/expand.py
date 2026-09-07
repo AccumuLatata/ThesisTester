@@ -509,9 +509,7 @@ def write_expansion_artifacts(
     if parent is not None:
         expansion_payload["source_spec_parent"] = str(parent)
     written_study = spec_to_write.get("study") if isinstance(spec_to_write, Mapping) else None
-    written_levels = (
-        written_study.get("levels") if isinstance(written_study, Mapping) else None
-    )
+    written_levels = written_study.get("levels") if isinstance(written_study, Mapping) else None
     if isinstance(written_levels, Mapping) and should_write_apoc_provenance(written_levels):
         # Sidecar only. Not part of study_identity_hash. Historical ZIPs untouched.
         expansion_payload["apoc_provenance"] = apoc_provenance_from_levels(written_levels)
