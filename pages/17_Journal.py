@@ -113,8 +113,9 @@ if not present.get("trades"):
     st.stop()
 
 st.caption(
-    f"Hidden Q2 slices (n < 30): {report.hidden_slice_count}. "
-    "Per-trade dollar-ticks are qty-scaled."
+    f"Q2 slices with n < 30: {report.hidden_slice_count}"
+    + (" (shown)." if report.include_small_n else " (hidden).")
+    + " Per-trade dollar-ticks are qty-scaled."
 )
 
 st.subheader(_Q_TITLES[0][0])
