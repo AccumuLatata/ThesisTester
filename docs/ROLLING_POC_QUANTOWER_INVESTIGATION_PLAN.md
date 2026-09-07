@@ -2,8 +2,8 @@
 
 **Document type:** Focused investigation + fully scoped implementation plan
 **Date:** 2026-09-07 (rev 2 — review locks vs live helpers)
-**Status:** **RP0 locked. RP1–RP2 fully scoped.** Production opt-in
-(**RP2**) does not merge until the written §4.3 scorecard selects
+**Status:** **RP0 locked. RP1 harness implemented (this PR).** Production
+opt-in (**RP2**) does not merge until the written §4.3 scorecard selects
 ``tick_last_volume_v1`` or 1m ``bar_range_uniform_volume_v1``. Product/library
 default remains typical.
 **Series code:** **RP** (Rolling POC)  
@@ -12,8 +12,8 @@ default remains typical.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including the
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).
 
-**What’s next:** merge/land this plan, then **RP1** (comparator harness, no
-production math change). Do not open RP2 until **RP1g** records the scorecard.
+**What’s next:** **RP1g** (write the §4.3 scorecard into this plan). Do not
+open RP2 until RP1g records the selected token or RP2-cancel.
 
 ## 1. Problem statement and current evidence
 
@@ -447,7 +447,7 @@ with RP2. Do not open RP2 and RP1g in parallel.
 | Status | **Landed as the RP0 commit; this document now also scopes RP1–RP2** |
 | Forbidden | Engine edits, fixture-data commits, golden regen |
 
-### RP1 — comparator harness (next)
+### RP1 — comparator harness
 
 | Field | Scope |
 |---|---|
@@ -462,13 +462,40 @@ with RP2. Do not open RP2 and RP1g in parallel.
 | Acceptance | See §8.1 |
 | Forbidden | `profile.py` production edits; `all.py` / `api.py` / defaults / study schema / Program B; `LEVEL_ENGINE_VERSION`; golden regen; committing desk CSVs |
 
-**RP1 implementation record:** fill in this subsection in the RP1 PR (same
-pattern as AP1). Must state: typical candidate equals production
-`POC_rolling_30min` at the sampled stamp; 09:59 members == A-period bars
-and typical rolling equals `_compute_a_period_poc(members)` / `APOC` at
-**10:00** (09:59 `APOC` is NaN); 10:00 members drop 09:30; tick print
-window at 10:00 is `[09:31, 10:01)` even if a 1m row is missing; tick
-candidate does **not** use `select_a_period_rows`.
+**RP1 implementation record:** `rolling_poc_candidates.py` is a sampled-stamp
+comparator. It imports `compute_bar_candidate_profile`,
+`compute_tick_last_volume_profile`, and conservation constants from
+`apoc_candidates.py`. It does **not** call `select_a_period_rows` or
+`compute_profile_levels`. It does **not** edit `profile.py` / `_rolling_poc`.
+No tokens were added to `BAR_CANDIDATES`. `typical_mvp_15s_v1` is a **label**
+after `compute_bar_candidate_profile(..., candidate="typical_mvp_v1")` on 15s
+rows in the theoretical print window.
+
+Window lock: members = 1m opens in `(now - W, now]`; prints =
+`[now - W + 1min, now + 1min)` via `rolling_print_window(now, window,
+bar_interval="1min")`, **not** `min/max(members)`. Scorecard bar-range is
+declared `1m` in result metadata (not a Quantower claim).
+`APOCProfileInputError` from a builder is caught and stamped `NaN`; the tick
+helper is unchanged.
+
+Verified on the competing-mode fixture (complete 09:30–10:29 1m grid; unique
+typical per minute; A-period mode at 09:45; competing mode at 10:00):
+
+- Typical candidate equals production `POC_rolling_30min` at the sampled stamp
+  (09:59 → 103.75; 10:00 → 200.00).
+- 09:59 members == A-period bars (`[09:30, 10:00)` / 09:30…09:59). Typical
+  rolling equals `_compute_a_period_poc(members)` and equals `APOC` at
+  **10:00**. 09:59 `APOC` is NaN and is not the overlap check.
+- 10:00 members drop 09:30 (09:31…10:00). Typical rolling differs from
+  frozen `APOC` at 10:00.
+- Tick print window at 10:00 is `[09:31, 10:01)` even if a 1m row is missing
+  (interior gap skips the member; prints unchanged). Tick / 15s filtering
+  uses that theoretical interval, not the A-period selector.
+
+Env-gated oracle: `THESISTESTER_RP_QT_1M` + `THESISTESTER_RP_QT_EXPECTED`
+(`session_date,stamp_ny,poc`); optional `THESISTESTER_RP_QT_TICKS` /
+`THESISTESTER_RP_QT_15S`. Skipped in CI. Reports per-stamp MNQ-tick error;
+does **not** fail CI on miss. Proprietary desk CSVs are not committed.
 
 ### RP1g — scorecard record (docs only)
 
