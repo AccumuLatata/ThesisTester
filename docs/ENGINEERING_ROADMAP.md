@@ -30,6 +30,7 @@ Assistant-related contracts:
 | Level-combination research concept | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` · inventory `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` · runbook `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | **Program B** (operator packet). Wave 0 solo (AO1) + 50 × MA / rolling VWAP / pivot, split 15s (`manifest.yaml`, 23/944) vs tick-gated VA (`manifest_va.yaml`, 4/207). `dVWAP` is an optional core, not a required partner. Does not amend the Notion desk lock page |
 | Directional integrity & edge attribution | `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA) | **DA6 landed** (DA0 locked, DA1–DA5 landed). Program B Run 2 packet (`fade` @ 1min, `same_bar_opposite_direction: raise`, `report.random_baseline` 50). Series code is **DA** (DI is Discuss Intelligence). Run 1 YAMLs untouched; generator defaults unchanged; no existing-golden regen |
 | Trade journal (fills + intent ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ9 landed** (series complete). Page 17 Journal + USER_GUIDE H2 + HC allowlist + CLI `journal report`. No engine/golden touch. Quantower *Trades* loader parked |
+| Journal → Study (zones / triggers / proposal) | `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS) | **JS0 locked** (plan only, rev 2). Zone attribution + trigger inference + `explicit_cells` proposal + rule-vs-desk. Gate A can stop after JS2. No 15s trigger lane; no golden regen; no independent cartesian |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
 | A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP3 implemented.** Default APOC remains `typical_mvp_v1`. Opt-in `tick_last_volume_v1` is the AP1-selected Quantower source. Program B Wave 7 packets are labeled legacy typical-price; historical ZIPs are not rewritten. |
@@ -1552,6 +1553,42 @@ Quantower loader parked (its clock is Europe/Vienna local, not NY). Store is
 `.thesistester_store/journal/v1/` (CAI-10 does not scan it). Page 17 is
 read-only Q1–Q8 over those artifacts (`journal report`). PII fixtures are
 redacted.
+
+## Journal → Study (JS0–JS4) — JS0 locked (plan only)
+
+Follow-up to TJ. Attribute real fills to engine confluence zones (JS1) and
+to the trigger the engine would have called on the completed bar before
+the fill (JS2); emit a frequency-selected `explicit_cells` StudySpec with
+a fail-closed `holdout` (JS3); score proposed cells against the desk via
+TJ8 match (JS4). Four desk decisions (plan §1.1). Gate A can stop the
+series after JS2 if no (zone family × trigger) group reaches n ≥ 30. No
+new page, no new store, no new factor axis, no 15s/tick trigger lane.
+
+**Canonical spec:** `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| JS0 | **this PR** — plan lock (verified journal↔engine coupling, contracts, Gate A) |
+| JS1 | Zone attribution via `detect_confluence_zones` on the previous completed 1m bar; Q3 Zones; CLI `journal zones` |
+| JS2 | Public `classify_zone_triggers` wrapper (delegates; no `_check_*` body edits); 1m + `15s_proxy` inference; Q3 trigger cut |
+| Gate A | Desk readout: ≥ 1 (zone family × 1m trigger) group with n ≥ 30, or stop |
+| JS3 | `journal propose-study` + optional `holdout` (refuse-not-filter); never runs the study |
+| JS4 | Multi-bundle `journal match` + page 17 Q7/Q8 rule-vs-desk |
+
+**Regression posture:** additive. Journal still never calls
+`simulate_trades` / `compute_all_levels`. JS1 calls the already-pure
+`detect_confluence_zones` on the last 1m bar with
+`bar_open + 1min <= entry`. JS2 adds one unused-by-default public
+wrapper that prepares the trigger frame then delegates; existing
+goldens stay byte-identical (JS2 inclusion is a new synthetic fixture —
+checked-in `signals.csv` files are projections). `holdout` absent =
+today's `run_study`; the overlap scan loads timestamps in the pre-write
+gate only when the key is present. Selection is by frequency of
+observed (zone family × trigger) groups (`explicit_cells`), never
+outcome, never an independent cartesian. Proposed YAML stamps
+expand-required `constants.backtest` (declared SL/TP, not Program B
+80/80) and is not a study run. No `LEVEL_ENGINE_VERSION` bump; no HC H2
+change; desk PII stays out of git.
 
 ## Studies Inspect ledger progress (additive)
 
