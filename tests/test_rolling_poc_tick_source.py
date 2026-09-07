@@ -15,9 +15,9 @@ from thesistester.levels import (
     compute_all_levels,
     compute_profile_levels,
 )
-from thesistester.levels.apoc import COL_APOC
 from thesistester.levels.apoc_tick import (
     APeriodTickProfileTable,
+    attach_apoc_identity,
     compute_apoc_tick_source_id,
     empty_a_period_tick_profile_table,
 )
@@ -184,10 +184,10 @@ def test_omitted_and_explicit_tick_are_the_only_production_source():
     assert LEVEL_ENGINE_VERSION == 11
 
 
-def test_no_ticks_emits_all_nan_and_does_not_use_typical():
+def test_no_ticks_refuses_and_does_not_use_typical():
     bars = _competing_hour_bars()
-    out = compute_profile_levels(bars, instrument="ES", rolling_windows=["30min"])
-    assert out["POC_rolling_30min"].isna().all()
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(bars, instrument="ES", rolling_windows=["30min"])
     from thesistester.levels.profile import _rolling_poc
 
     work = bars.sort_values("timestamp").reset_index(drop=True)
@@ -200,7 +200,6 @@ def test_no_ticks_emits_all_nan_and_does_not_use_typical():
         value_area_pct=0.70,
     )
     assert typical.iloc[work.index[work["timestamp"] == _ts(10, 0)][0]] == pytest.approx(200.00)
-    assert not out["POC_rolling_30min"].equals(typical)
 
 
 def test_sampled_stamps_match_rp1_harness_tick_poc():
@@ -258,19 +257,25 @@ def test_prior_tables_do_not_substitute_for_rolling_ticks(tmp_path):
     bars = _competing_hour_bars()
     tick_path = _write_tick_csv(tmp_path / "ticks.csv", _window_tick_rows_utc())
     table = build_prior_profile_table_from_paths([tick_path], instrument="ES")
-    without = compute_profile_levels(
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(
+            bars,
+            instrument="ES",
+            rolling_windows=["30min"],
+            prior_profile_table=table,
+        )
+    va_only = compute_profile_levels(
         bars,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         prior_profile_table=table,
     )
-    assert without["POC_rolling_30min"].isna().all()
     for name in PRIOR_PROFILE_LEVEL_NAMES:
-        assert name in without.columns
+        assert name in va_only.columns
     apoc_table = empty_a_period_tick_profile_table()
     assert isinstance(apoc_table, APeriodTickProfileTable)
-    still_nan = compute_profile_levels(bars, instrument="ES", rolling_windows=["30min"])
-    assert still_nan["POC_rolling_30min"].isna().all()
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(bars, instrument="ES", rolling_windows=["30min"])
 
 
 def test_future_shock_prefix_stable_with_future_bars_and_ticks():
@@ -337,13 +342,6 @@ def test_identity_ids_differ_from_va_and_apoc(tmp_path):
 def test_unrelated_families_isolated_from_rolling_tick_cutover(tmp_path):
     bars = _competing_hour_bars()
     tick_path = _write_tick_csv(tmp_path / "ticks.csv", _window_tick_rows_utc())
-    without = compute_all_levels(
-        bars,
-        instrument="ES",
-        poc_windows=["30min"],
-        apoc_enabled=True,
-        session_vwap_enabled=True,
-    )
     with_ticks = compute_all_levels(
         bars,
         instrument="ES",
@@ -352,11 +350,25 @@ def test_unrelated_families_isolated_from_rolling_tick_cutover(tmp_path):
         session_vwap_enabled=True,
         tick_paths=[tick_path],
     )
-    assert without["POC_rolling_30min"].isna().all()
+    session_only = compute_all_levels(
+        bars,
+        instrument="ES",
+        poc_windows=[],
+        apoc_enabled=False,
+        session_vwap_enabled=True,
+        tick_paths=[tick_path],
+    )
     assert with_ticks["POC_rolling_30min"].notna().any()
-    pd.testing.assert_series_equal(without["dOpen"], with_ticks["dOpen"])
-    pd.testing.assert_series_equal(without[COL_APOC], with_ticks[COL_APOC])
-    pd.testing.assert_series_equal(without["dVWAP"], with_ticks["dVWAP"])
+    pd.testing.assert_series_equal(session_only["dOpen"], with_ticks["dOpen"])
+    pd.testing.assert_series_equal(session_only["dVWAP"], with_ticks["dVWAP"])
+    with pytest.raises(ValueError, match="requires ticks"):
+        compute_all_levels(
+            bars,
+            instrument="ES",
+            poc_windows=["30min"],
+            apoc_enabled=True,
+            session_vwap_enabled=True,
+        )
 
 
 def test_run_experiment_forwards_tick_paths_when_va_parquet_present(tmp_path):
@@ -413,9 +425,12 @@ def test_rolling_poc_body_untouched_and_not_called_from_tick_module():
 
 def test_compute_levels_default_is_tick_identity_not_typical():
     bars = _competing_hour_bars()
-    result = compute_levels(bars, instrument="ES", config={"poc_windows": ["30min"]})
-    settings = result["levels_settings"]
-    assert settings["rolling_poc_algorithm_version"] == TICK_LAST_VOLUME_V1
-    assert settings["rolling_poc_tick_source_id"] == TICK_SOURCE_NONE
-    assert result["levels"]["POC_rolling_30min"].isna().all()
-    assert "apoc_profile_source" not in settings
+    implicit = attach_rolling_poc_identity(
+        attach_apoc_identity(normalize_levels_config({"poc_windows": ["30min"]}, instrument="ES"))
+    )
+    assert implicit["rolling_poc_algorithm_version"] == TICK_LAST_VOLUME_V1
+    assert implicit["rolling_poc_tick_source_id"] == TICK_SOURCE_NONE
+    assert implicit["apoc_algorithm_version"] == TICK_LAST_VOLUME_V1
+    assert "apoc_profile_source" not in implicit
+    with pytest.raises(ValueError, match="requires ticks"):
+        compute_levels(bars, instrument="ES", config={"poc_windows": ["30min"]})

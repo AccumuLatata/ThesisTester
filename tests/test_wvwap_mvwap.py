@@ -242,7 +242,7 @@ def test_disabled_returns_empty_frame_without_validation():
 
 def test_compute_all_levels_disabled_emits_no_session_vwap_columns():
     df = tag_session(_intra_week_fixture(), "ES")
-    out = compute_all_levels(df, instrument="ES", session_vwap_enabled=False)
+    out = compute_all_levels(df, instrument="ES", session_vwap_enabled=False, poc_windows=[])
     for col in SESSION_VWAP_COLUMNS:
         assert col not in out.columns
 
@@ -270,14 +270,15 @@ def test_other_families_unchanged_when_session_vwap_enabled():
     df = tag_session(_wopen_alignment_df(), "ES")
     out_off = compute_all_levels(
         df, instrument="ES", opening_range_minutes=5, session_vwap_enabled=False
-    )
+    , poc_windows=[])
     out_on = compute_all_levels(
         df,
         instrument="ES",
         opening_range_minutes=5,
         session_vwap_enabled=True,
         session_vwap_anchor="RTH",
-    )
+    
+        poc_windows=[])
     for col in out_off.columns:
         pd.testing.assert_series_equal(
             out_off[col].reset_index(drop=True),

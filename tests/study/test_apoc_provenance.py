@@ -34,11 +34,11 @@ def test_wave7_file_stems():
     assert not is_wave7_study_file("progB_w7_apoc_ma.yaml.bak")
 
 
-def test_implicit_typical_is_inferred_legacy():
+def test_implicit_omitted_source_is_inferred_tick():
     provenance = apoc_provenance_from_levels({"apoc_enabled": True})
-    assert provenance["apoc_profile_source"] == APOC_PROFILE_SOURCE_TYPICAL_MVP_V1
-    assert provenance["apoc_algorithm_version"] == APOC_PROFILE_SOURCE_TYPICAL_MVP_V1
-    assert provenance["apoc_object"] == APOC_OBJECT_LEGACY_TYPICAL
+    assert provenance["apoc_profile_source"] == APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
+    assert provenance["apoc_algorithm_version"] == APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
+    assert provenance["apoc_object"] == APOC_OBJECT_TICK_LAST_VOLUME
     assert provenance["recorded"] == RECORDED_INFERRED
 
 

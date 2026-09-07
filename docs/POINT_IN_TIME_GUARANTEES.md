@@ -63,7 +63,7 @@ future-shock tests and/or code inspection.
 | `pdVAH / pdVAL / pdPOC` | `map_shifted_prior_profile` on tick `PriorProfileTable` (day keys) | **Yes** | First bar of the new trading session when a tick table is present; **columns absent** without ticks | Tick Last×Volume VAP, 70% expander; `shift(1)` is on 1m unique session keys (not table-present rows). Session T+1 looks up session T in the table (`NaN` if that session has no ticks). Current incomplete session is never the prior. 1m truncation does not recompute VA | `test_r3_point_in_time.py::test_prior_day_profile_future_shock`, `tests/test_tick_vap_cutover.py` |
 | `pwVAH / pwVAL / pwPOC` | `map_shifted_prior_profile` (week keys `W-SUN`) | **Yes** | First bar of the new trading week when a tick table is present; **columns absent** without ticks | Same shift guarantee; week histogram is merged day histograms, not a second tick pass | `test_r3_point_in_time.py::test_prior_week_profile_future_shock` |
 | `pmVAH / pmVAL / pmPOC` | `map_shifted_prior_profile` (month keys `M`) | **Yes** | First bar of the new trading month when a tick table is present; **columns absent** without ticks | Same | `tests/test_tick_vap.py` month family |
-| `POC_rolling_*` | `rolling_poc_tick` two-pointer Last×Volume | **Yes** | Prints with `ts < now+1min` only; window `[now-W+1min, now+1min)` | Missing ticks → all-NaN (no typical fallback). `_rolling_poc` body retained but is not the product path | `test_r3_point_in_time.py::test_rolling_poc_future_shock`; `tests/test_rolling_poc_tick_source.py` |
+| `POC_rolling_*` | `rolling_poc_tick` two-pointer Last×Volume | **Yes** | Prints with `ts < now+1min` only; window `[now-W+1min, now+1min)` | Missing/empty `tick_paths` refuse when windows are in play (`rolling POC requires ticks`). Unsound prints → per-bar NaN. No typical fallback. `_rolling_poc` body retained but is not the product path | `test_r3_point_in_time.py::test_rolling_poc_future_shock`; `tests/test_rolling_poc_tick_source.py` |
 
 ### Rolling indicators — `levels/indicators.py`
 
@@ -105,7 +105,7 @@ future-shock tests and/or code inspection.
 
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
-| `APOC` | POC of the A-period `[RTH_open, RTH_open + 30 min)`. Default `typical_mvp_v1` uses RTH-bar typical-price allocation. Opt-in `tick_last_volume_v1` uses Quantower Tick–Tick–Last Last×Volume in the same exchange-time window | **Yes** | `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after A-period completion; `NaN` on all non-RTH bars | Default is bar-level typical-price (not VAP). Tick source fails to `NaN` on missing/malformed/off-grid inputs (no typical fallback). ETH never contributes. Not full-session POC and not `PriorProfileTable` | `tests/test_stage5_apoc_levels.py`; tick source `tests/test_apoc_tick_source.py` (`test_tick_source_future_shock_does_not_change_prior_apoc`) |
+| `APOC` | POC of the A-period `[RTH_open, RTH_open + 30 min)`. Default `tick_last_volume_v1` uses Quantower Tick–Tick–Last Last×Volume in the exchange-time window. Explicit `typical_mvp_v1` is a non-default historical token | **Yes** | `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after A-period completion; `NaN` on all non-RTH bars | Missing/empty `tick_paths` refuse when APOC is enabled (`APOC requires ticks`). Unsound prints emit `NaN` (no typical fallback). ETH never contributes. Not full-session POC and not `PriorProfileTable` | `tests/test_stage5_apoc_levels.py`; tick source `tests/test_apoc_tick_source.py` (`test_tick_source_future_shock_does_not_change_prior_apoc`) |
 | `pAPOC` | Prior completed RTH session's APOC (same `apoc_profile_source`); frozen at the start of each new session | **Yes** | First RTH bar of the next session; frozen throughout; `NaN` on non-RTH bars and if prior session had no valid APOC | Same source contract as APOC; uses only prior completed sessions | Same |
 
 ### Previous 30m VWAP — `levels/prev30m_vwap.py`
@@ -290,14 +290,16 @@ Contract reference: `docs/otf-filter.md` §6 / §13b.
    signal proximity queries but do not provide the full Single Print set for manual
    analysis. APOC / pAPOC are now implemented (Stage 5; see `levels/apoc.py`).
 
-11. **APOC / pAPOC default to bar-level typical-price approximation.** `typical_mvp_v1`
-   uses `typical_price = (high + low + close) / 3` with full bar volume in one tick bin
-   (same MVP as `profile.py`). Opt-in `tick_last_volume_v1` is Last×Volume on A-period
-   Tick–Tick–Last prints and is a different settings identity. Neither source uses
-   future bars/ticks; APOC is not full-session POC and is not derived from Single Prints.
-   Program B Wave 7 expansions may record `apoc_provenance` on `study.expansion.json`
-   (metadata only). Historical ZIPs are not rewritten; a missing sidecar is inferred
-   typical-price. Provenance labels do not change computed APOC values.
+11. **APOC / pAPOC default to tick Last×Volume.** Omitted `apoc_profile_source`
+   is `tick_last_volume_v1`. Missing/empty `tick_paths` refuse when APOC is
+   required (`APOC requires ticks`). Unsound prints emit `NaN` (no typical
+   fallback). Explicit `typical_mvp_v1` remains a non-default historical token.
+   Neither source uses future bars/ticks; APOC is not full-session POC and is
+   not derived from Single Prints. `LEVEL_ENGINE_VERSION` stays 11; identity
+   keys change the settings hash. Program B Wave 7 expansions refuse without
+   ticks; historical ZIPs are not rewritten. A missing expansion sidecar is
+   still inferred typical-price (ZIP contract). Provenance labels do not
+   change computed APOC values.
 
 ## Trade journal fill → bar / tick join (TJ5)
 

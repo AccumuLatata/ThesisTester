@@ -2,10 +2,17 @@
 
 **Document type:** Focused investigation plan  
 **Date:** 2026-09-05  
-**Status:** **AP3 implemented.** Desk evidence selected ``tick_last_volume_v1``
-(4/4 exact on Levels2test 2026-09-01…09-04). Product/library default remains
-``typical_mvp_v1``. ``bar_range_uniform_volume_v1`` is a proxy only and is not
-a production source. Program B Wave 7 packets are labeled legacy typical-price.
+**Status:** **AP3 implemented + desk default-tick amendment (2026-09-07).**
+Desk evidence selected ``tick_last_volume_v1`` (4/4 exact on Levels2test
+2026-09-01…09-04). Library/product default is now ``tick_last_volume_v1``.
+Named or product-default APOC refuses without ticks (``APOC requires ticks``),
+same fail-closed layer as named-VA. No typical fallback. Identity always
+stamps tick APOC; ``LEVEL_ENGINE_VERSION`` stays 11. Explicit
+``typical_mvp_v1`` remains a non-default historical token.
+``bar_range_uniform_volume_v1`` is a proxy only and is not a production
+source. Program B Wave 7 packets omit the source key and ``tick_paths``
+(identity lock) and refuse on fresh validate; historical ZIPs stay
+legacy-typical labeled.
 **Series code:** **AP** (A-Period POC)  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including the
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).
@@ -258,8 +265,20 @@ Every AP1+ PR must:
 ## 7. Program B operational note
 
 Wave 7 enables APOC and pAPOC on the 15-second-primary/derived one-minute
-path. Committed Run 1 / Run 2 Wave 7 packets compute implicit
-``typical_mvp_v1`` (legacy typical-price) and are labeled as such. They must
-not be compared to Quantower A-period POC. The AP1/AP2 selected source
-``tick_last_volume_v1`` is a different study. AP3 records that provenance; it
-does not rewrite prior research ZIPs or change Wave 7 identity hashes.
+path. Historical Run 1 / Run 2 ZIPs computed implicit ``typical_mvp_v1``
+and stay labeled ``WAVE7_HISTORICAL_PROVENANCE``. They must not be compared
+to Quantower A-period POC. Desk amendment 2026-09-07: omitted source is now
+product tick Last×Volume; this packet still omits ``tick_paths``, so fresh
+validate / expand / launch refuse (``APOC requires ticks``). Do not add
+``apoc_profile_source`` or ticks (identity lock). Do not rewrite prior
+research ZIPs.
+
+## 8. Desk amendment record (2026-09-07)
+
+- Default ``apoc_profile_source`` = ``tick_last_volume_v1`` (omitted key is
+  not typical).
+- Refuse without ticks like named-VA (``APOC requires ticks``).
+- No typical fallback when the tick source is active/default.
+- Identity always stamps tick APOC; prefer identity keys over bumping
+  ``LEVEL_ENGINE_VERSION`` (stays 11).
+- APOC follow-up done in the unified tick-default + refuse PR.

@@ -198,7 +198,7 @@ def test_session_open_preserves_eth_start_seconds():
 
 def test_compute_all_levels_disabled_adds_no_prev30m_columns():
     df = _df(_bars_1min("2026-06-01 18:00", 40))
-    out = compute_all_levels(df, instrument="ES", prev30m_vwap_enabled=False)
+    out = compute_all_levels(df, instrument="ES", prev30m_vwap_enabled=False, poc_windows=[])
     assert "prev30mVWAP" not in out.columns
     assert "prev30mVWAP_hit_m1" not in out.columns
     assert "prev30mVWAP_hit_m5" not in out.columns
@@ -220,7 +220,8 @@ def test_existing_families_unchanged_when_prev30m_enabled():
         single_prints_enabled=True,
         apoc_enabled=True,
         prev30m_vwap_enabled=False,
-    )
+    
+        poc_windows=[])
     with_prev = compute_all_levels(
         df,
         instrument="ES",
@@ -229,7 +230,8 @@ def test_existing_families_unchanged_when_prev30m_enabled():
         single_prints_enabled=True,
         apoc_enabled=True,
         prev30m_vwap_enabled=True,
-    )
+    
+        poc_windows=[])
     for col in base.columns:
         pd.testing.assert_series_equal(base[col], with_prev[col], check_names=True)
     assert "prev30mVWAP" in with_prev.columns
@@ -293,7 +295,8 @@ def test_eth_emits_when_freeze_exists_unlike_dvwap():
         instrument="ES",
         session_vwap_enabled=True,
         prev30m_vwap_enabled=True,
-    )
+    
+        poc_windows=[])
     eth_mask = out["session"].eq("ETH")
     assert eth_mask.any()
     # prev30mVWAP non-NaN on ETH after freeze; dVWAP_RTH stays NaN on ETH

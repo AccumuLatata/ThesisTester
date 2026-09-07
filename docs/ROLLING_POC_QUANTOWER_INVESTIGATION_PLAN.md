@@ -5,7 +5,8 @@
 **Status:** **RP2 implemented (this PR).** Desk amendment 2026-09-07: Quantower
 has no sliding 30m rolling-POC VAP oracle. RP1g-equivalent decision selects
 ``tick_last_volume_v1`` as the **production default** (not opt-in). No
-typical / bar-proxy fallback. No ticks → all-NaN ``POC_rolling_*``.
+typical / bar-proxy fallback. No ticks → refuse when rolling is required
+(``rolling POC requires ticks``), not quiet all-NaN as the product path.
 **RP2-cancel is not opened.** This is ThesisTester sliding tick VAP, not a
 Quantower rolling-widget parity claim.
 **Series code:** **RP** (Rolling POC)  
@@ -15,8 +16,8 @@ Quantower rolling-widget parity claim.
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).
 
 **What’s next:** series complete for rolling POC under the desk amendment.
-APOC library default remains typical (separate follow-up: desk wants APOC
-default tick with the same skip-if-no-ticks rule).
+APOC follow-up (2026-09-07): library/product default is tick Last×Volume;
+APOC and rolling refuse without ticks like VA. No typical fallback.
 
 ## 1. Problem statement and current evidence
 
@@ -701,6 +702,16 @@ Do not:
 - Commit proprietary desk CSVs.
 - Present bar-range as Quantower-compatible.
 - Treat 09:59 APOC column as the A-period overlap check (it is NaN).
+
+## Desk amendment record (2026-09-07, refuse follow-up)
+
+- Default remains ``tick_last_volume_v1``.
+- Missing/empty ``tick_paths`` refuse when rolling POC is required
+  (``rolling POC requires ticks``), like named-VA — not quiet all-NaN as
+  the product path.
+- No typical fallback. Unsound prints still emit per-bar ``NaN``.
+- APOC follow-up done in the same unified tick-default + refuse PR.
+- Do not claim Quantower rolling-widget parity. RP2-cancel stays closed.
 
 Regression: typical POC_rolling_30min series-equal on the phase3 simple
 dataset; VA omit without a table still holds; test_golden_master.py green.

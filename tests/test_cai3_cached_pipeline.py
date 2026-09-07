@@ -176,7 +176,12 @@ def test_compute_levels_cache_hit(tmp_path: Path):
         source_timezone="America/New_York",
         exchange_timezone="America/New_York",
     )
-    config = {"sma_lengths": [2], "ema_lengths": [2], "poc_windows": []}
+    config = {
+        "sma_lengths": [2],
+        "ema_lengths": [2],
+        "poc_windows": [],
+        "apoc_enabled": False,
+    }
     cold = compute_levels(
         data,
         instrument="ES",

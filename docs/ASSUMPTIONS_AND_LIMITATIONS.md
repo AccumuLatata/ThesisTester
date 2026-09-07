@@ -530,7 +530,7 @@ This engine is for **research screening**, not proof of a durable edge.
 
 - The Levels page (`pages/2_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
 - Inside the expander: checkboxes for confirmed pivots, developing session VWAPs (`dVWAP_RTH` + `dVWAP` + `wVWAP` + `mVWAP`), TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
-- `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; all-NaN without ticks); 70% value area; and prior day/week/month profile aggregation of 1/8/10 ticks.
+- `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; refuse without ticks); 70% value area; and prior day/week/month profile aggregation of 1/8/10 ticks.
 - When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
 - `session_vwap_anchor` is fixed to `"RTH"` for the RTH column gate; full-session `dVWAP` / `wVWAP` / `mVWAP` are emitted alongside when the session-VWAP gate is enabled.
 - No Single Print or APOC configuration controls are exposed beyond the enable checkbox.
@@ -629,12 +629,14 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   attach. 15s remains the bar clock. New drafts omit the key.
   Rolling POC (`POC_rolling_*`) is tick Last×Volume on
   `[now-W+1min, now+1min)` (desk default `tick_last_volume_v1`). Missing /
-  empty / unsound ticks emit all-NaN columns; they never fall back to 1m
-  typical. This is ThesisTester sliding tick VAP, not a Quantower
-  rolling-widget claim (desk has no such indicator). Default APOC remains
-  typical (`apoc_profile_source=typical_mvp_v1`). Opt-in `tick_last_volume_v1`
-  APOC is the Quantower A-period object and is a different settings identity;
-  it is not prior-day VA or rolling POC. Product day aggregation is 1 tick
+  empty `tick_paths` refuse when rolling windows are in play (`rolling POC
+  requires ticks`); they never fall back to 1m typical. Unsound prints still
+  emit `NaN` for that bar. This is ThesisTester sliding tick VAP, not a
+  Quantower rolling-widget claim (desk has no such indicator). Default APOC
+  is the same tick Last×Volume object (`apoc_profile_source=tick_last_volume_v1`).
+  Named or product-default APOC refuses without ticks (`APOC requires ticks`).
+  Explicit `typical_mvp_v1` is a non-default historical token. APOC is not
+  prior-day VA or rolling POC. Product day aggregation is 1 tick
   (`prior_day_profile_aggregation_ticks`); week/month stay 8/10.
   `LEVEL_ENGINE_VERSION` is 11. Residual vs Quantower on the session-20 MNQ
   desk fixture is ~2–3 points at 1-tick (not a transferability claim).

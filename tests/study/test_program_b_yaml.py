@@ -18,6 +18,7 @@ from thesistester.study.apoc_provenance import (
 )
 from thesistester.study.expand import expand_study_to_directory, study_identity_hash
 from thesistester.study.schema import (
+    StudySpecError,
     closed_level_token_set,
     normalize_study_spec,
     validate_study_spec,
@@ -335,7 +336,8 @@ def _assert_wave7_packet_provenance(root: Path) -> None:
             assert "apoc_profile_source" not in spec["study"]["levels"], row["file"]
             header = (root / row["file"]).read_text(encoding="utf-8")
             assert "typical_mvp_v1 (legacy typical-price)" in header
-            assert "tick_last_volume_v1" in header
+            assert "APOC requires ticks" in header
+            assert "tick Last×Volume" in header
         else:
             assert "apoc_provenance" not in row, row["file"]
     assert wave7_files == [
@@ -376,17 +378,14 @@ def test_program_b_generate_wave7_provenance_is_deterministic(tmp_path):
     assert "apoc_provenance" not in str(va_generated)
 
 
-def test_program_b_wave7_fresh_expand_records_inferred_typical(tmp_path):
+def test_program_b_wave7_fresh_expand_refuses_without_ticks(tmp_path):
     spec = yaml.safe_load((PROGRAM_B / "progB_w7_apoc_ma.yaml").read_text(encoding="utf-8"))
-    normalized = validate_study_spec(normalize_study_spec(spec))
-    identity = study_identity_hash(normalized)
-    expansion = expand_study_to_directory(spec, tmp_path)
-    payload = json.loads((tmp_path / "study.expansion.json").read_text(encoding="utf-8"))
-    assert payload["study_identity_hash"] == identity == expansion.study_identity_hash
-    assert payload["apoc_provenance"]["apoc_profile_source"] == "typical_mvp_v1"
-    assert payload["apoc_provenance"]["apoc_object"] == "legacy_typical_price"
-    assert payload["apoc_provenance"]["recorded"] == "inferred"
+    normalized = normalize_study_spec(spec)
     assert "apoc_profile_source" not in normalized["study"]["levels"]
+    with pytest.raises(StudySpecError, match="APOC requires ticks"):
+        validate_study_spec(normalized)
+    with pytest.raises(StudySpecError, match="APOC requires ticks"):
+        expand_study_to_directory(spec, tmp_path)
 
 
 def test_program_b_validator_rejects_wave7_without_manifest_provenance(tmp_path):
@@ -427,8 +426,11 @@ def test_program_b_wave7_identity_hashes_match_pre_ap3_pins():
         levels = spec["study"]["levels"]
         assert "apoc_profile_source" not in levels, path.name
         assert levels["apoc_enabled"] is True, path.name
-        identity = study_identity_hash(validate_study_spec(normalize_study_spec(spec)))
+        normalized = normalize_study_spec(spec)
+        identity = study_identity_hash(normalized)
         assert identity == expected, path
+        with pytest.raises(StudySpecError, match="APOC requires ticks"):
+            validate_study_spec(normalized)
 
 
 def test_program_b_validator_rejects_wave7_disabled_apoc(tmp_path):

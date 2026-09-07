@@ -55,6 +55,7 @@ def parity_run_spec(
             "ema_timeframes": ["1min"],
             "vwap_windows": [],
             "poc_windows": [],
+            "apoc_enabled": False,
         },
         "setup": {
             "name": name,

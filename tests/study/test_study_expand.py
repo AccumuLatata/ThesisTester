@@ -584,7 +584,7 @@ def test_expansion_omits_apoc_provenance_when_spec_is_silent(tmp_path: Path):
     assert payload["study_identity_hash"] == expansion.study_identity_hash
 
 
-def test_expansion_records_inferred_typical_when_apoc_enabled(tmp_path: Path):
+def test_expansion_records_inferred_tick_when_apoc_enabled(tmp_path: Path):
     raw = yaml.safe_load((FIXTURES / "golden_study.yaml").read_text(encoding="utf-8"))
     raw["study"]["levels"]["apoc_enabled"] = True
     normalized = validate_study_spec(normalize_study_spec(raw))
@@ -592,9 +592,9 @@ def test_expansion_records_inferred_typical_when_apoc_enabled(tmp_path: Path):
     expansion = expand_study_to_directory(raw, tmp_path)
     payload = json.loads((tmp_path / "study.expansion.json").read_text(encoding="utf-8"))
     assert payload["apoc_provenance"] == {
-        "apoc_profile_source": "typical_mvp_v1",
-        "apoc_algorithm_version": "typical_mvp_v1",
-        "apoc_object": APOC_OBJECT_LEGACY_TYPICAL,
+        "apoc_profile_source": "tick_last_volume_v1",
+        "apoc_algorithm_version": "tick_last_volume_v1",
+        "apoc_object": APOC_OBJECT_TICK_LAST_VOLUME,
         "recorded": RECORDED_INFERRED,
     }
     assert payload["study_identity_hash"] == identity == expansion.study_identity_hash

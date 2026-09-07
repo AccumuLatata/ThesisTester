@@ -102,13 +102,13 @@ def test_compute_levels_uses_shared_normalizer():
     result = compute_levels(
         _bars(),
         instrument="ES",
-        config={"sma_lengths": [200, 50], "poc_windows": []},
+        config={"sma_lengths": [200, 50], "poc_windows": [], "apoc_enabled": False},
     )
     assert result["levels_settings"] == attach_rolling_poc_identity(
         attach_apoc_identity(
             attach_tick_identity(
                 normalize_levels_config(
-                    {"sma_lengths": [200, 50], "poc_windows": []},
+                    {"sma_lengths": [200, 50], "poc_windows": [], "apoc_enabled": False},
                     instrument="ES",
                 ),
                 tick_source_id=TICK_SOURCE_NONE,
