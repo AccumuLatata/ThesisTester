@@ -12,10 +12,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
 
-from thesistester.levels.apoc_tick import (
-    APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
-    resolve_apoc_profile_source,
-)
 from thesistester.levels.catalog import (
     named_apoc_tokens,
     named_prior_profile_tokens,
@@ -72,6 +68,12 @@ def settings_require_apoc_ticks(
     apoc_profile_source: object | None = None,
 ) -> bool:
     """True when the requested APOC family is the production tick source."""
+    # Lazy import: profile.py → this module must not import apoc_tick at load.
+    from thesistester.levels.apoc_tick import (
+        APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
+        resolve_apoc_profile_source,
+    )
+
     payload = dict(settings or {})
     enabled = payload.get("apoc_enabled") if apoc_enabled is None else apoc_enabled
     if not enabled:
