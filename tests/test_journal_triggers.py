@@ -732,4 +732,7 @@ def test_fade_only_opposite_side_is_direction_inconsistent() -> None:
     labels = decode_trigger_labels(out.iloc[0]["inferred_triggers_1m"])
     assert "fade" in labels
     assert "continuation" not in labels
-    assert out.iloc[0]["trigger_direction_consistent"] is False
+    consistent = out.iloc[0]["trigger_direction_consistent"]
+    assert consistent is not None
+    assert not pd.isna(consistent)
+    assert not bool(consistent)
