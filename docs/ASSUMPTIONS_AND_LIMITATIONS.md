@@ -1364,11 +1364,15 @@ other than the last bar in the dataset.
 
 ## Trade journal (TJ6 — tags are intent, not evidence)
 
-- Tags are what the desk wrote. Attribution is what the already-built 1m
-  levels frame shows at the fill. Alignment is a **distance check** against
-  `tag_tolerance_ticks` (default 10), not a trigger and not proof the tag
-  caused the trade. Unmapped tags (`p30POC`, unknown strings) are kept and
-  counted; they are never dropped.
+- Tags are what the desk wrote. TradesViz `tags` are comma-separated.
+  Level-class tokens are thesis confluence; `ITR` / `CTR` / `ITR-C` /
+  `CTR-R` name the plan horizon; `touch` and `3c` are first-class context
+  (entry style). `3c` is desk-written — journal inference does not emit
+  it. Attribution is what the already-built 1m levels frame shows at the
+  fill. Alignment is a **distance check** against `tag_tolerance_ticks`
+  (default 10), not a trigger and not proof the tag caused the trade.
+  Unmapped tags (`p30POC`, unknown strings) are kept and counted; they
+  are never dropped. Context tags never drive `tag_alignment`.
 - Frozen tokens (`pd*`, `pw*`, `pm*`, `prevSettlement`, `pRTH_*`, overnight
   highs once the session exists) use the 1m bar that **contains** the fill
   (`open <= entry < open+1min`). Developing tokens (`dVWAP` / `dVWAP_RTH` /
