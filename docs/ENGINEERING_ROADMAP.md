@@ -1511,7 +1511,7 @@ unchanged. Product default source is unchanged (`typical_mvp_v1`); no
 `LEVEL_ENGINE_VERSION` bump. Missing tick inputs under the selected source
 emit `NaN`, never legacy typical APOC.
 
-## Rolling POC Quantower parity (RP0–RP2) — RP0 locked
+## Rolling POC Quantower parity (RP0–RP2) — RP0 locked, RP1–RP2 scoped
 
 `POC_rolling_30min` still dumps each derived-1m bar’s volume onto typical
 `(H+L+C)/3` via `_rolling_poc`. That is the same **allocation class** AP1
@@ -1532,9 +1532,11 @@ sliding lookback.
 | RP2-cancel | Docs-only retain typical if the scorecard does not select a source |
 
 **Regression posture:** typical `POC_rolling_*` values and TV3 VA
-omit/fail-closed stay unchanged. Goldens: no regen. Do not reuse
-`PriorProfileTable` or `APeriodTickProfileTable` as a rolling window. Do not
-present 15s bar-range as Quantower-compatible without the RP scorecard.
+omit/fail-closed stay unchanged. Goldens: no regen. Default remains implicit
+typical (no `LEVEL_ENGINE_VERSION` bump). Do not reuse `PriorProfileTable` or
+`APeriodTickProfileTable`. RP2 tick path is two-pointer + lookback overlap,
+not a nested tick scan. Do not present 15s bar-range as Quantower-compatible
+without the RP scorecard.
 
 ## Trade Journal (TJ0–TJ9) — TJ9 landed (series complete)
 
