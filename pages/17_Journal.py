@@ -80,7 +80,7 @@ st.text_input(
 include_small = st.checkbox(
     "Show slices with n < 30",
     key=JOURNAL_INCLUDE_SMALL_N_KEY,
-    help="Q2 slices with n < 30 stay hidden unless this is on. Applies after Load without a second click.",
+    help="Q2 and Q3 Zones rows with n < 30 stay hidden unless this is on. Applies after Load without a second click.",
 )
 load = st.button("Load report")
 

@@ -1400,10 +1400,17 @@ other than the last bar in the dataset.
   Defaults when a key is omitted are study defaults (tolerance 10, min 2,
   max 5) — the code never picks a tolerance that maximises n. Rows of
   different `zone_params_hash` are never averaged.
+- If several engine zones exist on the previous bar, a zone that
+  **contains** the fill is preferred over a tighter foreign cluster whose
+  mid is closer. Closest-mid (then `zone_low`, `level_names`) is the
+  tie-break inside that class, and the pick when no zone contains the
+  fill. Otherwise an in-zone trade can be labelled `below_within_tol` /
+  `above_within_tol` of the wrong family.
 - `approach_side` uses the two completed 15s bars before the fill
-  (`from_above` / `from_below` / `inside` / `unknown`). It is **not** the
+  (`from_above` / `from_below` / `inside` / `unknown`). The earlier bar's
+  close is the approach origin; both bars must exist. It is **not** the
   engine fade `_approach_side` (previous 1m trigger-bar close). Missing
-  15s bars → `unknown`.
+  15s bars → `unknown`. Missing `entry_timestamp` fails closed.
 - `python -m thesistester journal zones` writes `journal_zones.parquet` +
   `zones.json` under `--output-dir`. It refuses `results/studies/` and
   refuses days that are not `reconciled` unless `--allow-unreconciled`.
