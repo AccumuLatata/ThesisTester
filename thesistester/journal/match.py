@@ -459,11 +459,7 @@ def _product_failing(
         failing.append(MISMATCH_RISK)
     journal_trigger = _as_optional_str(journal_row.get("trigger"))
     sys_trigger = _as_optional_str(sys_row.get("trigger"))
-    if (
-        journal_trigger is not None
-        and sys_trigger is not None
-        and journal_trigger != sys_trigger
-    ):
+    if journal_trigger is not None and sys_trigger is not None and journal_trigger != sys_trigger:
         failing.append(MISMATCH_TRIGGER)
     return failing
 
