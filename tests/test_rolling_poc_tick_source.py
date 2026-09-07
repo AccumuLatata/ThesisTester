@@ -22,6 +22,7 @@ from thesistester.levels.rolling_poc_candidates import (
     compare_rolling_poc_candidates,
 )
 from thesistester.levels.rolling_poc_tick import (
+    ROLLING_POC_PROFILE_SOURCES,
     ROLLING_POC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
     attach_rolling_poc_identity,
     compute_rolling_poc_from_ticks,
@@ -33,7 +34,10 @@ from thesistester.levels.tick_vap import (
     build_prior_profile_table_from_paths,
     compute_tick_source_id,
 )
-from thesistester.persistence.local_store import LEVEL_ENGINE_VERSION
+from thesistester.persistence.local_store import (
+    LEVEL_ENGINE_VERSION,
+    compute_levels_settings_hash,
+)
 from thesistester.research_identity import normalize_levels_config
 
 TZ = "America/New_York"
@@ -156,14 +160,16 @@ def _lean_spec(*, bars_name: str, tick_name: str, table_path: str | None = None)
 
 
 def test_omitted_and_explicit_tick_are_the_only_production_source():
+    assert ROLLING_POC_PROFILE_SOURCES == frozenset({TICK_LAST_VOLUME_V1})
     assert resolve_rolling_poc_profile_source(None) == TICK_LAST_VOLUME_V1
     assert resolve_rolling_poc_profile_source("") == TICK_LAST_VOLUME_V1
     assert (
         resolve_rolling_poc_profile_source(TICK_LAST_VOLUME_V1)
         == ROLLING_POC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
     )
-    with pytest.raises(ValueError, match="Unsupported rolling_poc_profile_source"):
-        resolve_rolling_poc_profile_source("typical_mvp_v1")
+    for token in ("typical_mvp_v1", "bar_range_uniform_volume_v1", "typical_mvp_15s_v1"):
+        with pytest.raises(ValueError, match="Unsupported rolling_poc_profile_source"):
+            resolve_rolling_poc_profile_source(token)
     with pytest.raises(ValueError, match="Unsupported rolling_poc_profile_source"):
         compute_profile_levels(
             _competing_hour_bars(),
@@ -323,6 +329,9 @@ def test_identity_ids_differ_from_va_and_apoc(tmp_path):
     assert implicit["rolling_poc_algorithm_version"] == TICK_LAST_VOLUME_V1
     assert implicit["rolling_poc_allocation"] == "last_times_volume"
     assert "rolling_poc_tick_source_id" in implicit
+    pre_rp2 = normalize_levels_config({}, instrument="ES")
+    assert "rolling_poc_algorithm_version" not in pre_rp2
+    assert compute_levels_settings_hash(pre_rp2) != compute_levels_settings_hash(implicit)
 
 
 def test_unrelated_families_isolated_from_rolling_tick_cutover(tmp_path):
@@ -389,6 +398,9 @@ def test_rolling_poc_body_untouched_and_not_called_from_tick_module():
 
     src = inspect.getsource(profile_mod._rolling_poc)
     assert "in_window = (timestamps > start) & (timestamps <= now)" in src
+    production = inspect.getsource(profile_mod.compute_profile_levels)
+    assert "_rolling_poc(" not in production
+    assert "compute_rolling_poc_tick_levels" in production
     impl = inspect.getsource(tick_mod.compute_rolling_poc_from_ticks)
     loader = inspect.getsource(tick_mod.compute_rolling_poc_tick_levels)
     assert "compute_tick_last_volume_profile" not in impl

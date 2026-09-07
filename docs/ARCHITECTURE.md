@@ -1690,7 +1690,7 @@ existing profile settings. Controls inside it:
 `thesistester/levels/defaults.py` is the canonical product configuration used by both the
 Levels page and the headless API: 15-minute opening range; SMA 50/200 and EMA 9/21 on
 `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; NaN without ticks); 70% value area;
-and prior day/week/month profile aggregation of 4/8/10 ticks. All gate values are included
+and prior day/week/month profile aggregation of 1/8/10 ticks. All gate values are included
 in the levels settings object and therefore in the settings hash used for saved snapshot
 matching. `pivot_timeframes` is sorted deterministically alongside the other list-valued
 settings.

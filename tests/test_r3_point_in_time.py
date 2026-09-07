@@ -26,6 +26,7 @@ from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
 from thesistester.engine.signals import generate_signals
 from thesistester.levels import compute_indicator_levels, compute_profile_levels
+from thesistester.levels.rolling_poc_tick import compute_rolling_poc_from_ticks
 from thesistester.levels.session_date import trading_session_date
 from thesistester.levels.sessions import compute_session_levels
 from thesistester.levels.tick_vap import build_prior_profile_table
@@ -500,27 +501,57 @@ def test_prior_week_profile_future_shock():
 
 
 def test_rolling_poc_future_shock():
-    """Rolling POC at bar T must not change when future bars are appended."""
+    """Production tick rolling POC at bar T must not change when future bars/ticks append."""
     bars = _profile_bars(
         "2026-06-02", [4000.0, 4005.0, 4010.0, 4008.0, 4003.0], [100.0, 300.0, 200.0, 400.0, 150.0]
     )
 
     base = _build_df(bars)
     r_base = compute_profile_levels(base, instrument="ES", rolling_windows=["1h"])
+    assert r_base["POC_rolling_1h"].isna().all()
 
     T = base["timestamp"].iloc[-1]
     poc_before = r_base["POC_rolling_1h"].tolist()
 
-    # Append extreme future bars
     future = _extreme_future_bars(T, n=5)
     extended = _build_df(bars + future)
     r_ext = compute_profile_levels(extended, instrument="ES", rolling_windows=["1h"])
-
-    # Bars up to T (first len(bars) rows)
     poc_after = r_ext["POC_rolling_1h"].iloc[: len(bars)].tolist()
-
     assert poc_before == pytest.approx(poc_after, nan_ok=True), (
         "Rolling POC values before T changed after future bars appended"
+    )
+
+    ticks = pd.DataFrame(
+        {
+            "timestamp": [ts + pd.Timedelta(seconds=30) for ts in base["timestamp"]],
+            "price": base["close"].to_numpy(dtype="float64"),
+            "volume": base["volume"].to_numpy(dtype="float64"),
+        }
+    )
+    tick_base, _ = compute_rolling_poc_from_ticks(
+        base, ticks, windows=["1h"], tick_size=TICK
+    )
+    assert tick_base["POC_rolling_1h"].notna().any()
+    future_ticks = pd.concat(
+        [
+            ticks,
+            pd.DataFrame(
+                {
+                    "timestamp": [extended["timestamp"].iloc[-1] + pd.Timedelta(seconds=15)],
+                    "price": [99999.0],
+                    "volume": [9_999_999.0],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    tick_ext, _ = compute_rolling_poc_from_ticks(
+        extended, future_ticks, windows=["1h"], tick_size=TICK
+    )
+    pd.testing.assert_series_equal(
+        tick_base["POC_rolling_1h"],
+        tick_ext["POC_rolling_1h"].iloc[: len(bars)],
+        check_names=False,
     )
 
 

@@ -122,7 +122,7 @@ members = 30 bars `09:30…09:59`, `APOC` is **NaN**; 10:00 members =
 | Lookback hardcoded 30min | Product `poc_windows=["30min"]`; library `rolling_windows=None` → `DEFAULT_ROLLING_POC_WINDOWS` = `30min`/`1h`/`4h` | Tick lookback buffer = `max(requested windows)`. Do not hardcode 30min |
 | Identity strip only in `api.py` | `LEVELS_APOC_IDENTITY_KEYS` are stripped in `api.py`, `research_identity.py`, and `classic_export.py` | New `LEVELS_ROLLING_POC_IDENTITY_KEYS` must be stripped in **all three**. Add `rolling_poc_profile_source` to `OPTIONAL_LEVELS_SETTINGS` |
 | Per-bar `compute_tick_last_volume_profile` as the two-pointer | Helper scans one window; calling it per 1m bar is `O(bars × ticks_in_window)` | RP2 two-pointer maintains `bin → volume` incrementally. Helper is RP1/oracle + sampled-stamp equality only |
-| §6 “RP2 = ticks only” vs §4.3 bar-proxy select | Selectable production tokens are tick **or** 1m `bar_range_uniform_volume_v1` | RP2 implements the **one** §4.3 token. RP2-cancel if nothing / Session / Step / TPO / 15s typical |
+| §6 “RP2 = ticks only” vs §4.3 bar-proxy select | Pre-amendment tension: selectable tokens were tick **or** 1m `bar_range_uniform_volume_v1` | **Superseded 2026-09-07.** Only `tick_last_volume_v1` is a production token. Do **not** open RP2-cancel. Bar-proxy stays comparator-only. |
 
 Do not reopen `_rolling_poc` math, TV3 omit/fail-closed, AP2 APOC source, goldens, or `LEVEL_ENGINE_VERSION` (stays **11**) from an RP PR.
 
@@ -255,6 +255,11 @@ template stay fixed inside the comparison set.
 
 ### 4.3 Source-selection gate (predeclared)
 
+> **Superseded by §4.3 Result (desk amendment 2026-09-07).** The 8/10 QT
+> gate below was not collectable (no sliding-widget oracle). Failure-mode
+> “retain typical / open RP2-cancel” is **not** in force. Production
+> default is `tick_last_volume_v1`. Historical protocol kept for audit.
+
 Per stamp, a candidate **hits** if `|poc - qt| ≤ 1 MNQ tick` (`0.25`).
 
 Written threshold **before** looking at aggregates. Gate set = **exactly
@@ -268,8 +273,9 @@ diagnostic and do not enter the 8/10 count):
   The selectable bar token is 1m `bar_range_uniform_volume_v1` only.
 - **No cutover** if no candidate meets 8/10, or if the Quantower tool is
   Session-developing / Step-brick / TPO rather than a sliding 30m VAP.
-- Failure mode: retain documented typical rolling POC; open a bounded
-  settings/window investigation. Do not change `LEVEL_ENGINE_VERSION`.
+- Failure mode *(superseded)*: retain documented typical rolling POC; open
+  a bounded settings/window investigation. Do not change
+  `LEVEL_ENGINE_VERSION`.
 - `typical_mvp_15s_v1` is never a production source (would put 15s into
   `compute_profile_levels`).
 
@@ -291,7 +297,7 @@ Quantower hit. Do not compare to the 09:59 `APOC` column (NaN).
 
 **Go / no-go line:** **No QT cutover table.** Select **`tick_last_volume_v1` as the default production source** (desk amendment). Do **not** open RP2-cancel. Do **not** retain typical as product default.
 
-## 5. Implementation architecture (locked; RP2 implements only if §4.3 selects)
+## 5. Implementation architecture (locked; RP2 ships desk-selected tick default)
 
 RP2 implements **exactly one** production source: desk-selected
 `tick_last_volume_v1` as the **default**. Typical / bar-proxy are not
@@ -451,8 +457,9 @@ before merge — do not ship nested scans.
 
 ## 7. Fully scoped PR series
 
-Merge order: **RP0 → RP1 → RP1g → (RP2 | RP2-cancel)**. Do not combine RP1
-with RP2. Do not open RP2 and RP1g in parallel.
+Merge order: **RP0 → RP1 → RP1g → RP2**. RP2-cancel was **not opened**
+(exclusive alternative superseded by the desk amendment). Do not combine
+RP1 with RP2. Do not open RP2 and RP1g in parallel.
 
 ### RP0 — plan lock
 
@@ -498,8 +505,10 @@ helper is unchanged.
 Verified on the competing-mode fixture (complete 09:30–10:29 1m grid; unique
 typical per minute; A-period mode at 09:45; competing mode at 10:00):
 
-- Typical candidate equals production `POC_rolling_30min` at the sampled stamp
-  (09:59 → 103.75; 10:00 → 200.00).
+- Typical candidate equals then-production (pre-RP2) `POC_rolling_30min` /
+  dead helper `_rolling_poc` at the sampled stamp (09:59 → 103.75;
+  10:00 → 200.00). After RP2, production without ticks is all-NaN; typical
+  is not the product path.
 - 09:59 members == A-period bars (`[09:30, 10:00)` / 09:30…09:59). Typical
   rolling equals `_compute_a_period_poc(members)` and equals `APOC` at
   **10:00**. 09:59 `APOC` is NaN and is not the overlap check.
@@ -565,10 +574,12 @@ APOC library default remains typical (desk wants that flipped next).
 
 ### RP2-cancel — retain typical (docs only; exclusive with RP2; **not opened**)
 
+Not executed. Living docs state the tick default, not typical.
+
 | Field | Scope |
 |---|---|
 | Title | `RP2-cancel: retain typical rolling POC` |
-| Files | This plan status; honesty one-liners in `ASSUMPTIONS_AND_LIMITATIONS.md` / `METRICS_GLOSSARY.md` / `POINT_IN_TIME_GUARANTEES.md` stating rolling POC remains 1m typical and is not Quantower sliding VAP |
+| Files | Would have written honesty one-liners that rolling POC remains 1m typical. **Do not apply** — superseded by RP2. |
 | Behavior | No engine change. Use when §4.3 selects nothing / Session / Step / TPO / 15s typical |
 | Forbidden | Quietly shipping a bar proxy under the old name; treating 15s typical as production |
 
@@ -577,6 +588,10 @@ APOC library default remains typical (desk wants that flipped next).
 ## 8. Per-PR acceptance tests
 
 ### 8.1 RP1
+
+Historical RP1 gate. After RP2, production `POC_rolling_*` without ticks is
+all-NaN; typical equality is vs dead helper `_rolling_poc`, not the product
+column.
 
 Must pass:
 
