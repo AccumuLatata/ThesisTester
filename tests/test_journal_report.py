@@ -471,6 +471,8 @@ def test_journal_page_ast_and_contract() -> None:
     assert "Q8 · Forward ledger" in source
     assert "**Zones**" in source
     assert "journal_zones.parquet" in source
+    assert "**Inferred trigger**" in source
+    assert "journal_triggers.parquet" in source
     assert "Show slices with n < 30" in source
     assert "REPORT_HONESTY" in source
     assert "journal_store_dir" in source
