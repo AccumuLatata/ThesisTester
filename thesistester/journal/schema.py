@@ -1,4 +1,4 @@
-"""Journal typed records (TJ1–TJ9).
+"""Journal typed records (TJ1–TJ9, JS1 zones).
 
 Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
@@ -229,6 +229,50 @@ RESOLUTION_UNJOINED: Final[str] = "unjoined"
 RESOLUTION_MIXED: Final[str] = "mixed"
 RECON_UNKNOWN: Final[str] = "unknown"
 REPORT_TABLE_META: Final[tuple[str, ...]] = ("n", "resolution", "recon_status")
+
+# --- zone attribution (JS1) ---
+ZONE_REL_INSIDE: Final[str] = "inside"
+ZONE_REL_ABOVE: Final[str] = "above_within_tol"
+ZONE_REL_BELOW: Final[str] = "below_within_tol"
+ZONE_REL_NONE: Final[str] = "no_zone"
+ZONE_RELATIONS: Final[frozenset[str]] = frozenset(
+    {ZONE_REL_INSIDE, ZONE_REL_ABOVE, ZONE_REL_BELOW, ZONE_REL_NONE}
+)
+APPROACH_FROM_ABOVE: Final[str] = "from_above"
+APPROACH_FROM_BELOW: Final[str] = "from_below"
+APPROACH_INSIDE: Final[str] = "inside"
+APPROACH_UNKNOWN: Final[str] = "unknown"
+APPROACH_SIDES: Final[frozenset[str]] = frozenset(
+    {APPROACH_FROM_ABOVE, APPROACH_FROM_BELOW, APPROACH_INSIDE, APPROACH_UNKNOWN}
+)
+DEFAULT_ZONE_TOLERANCE_TICKS: Final[float] = 10.0
+DEFAULT_ZONE_MIN_CONFLUENCES: Final[int] = 2
+DEFAULT_ZONE_MAX_CONFLUENCES: Final[int] = 5
+ZONE_WIDTH_LE_2: Final[str] = "<=2t"
+ZONE_WIDTH_3_4: Final[str] = "3-4t"
+ZONE_WIDTH_GE_5: Final[str] = "5+t"
+ZONE_COUNT_1: Final[str] = "1"
+ZONE_COUNT_2: Final[str] = "2"
+ZONE_COUNT_3: Final[str] = "3"
+ZONE_COUNT_4_PLUS: Final[str] = "4+"
+ZONES_HONESTY: Final[str] = (
+    "zone = detect_confluence_zones on the 1m bar completed before the "
+    "fill; parameters declared (not searched); journal is not a study cell."
+)
+ZONE_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
+    "zone_params_hash",
+    "zone_id",
+    "zone_low",
+    "zone_high",
+    "zone_mid",
+    "zone_width_ticks",
+    "zone_level_count",
+    "zone_level_names",
+    "entry_zone_relation",
+    "entry_offset_ticks",
+    "approach_side",
+    "nearest_zone_distance_ticks",
+)
 
 
 class JournalIngestError(ValueError):

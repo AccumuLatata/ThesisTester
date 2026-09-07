@@ -1385,6 +1385,37 @@ other than the last bar in the dataset.
   It refuses `results/studies/` and refuses days that are not `reconciled`
   unless `--allow-unreconciled`.
 
+## Journal → Study (JS1 — zone attribution; declared params)
+
+- Zone attribution is **not** TJ6 token-near. JS1 calls
+  `detect_confluence_zones` on the last 1m bar with
+  `bar_open + 1min <= entry_timestamp` (timestamps are bar opens). A fill
+  at exactly `09:30:00` uses the `09:29` bar. JS1 does **not** call TJ6
+  `_expected_previous_open` (that helper returns `09:28` at an exact
+  minute fill). The containing minute is never used. A gap omits the zone
+  (`no_zone`) rather than walking back to a stale stamp. Frozen and
+  developing tokens share that one previous-bar snapshot.
+- Zone parameters (`level_columns`, `tolerance_ticks`, `min_confluences`,
+  `max_confluences`) are a **declared file**, hashed, not searched.
+  Defaults when a key is omitted are study defaults (tolerance 10, min 2,
+  max 5) — the code never picks a tolerance that maximises n. Rows of
+  different `zone_params_hash` are never averaged.
+- If several engine zones exist on the previous bar, a zone that
+  **contains** the fill is preferred over a tighter foreign cluster whose
+  mid is closer. Closest-mid (then `zone_low`, `level_names`) is the
+  tie-break inside that class, and the pick when no zone contains the
+  fill. Otherwise an in-zone trade can be labelled `below_within_tol` /
+  `above_within_tol` of the wrong family.
+- `approach_side` uses the two completed 15s bars before the fill
+  (`from_above` / `from_below` / `inside` / `unknown`). The earlier bar's
+  close is the approach origin; both bars must exist. It is **not** the
+  engine fade `_approach_side` (previous 1m trigger-bar close). Missing
+  15s bars → `unknown`. Missing `entry_timestamp` fails closed.
+- `python -m thesistester journal zones` writes `journal_zones.parquet` +
+  `zones.json` under `--output-dir`. It refuses `results/studies/` and
+  refuses days that are not `reconciled` unless `--allow-unreconciled`.
+  Page 17 Q3 **Zones** omits when the file is missing.
+
 ## Trade journal (TJ7 — own-entry counterfactuals; no slippage)
 
 - Counterfactuals assume fills at the bar or Last-print price. There is **no

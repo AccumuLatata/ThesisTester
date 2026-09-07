@@ -727,6 +727,18 @@ Journal trades are **not** study cells. These quantities live on
 Point values are MNQ $2 / MES $5; tick 0.25. Engine `simulate_trades` is 1-lot
 — do not copy those formulas onto journal rows.
 
+## Trade journal metrics (JS1)
+
+JS1 zone columns are **not** TJ6 token-near. They come from `detect_confluence_zones` on the previous completed 1m bar.
+
+| Key | Definition |
+|---|---|
+| `zone_params_hash` | SHA-256 of the declared payload (`level_columns` + `tolerance_ticks` + `min_confluences` + `max_confluences`). Rows of different hashes are never averaged. |
+| `zone_id` | `session_date:bar_ts:zone_low:zone_high` for `inside` / within-tol. Null when `no_zone`. |
+| `zone_width_ticks` | `(zone_high − zone_low) / tick_size` on that previous 1m bar. |
+| `entry_zone_relation` | `inside` (`zone_low ≤ entry ≤ zone_high`), `above_within_tol` / `below_within_tol` (same declared `tolerance_ticks` of the near edge), or `no_zone`. A **containing** zone wins over a closer foreign mid; else nearest mid (tie: `zone_low`, `level_names`). Not TJ6 `level_context`. |
+| `nearest_zone_distance_ticks` | Absolute `\|entry − zone_mid\| / tick_size` when `no_zone` and a zone exists on that bar; else null. |
+
 ## Trade journal metrics (TJ8)
 
 Named-cell match is not a study rank key and does not rewrite `results_index`.

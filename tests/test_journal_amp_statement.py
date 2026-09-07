@@ -195,6 +195,11 @@ def test_pdfplumber_import_is_confined_to_amp_module():
             assert "import pdfplumber" in source
             continue
         assert "pdfplumber" not in source
+        if path.name == "zones.py":
+            assert "from thesistester.engine.confluence import detect_confluence_zones" in source
+            assert "from thesistester.engine.backtest" not in source
+            assert "from thesistester.engine.signals" not in source
+            continue
         assert "from thesistester.engine" not in source
 
 

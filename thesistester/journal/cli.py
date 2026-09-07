@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester journal …`` (TJ4 / TJ6 / TJ7 / TJ8 / TJ9)."""
+"""CLI handlers for ``python -m thesistester journal …`` (TJ4–TJ9 / JS1)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from thesistester.journal.levels import attribute_files
 from thesistester.journal.match import match_files
 from thesistester.journal.reconcile import reconcile_files
 from thesistester.journal.report import report_files
+from thesistester.journal.zones import zone_files
 from thesistester.journal.schema import (
     DEFAULT_CF_K,
     DEFAULT_CF_SEED,
@@ -238,6 +239,48 @@ def add_journal_subparser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Allow days that are not reconciled (default: refuse)",
     )
+    zones_parser = journal_sub.add_parser(
+        "zones",
+        help="Attribute journal entries to engine confluence zones on the previous completed 1m bar",
+    )
+    zones_parser.add_argument(
+        "--trades",
+        type=Path,
+        required=True,
+        help="Journal trades parquet/CSV (typically journal_trades.parquet "
+        "or journal_attribution.parquet)",
+    )
+    zones_parser.add_argument(
+        "--levels",
+        type=Path,
+        required=True,
+        help="Already-built 1-minute levels frame (parquet/CSV). Not recomputed",
+    )
+    zones_parser.add_argument(
+        "--zone-params",
+        type=Path,
+        required=True,
+        help="Declared zone parameters YAML/JSON (level_columns + tolerance; not searched)",
+    )
+    zones_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="Output directory for journal_zones.parquet + zones.json "
+        "(must not be results/studies/)",
+    )
+    zones_parser.add_argument(
+        "--bars",
+        type=Path,
+        default=None,
+        help="Optional already-loaded 15s OHLCV for approach_side "
+        "(two completed 15s bars before the fill)",
+    )
+    zones_parser.add_argument(
+        "--allow-unreconciled",
+        action="store_true",
+        help="Allow days that are not reconciled (default: refuse)",
+    )
     report_parser = journal_sub.add_parser(
         "report",
         help="Build the Q1–Q8 journal report from ingested journal/v1 artifacts",
@@ -262,7 +305,7 @@ def add_journal_subparser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def dispatch_journal(args: argparse.Namespace) -> int:
-    """Dispatch journal reconcile / attribute / counterfactual / match / report."""
+    """Dispatch journal reconcile / attribute / zones / counterfactual / match / report."""
     if args.journal_command == "reconcile":
         try:
             paths = reconcile_files(
@@ -334,6 +377,22 @@ def dispatch_journal(args: argparse.Namespace) -> int:
             return 2
         print(f"Wrote {paths['journal_matches.parquet']}")
         print(f"      {paths['match.json']}")
+        return 0
+    if args.journal_command == "zones":
+        try:
+            paths = zone_files(
+                trades=args.trades,
+                levels=args.levels,
+                zone_params=args.zone_params,
+                output_dir=args.output_dir,
+                bars=args.bars,
+                allow_unreconciled=bool(args.allow_unreconciled),
+            )
+        except (JournalIngestError, ValueError) as exc:
+            print(f"journal zones failed: {exc}")
+            return 2
+        print(f"Wrote {paths['journal_zones.parquet']}")
+        print(f"      {paths['zones.json']}")
         return 0
     if args.journal_command == "report":
         try:

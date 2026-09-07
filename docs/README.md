@@ -28,7 +28,7 @@ research snapshots live under [`research/`](research/README.md).
 | [ANCHOR_CONFLUENCE.md](ANCHOR_CONFLUENCE.md) | Anchor-confluence workflow guide |
 | [VOICE_SIDECAR_OPS.md](VOICE_SIDECAR_OPS.md) | Localhost realtime voice sidecar ops |
 | [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) | TJ — TradesViz+AMP journal; **TJ9 landed**; `session_date` is CME `trading_session_date` |
-| [JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md](JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md) | JS — journal zones / trigger inference / StudySpec proposal; **JS0 locked** (rev 2); Gate A can stop after JS2 |
+| [JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md](JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md) | JS — journal zones / trigger inference / StudySpec proposal; **JS1 landed**; Gate A can stop after JS2 |
 | [SIMULATE_PERF.md](SIMULATE_PERF.md) · [CAI_BASELINE.md](CAI_BASELINE.md) | Informational performance baselines |
 
 ## Normative contracts (complete — amend carefully)
@@ -69,7 +69,7 @@ Engine / data contracts:
 - [TICK_VAP_IMPLEMENTATION_PLAN.md](TICK_VAP_IMPLEMENTATION_PLAN.md) (TV — Quantower tick-last ingest for prior VA/POC only; **TV1–TV4 landed**; series complete; fail-closed without ticks; no golden regen)
 - [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) (AP — Quantower A-period POC parity; **AP3 implemented**; default `typical_mvp_v1`, opt-in `tick_last_volume_v1`; Wave 7 labeled legacy typical-price)
 - [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) (TJ — TradesViz executions (UTC, `spread_id`, tags) + AMP EOD statement → journal trades + recon + level attribution / tag verification + own-entry counterfactuals (bracket replay, direction null, declared rules) + named-cell match / forward ledger + page 17 report; **TJ9 landed**; no engine/golden touch)
-- [JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md](JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md) (JS — zone attribution + engine-trigger inference + frequency-selected `explicit_cells` StudySpec with `holdout` + rule-vs-desk; **JS0 locked** (rev 2); no 15s trigger lane; no golden regen; no independent cartesian)
+- [JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md](JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md) (JS — zone attribution + engine-trigger inference + frequency-selected `explicit_cells` StudySpec with `holdout` + rule-vs-desk; **JS1 landed**; no 15s trigger lane; no golden regen; no independent cartesian)
 
 ## Research (demoted snapshots)
 

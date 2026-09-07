@@ -30,6 +30,15 @@ from thesistester.journal.schema import (
     RECON_UNKNOWN,
     REPORT_HONESTY,
     REPORT_MIN_N,
+    ZONE_COUNT_1,
+    ZONE_COUNT_2,
+    ZONE_COUNT_3,
+    ZONE_COUNT_4_PLUS,
+    ZONE_REL_NONE,
+    ZONE_WIDTH_3_4,
+    ZONE_WIDTH_GE_5,
+    ZONE_WIDTH_LE_2,
+    ZONES_HONESTY,
     REPORT_SLICE_DAY_INTENSITY,
     REPORT_SLICE_DIRECTION,
     REPORT_SLICE_HOLD,
@@ -47,6 +56,8 @@ COUNTERFACTUAL_PARQUET: str = "journal_counterfactuals.parquet"
 COUNTERFACTUAL_JSON: str = "counterfactual.json"
 MATCHES_PARQUET: str = "journal_matches.parquet"
 MATCH_JSON: str = "match.json"
+ZONES_PARQUET: str = "journal_zones.parquet"
+ZONES_JSON: str = "zones.json"
 REPORT_JSON: str = "report.json"
 
 _DAY_INTENSITY_THRESHOLD: int = 60
@@ -66,6 +77,8 @@ class JournalArtifacts:
     counterfactual_payload: dict[str, object] | None
     matches: pd.DataFrame | None
     match_payload: dict[str, object] | None
+    zones: pd.DataFrame | None = None
+    zone_payload: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +94,10 @@ class JournalReport:
     q3_levels: pd.DataFrame
     q3_context: pd.DataFrame
     q3_tags: pd.DataFrame
+    q3_zones_count: pd.DataFrame
+    q3_zones_width: pd.DataFrame
+    q3_zones_relation: pd.DataFrame
+    q3_zones_names: pd.DataFrame
     q4_brackets: pd.DataFrame
     q5_null: dict[str, object]
     q6_rules: pd.DataFrame
@@ -113,6 +130,8 @@ def load_journal_artifacts(journal_dir: str | Path) -> JournalArtifacts:
         counterfactual_payload=_optional_json(root / COUNTERFACTUAL_JSON),
         matches=_optional_table(root / MATCHES_PARQUET),
         match_payload=_optional_json(root / MATCH_JSON),
+        zones=_optional_table(root / ZONES_PARQUET),
+        zone_payload=_optional_json(root / ZONES_JSON),
     )
 
 
@@ -124,6 +143,8 @@ def build_journal_report(
     counterfactual_payload: Mapping[str, object] | None = None,
     matches: pd.DataFrame | None = None,
     match_payload: Mapping[str, object] | None = None,
+    zones: pd.DataFrame | None = None,
+    zone_payload: Mapping[str, object] | None = None,
     include_small_n: bool = False,
 ) -> JournalReport:
     """Build Q1–Q8 tables. Keyword-only after ``trades``. Default hides n < 30."""
@@ -133,12 +154,16 @@ def build_journal_report(
     q1 = _q1_days(work)
     slices, hidden = _q2_slices(work, include_small_n=include_small_n)
     q3_levels, q3_context, q3_tags = _q3_attribution(work, attribution)
+    q3_count, q3_width, q3_relation, q3_names = _q3_zones(
+        work, zones, include_small_n=include_small_n
+    )
     q4, q5, q6 = _q4_q6(counterfactual_payload, counterfactuals)
     q7, q8 = _q7_q8(matches, match_payload)
     captions = {
         "q1": "Per-trade dollar-ticks are qty-scaled. Break-even gross/trade is mean fee_ticks.",
         "q2": "Hold-time cuts are outcome-conditioned (losers cut fast). n < 30 hidden unless toggled.",
         "q3": "Tags are trader intent. Alignment is a distance check, not a trigger.",
+        "q3_zones": ZONES_HONESTY,
         "q4": "three brackets were looked at (not a single pre-registered test); no slippage model.",
         "q5": "Direction-shuffle preserves per-session long/short counts. Seeded. Not a global sign flip.",
         "q6": "Rules are declared, never searched. in_sample and forward are never blended.",
@@ -164,12 +189,17 @@ def build_journal_report(
             "attribution": attribution is not None,
             "counterfactual": counterfactual_payload is not None or counterfactuals is not None,
             "match": match_payload is not None or matches is not None,
+            "zones": zones is not None or zone_payload is not None,
         },
         q1_days=q1,
         q2_slices=slices,
         q3_levels=q3_levels,
         q3_context=q3_context,
         q3_tags=q3_tags,
+        q3_zones_count=q3_count,
+        q3_zones_width=q3_width,
+        q3_zones_relation=q3_relation,
+        q3_zones_names=q3_names,
         q4_brackets=q4,
         q5_null=q5,
         q6_rules=q6,
@@ -213,6 +243,8 @@ def report_from_artifacts(
         counterfactual_payload=artifacts.counterfactual_payload,
         matches=artifacts.matches,
         match_payload=artifacts.match_payload,
+        zones=artifacts.zones,
+        zone_payload=artifacts.zone_payload,
         include_small_n=include_small_n,
     )
 
@@ -392,6 +424,142 @@ def _q3_attribution(
     context = _count_groups(work, "level_context", context_cols)
     tags = _tag_groups(work, tag_cols)
     return levels, context, tags
+
+
+def _q3_zones(
+    trades: pd.DataFrame,
+    zones: pd.DataFrame | None,
+    *,
+    include_small_n: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    meta_cols = ["n", "mean_net_ticks", "resolution", "recon_status", "zone_params_hash"]
+    count_cols = ["zone_level_count", *meta_cols]
+    width_cols = ["zone_width_bucket", *meta_cols]
+    relation_cols = ["entry_zone_relation", *meta_cols]
+    names_cols = ["zone_level_names", *meta_cols]
+    empty = (
+        pd.DataFrame(columns=count_cols),
+        pd.DataFrame(columns=width_cols),
+        pd.DataFrame(columns=relation_cols),
+        pd.DataFrame(columns=names_cols),
+    )
+    if zones is None or not isinstance(zones, pd.DataFrame) or zones.empty:
+        return empty
+    work = zones.copy()
+    if "trade_id" in work.columns and not trades.empty and "trade_id" in trades.columns:
+        keep = [
+            column
+            for column in ("trade_id", "resolution", "recon_status", "net_ticks")
+            if column in trades.columns
+        ]
+        meta = trades[keep].drop_duplicates("trade_id")
+        work["trade_id"] = work["trade_id"].map(str)
+        work = work.merge(meta, on="trade_id", how="left", suffixes=("", "_trade"))
+        work["resolution"] = _coalesce_meta(work, "resolution", default=RESOLUTION_UNJOINED)
+        work["recon_status"] = _coalesce_meta(work, "recon_status", default=RECON_UNKNOWN)
+        if "net_ticks" not in work.columns or work["net_ticks"].isna().all():
+            if "net_ticks_trade" in work.columns:
+                work["net_ticks"] = work["net_ticks_trade"]
+    if "resolution" not in work.columns:
+        work["resolution"] = RESOLUTION_UNJOINED
+    if "recon_status" not in work.columns:
+        work["recon_status"] = RECON_UNKNOWN
+    work["resolution"] = work["resolution"].map(_as_resolution)
+    work["recon_status"] = work["recon_status"].map(_as_recon)
+    if "zone_params_hash" not in work.columns:
+        work["zone_params_hash"] = ""
+    if "net_ticks" not in work.columns:
+        work["net_ticks"] = None
+    work["net_ticks"] = work["net_ticks"].map(_optional_float)
+    if "zone_width_ticks" in work.columns:
+        work["zone_width_bucket"] = work["zone_width_ticks"].map(_zone_width_bucket)
+    else:
+        work["zone_width_bucket"] = None
+    if "zone_level_count" in work.columns:
+        work["zone_level_count"] = work["zone_level_count"].map(_zone_count_bucket)
+    else:
+        work["zone_level_count"] = None
+    if "entry_zone_relation" not in work.columns:
+        work["entry_zone_relation"] = None
+    attributed = work.loc[work["entry_zone_relation"].map(_is_attributed_zone)].copy()
+    count = _zone_groups(
+        attributed, "zone_level_count", count_cols, include_small_n=include_small_n
+    )
+    width = _zone_groups(
+        attributed, "zone_width_bucket", width_cols, include_small_n=include_small_n
+    )
+    relation = _zone_groups(
+        work, "entry_zone_relation", relation_cols, include_small_n=include_small_n
+    )
+    names = _zone_groups(
+        attributed, "zone_level_names", names_cols, include_small_n=include_small_n
+    )
+    return count, width, relation, names
+
+
+def _zone_groups(
+    frame: pd.DataFrame,
+    column: str,
+    columns: list[str],
+    *,
+    include_small_n: bool,
+) -> pd.DataFrame:
+    if column not in frame.columns or frame.empty:
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, object]] = []
+    grouped = frame.groupby([column, "zone_params_hash"], sort=True, dropna=False)
+    for (value, digest), group in grouped:
+        if _is_missing(value):
+            continue
+        n_value = int(len(group))
+        if n_value < REPORT_MIN_N and not include_small_n:
+            continue
+        rows.append(
+            {
+                column: str(value),
+                "n": n_value,
+                "mean_net_ticks": _mean(group.get("net_ticks")),
+                "resolution": _unique_or_mixed(group["resolution"]),
+                "recon_status": _unique_or_mixed(group["recon_status"]),
+                "zone_params_hash": str(digest or ""),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _zone_width_bucket(value: object) -> str | None:
+    width = _optional_float(value)
+    if width is None:
+        return None
+    if width <= 2:
+        return ZONE_WIDTH_LE_2
+    if width <= 4:
+        return ZONE_WIDTH_3_4
+    return ZONE_WIDTH_GE_5
+
+
+def _zone_count_bucket(value: object) -> str | None:
+    if _is_missing(value):
+        return None
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    if count == 1:
+        return ZONE_COUNT_1
+    if count == 2:
+        return ZONE_COUNT_2
+    if count == 3:
+        return ZONE_COUNT_3
+    if count >= 4:
+        return ZONE_COUNT_4_PLUS
+    return None
+
+
+def _is_attributed_zone(value: object) -> bool:
+    if _is_missing(value):
+        return False
+    return str(value) != ZONE_REL_NONE
 
 
 def _q4_q6(
@@ -635,6 +803,10 @@ def _report_payload(report: JournalReport) -> dict[str, object]:
         "q3_levels": _records(report.q3_levels),
         "q3_context": _records(report.q3_context),
         "q3_tags": _records(report.q3_tags),
+        "q3_zones_count": _records(report.q3_zones_count),
+        "q3_zones_width": _records(report.q3_zones_width),
+        "q3_zones_relation": _records(report.q3_zones_relation),
+        "q3_zones_names": _records(report.q3_zones_names),
         "q4_brackets": _records(report.q4_brackets),
         "q5_null": {key: _jsonable(value) for key, value in report.q5_null.items()},
         "q6_rules": _records(report.q6_rules),
