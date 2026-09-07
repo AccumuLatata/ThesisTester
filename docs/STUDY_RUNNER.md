@@ -142,7 +142,9 @@ A core/partner token is valid if it is in:
    (`STATIC_STUDY_LEVEL_NAMES` in `thesistester/levels/catalog.py`;
    `STUDY_STATIC_LEVEL_NAMES` is that set). Rolling VWAP/POC are not static.
    Naming any of those nine VA tokens without `dataset.tick_paths` fails
-   generate (`VA requires ticks`). The tokens stay in the catalog.
+   generate (`VA requires ticks`). Named `APOC` / `pAPOC` refuse
+   (`APOC requires ticks`); named `POC_rolling_*` refuse
+   (`rolling POC requires ticks`). The tokens stay in the catalog.
 2. **Implied by `study.levels`** — `SMA_{len}_{tf}` / `EMA_{len}_{tf}` from
    lengths×timeframes (`null` timeframes → bare `SMA_{len}` / `EMA_{len}` like
    the levels engine; explicit `[]` → no MA tokens), plus `VWAP_rolling_*` /

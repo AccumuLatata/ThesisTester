@@ -391,12 +391,12 @@ This engine is for **research screening**, not proof of a durable edge.
 - `APOC` and `pAPOC` are **profile / POC levels**, not Single Print levels. They are implemented in `thesistester/levels/apoc.py` and are independent of `tpo.py`.
 - `APOC` = POC of the first completed RTH 30-minute bracket (the A-period). Not derived from Single Prints.
 - `pAPOC` = prior completed RTH session's APOC. Frozen at the start of the new RTH session.
-- `apoc_profile_source` is a keyword-only versioned token. Library and product default is `typical_mvp_v1` (legacy typical-price). `tick_last_volume_v1` is the AP1-selected Quantower source and is **explicit opt-in**. A 15s bar-range proxy is not a production source.
-- The Levels page and headless API enable APOC / pAPOC in their built-in configuration with the typical default. Direct `compute_all_levels` calls retain `apoc_enabled=False` by default.
+- `apoc_profile_source` is a keyword-only versioned token. Library and product default is `tick_last_volume_v1` (Quantower Tick–Tick–Last Last×Volume). Omitted key is **not** typical. Explicit `typical_mvp_v1` is a non-default historical token. A 15s bar-range proxy is not a production source.
+- The Levels page and headless API enable APOC / pAPOC in their built-in configuration with the tick default. Direct `compute_all_levels` calls retain `apoc_enabled=False` by default.
 - `apoc_enabled=False` is a true no-op: no validation, no source checks, no new columns, no timestamp checks.
-- `typical_mvp_v1`: `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max).
-- `tick_last_volume_v1`: Quantower Tick–Tick–Last Last×Volume prints inside `[RTH_open, RTH_open + 30 min)` in exchange time, keyed by RTH session date. Histogram math is `apoc_candidates.compute_tick_last_volume_profile`. Full-session `PriorProfileTable` is not a substitute. `run_experiment` still forwards `dataset.tick_paths` to the A-period table when a prior-VA parquet is also present. Missing, malformed, off-grid, or incomplete tick inputs emit `NaN`; they never fall back to typical while this source is selected.
-- Implicit typical (key omitted) keeps the pre-AP2 settings hash. When `apoc_profile_source` is explicit, settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). Product default algorithm is unchanged; `LEVEL_ENGINE_VERSION` stays 11.
+- `tick_last_volume_v1` (default): Quantower Tick–Tick–Last Last×Volume prints inside `[RTH_open, RTH_open + 30 min)` in exchange time, keyed by RTH session date. Histogram math is `apoc_candidates.compute_tick_last_volume_profile`. Full-session `PriorProfileTable` is not a substitute. `run_experiment` still forwards `dataset.tick_paths` to the A-period table when a prior-VA parquet is also present. Missing or empty `tick_paths` refuse (`APOC requires ticks`) when APOC is enabled. Unsound prints emit `NaN`; they never fall back to typical.
+- `typical_mvp_v1` (explicit historical token only): `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max). Not a silent fallback when the tick source is active/default.
+- Identity always stamps tick APOC (omitted key = `tick_last_volume_v1`). Settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). `LEVEL_ENGINE_VERSION` stays 11.
 - Program B Wave 7 packets omit `apoc_profile_source` and are labeled
   `legacy_typical_price` on the 15s manifest. Fresh `study.expansion.json`
   writes an additive `apoc_provenance` sidecar when the spec enables APOC
@@ -413,7 +413,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - If the `session` column is absent, RTH membership is derived from the instrument configuration.
 - `compute_tpo_levels(..., apoc_enabled=True)` raises `ValueError` with a redirect message. Use `compute_apoc_levels(..., enabled=True)` or `compute_all_levels(..., apoc_enabled=True)` instead.
 - `compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces all six independent columns: four Single Print columns plus `APOC` and `pAPOC`.
-- Known limitations: default source is not true volume-at-price; tick source requires matching Tick–Tick–Last files; not full-session POC; not Single Print-derived.
+- Known limitations: default tick source requires matching Tick–Tick–Last files (refuse without them); not full-session POC; not Single Print-derived.
 
 ### 5e) Previous 30m VWAP (`prev30mVWAP`) is opt-in (Phase 1)
 

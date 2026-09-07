@@ -659,19 +659,20 @@ Must pass (in addition to §7 checklist):
 
 ## 9. Regression-safety checklist (every RP1+ PR)
 
-- Default `POC_rolling_*` is tick Last×Volume. No ticks → all-NaN (not
-  typical). `_rolling_poc` is dead/non-default, not the product path.
+- Default `POC_rolling_*` is tick Last×Volume. Missing/empty `tick_paths`
+  refuse when rolling is required (`rolling POC requires ticks`), not
+  quiet all-NaN as the product path. `_rolling_poc` is dead/non-default.
 - TV3 intact: no table → no `pdVAH`…`pmPOC`; named VA without ticks still
   raises `VA requires ticks`.
-- Default APOC remains implicit typical; AP2 tick APOC still independent
-  (desk wants APOC default-tick next; out of this PR).
+- Default APOC is the same tick Last×Volume object; named/product APOC
+  refuses (`APOC requires ticks`). No typical fallback.
 - No change to session levels, session VWAP, TPO, signals, fills, or R12.
 - `tests/test_golden_master.py` preserved; no RP PR regenerates goldens
   unless a golden encoded typical rolling.
 - Honesty docs only in the PR that makes the described behavior true.
-- PR body includes a regression-safety paragraph: default is now tick; no
-  ticks → NaN; typical `_rolling_poc` retained only as dead/non-default;
-  identity / cache; PIT proof; unaffected families.
+- PR body includes a regression-safety paragraph: default is now tick;
+  required families refuse without ticks; typical `_rolling_poc` retained
+  only as dead/non-default; identity / cache; PIT proof; unaffected families.
 
 ---
 
