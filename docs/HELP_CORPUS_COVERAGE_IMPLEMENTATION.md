@@ -12,6 +12,8 @@ Session close / Focus vs Admit) + retrieval boosts + bank Q-D8…Q-D11 / Q-H14.
 **RS-D2 (2026-08-12):** USER_GUIDE **Studies viewer (read-only)** H2 + HC §6.1 /
 RQ §7.1.4 / `_USER_GUIDE_SECTIONS` allowlist amend.  
 **SO2 (2026-08-30):** USER_GUIDE **Study Observatory** H2 + HC §6.1 /
+RQ §7.1.4 / `_USER_GUIDE_SECTIONS` allowlist amend.  
+**TJ9 (2026-09-07):** USER_GUIDE **Journal** H2 + HC §6.1 /
 RQ §7.1.4 / `_USER_GUIDE_SECTIONS` allowlist amend.
 **SO7 (2026-08-30):** same H2 extended (studies pane / ledger strip /
 Open study in Inspect). No new heading.  
@@ -317,6 +319,7 @@ HC-0 / content PRs). Suggested v1 H2 skeleton (amend only via HC PR):
 ## Research Study Runner (headless)
 ## Studies viewer (read-only)
 ## Study Observatory
+## Journal
 ## When to use Help vs Discuss results
 ```
 

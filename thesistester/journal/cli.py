@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester journal …`` (TJ4 / TJ6 / TJ7 / TJ8)."""
+"""CLI handlers for ``python -m thesistester journal …`` (TJ4 / TJ6 / TJ7 / TJ8 / TJ9)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from thesistester.journal.counterfactual import counterfactual_files
 from thesistester.journal.levels import attribute_files
 from thesistester.journal.match import match_files
 from thesistester.journal.reconcile import reconcile_files
+from thesistester.journal.report import report_files
 from thesistester.journal.schema import (
     DEFAULT_CF_K,
     DEFAULT_CF_SEED,
@@ -237,10 +238,31 @@ def add_journal_subparser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Allow days that are not reconciled (default: refuse)",
     )
+    report_parser = journal_sub.add_parser(
+        "report",
+        help="Build the Q1–Q8 journal report from ingested journal/v1 artifacts",
+    )
+    report_parser.add_argument(
+        "--journal-dir",
+        type=Path,
+        required=True,
+        help="Directory with journal_trades.parquet and optional later artifacts",
+    )
+    report_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="Output directory for report.json (must not be results/studies/)",
+    )
+    report_parser.add_argument(
+        "--include-small-n",
+        action="store_true",
+        help="Include Q2 slices with n < 30 (default: hide them)",
+    )
 
 
 def dispatch_journal(args: argparse.Namespace) -> int:
-    """Dispatch ``journal reconcile`` / ``attribute`` / ``counterfactual`` / ``match``."""
+    """Dispatch journal reconcile / attribute / counterfactual / match / report."""
     if args.journal_command == "reconcile":
         try:
             paths = reconcile_files(
@@ -312,5 +334,17 @@ def dispatch_journal(args: argparse.Namespace) -> int:
             return 2
         print(f"Wrote {paths['journal_matches.parquet']}")
         print(f"      {paths['match.json']}")
+        return 0
+    if args.journal_command == "report":
+        try:
+            paths = report_files(
+                journal_dir=args.journal_dir,
+                output_dir=args.output_dir,
+                include_small_n=bool(args.include_small_n),
+            )
+        except (JournalIngestError, ValueError) as exc:
+            print(f"journal report failed: {exc}")
+            return 2
+        print(f"Wrote {paths['report.json']}")
         return 0
     raise AssertionError(f"Unhandled journal command: {args.journal_command!r}")

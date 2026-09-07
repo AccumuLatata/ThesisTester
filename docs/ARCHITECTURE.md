@@ -1149,11 +1149,17 @@ Refuses `results/studies/` as output. Does not write the promotion
 registry, `results_index`, or research bundles. No
 `STUDY_INDEX_KEYS` / `R18_INDEX_METRIC_KEYS` edits.
 
-Later TJ milestone (page 17) adds siblings in the
-same package. Persistence, when it lands (TJ9), is
-`.thesistester_store/journal/v1/` — sibling of `datasets/` / `setups/`,
-**not** under `execution_artifacts/` (CAI-10 LRU does not scan it).
-Journal code must not call `simulate_trades` or `compute_all_levels`.
+**TJ9 landed.** `build_journal_report` / `python -m thesistester journal
+report` and `pages/17_Journal.py` read ingested `journal/v1` artifacts
+in Q1–Q8 order. Every table carries n, resolution, and recon status.
+Q2 slices with n < 30 stay hidden unless the explicit toggle is on.
+Missing attribution / counterfactual / match files omit Q3–Q8; they
+are not errors. Persistence is `.thesistester_store/journal/v1/` —
+sibling of `datasets/` / `setups/`, **not** under
+`execution_artifacts/` (CAI-10 LRU does not scan it). The page does
+not call `run_experiment` / `run_study` and does not hydrate classic
+session keys. Journal code must not call `simulate_trades` or
+`compute_all_levels`.
 
 ## R22 simulation-core boundary
 
@@ -1308,7 +1314,9 @@ Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 `pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 inspect + RS-D8 preview + RS-D9 CLI spawn + SB2/SB3 Build tab;
 not part of the classic research mutate path),
 `pages/16_Study_Observatory.py` (SO2 corpus readout + Inspect drill; not
-classic mutate). Do not grow Inspect into a corpus page. Studies builder session keys
+classic mutate),
+`pages/17_Journal.py` (TJ9 Q1–Q8 readout over ingested journal/v1
+artifacts; not classic mutate). Do not grow Inspect into a corpus page. Studies builder session keys
 are `studies_builder_draft` and `studies_builder_pending_sync` only.
 
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
@@ -1398,6 +1406,9 @@ drill writes existing Studies keys (`studies_viewer_study_dir`,
 `studies_viewer_pending_path`) and pops Inspect cache. Study-level drill
 does the same and assigns empty leftover `studies_viewer_selected_run`
 (do not pop that widget key). Neither drill writes classic research keys.
+Journal TJ9 adds `journal_dir`, `journal_include_small_n`, and
+`journal_cached_report` on `pages/17_Journal.py` only — still not classic
+research state.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when
@@ -1572,8 +1583,8 @@ Signals robustness notes:
 - UI state (active dataset, execution defaults): `<store>/ui_state.json`
 - Study Observatory desks (SO4): `<store>/study_observatory/desks/<id>.json`
   (`schema_version: 1`; corrupt / unknown schema ignored; default unused)
-- Journal (TJ; not written until TJ9): `<store>/journal/v1/` — user-owned;
-  CAI-10 eviction must not scan it
+- Journal (TJ9): `<store>/journal/v1/` — user-owned ingested artifacts +
+  `report.json`; CAI-10 eviction must not scan it
 
 ### Configuring the store root
 

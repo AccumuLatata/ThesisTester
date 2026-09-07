@@ -393,7 +393,7 @@ Purpose
 Match these strings exactly after stripping the leading `##` and surrounding
 whitespace. HC-3 completed the classic §6.1 skeleton; HC-5 adds **Exposure
 policy**; HC-6 adds P0 settings depth H2s. SO2 adds **Study Observatory**.
-Every USER_GUIDE H2 below is filled and Help-readable.
+TJ9 adds **Journal**. Every USER_GUIDE H2 below is filled and Help-readable.
 
 ```text
 Purpose and honesty
@@ -419,6 +419,7 @@ Research mode on classic pages
 Research Study Runner (headless)
 Studies viewer (read-only)
 Study Observatory
+Journal
 When to use Help vs Discuss results
 ```
 

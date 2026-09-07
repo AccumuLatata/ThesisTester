@@ -71,6 +71,7 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
             "Research Study Runner (headless)",
             "Studies viewer (read-only)",
             "Study Observatory",
+            "Journal",
             "When to use Help vs Discuss results",
         }
     )

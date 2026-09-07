@@ -7,6 +7,7 @@ TJ5 joins trades to the 15s / derived-1m clock (ticks when present).
 TJ6 attributes every entry bar and verifies level-class tags.
 TJ7 replays entries under fixed brackets, a direction-shuffle null, and declared rules.
 TJ8 matches a named cell and builds a forward ledger.
+TJ9 builds the Q1–Q8 report and page 17 (read-only).
 """
 
 from __future__ import annotations
@@ -36,6 +37,15 @@ from thesistester.journal.match import (
     match_journal_to_cell,
     write_match_artifacts,
 )
+from thesistester.journal.report import (
+    JournalArtifacts,
+    JournalReport,
+    build_journal_report,
+    journal_store_dir,
+    load_journal_artifacts,
+    report_files,
+    write_report_artifacts,
+)
 from thesistester.journal.pair import pair_journal_trades
 from thesistester.journal.reconcile import (
     quantize_price,
@@ -49,6 +59,8 @@ from thesistester.journal.schema import (
     DEFAULT_JOURNAL_RISK_TICKS,
     DEFAULT_LEVEL_TOLERANCE_TICKS,
     DEFAULT_TAG_TOLERANCE_TICKS,
+    REPORT_HONESTY,
+    REPORT_MIN_N,
     FILL_RECORD_COLUMNS,
     JOURNAL_TRADE_COLUMNS,
     RECON_RECONCILED,
@@ -75,13 +87,17 @@ __all__ = [
     "DEFAULT_JOURNAL_RISK_TICKS",
     "DEFAULT_LEVEL_TOLERANCE_TICKS",
     "DEFAULT_TAG_TOLERANCE_TICKS",
+    "REPORT_HONESTY",
+    "REPORT_MIN_N",
     "FILL_RECORD_COLUMNS",
     "JOURNAL_TRADE_COLUMNS",
     "RECON_RECONCILED",
     "AmpFill",
     "AmpStatement",
     "DayReconcile",
+    "JournalArtifacts",
     "JournalIngestError",
+    "JournalReport",
     "JournalRule",
     "JournalTrade",
     "TRADESVIZ_EXECUTIONS_PROFILE",
@@ -92,6 +108,11 @@ __all__ = [
     "attribute_files",
     "attribute_journal_trades",
     "build_forward_ledger",
+    "build_journal_report",
+    "journal_store_dir",
+    "load_journal_artifacts",
+    "report_files",
+    "write_report_artifacts",
     "counterfactual_files",
     "direction_shuffle_null",
     "extract_amp_pdf_text",
