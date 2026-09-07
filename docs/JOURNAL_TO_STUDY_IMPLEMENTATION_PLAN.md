@@ -1,7 +1,7 @@
 # Journal → Study Implementation Plan (JS)
 
 **Series code:** JS
-**Status:** JS0 plan lock (this PR). No production code.
+**Status:** JS1 landed (zone attribution + Q3 Zones + `journal zones`). JS0 locked.
 **Date:** 2026-09-07 (rev 2 — review locks vs live engine/schema)
 **Depends on:** TJ9 landed (`docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md`).
 **Regression frame:** `docs/ENGINEERING_PROPOSAL.md` §4 (additive, keyword-only,
@@ -290,7 +290,7 @@ TJ5 15s / 1m bars ───────────────┘     detect_co
                                Q7/Q8 rule-vs-desk (TJ8 loop; live_since = proposal date)
 ```
 
-Package additions (later PRs, not this one): `thesistester/journal/zones.py`,
+Package additions: `thesistester/journal/zones.py` (JS1). Later PRs:
 `triggers.py`, `propose.py`. CLI remains the additive `journal` subparser
 (`thesistester/journal/cli.py`). Store remains
 `.thesistester_store/journal/v1/` — not `execution_artifacts/`, not
@@ -707,23 +707,23 @@ Quantower / 15s-lane / Study Builder prefill stay parked (§9).
 
 ### JS1 — Zone attribution
 
-- [ ] `detect_confluence_zones` is imported and called; no local cluster
+- [x] `detect_confluence_zones` is imported and called; no local cluster
       reimplementation. AST: no `compute_all_levels(`, `simulate_trades(`,
       `generate_signals(`.
-- [ ] Previous-completed-1m-bar only (`bar_open + 1min <= entry`);
+- [x] Previous-completed-1m-bar only (`bar_open + 1min <= entry`);
       containing minute unused; gap → `no_zone`. Does not call
       `_expected_previous_open` (exact `09:30:00` fill → `09:29` bar).
-- [ ] Hand-built 1m fixture: one bar, two tokens 1 tick apart, tolerance
+- [x] Hand-built 1m fixture: one bar, two tokens 1 tick apart, tolerance
       2 → one zone, `inside` / `above_within_tol` / `no_zone` rows match
       hand calculation. Identity: per-trade one-row call equals the
       `bar_index` slice of a full-session `detect_confluence_zones` call.
-- [ ] PIT future-shock: appending bars after the fill does not change
+- [x] PIT future-shock: appending bars after the fill does not change
       any `zone_*` column (`tests/test_r3_point_in_time.py` shape).
-- [ ] Parameter hash stamped; two param files produce two hashes; they
+- [x] Parameter hash stamped; two param files produce two hashes; they
       are never averaged in the report.
-- [ ] Q3 Zones subsection; n ≥ 30 gate; caption locked in §3.1.
-- [ ] CLI refuses `results/studies/`.
-- [ ] Same-PR docs: §7 JS1 row.
+- [x] Q3 Zones subsection; n ≥ 30 gate; caption locked in §3.1.
+- [x] CLI refuses `results/studies/`.
+- [x] Same-PR docs: §7 JS1 row.
 
 ### JS2 — Trigger inference
 

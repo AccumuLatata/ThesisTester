@@ -1139,9 +1139,9 @@ over ingested `journal/v1` artifacts: AMP-reconciled net, direction / NY hour
 counterfactuals, named-cell match, and the forward ledger. Headless:
 `journal report`.
 
-**When to use it.** After `journal reconcile` (then attribute / counterfactual
-/ match as needed). Use it to read costs, leaks, and live adherence — not to
-rank study cells.
+**When to use it.** After `journal reconcile` (then attribute / zones /
+counterfactual / match as needed). Use it to read costs, leaks, zones, and
+live adherence — not to rank study cells.
 
 **Related terms.** Journal, journal report, Q1 costs, fee ticks, break-even
 gross, hold-time cut, level attribution, tag alignment, intent mismatch,
@@ -1157,13 +1157,16 @@ product mismatch, adherence, forward ledger, n < 30
 | Show slices with n < 30 | Reveal Q2 rows below the n gate | Hidden by default. Applies after Load without clicking Load again. Every table still shows n |
 | Q1 | Per instrument-day net / fee / break-even gross | Qty-scaled dollar-ticks. Fees from AMP, not TradesViz |
 | Q2 | Direction × NY hour × hold × day intensity | Hold-time cuts are outcome-conditioned |
-| Q3–Q8 | Attribution / brackets / null / rules / match / ledger | Missing later files omit the section; not an error |
+| Q3–Q8 | Attribution / Zones / brackets / null / rules / match / ledger | Missing later files omit the section; not an error |
+| Q3 Zones | Net ticks by zone count / width / relation / member set | `journal zones` first. Declared params, not searched. n < 30 hidden unless toggled |
 
 **How to use.**
 
 1. Export TradesViz executions + AMP Daily Statements (keep desk PII out of git).
-2. CLI: `journal reconcile` → optional `attribute` / `counterfactual` / `match`.
-   Write into the journal dir (default store `journal/v1/`).
+2. CLI: `journal reconcile` → optional `attribute` / `zones` /
+   `counterfactual` / `match`. Write into the journal dir (default store
+   `journal/v1/`). Zone parameters are a declared YAML (`--zone-params`);
+   do not search tolerances after seeing P&L.
 3. Open **Journal**. Confirm the directory. **Load report**.
 4. Read Q1 first (gross must clear fee ticks/trade; one row per instrument-day).
    Toggle n < 30 only when you mean to look at thin slices — it rebuilds Q2
@@ -1176,6 +1179,8 @@ product mismatch, adherence, forward ledger, n < 30
 - Not a study cell, Observatory corpus match, or `results_index` rank key.
 - Not an in-process runner. No classic session hydrate.
 - Tags are trader intent. Alignment is a distance check, not a trigger.
+  Zones are `detect_confluence_zones` on the 1m bar completed before the
+  fill; parameters declared, not searched.
 - Counterfactuals assume bar/tick fills; no slippage model. Rules are
   declared, never searched. `in_sample` and `forward` are never blended.
 - Adherence is `executed_cell / (executed_cell + systematic_unfilled)`.

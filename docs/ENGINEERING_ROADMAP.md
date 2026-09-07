@@ -30,7 +30,7 @@ Assistant-related contracts:
 | Level-combination research concept | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` · inventory `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` · runbook `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | **Program B** (operator packet). Wave 0 solo (AO1) + 50 × MA / rolling VWAP / pivot, split 15s (`manifest.yaml`, 23/944) vs tick-gated VA (`manifest_va.yaml`, 4/207). `dVWAP` is an optional core, not a required partner. Does not amend the Notion desk lock page |
 | Directional integrity & edge attribution | `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA) | **DA6 landed** (DA0 locked, DA1–DA5 landed). Program B Run 2 packet (`fade` @ 1min, `same_bar_opposite_direction: raise`, `report.random_baseline` 50). Series code is **DA** (DI is Discuss Intelligence). Run 1 YAMLs untouched; generator defaults unchanged; no existing-golden regen |
 | Trade journal (fills + intent ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ9 landed** (series complete). Page 17 Journal + USER_GUIDE H2 + HC allowlist + CLI `journal report`. No engine/golden touch. Quantower *Trades* loader parked |
-| Journal → Study (zones / triggers / proposal) | `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS) | **JS0 locked** (plan only, rev 2). Zone attribution + trigger inference + `explicit_cells` proposal + rule-vs-desk. Gate A can stop after JS2. No 15s trigger lane; no golden regen; no independent cartesian |
+| Journal → Study (zones / triggers / proposal) | `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS) | **JS1 landed** (JS0 locked). Zone attribution via `detect_confluence_zones` on the previous completed 1m bar + Q3 Zones + CLI `journal zones`. Gate A can stop after JS2. No 15s trigger lane; no golden regen |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
 | A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP3 implemented.** Default APOC remains `typical_mvp_v1`. Opt-in `tick_last_volume_v1` is the AP1-selected Quantower source. Program B Wave 7 packets are labeled legacy typical-price; historical ZIPs are not rewritten. |
@@ -1554,7 +1554,7 @@ Quantower loader parked (its clock is Europe/Vienna local, not NY). Store is
 read-only Q1–Q8 over those artifacts (`journal report`). PII fixtures are
 redacted.
 
-## Journal → Study (JS0–JS4) — JS0 locked (plan only)
+## Journal → Study (JS0–JS4) — JS1 landed
 
 Follow-up to TJ. Attribute real fills to engine confluence zones (JS1) and
 to the trigger the engine would have called on the completed bar before
@@ -1568,8 +1568,8 @@ new page, no new store, no new factor axis, no 15s/tick trigger lane.
 
 | Milestone | Intent |
 |---|---|
-| JS0 | **this PR** — plan lock (verified journal↔engine coupling, contracts, Gate A) |
-| JS1 | Zone attribution via `detect_confluence_zones` on the previous completed 1m bar; Q3 Zones; CLI `journal zones` |
+| JS0 | **landed** — plan lock (verified journal↔engine coupling, contracts, Gate A) |
+| JS1 | **landed** — zone attribution via `detect_confluence_zones` on the previous completed 1m bar; Q3 Zones; CLI `journal zones` |
 | JS2 | Public `classify_zone_triggers` wrapper (delegates; no `_check_*` body edits); 1m + `15s_proxy` inference; Q3 trigger cut |
 | Gate A | Desk readout: ≥ 1 (zone family × 1m trigger) group with n ≥ 30, or stop |
 | JS3 | `journal propose-study` + optional `holdout` (refuse-not-filter); never runs the study |

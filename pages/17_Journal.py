@@ -28,7 +28,7 @@ _EMPTY = (
     "No `journal_trades.parquet` in this directory. Run "
     "`python -m thesistester journal reconcile` (then attribute / "
     "counterfactual / match as needed) and point here. "
-    "Missing later artifacts omit Q3–Q8; they are not errors."
+    "Missing later artifacts omit Q3–Q8 (including Zones); they are not errors."
 )
 _Q_TITLES = (
     ("Q1 · Costs and reconciled net", "q1"),
@@ -139,6 +139,17 @@ else:
     _show_table(report.q3_context, empty="No level_context rows.")
     _show_table(report.q3_levels, empty="No nearest-level rows.")
     _show_table(report.q3_tags, empty="No tag-alignment rows.")
+st.markdown("**Zones**")
+st.caption(report.captions.get("q3_zones") or "")
+if not present.get("zones"):
+    st.caption("Q3 Zones omitted — journal_zones.parquet not present.")
+else:
+    _show_table(
+        report.q3_zones_relation, empty="No entry_zone_relation rows at the current n gate."
+    )
+    _show_table(report.q3_zones_count, empty="No zone_level_count rows at the current n gate.")
+    _show_table(report.q3_zones_width, empty="No zone-width rows at the current n gate.")
+    _show_table(report.q3_zones_names, empty="No zone_level_names sets at the current n gate.")
 
 st.subheader(_Q_TITLES[3][0])
 st.caption(report.captions["q4"])

@@ -1,0 +1,9 @@
+# Declared JS1 zone parameters. Write this before looking at zone P&L.
+# Do not search tolerances to maximise n.
+level_columns:
+  - pdHigh
+  - pdVAL
+  - pdLow
+tolerance_ticks: 2
+min_confluences: 2
+max_confluences: 5

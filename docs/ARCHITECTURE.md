@@ -1155,7 +1155,7 @@ registry, `results_index`, or research bundles. No
 report` and `pages/17_Journal.py` read ingested `journal/v1` artifacts
 in Q1–Q8 order. Every table carries n, resolution, and recon status.
 Q2 slices with n < 30 stay hidden unless the explicit toggle is on.
-Missing attribution / counterfactual / match files omit Q3–Q8; they
+Missing attribution / counterfactual / match / zones files omit Q3–Q8; they
 are not errors. Persistence is `.thesistester_store/journal/v1/` —
 sibling of `datasets/` / `setups/`, **not** under
 `execution_artifacts/` (CAI-10 LRU does not scan it). The page does
@@ -1318,7 +1318,8 @@ not part of the classic research mutate path),
 `pages/16_Study_Observatory.py` (SO2 corpus readout + Inspect drill; not
 classic mutate),
 `pages/17_Journal.py` (TJ9 Q1–Q8 readout over ingested journal/v1
-artifacts; not classic mutate). Do not grow Inspect into a corpus page. Studies builder session keys
+artifacts; JS1 Q3 Zones over optional `journal_zones.parquet`; not
+classic mutate). Do not grow Inspect into a corpus page. Studies builder session keys
 are `studies_builder_draft` and `studies_builder_pending_sync` only.
 
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
@@ -1410,8 +1411,9 @@ does the same and assigns empty leftover `studies_viewer_selected_run`
 (do not pop that widget key). Neither drill writes classic research keys.
 Journal TJ9 adds `journal_dir`, `journal_include_small_n`, and
 `journal_cached_artifacts` on `pages/17_Journal.py` only — still not classic
-research state. The n < 30 toggle rebuilds Q2 from the cached artifacts
-without a second Load.
+research state. The n < 30 toggle rebuilds Q2 and JS1 Q3 Zones from the
+cached artifacts without a second Load. JS1 adds no new session keys;
+`load_journal_artifacts` optionally reads `journal_zones.parquet`.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when

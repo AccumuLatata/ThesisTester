@@ -1,4 +1,4 @@
-"""Post-trade journal ingest (TJ series).
+"""Post-trade journal ingest (TJ series + JS1 zones).
 
 Additive package. Does not call ``simulate_trades`` or ``compute_all_levels``.
 TJ1 ships the TradesViz executions loader. TJ2 adds the AMP statement parser.
@@ -8,6 +8,7 @@ TJ6 attributes every entry bar and verifies level-class tags.
 TJ7 replays entries under fixed brackets, a direction-shuffle null, and declared rules.
 TJ8 matches a named cell and builds a forward ledger.
 TJ9 builds the Q1–Q8 report and page 17 (read-only).
+JS1 attributes engine confluence zones on the previous completed 1m bar.
 """
 
 from __future__ import annotations
@@ -60,6 +61,10 @@ from thesistester.journal.schema import (
     DEFAULT_JOURNAL_RISK_TICKS,
     DEFAULT_LEVEL_TOLERANCE_TICKS,
     DEFAULT_TAG_TOLERANCE_TICKS,
+    DEFAULT_ZONE_MAX_CONFLUENCES,
+    DEFAULT_ZONE_MIN_CONFLUENCES,
+    DEFAULT_ZONE_TOLERANCE_TICKS,
+    ZONES_HONESTY,
     FILL_RECORD_COLUMNS,
     JOURNAL_TRADE_COLUMNS,
     RECON_RECONCILED,
@@ -81,6 +86,14 @@ from thesistester.journal.rules import (
 )
 from thesistester.journal.tags import TagMapping, load_tag_map, mapped_engine_tokens, resolve_tag
 from thesistester.journal.tradesviz import load_tradesviz_executions
+from thesistester.journal.zones import (
+    attribute_journal_zones,
+    canonical_zone_params_hash,
+    load_zone_params,
+    previous_completed_1m_open,
+    write_zone_artifacts,
+    zone_files,
+)
 
 __all__ = [
     "AMP_KNOWN_FEE_NAMES",
@@ -88,8 +101,12 @@ __all__ = [
     "DEFAULT_JOURNAL_RISK_TICKS",
     "DEFAULT_LEVEL_TOLERANCE_TICKS",
     "DEFAULT_TAG_TOLERANCE_TICKS",
+    "DEFAULT_ZONE_MAX_CONFLUENCES",
+    "DEFAULT_ZONE_MIN_CONFLUENCES",
+    "DEFAULT_ZONE_TOLERANCE_TICKS",
     "REPORT_HONESTY",
     "REPORT_MIN_N",
+    "ZONES_HONESTY",
     "FILL_RECORD_COLUMNS",
     "JOURNAL_TRADE_COLUMNS",
     "RECON_RECONCILED",
@@ -108,6 +125,10 @@ __all__ = [
     "NamedCell",
     "attribute_files",
     "attribute_journal_trades",
+    "attribute_journal_zones",
+    "canonical_zone_params_hash",
+    "load_zone_params",
+    "previous_completed_1m_open",
     "build_forward_ledger",
     "build_journal_report",
     "journal_store_dir",
@@ -140,4 +161,6 @@ __all__ = [
     "write_counterfactual_artifacts",
     "write_match_artifacts",
     "write_reconcile_artifacts",
+    "write_zone_artifacts",
+    "zone_files",
 ]

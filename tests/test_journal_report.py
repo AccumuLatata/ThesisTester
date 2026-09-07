@@ -189,7 +189,9 @@ def test_missing_later_artifacts_are_omitted() -> None:
     assert report.present["attribution"] is False
     assert report.present["counterfactual"] is False
     assert report.present["match"] is False
+    assert report.present["zones"] is False
     assert report.q3_levels.empty
+    assert report.q3_zones_relation.empty
     assert report.q4_brackets.empty
     assert report.q5_null["direction_null_pct"] is None
     assert report.q6_rules.empty
@@ -463,6 +465,8 @@ def test_journal_page_ast_and_contract() -> None:
     assert "pages/16_Study_Observatory" not in source
     assert "Q1 · Costs and reconciled net" in source
     assert "Q8 · Forward ledger" in source
+    assert "**Zones**" in source
+    assert "journal_zones.parquet" in source
     assert "Show slices with n < 30" in source
     assert "REPORT_HONESTY" in source
     assert "journal_store_dir" in source
