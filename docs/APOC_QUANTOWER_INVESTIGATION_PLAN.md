@@ -2,10 +2,10 @@
 
 **Document type:** Focused investigation plan  
 **Date:** 2026-09-05  
-**Status:** **AP2 implemented.** Desk evidence selected ``tick_last_volume_v1``
+**Status:** **AP3 implemented.** Desk evidence selected ``tick_last_volume_v1``
 (4/4 exact on Levels2test 2026-09-01…09-04). Product/library default remains
 ``typical_mvp_v1``. ``bar_range_uniform_volume_v1`` is a proxy only and is not
-a production source.
+a production source. Program B Wave 7 packets are labeled legacy typical-price.
 **Series code:** **AP** (A-Period POC)  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including the
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).
@@ -215,6 +215,20 @@ scorecard (proprietary CSVs not committed): 2026-09-01=29120, 09-02=29060,
 | Acceptance | YAML generation/validation remains deterministic; no historical ZIP rewrite; no non-APOC wave changes |
 | Forbidden | Rerunning studies, changing Program B research locks, or modifying VA waves |
 
+**AP3 implementation record:** Existing Wave 7 StudySpecs keep implicit
+``typical_mvp_v1`` (no ``apoc_profile_source`` in ``study.levels``) so
+``study_identity_hash`` and research locks stay pre-AP2. Generator comments
+and ``manifest.yaml`` Wave 7 rows stamp
+``apoc_object: legacy_typical_price``. Fresh ``study.expansion.json`` writes
+an additive ``apoc_provenance`` sidecar when the spec enables APOC
+(``apoc_enabled: true``) or names an explicit source while APOC is not
+disabled; the sidecar is not hashed. Explicit ``apoc_enabled: false``
+does not write a sidecar. ``read_apoc_provenance`` derives object from
+source (fail-closed on contradiction) so a tick sidecar cannot be
+relabeled typical. Historical ZIPs and pre-AP3 expansions are not
+rewritten; a missing sidecar is inferred typical. VA manifests and
+non-Wave-7 rows are unchanged.
+
 Merge order is AP0 → AP1 → AP2 → AP3. AP1’s written evidence gate selected
 ``tick_last_volume_v1`` (4/4 exact; bar-range uniform 2/4). AP2 implements
 that source as an explicit opt-in.
@@ -241,8 +255,9 @@ Every AP1+ PR must:
 
 ## 7. Program B operational note
 
-Wave 7 currently enables APOC and pAPOC on the 15-second-primary/derived
-one-minute path. Its existing or future results calculated before AP2 use the
-legacy typical-price APOC object and must not be compared to Quantower A-period
-POC as if they were equivalent. AP3 records that provenance; it does not
-rewrite prior research.
+Wave 7 enables APOC and pAPOC on the 15-second-primary/derived one-minute
+path. Committed Run 1 / Run 2 Wave 7 packets compute implicit
+``typical_mvp_v1`` (legacy typical-price) and are labeled as such. They must
+not be compared to Quantower A-period POC. The AP1/AP2 selected source
+``tick_last_volume_v1`` is a different study. AP3 records that provenance; it
+does not rewrite prior research ZIPs or change Wave 7 identity hashes.

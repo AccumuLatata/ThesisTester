@@ -295,6 +295,9 @@ Contract reference: `docs/otf-filter.md` §6 / §13b.
    (same MVP as `profile.py`). Opt-in `tick_last_volume_v1` is Last×Volume on A-period
    Tick–Tick–Last prints and is a different settings identity. Neither source uses
    future bars/ticks; APOC is not full-session POC and is not derived from Single Prints.
+   Program B Wave 7 expansions may record `apoc_provenance` on `study.expansion.json`
+   (metadata only). Historical ZIPs are not rewritten; a missing sidecar is inferred
+   typical-price. Provenance labels do not change computed APOC values.
 
 ## Trade journal fill → bar / tick join (TJ5)
 

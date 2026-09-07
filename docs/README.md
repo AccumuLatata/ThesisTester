@@ -66,7 +66,7 @@ Engine / data contracts:
 - [LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md](LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md) (LC — catalog completeness/correctness for already-emitted levels; LC0–LC4 landed; no new price series)
 - [WVWAP_MVWAP_IMPLEMENTATION_PLAN.md](WVWAP_MVWAP_IMPLEMENTATION_PLAN.md) (WMV — developing `wVWAP` / `mVWAP`; **WMV0–WMV2 complete**; same `session_vwap_enabled` gate as `dVWAP`)
 - [TICK_VAP_IMPLEMENTATION_PLAN.md](TICK_VAP_IMPLEMENTATION_PLAN.md) (TV — Quantower tick-last ingest for prior VA/POC only; **TV1–TV4 landed**; series complete; fail-closed without ticks; no golden regen)
-- [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) (AP — Quantower A-period POC parity; **AP2 implemented**; default `typical_mvp_v1`, opt-in `tick_last_volume_v1`; AP3 is Program B provenance)
+- [APOC_QUANTOWER_INVESTIGATION_PLAN.md](APOC_QUANTOWER_INVESTIGATION_PLAN.md) (AP — Quantower A-period POC parity; **AP3 implemented**; default `typical_mvp_v1`, opt-in `tick_last_volume_v1`; Wave 7 labeled legacy typical-price)
 - [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) (TJ — TradesViz executions (UTC, `spread_id`, tags) + AMP EOD statement → journal trades + recon + level attribution / tag verification + own-entry counterfactuals (bracket replay, direction null, declared rules) + named-cell match / forward ledger + page 17 report; **TJ9 landed**; no engine/golden touch)
 
 ## Research (demoted snapshots)

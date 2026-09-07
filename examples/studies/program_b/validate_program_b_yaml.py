@@ -12,6 +12,10 @@ import yaml
 
 from thesistester.levels.catalog import STATIC_STUDY_LEVEL_NAMES
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.study.apoc_provenance import (
+    WAVE7_HISTORICAL_PROVENANCE,
+    is_wave7_study_file,
+)
 from thesistester.study.expand import expand_study
 from thesistester.study.schema import StudySpecError, closed_level_token_set, load_study_spec
 
@@ -162,6 +166,27 @@ def validate_study_file(
     min_valid = int(row["min_valid"])
     cores = list(factors.get("core_level") or [])
     partners = list(factors.get("partner_levels") or [])
+    levels = study.get("levels") or {}
+    wave7 = is_wave7_study_file(path.name)
+    if wave7:
+        if not isinstance(levels, Mapping) or levels.get("apoc_enabled") is not True:
+            failures.append(
+                f"{path.name}: Wave 7 study.levels must keep apoc_enabled: true "
+                "(historical identity is implicit typical_mvp_v1)"
+            )
+        if isinstance(levels, Mapping) and "apoc_profile_source" in levels:
+            failures.append(
+                f"{path.name}: Wave 7 study.levels must omit apoc_profile_source "
+                "(historical identity is implicit typical_mvp_v1)"
+            )
+        provenance = row.get("apoc_provenance")
+        if provenance != WAVE7_HISTORICAL_PROVENANCE:
+            failures.append(
+                f"{path.name}: Wave 7 manifest apoc_provenance must be "
+                f"{WAVE7_HISTORICAL_PROVENANCE!r}"
+            )
+    elif "apoc_provenance" in row:
+        failures.append(f"{path.name}: apoc_provenance is Wave 7 only")
 
     if dataset.get("instrument") != LOCKED_INSTRUMENT:
         failures.append(f"{path.name}: instrument {dataset.get('instrument')!r}")

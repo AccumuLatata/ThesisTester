@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 from pathlib import Path
 
@@ -11,7 +12,16 @@ import yaml
 
 from thesistester.levels.catalog import PRIOR_PROFILE_LEVEL_NAMES, STATIC_STUDY_LEVEL_NAMES
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
-from thesistester.study.schema import closed_level_token_set
+from thesistester.study.apoc_provenance import (
+    WAVE7_HISTORICAL_PROVENANCE,
+    is_wave7_study_file,
+)
+from thesistester.study.expand import expand_study_to_directory, study_identity_hash
+from thesistester.study.schema import (
+    closed_level_token_set,
+    normalize_study_spec,
+    validate_study_spec,
+)
 
 PROGRAM_B = Path("examples/studies/program_b")
 PROGRAM_B_RUN2 = Path("examples/studies/program_b_run2")
@@ -312,3 +322,166 @@ def test_program_b_validator_main_accepts_run2_manifest_path(capsys):
     validate.main([str(PROGRAM_B_RUN2 / "manifest.yaml")])
     captured = capsys.readouterr()
     assert "ok 23 studies / 944 cells" in captured.out
+
+
+def _assert_wave7_packet_provenance(root: Path) -> None:
+    manifest = yaml.safe_load((root / "manifest.yaml").read_text(encoding="utf-8"))
+    wave7_files = []
+    for row in manifest["studies"]:
+        if is_wave7_study_file(row["file"]):
+            wave7_files.append(row["file"])
+            assert row["apoc_provenance"] == WAVE7_HISTORICAL_PROVENANCE, row["file"]
+            spec = yaml.safe_load((root / row["file"]).read_text(encoding="utf-8"))
+            assert "apoc_profile_source" not in spec["study"]["levels"], row["file"]
+            header = (root / row["file"]).read_text(encoding="utf-8")
+            assert "typical_mvp_v1 (legacy typical-price)" in header
+            assert "tick_last_volume_v1" in header
+        else:
+            assert "apoc_provenance" not in row, row["file"]
+    assert wave7_files == [
+        "progB_w7_apoc_ma.yaml",
+        "progB_w7_apoc_rvwap.yaml",
+        "progB_w7_apoc_pivot.yaml",
+    ]
+
+
+def test_program_b_wave7_manifest_records_legacy_typical_provenance():
+    _assert_wave7_packet_provenance(PROGRAM_B)
+    _assert_wave7_packet_provenance(PROGRAM_B_RUN2)
+    va = yaml.safe_load((PROGRAM_B / "manifest_va.yaml").read_text(encoding="utf-8"))
+    for row in va["studies"]:
+        assert "apoc_provenance" not in row, row["file"]
+
+
+def test_program_b_generate_wave7_provenance_is_deterministic(tmp_path):
+    gen = _generate()
+    gen.generate_packet(tmp_path)
+    _assert_wave7_packet_provenance(tmp_path)
+    committed = yaml.safe_load((PROGRAM_B / "manifest.yaml").read_text(encoding="utf-8"))
+    generated = yaml.safe_load((tmp_path / "manifest.yaml").read_text(encoding="utf-8"))
+    assert generated == committed
+    for name in (
+        "progB_w7_apoc_ma.yaml",
+        "progB_w7_apoc_rvwap.yaml",
+        "progB_w7_apoc_pivot.yaml",
+        "progB_w0_solo.yaml",
+        "progB_w8_prev30m_ma.yaml",
+    ):
+        assert yaml.safe_load((tmp_path / name).read_text(encoding="utf-8")) == yaml.safe_load(
+            (PROGRAM_B / name).read_text(encoding="utf-8")
+        )
+    va_generated = yaml.safe_load((tmp_path / "manifest_va.yaml").read_text(encoding="utf-8"))
+    va_committed = yaml.safe_load((PROGRAM_B / "manifest_va.yaml").read_text(encoding="utf-8"))
+    assert va_generated == va_committed
+    assert "apoc_provenance" not in str(va_generated)
+
+
+def test_program_b_wave7_fresh_expand_records_inferred_typical(tmp_path):
+    spec = yaml.safe_load((PROGRAM_B / "progB_w7_apoc_ma.yaml").read_text(encoding="utf-8"))
+    normalized = validate_study_spec(normalize_study_spec(spec))
+    identity = study_identity_hash(normalized)
+    expansion = expand_study_to_directory(spec, tmp_path)
+    payload = json.loads((tmp_path / "study.expansion.json").read_text(encoding="utf-8"))
+    assert payload["study_identity_hash"] == identity == expansion.study_identity_hash
+    assert payload["apoc_provenance"]["apoc_profile_source"] == "typical_mvp_v1"
+    assert payload["apoc_provenance"]["apoc_object"] == "legacy_typical_price"
+    assert payload["apoc_provenance"]["recorded"] == "inferred"
+    assert "apoc_profile_source" not in normalized["study"]["levels"]
+
+
+def test_program_b_validator_rejects_wave7_without_manifest_provenance(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_w7_apoc_ma.yaml").read_text(encoding="utf-8"))
+    drifted = tmp_path / "progB_w7_apoc_ma.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 24, "min_valid": 1}, packet="15s"
+    )
+    assert any("apoc_provenance" in item for item in failures)
+
+
+def test_program_b_wave7_identity_hashes_match_pre_ap3_pins():
+    """Committed Wave 7 study.levels identity must stay pre-AP3 (comments only)."""
+    pins = {
+        PROGRAM_B / "progB_w7_apoc_ma.yaml": (
+            "c70c36faabb2873c85dcb8e47436567bfb3c2d49e017eb91b73a895571ae7425"
+        ),
+        PROGRAM_B / "progB_w7_apoc_rvwap.yaml": (
+            "1f4aa6c91382519014e347de7a9744ad40e6273d5cedba92e5bbc0533a06cbf2"
+        ),
+        PROGRAM_B / "progB_w7_apoc_pivot.yaml": (
+            "20df377a30b40ca0513b334ab9caeb96de3fe205fe2f38e956dc17b8e78ad157"
+        ),
+        PROGRAM_B_RUN2 / "progB_w7_apoc_ma.yaml": (
+            "e44bf0fb3e7c32e5f1a4113abc13205d8eb50e8da310aea1d70dfd6617ccd715"
+        ),
+        PROGRAM_B_RUN2 / "progB_w7_apoc_rvwap.yaml": (
+            "52735f3acd60105d1af1d86c50701ea2a12a79e084b4df00780c6c5240aa9f53"
+        ),
+        PROGRAM_B_RUN2 / "progB_w7_apoc_pivot.yaml": (
+            "81fcc0a6b01d6577abefc0f451b05ded0948e66ccfca4831b3ce8bd8d769e4e8"
+        ),
+    }
+    for path, expected in pins.items():
+        spec = yaml.safe_load(path.read_text(encoding="utf-8"))
+        levels = spec["study"]["levels"]
+        assert "apoc_profile_source" not in levels, path.name
+        assert levels["apoc_enabled"] is True, path.name
+        identity = study_identity_hash(validate_study_spec(normalize_study_spec(spec)))
+        assert identity == expected, path
+
+
+def test_program_b_validator_rejects_wave7_disabled_apoc(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_w7_apoc_ma.yaml").read_text(encoding="utf-8"))
+    spec["study"]["levels"]["apoc_enabled"] = False
+    drifted = tmp_path / "progB_w7_apoc_ma.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted,
+        {
+            "file": drifted.name,
+            "cells": 24,
+            "min_valid": 1,
+            "apoc_provenance": dict(WAVE7_HISTORICAL_PROVENANCE),
+        },
+        packet="15s",
+    )
+    assert any("apoc_enabled: true" in item for item in failures)
+
+
+def test_program_b_validator_rejects_wave7_explicit_source_in_levels(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_w7_apoc_ma.yaml").read_text(encoding="utf-8"))
+    spec["study"]["levels"]["apoc_profile_source"] = "typical_mvp_v1"
+    drifted = tmp_path / "progB_w7_apoc_ma.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted,
+        {
+            "file": drifted.name,
+            "cells": 24,
+            "min_valid": 1,
+            "apoc_provenance": dict(WAVE7_HISTORICAL_PROVENANCE),
+        },
+        packet="15s",
+    )
+    assert any("omit apoc_profile_source" in item for item in failures)
+
+
+def test_program_b_validator_rejects_provenance_on_non_wave7(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    drifted = tmp_path / "progB_smoke_ONH_SMA50_5min.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted,
+        {
+            "file": drifted.name,
+            "cells": 1,
+            "min_valid": 1,
+            "apoc_provenance": dict(WAVE7_HISTORICAL_PROVENANCE),
+        },
+        packet="15s",
+    )
+    assert any("Wave 7 only" in item for item in failures)

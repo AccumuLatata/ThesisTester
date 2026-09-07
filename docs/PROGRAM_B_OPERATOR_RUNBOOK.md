@@ -165,6 +165,13 @@ Cross-study UI readout is a **separate** planned series (Study Observatory, `doc
 | 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
 | 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
 
+**Wave 7 APOC object (AP3):** these three files compute implicit
+`typical_mvp_v1` (legacy typical-price). Manifest rows stamp
+`apoc_object: legacy_typical_price`. Do **not** compare Wave 7 cells to
+Quantower A-period POC. Do **not** add `apoc_profile_source` to these YAMLs
+(that changes `study_identity_hash`). Do **not** rewrite historical ZIPs.
+`tick_last_volume_v1` is a different study.
+
 Parked until ticks (`manifest_va.yaml`; do not launch on 15s-only). Files already
 carry placeholder `tick_paths` so TV3 can load/expand; launch still refuses the
 missing Tick–Tick–Last file:
@@ -207,6 +214,9 @@ Same 23 files / 944 cells / same order. Paths are under `examples/studies/progra
 | 20 | `progB_w8_prev30m_ma.yaml` | 12 | 1 |
 | 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
 | 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
+
+Same Wave 7 APOC object as Run 1: implicit `typical_mvp_v1` / legacy
+typical-price. See the Wave 7 note above.
 
 ```bash
 SPEC=examples/studies/program_b_run2/progB_smoke_ONH_SMA50_5min.yaml
