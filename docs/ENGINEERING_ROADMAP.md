@@ -34,6 +34,7 @@ Assistant-related contracts:
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
 | A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP3 implemented.** Default APOC remains `typical_mvp_v1`. Opt-in `tick_last_volume_v1` is the AP1-selected Quantower source. Program B Wave 7 packets are labeled legacy typical-price; historical ZIPs are not rewritten. |
+| Rolling POC Quantower parity | `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md` (RP) | **RP0 locked.** `POC_rolling_30min` is 1m typical `(H+L+C)/3`. Window ≠ A-period except at 09:59. AP1 4/4 does not authorize a rolling tick cutover. RP2 is no-go until a written sliding-window oracle. |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1509,6 +1510,29 @@ availability, pAPOC freeze, and unrelated level families. Goldens remain
 unchanged. Product default source is unchanged (`typical_mvp_v1`); no
 `LEVEL_ENGINE_VERSION` bump. Missing tick inputs under the selected source
 emit `NaN`, never legacy typical APOC.
+
+## Rolling POC Quantower parity (RP0–RP2) — RP0 locked
+
+`POC_rolling_30min` still dumps each derived-1m bar’s volume onto typical
+`(H+L+C)/3` via `_rolling_poc`. That is the same **allocation class** AP1
+killed for A-period POC, but it is not the same **window**. On a complete 1m
+grid the rolling 30m lookback equals the A-period only at 09:59 NY; at 10:00
+APOC is frozen A-period and rolling has already dropped 09:30 and included
+10:00. Quantower Step 30m is the A-period’s cousin (fixed bricks), not a
+sliding lookback.
+
+**Canonical spec:** `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| RP0 | Lock window identity, candidate table, desk-oracle protocol, and RP2 no-go ✅ |
+| RP1 | Pure sampled-stamp comparator; reuse `apoc_candidates` histograms; no production output change |
+| RP2 | Versioned tick opt-in **not authorized** until the written rolling-window scorecard selects Last×Volume |
+
+**Regression posture:** typical `POC_rolling_*` values and TV3 VA
+omit/fail-closed stay unchanged. Goldens: no regen. Do not reuse
+`PriorProfileTable` or `APeriodTickProfileTable` as a rolling window. Do not
+present 15s bar-range as Quantower-compatible without the RP scorecard.
 
 ## Trade Journal (TJ0–TJ9) — TJ9 landed (series complete)
 
