@@ -21,7 +21,8 @@ from thesistester.levels.catalog import (
 )
 from thesistester.levels.tick_vap import resolve_tick_format_profile
 from thesistester.levels.common import normalized_window_label
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.apoc_tick import APOC_PROFILE_SOURCES
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
 from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES
 from thesistester.levels.prev30m_vwap import prev30m_price_column_names
@@ -465,10 +466,20 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         levels = {}
     levels_map = _require_mapping(levels, section="study.levels")
     # Levels keys are pass-through to R18; reject non-product keys lightly via
-    # DEFAULT_LEVELS_SETTINGS allowlist so typos fail closed at study authoring.
-    unknown_levels = sorted(set(levels_map) - set(DEFAULT_LEVELS_SETTINGS))
+    # DEFAULT_LEVELS_SETTINGS + OPTIONAL_LEVELS_SETTINGS so typos fail closed
+    # at study authoring. apoc_profile_source is optional opt-in (AP2).
+    unknown_levels = sorted(
+        set(levels_map) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS
+    )
     if unknown_levels:
         raise StudySpecError(f"Unknown study.levels keys: {unknown_levels}")
+    if "apoc_profile_source" in levels_map:
+        source = levels_map["apoc_profile_source"]
+        if not isinstance(source, str) or source not in APOC_PROFILE_SOURCES:
+            raise StudySpecError(
+                "study.levels.apoc_profile_source must be one of "
+                f"{sorted(APOC_PROFILE_SOURCES)!r}, got {source!r}"
+            )
     _validate_levels_map(levels_map)
 
     closed_tokens = closed_level_token_set(levels_map)

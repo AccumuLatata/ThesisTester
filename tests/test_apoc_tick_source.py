@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import os
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -36,8 +36,9 @@ from thesistester.levels.tick_vap import (
     build_prior_profile_table_from_paths,
     compute_tick_source_id,
 )
+from thesistester.api import compute_levels, run_experiment
 from thesistester.persistence.local_store import LEVEL_ENGINE_VERSION, compute_levels_settings_hash
-from thesistester.research_identity import normalize_levels_config
+from thesistester.research_identity import DataIdentity, LevelsIdentity, normalize_levels_config
 from thesistester.levels.tpo import SINGLE_PRINT_COLUMNS
 
 TZ = "America/New_York"
@@ -457,3 +458,197 @@ def test_prebuilt_table_is_used_when_provided():
     )
     _assert_session_poc(result, df, date(2026, 6, 2), 123.25)
     _assert_session_poc(result, df, date(2026, 6, 3), 124.50)
+
+
+def test_poc_for_accepts_datetime_without_missing_the_date_key():
+    table = APeriodTickProfileTable(
+        poc_by_session={date(2026, 6, 2): 100.25},
+        n_ticks_by_session={date(2026, 6, 2): 3},
+        source_id="synthetic",
+    )
+    assert table.poc_for(datetime(2026, 6, 2, 10, 0, 0)) == pytest.approx(100.25)
+
+
+def test_apoc_tick_source_id_treats_bare_path_as_one_file():
+    listed = compute_apoc_tick_source_id([FIXTURE_TICKS])
+    bare = compute_apoc_tick_source_id(FIXTURE_TICKS)
+    as_str = compute_apoc_tick_source_id(str(FIXTURE_TICKS))
+    assert listed == bare == as_str
+    assert listed != TICK_SOURCE_NONE
+
+
+def _write_two_session_bars_csv(path: Path) -> None:
+    frame = _two_session_bars().drop(columns=["session"])
+    frame["timestamp"] = frame["timestamp"].dt.tz_convert(TZ).dt.tz_localize(None)
+    frame.to_csv(path, index=False)
+
+
+def _lean_tick_apoc_spec(*, bars_name: str, tick_name: str, table_path: str | None = None) -> dict:
+    dataset = {
+        "path": bars_name,
+        "instrument": "ES",
+        "source_timezone": TZ,
+        "tick_paths": [tick_name],
+    }
+    if table_path is not None:
+        dataset["prior_profile_table_path"] = table_path
+    return {
+        "name": "apoc-tick-wiring",
+        "dataset": dataset,
+        "levels": {
+            "sma_lengths": [],
+            "ema_lengths": [],
+            "sma_timeframes": [],
+            "ema_timeframes": [],
+            "vwap_windows": [],
+            "poc_windows": [],
+            "pivots_enabled": False,
+            "session_vwap_enabled": False,
+            "single_prints_enabled": False,
+            "apoc_enabled": True,
+            "apoc_profile_source": TICK_LAST_VOLUME_V1,
+            "prev30m_vwap_enabled": False,
+        },
+        "setup": {
+            "name": "apoc-tick-wiring",
+            "instrument": "ES",
+            "selected_levels": ["dOpen", "RTH_Open"],
+            "tolerance_ticks": 0,
+            "min_confluences": 2,
+            "max_confluences": 2,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "trigger": "touch",
+            "trigger_timeframe": "base",
+            "direction": "both",
+            "confluence_mode": "global_cluster",
+            "anchor_level": None,
+            "confluence_rules": [],
+            "min_valid_confluences": 1,
+            "trigger_params": {},
+            "otf_filter": None,
+        },
+        "backtest": {
+            "stop_loss_ticks": 2,
+            "take_profit_ticks": 3,
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+        },
+    }
+
+
+def test_compute_levels_tick_source_uses_tick_paths():
+    df = _two_session_bars()
+    result = compute_levels(
+        df,
+        instrument="ES",
+        config={
+            "sma_lengths": [],
+            "ema_lengths": [],
+            "sma_timeframes": [],
+            "ema_timeframes": [],
+            "vwap_windows": [],
+            "poc_windows": [],
+            "pivots_enabled": False,
+            "session_vwap_enabled": False,
+            "single_prints_enabled": False,
+            "apoc_enabled": True,
+            "apoc_profile_source": TICK_LAST_VOLUME_V1,
+            "prev30m_vwap_enabled": False,
+        },
+        tick_paths=[FIXTURE_TICKS],
+    )
+    _assert_session_poc(result["levels"], df, date(2026, 6, 2), 100.25)
+    assert result["levels_settings"]["apoc_tick_source_id"] != TICK_SOURCE_NONE
+    assert result["levels_settings"]["apoc_tick_source_id"] == compute_apoc_tick_source_id(
+        [FIXTURE_TICKS]
+    )
+
+
+def test_run_experiment_forwards_tick_paths_to_apoc_source(tmp_path):
+    _write_two_session_bars_csv(tmp_path / "bars.csv")
+    spec = _lean_tick_apoc_spec(bars_name="bars.csv", tick_name=str(FIXTURE_TICKS))
+    state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+    _assert_session_poc(state["levels"], state["data"], date(2026, 6, 2), 100.25)
+    _assert_session_poc(state["levels"], state["data"], date(2026, 6, 3), 200.25)
+    assert state["levels_settings"]["apoc_tick_source_id"] == compute_apoc_tick_source_id(
+        [FIXTURE_TICKS]
+    )
+
+
+def test_run_experiment_keeps_tick_paths_when_prior_va_table_is_present(tmp_path):
+    _write_two_session_bars_csv(tmp_path / "bars.csv")
+    va_table = build_prior_profile_table_from_paths([FIXTURE_TICKS], instrument="ES")
+    table_path = tmp_path / "prior_va.parquet"
+    va_table.to_parquet(table_path)
+    spec = _lean_tick_apoc_spec(
+        bars_name="bars.csv",
+        tick_name=str(FIXTURE_TICKS),
+        table_path=str(table_path),
+    )
+    state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+    _assert_session_poc(state["levels"], state["data"], date(2026, 6, 2), 100.25)
+    assert state["levels_settings"]["apoc_tick_source_id"] != TICK_SOURCE_NONE
+    assert state["levels_settings"]["tick_source_id"] != TICK_SOURCE_NONE
+    assert state["levels_settings"]["apoc_tick_source_id"] != state["levels_settings"][
+        "tick_source_id"
+    ]
+
+
+def test_run_spec_identity_matches_compute_levels_tick_source_hash():
+    df = _two_session_bars()
+    config = {"apoc_profile_source": TICK_LAST_VOLUME_V1, "poc_windows": []}
+    computed = compute_levels(
+        df,
+        instrument="ES",
+        config=config,
+        tick_paths=[FIXTURE_TICKS],
+    )
+    identity = DataIdentity.from_loaded_data(
+        df,
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+    spec_identity = LevelsIdentity.from_run_spec(
+        identity,
+        {
+            "levels": config,
+            "dataset": {"tick_paths": [str(FIXTURE_TICKS)]},
+        },
+    )
+    assert spec_identity.levels_settings_hash == compute_levels_settings_hash(
+        computed["levels_settings"]
+    )
+
+
+def test_page_state_identity_includes_tick_paths_for_tick_source():
+    df = _two_session_bars()
+    page = LevelsIdentity.from_page_state(
+        {
+            "data": df,
+            "instrument": "ES",
+            "base_interval": "1min",
+            "source_timezone": TZ,
+            "exchange_timezone": TZ,
+            "tick_paths": [str(FIXTURE_TICKS)],
+            "levels_settings": {"apoc_profile_source": TICK_LAST_VOLUME_V1},
+        }
+    )
+    api = LevelsIdentity.from_config(
+        DataIdentity.from_loaded_data(
+            df,
+            instrument="ES",
+            base_interval="1min",
+            source_timezone=TZ,
+            exchange_timezone=TZ,
+        ),
+        {"apoc_profile_source": TICK_LAST_VOLUME_V1},
+        tick_paths=[FIXTURE_TICKS],
+    )
+    assert page.levels_settings_hash == api.levels_settings_hash
+    assert page.levels_settings is not None
+    assert page.levels_settings["apoc_tick_source_id"] != TICK_SOURCE_NONE

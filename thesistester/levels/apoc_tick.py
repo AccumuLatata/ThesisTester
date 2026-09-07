@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
@@ -93,7 +93,13 @@ class APeriodTickProfileTable:
         )
 
     def poc_for(self, session_date: date) -> float:
-        key = session_date if isinstance(session_date, date) else pd.Timestamp(session_date).date()
+        # ``datetime`` is a ``date`` subclass; using it as a dict key would miss.
+        if isinstance(session_date, datetime):
+            key = session_date.date()
+        elif isinstance(session_date, date):
+            key = session_date
+        else:
+            key = pd.Timestamp(session_date).date()
         value = self.poc_by_session.get(key)
         if value is None:
             return float("nan")
@@ -112,8 +118,24 @@ def empty_a_period_tick_profile_table(
     )
 
 
+def _resolve_tick_path_list(
+    paths: Sequence[str | Path] | str | Path | None,
+) -> list[Path]:
+    """Normalize a tick-path argument to a list of non-empty paths.
+
+    A bare ``str`` / ``Path`` is one file. Iterating a string as a sequence
+    would hash individual characters and desync identity from ingest.
+    """
+    if paths is None:
+        return []
+    if isinstance(paths, (str, Path)):
+        text = str(paths).strip()
+        return [Path(text)] if text else []
+    return [Path(path) for path in paths if str(path).strip()]
+
+
 def compute_apoc_tick_source_id(
-    paths: Sequence[str | Path] | None,
+    paths: Sequence[str | Path] | str | Path | None,
     *,
     format_profile: str = TICK_FORMAT_PROFILE,
 ) -> str:
@@ -123,9 +145,7 @@ def compute_apoc_tick_source_id(
     policy so a full-session VA table id is never reused as APOC identity.
     Missing/empty paths return ``none``.
     """
-    if not paths:
-        return TICK_SOURCE_NONE
-    resolved = [Path(path) for path in paths if str(path).strip()]
+    resolved = _resolve_tick_path_list(paths)
     if not resolved:
         return TICK_SOURCE_NONE
     try:
@@ -145,8 +165,9 @@ def compute_apoc_tick_source_id(
 def attach_apoc_identity(
     settings: dict[str, Any],
     *,
-    tick_paths: Sequence[str | Path] | None = None,
+    tick_paths: Sequence[str | Path] | str | Path | None = None,
     apoc_tick_source_id: str | None = None,
+    format_profile: str = TICK_FORMAT_PROFILE,
 ) -> dict[str, Any]:
     """Put APOC source / algorithm / allocation / tick-input id in the hash dict.
 
@@ -166,7 +187,9 @@ def attach_apoc_identity(
     attached["apoc_allocation"] = allocation
     if source == APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1:
         attached["apoc_tick_source_id"] = (
-            apoc_tick_source_id if apoc_tick_source_id else compute_apoc_tick_source_id(tick_paths)
+            apoc_tick_source_id
+            if apoc_tick_source_id
+            else compute_apoc_tick_source_id(tick_paths, format_profile=format_profile)
         )
     else:
         attached["apoc_tick_source_id"] = TICK_SOURCE_NONE
@@ -187,7 +210,7 @@ def resolve_apoc_profile_source(value: object | None) -> str:
 
 
 def build_a_period_tick_profile_table(
-    tick_paths: Sequence[str | Path] | None,
+    tick_paths: Sequence[str | Path] | str | Path | None,
     *,
     instrument: str,
     source_tz: str = "UTC",
@@ -198,11 +221,12 @@ def build_a_period_tick_profile_table(
     Missing, unreadable, or malformed inputs fail closed to an empty table
     (``NaN`` APOC/pAPOC). They never fall back to typical-price allocation.
     """
-    source_id = compute_apoc_tick_source_id(tick_paths, format_profile=format_profile)
-    if not tick_paths:
+    resolved = _resolve_tick_path_list(tick_paths)
+    source_id = compute_apoc_tick_source_id(resolved, format_profile=format_profile)
+    if not resolved:
         return empty_a_period_tick_profile_table(source_id=source_id)
     try:
-        chunks = list(iter_tick_files(tick_paths, instrument=instrument, source_tz=source_tz))
+        chunks = list(iter_tick_files(resolved, instrument=instrument, source_tz=source_tz))
     except (TickIngestError, OSError, ValueError):
         return empty_a_period_tick_profile_table(source_id=source_id)
     return build_a_period_tick_profile_table_from_chunks(

@@ -1586,6 +1586,7 @@ def compute_levels(
     settings = attach_apoc_identity(
         attach_tick_identity(settings, tick_source_id=resolved_tick_source_id),
         tick_paths=tick_paths,
+        format_profile=resolve_tick_format_profile(tick_format_profile),
     )
     policy = normalize_cache_policy(cache_policy)
     cache_status = "bypassed"
@@ -1622,6 +1623,7 @@ def compute_levels(
         apoc_tick_table = build_a_period_tick_profile_table(
             tick_paths,
             instrument=instrument,
+            format_profile=resolve_tick_format_profile(tick_format_profile),
         )
     levels = compute_all_levels(
         data,
@@ -2862,11 +2864,11 @@ def run_experiment(
     dataset_id = data_identity.dataset_id()
 
     table_path = dataset_config.get("prior_profile_table_path")
-    resolved_tick_paths = None
-    if not table_path:
-        resolved_tick_paths = _resolve_dataset_tick_paths(
-            dataset_config, base_directory=base_directory
-        )
+    # Always resolve tick files. A prebuilt PriorProfileTable is not an APOC
+    # input; starving tick_paths here made tick_last_volume_v1 emit all-NaN.
+    resolved_tick_paths = _resolve_dataset_tick_paths(
+        dataset_config, base_directory=base_directory
+    )
     tick_format_profile = (
         str(dataset_config["tick_format_profile"])
         if dataset_config.get("tick_format_profile") is not None
@@ -2878,7 +2880,7 @@ def run_experiment(
     table, resolved_tick_source_id = _resolve_prior_profile_table(
         instrument=instrument,
         settings=normalize_levels_config(run.get("levels"), instrument=instrument),
-        tick_paths=resolved_tick_paths,
+        tick_paths=None if table_path else resolved_tick_paths,
         tick_format_profile=tick_format_profile,
         prior_profile_table=None,
         prior_profile_table_path=table_path,
@@ -2892,6 +2894,9 @@ def run_experiment(
         data_identity=data_identity,
         store_root=store_root,
         prior_profile_table=table,
+        prior_profile_table_path=None,
+        tick_paths=resolved_tick_paths,
+        tick_format_profile=tick_format_profile,
         tick_source_id=resolved_tick_source_id,
     )
     levels_status = str(level_result.get("cache_status", "bypassed"))

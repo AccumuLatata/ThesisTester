@@ -387,6 +387,7 @@ class LevelsIdentity:
         instrument: str | None = None,
         tick_source_id: str | None = None,
         tick_paths: Sequence[str | Path] | None = None,
+        tick_format_profile: str | None = None,
     ) -> LevelsIdentity:
         resolved_instrument = instrument or data_identity.instrument
         inbound = None
@@ -400,6 +401,7 @@ class LevelsIdentity:
                 tick_source_id=tick_source_id or inbound or TICK_SOURCE_NONE,
             ),
             tick_paths=tick_paths,
+            format_profile=resolve_tick_format_profile(tick_format_profile),
         )
         return cls.from_normalized(data_identity, normalized)
 
@@ -416,6 +418,11 @@ class LevelsIdentity:
             run.get("levels"),
             tick_source_id=_tick_source_id_from_dataset(dataset),
             tick_paths=_dataset_tick_paths(dataset),
+            tick_format_profile=(
+                str(dataset["tick_format_profile"])
+                if dataset.get("tick_format_profile") is not None
+                else None
+            ),
         )
 
     @classmethod
@@ -426,7 +433,13 @@ class LevelsIdentity:
         if not isinstance(raw_settings, Mapping):
             raise ValueError("page state must include levels_settings mapping")
         # Bind through the shared normalizer so identity ignores key/list order.
-        return cls.from_config(data_identity, raw_settings, instrument=data_identity.instrument)
+        # Page state stores Quantower tick files at the top level (Data page).
+        return cls.from_config(
+            data_identity,
+            raw_settings,
+            instrument=data_identity.instrument,
+            tick_paths=_dataset_tick_paths(mapping),
+        )
 
     @classmethod
     def from_bundle_meta(

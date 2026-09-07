@@ -194,7 +194,9 @@ typical-price; no `LEVEL_ENGINE_VERSION` bump; pre-AP2 settings hashes
 unchanged). `tick_last_volume_v1` is the AP1-selected Quantower source and
 is explicit opt-in. It builds an A-period `APeriodTickProfileTable` from the
 Quantower Tick–Tick–Last loader, filtered to `[RTH open, RTH open + 30 min)`
-in exchange time; `PriorProfileTable` is not a substitute. Tick histogram
+in exchange time; `PriorProfileTable` is not a substitute. `run_experiment`
+forwards `dataset.tick_paths` into that table even when a prior-VA parquet is
+already present. Tick histogram
 math is reused from `apoc_candidates.compute_tick_last_volume_profile`.
 Missing, malformed, or off-grid tick inputs emit `NaN` APOC/pAPOC with no
 typical fallback. Source / algorithm / allocation / A-period tick-file id

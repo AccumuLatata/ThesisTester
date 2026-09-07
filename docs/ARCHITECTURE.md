@@ -1689,7 +1689,9 @@ Single Prints are implemented in `thesistester/levels/tpo.py`; APOC / pAPOC are 
 `apoc_profile_source` is an optional versioned settings key. Omitted config is
 implicit `typical_mvp_v1` (pre-AP2 identity). Opt-in `tick_last_volume_v1` builds
 an A-period tick table (`thesistester/levels/apoc_tick.py`) from Quantower
-Tick–Tick–Last files; it is not `PriorProfileTable`. Explicit sources also record
+Tick–Tick–Last files; it is not `PriorProfileTable`. Headless `run_experiment`
+still passes `dataset.tick_paths` into the A-period table when a prior-VA
+parquet is also attached. Explicit sources also record
 `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id`.
 `LEVEL_ENGINE_VERSION` remains 11 because the product default algorithm did not change.
 Previous 30m VWAP is implemented in `thesistester/levels/prev30m_vwap.py` (`prev30m_vwap_enabled`, `prev30m_vwap_validity_periods`).
