@@ -491,6 +491,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     # Levels keys are pass-through to R18; reject non-product keys lightly via
     # DEFAULT_LEVELS_SETTINGS + OPTIONAL_LEVELS_SETTINGS so typos fail closed
     # at study authoring. apoc_profile_source is optional (omitted = tick).
+    # typical_mvp_v1 is not a production source.
     unknown_levels = sorted(
         set(levels_map) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS
     )

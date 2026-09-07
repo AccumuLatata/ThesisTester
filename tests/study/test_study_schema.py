@@ -220,6 +220,13 @@ def test_study_levels_rejects_bar_range_apoc_proxy():
         validate_study_spec(normalize_study_spec(raw))
 
 
+def test_study_levels_rejects_typical_apoc_source():
+    raw = _minimal_study()
+    raw["study"]["levels"]["apoc_profile_source"] = "typical_mvp_v1"
+    with pytest.raises(StudySpecError, match="apoc_profile_source"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
 def test_study_levels_accepts_explicit_rolling_poc_tick_source():
     raw = _minimal_study()
     raw["study"]["levels"]["rolling_poc_profile_source"] = "tick_last_volume_v1"

@@ -424,7 +424,9 @@ def generate_packet(
                 "Wave 0 solo 15s (AO1)",
                 len(FIFTEEN_S_ANCHORS),
                 "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
-                "# 15s-safe: no pd/pw/pm VA tokens. Tick-gated solos are progB_w0_va.yaml.\n",
+                "# No pd/pw/pm VA tokens. Tick-gated VA solos are progB_w0_va.yaml.\n"
+                "# Names APOC/pAPOC; validate/expand/launch refuse (APOC requires ticks).\n"
+                "# Do not add tick_paths or apoc_profile_source (packet lock).\n",
                 trigger=trigger,
             ),
             solo,

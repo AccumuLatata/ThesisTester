@@ -66,12 +66,9 @@ def settings_require_apoc_ticks(
     apoc_enabled: bool | None = None,
     apoc_profile_source: object | None = None,
 ) -> bool:
-    """True when the requested APOC family is the production tick source."""
+    """True when APOC is enabled (production tick family; no typical escape)."""
     # Lazy import: profile.py → this module must not import apoc_tick at load.
-    from thesistester.levels.apoc_tick import (
-        APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
-        resolve_apoc_profile_source,
-    )
+    from thesistester.levels.apoc_tick import resolve_apoc_profile_source
 
     payload = dict(settings or {})
     enabled = payload.get("apoc_enabled") if apoc_enabled is None else apoc_enabled
@@ -80,7 +77,8 @@ def settings_require_apoc_ticks(
     source = (
         payload.get("apoc_profile_source") if apoc_profile_source is None else apoc_profile_source
     )
-    return resolve_apoc_profile_source(source) == APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
+    resolve_apoc_profile_source(source)
+    return True
 
 
 def settings_require_rolling_poc_ticks(

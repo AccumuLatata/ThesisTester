@@ -33,12 +33,13 @@ Profile sources (desk default-tick amendment)
         never fall back to typical.  Histogram math is
         ``apoc_candidates.compute_tick_last_volume_profile``.
 
-    ``typical_mvp_v1`` (explicit historical token; not the default)
+    ``typical_mvp_v1`` (dead/test-only library helper; not a production source)
         typical_price = (high + low + close) / 3
         Full bar volume is allocated to the tick bin containing
         ``typical_price``.  POC is the highest-volume bin (lowest bin wins
         ties via ``np.argmax`` on an ascending grid).  This matches
         ``_compute_profile`` in ``profile.py``.  Do not change those helpers.
+        Product / StudySpec / ``normalize_levels_config`` reject this token.
 
 A-period bars
 -------------
@@ -173,8 +174,9 @@ def compute_apoc_levels(
         columns.
     apoc_profile_source:
         Versioned profile source.  Library default ``tick_last_volume_v1``
-        is the desk production source.  ``typical_mvp_v1`` is an explicit
-        historical token and is never a silent fallback.
+        is the desk production source.  ``typical_mvp_v1`` is a dead/test-only
+        library helper (not a production source) and is never a silent
+        fallback.
     apoc_tick_table:
         Optional prebuilt A-period Last×Volume table.  Ignored unless the
         source is ``tick_last_volume_v1``.

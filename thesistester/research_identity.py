@@ -17,11 +17,13 @@ import pandas as pd
 
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.apoc_tick import (
+    APOC_PROFILE_SOURCES,
     LEVELS_APOC_IDENTITY_KEYS,
     attach_apoc_identity,
 )
 from thesistester.levels.rolling_poc_tick import (
     LEVELS_ROLLING_POC_IDENTITY_KEYS,
+    ROLLING_POC_PROFILE_SOURCES,
     attach_rolling_poc_identity,
 )
 from thesistester.levels.tick_vap import (
@@ -89,6 +91,20 @@ def normalize_levels_config(
     unknown = sorted(set(raw) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS)
     if unknown:
         raise ValueError(f"Unknown levels configuration keys: {unknown}")
+    if "apoc_profile_source" in raw:
+        source = raw["apoc_profile_source"]
+        if not isinstance(source, str) or source not in APOC_PROFILE_SOURCES:
+            raise ValueError(
+                "levels.apoc_profile_source must be one of "
+                f"{sorted(APOC_PROFILE_SOURCES)!r}, got {source!r}"
+            )
+    if "rolling_poc_profile_source" in raw:
+        source = raw["rolling_poc_profile_source"]
+        if not isinstance(source, str) or source not in ROLLING_POC_PROFILE_SOURCES:
+            raise ValueError(
+                "levels.rolling_poc_profile_source must be one of "
+                f"{sorted(ROLLING_POC_PROFILE_SOURCES)!r}, got {source!r}"
+            )
     settings = {**DEFAULT_LEVELS_SETTINGS, **raw}
     settings["instrument"] = instrument
     for key in _LEVELS_SORT_KEYS:

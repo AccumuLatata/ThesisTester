@@ -103,6 +103,17 @@ def test_program_b_w0_solo_excludes_va_tokens():
     assert va["study"]["dataset"]["tick_paths"] == gen.VA_TICK_PATHS
 
 
+def test_program_b_w0_solo_refuses_without_ticks():
+    for root in (PROGRAM_B, PROGRAM_B_RUN2):
+        spec = yaml.safe_load((root / "progB_w0_solo.yaml").read_text(encoding="utf-8"))
+        assert "APOC" in spec["study"]["factors"]["core_level"]
+        assert "pAPOC" in spec["study"]["factors"]["core_level"]
+        header = (root / "progB_w0_solo.yaml").read_text(encoding="utf-8")
+        assert "APOC requires ticks" in header
+        with pytest.raises(StudySpecError, match="APOC requires ticks"):
+            validate_study_spec(normalize_study_spec(spec))
+
+
 def test_program_b_fifteen_s_yamls_omit_tick_paths():
     fifteen_s = yaml.safe_load((PROGRAM_B / "manifest.yaml").read_text(encoding="utf-8"))
     for row in fifteen_s["studies"]:

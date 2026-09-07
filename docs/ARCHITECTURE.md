@@ -1714,7 +1714,7 @@ attached. Named or product-default APOC / rolling POC refuse without
 `tick_paths` (`requires ticks`); they never fall back to typical and do not
 emit quiet all-NaN placeholders when those families are required. Studies
 that name neither family still run on 15s-only (`disable_unneeded_tick_families`).
-Explicit `typical_mvp_v1` remains a non-default historical token.
+`typical_mvp_v1` is a dead/test-only library helper, not a production source.
 Program B Wave 7 packets omit `apoc_profile_source` and `tick_paths`
 (identity lock); fresh validate/expand/launch refuse. Manifest rows keep
 `WAVE7_HISTORICAL_PROVENANCE` (typical) for historical ZIPs.

@@ -187,10 +187,11 @@ No `wVWAP_RTH` / `mVWAP_RTH`.
 
 ### Wave 7 — APOC (2)
 
-Committed Program B Wave 7 packets compute implicit `typical_mvp_v1` (legacy
-typical-price). They are not Quantower A-period POC. Manifest rows stamp
-`apoc_object: legacy_typical_price`. The AP1/AP2 selected source
-`tick_last_volume_v1` is a different study.
+Committed Program B Wave 7 packets omit `apoc_profile_source` and
+`tick_paths` (identity lock). Omitted source is now product tick
+Last×Volume; fresh validate / expand / launch refuse (`APOC requires ticks`).
+Historical ZIPs stay labeled `legacy_typical_price` on the manifest. They
+are not Quantower A-period POC. Do not reintroduce typical.
 
 | # | Token |
 |---|---|

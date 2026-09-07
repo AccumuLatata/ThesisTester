@@ -577,7 +577,7 @@ Implementation: table in `thesistester/levels/tick_vap.py`; join in `thesisteste
 - `APOC` is the POC of the first completed RTH 30-minute bracket.
 - `pAPOC` is the immediately prior observed RTH session's finalized `APOC`.
 - `apoc_profile_source=tick_last_volume_v1` (library/product default): Quantower Tick–Tick–Last Last×Volume inside the A-period. Missing/empty `tick_paths` refuse (`APOC requires ticks`). Unsound prints emit `NaN`.
-- `apoc_profile_source=typical_mvp_v1` (explicit historical token): 1-minute typical `(H+L+C)/3` full-bar volume. Not a silent fallback.
+- `apoc_profile_source=typical_mvp_v1` (dead/test-only library helper, not a production source): 1-minute typical `(H+L+C)/3` full-bar volume. Product / StudySpec reject it. Not a silent fallback.
 - Implementation: `thesistester/levels/apoc.py`, A-period table in `thesistester/levels/apoc_tick.py`.
 - `apoc_object` (AP3 provenance): `tick_last_volume` for omitted/explicit
   `tick_last_volume_v1`; `legacy_typical_price` for explicit `typical_mvp_v1`.

@@ -40,6 +40,7 @@ DEFAULT_LEVELS_SETTINGS: dict[str, Any] = {
 # First-class but omitted from product DEFAULT_LEVELS_SETTINGS.
 # APOC and rolling POC: omitted key is tick Last×Volume via
 # attach_apoc_identity / attach_rolling_poc_identity (not typical).
+# Production value for either key is tick_last_volume_v1 only.
 OPTIONAL_LEVELS_SETTINGS: frozenset[str] = frozenset(
     {"apoc_profile_source", "rolling_poc_profile_source"}
 )

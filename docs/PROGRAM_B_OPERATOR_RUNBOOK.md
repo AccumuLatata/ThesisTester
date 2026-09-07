@@ -27,7 +27,14 @@ Run the locked Program B grid on MNQ and collect n / `expectancy_r` / PF per cel
 
 Catalog is still 50 anchors. VA and non-VA are different objects (TV3 tick VAP). They must not share a YAML: one named-VA token refuses the **whole** study when `dataset.tick_paths` is empty.
 
-**15s-only (this desk):** run `manifest.yaml` only. Order: **smoke → Wave 0 (`progB_w0_solo`) → Wave 1 MA → rVWAP → pivot → Wave 2 → Wave 3 → Wave 5 … Wave 8.** Skip Wave 4 and `progB_w0_va.yaml` until a Quantower Tick–Tick–Last export is pinned. Do not skip ahead because a cell is green. Do not drop a name because solo E < 0.
+**15s-only (this desk):** run `manifest.yaml` studies that do **not** name
+APOC / rolling POC. Order: **smoke → Wave 0 non-APOC cores if split, else
+honest refuse → Wave 1 MA → rVWAP → pivot → Wave 2 → Wave 3 → Wave 5 …
+Wave 8.** `progB_w0_solo.yaml` names `APOC` / `pAPOC` and Wave 7 names
+APOC; both refuse without ticks (`APOC requires ticks`). Skip Wave 4 and
+`progB_w0_va.yaml` until a Quantower Tick–Tick–Last export is pinned. Do
+not skip ahead because a cell is green. Do not drop a name because solo E
+< 0. Do not reintroduce typical.
 
 ---
 
@@ -165,12 +172,14 @@ Cross-study UI readout is a **separate** planned series (Study Observatory, `doc
 | 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
 | 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
 
-**Wave 7 APOC object (AP3):** these three files compute implicit
-`typical_mvp_v1` (legacy typical-price). Manifest rows stamp
-`apoc_object: legacy_typical_price`. Do **not** compare Wave 7 cells to
-Quantower A-period POC. Do **not** add `apoc_profile_source` to these YAMLs
+**Wave 7 APOC object (AP3 + desk default-tick):** these three files omit
+`apoc_profile_source` and `tick_paths` (identity lock). Omitted source is
+now product tick Last×Volume; fresh validate / expand / launch refuse
+(`APOC requires ticks`). Manifest rows keep `apoc_object:
+legacy_typical_price` for historical ZIPs. Do **not** compare Wave 7 cells
+to Quantower A-period POC. Do **not** add `apoc_profile_source` or ticks
 (that changes `study_identity_hash`). Do **not** rewrite historical ZIPs.
-`tick_last_volume_v1` is a different study.
+Do **not** reintroduce typical.
 
 Parked until ticks (`manifest_va.yaml`; do not launch on 15s-only). Files already
 carry placeholder `tick_paths` so TV3 can load/expand; launch still refuses the
@@ -183,7 +192,12 @@ missing Tick–Tick–Last file:
 | `progB_w4_profile_rvwap.yaml` | 18 | 1 |
 | `progB_w4_profile_pivot.yaml` | 72 | 1 |
 
-Smoke must finish `status=ok` before Wave 0. Wave 0 (15s) answers “which non-VA levels have +E alone.” Pair waves 1–3 and 5–8 still run for **every** 15s name. Wave 4 / `w0_va` wait for ticks.
+Smoke must finish `status=ok` before Wave 0. Wave 0 (`progB_w0_solo`) names
+`APOC` / `pAPOC` and refuses without ticks (`APOC requires ticks`) — do not
+reintroduce typical. Non-APOC 15s cores still answer “which levels have +E
+alone” once ticks exist or APOC is split out. Pair waves 1–3 and 5–8 still
+run for every 15s name that does not require ticks. Wave 4 / `w0_va` wait
+for ticks.
 
 ### Run 2 (current, `examples/studies/program_b_run2/`)
 
@@ -215,8 +229,9 @@ Same 23 files / 944 cells / same order. Paths are under `examples/studies/progra
 | 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
 | 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
 
-Same Wave 7 APOC object as Run 1: implicit `typical_mvp_v1` / legacy
-typical-price. See the Wave 7 note above.
+Same Wave 7 APOC object as Run 1: omitted source is product tick; packet
+omits ticks and refuses on fresh validate. Historical ZIPs stay
+typical-labeled. See the Wave 7 note above.
 
 ```bash
 SPEC=examples/studies/program_b_run2/progB_smoke_ONH_SMA50_5min.yaml

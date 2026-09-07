@@ -105,7 +105,7 @@ future-shock tests and/or code inspection.
 
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
-| `APOC` | POC of the A-period `[RTH_open, RTH_open + 30 min)`. Default `tick_last_volume_v1` uses Quantower Tick–Tick–Last Last×Volume in the exchange-time window. Explicit `typical_mvp_v1` is a non-default historical token | **Yes** | `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after A-period completion; `NaN` on all non-RTH bars | Missing/empty `tick_paths` refuse when APOC is enabled (`APOC requires ticks`). Unsound prints emit `NaN` (no typical fallback). ETH never contributes. Not full-session POC and not `PriorProfileTable` | `tests/test_stage5_apoc_levels.py`; tick source `tests/test_apoc_tick_source.py` (`test_tick_source_future_shock_does_not_change_prior_apoc`) |
+| `APOC` | POC of the A-period `[RTH_open, RTH_open + 30 min)`. Default `tick_last_volume_v1` uses Quantower Tick–Tick–Last Last×Volume in the exchange-time window. `typical_mvp_v1` is a dead/test-only library helper, not a production source | **Yes** | `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after A-period completion; `NaN` on all non-RTH bars | Missing/empty `tick_paths` refuse when APOC is enabled (`APOC requires ticks`). Unsound prints emit `NaN` (no typical fallback). ETH never contributes. Not full-session POC and not `PriorProfileTable` | `tests/test_stage5_apoc_levels.py`; tick source `tests/test_apoc_tick_source.py` (`test_tick_source_future_shock_does_not_change_prior_apoc`) |
 | `pAPOC` | Prior completed RTH session's APOC (same `apoc_profile_source`); frozen at the start of each new session | **Yes** | First RTH bar of the next session; frozen throughout; `NaN` on non-RTH bars and if prior session had no valid APOC | Same source contract as APOC; uses only prior completed sessions | Same |
 
 ### Previous 30m VWAP — `levels/prev30m_vwap.py`
@@ -293,7 +293,8 @@ Contract reference: `docs/otf-filter.md` §6 / §13b.
 11. **APOC / pAPOC default to tick Last×Volume.** Omitted `apoc_profile_source`
    is `tick_last_volume_v1`. Missing/empty `tick_paths` refuse when APOC is
    required (`APOC requires ticks`). Unsound prints emit `NaN` (no typical
-   fallback). Explicit `typical_mvp_v1` remains a non-default historical token.
+   fallback). `typical_mvp_v1` is a dead/test-only library helper, not a
+   production source.
    Neither source uses future bars/ticks; APOC is not full-session POC and is
    not derived from Single Prints. `LEVEL_ENGINE_VERSION` stays 11; identity
    keys change the settings hash. Program B Wave 7 expansions refuse without

@@ -316,8 +316,13 @@ def test_prior_profile_table_is_not_an_apoc_substitute():
 
 def test_settings_identity_includes_source_algorithm_allocation_and_tick_id():
     implicit = attach_apoc_identity(normalize_levels_config({}, instrument="ES"))
-    typical = attach_apoc_identity(
+    with pytest.raises(ValueError, match="apoc_profile_source"):
         normalize_levels_config({"apoc_profile_source": TYPICAL_MVP_V1}, instrument="ES")
+    typical = attach_apoc_identity(
+        {
+            **normalize_levels_config({}, instrument="ES"),
+            "apoc_profile_source": TYPICAL_MVP_V1,
+        }
     )
     tick = attach_apoc_identity(
         normalize_levels_config({"apoc_profile_source": TICK_LAST_VOLUME_V1}, instrument="ES"),
@@ -694,6 +699,20 @@ def test_compute_levels_default_apoc_without_ticks_refuses():
             df,
             instrument="ES",
             config={"poc_windows": [], "apoc_enabled": True},
+        )
+
+
+def test_compute_levels_rejects_typical_apoc_source():
+    df = _two_session_bars()
+    with pytest.raises(ValueError, match="apoc_profile_source"):
+        compute_levels(
+            df,
+            instrument="ES",
+            config={
+                "poc_windows": [],
+                "apoc_enabled": True,
+                "apoc_profile_source": TYPICAL_MVP_V1,
+            },
         )
 
 

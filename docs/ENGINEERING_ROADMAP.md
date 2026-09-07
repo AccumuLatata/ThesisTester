@@ -1511,6 +1511,7 @@ availability, pAPOC freeze, and unrelated level families. Goldens remain
 unchanged. Desk follow-up: omitted source is tick; `LEVEL_ENGINE_VERSION`
 stays 11 (identity keys change the hash). Missing tick inputs refuse when
 APOC is required (`APOC requires ticks`), never silent typical.
+`typical_mvp_v1` is dead/test-only, not a production source.
 
 ## Rolling POC Quantower parity (RP0–RP2) — RP2 default tick landed
 
