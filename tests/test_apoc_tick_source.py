@@ -376,14 +376,10 @@ def test_tick_source_does_not_change_unrelated_level_families():
         prev30m_vwap_enabled=True,
         prior_profile_table=va_table,
         apoc_enabled=True,
+        tick_paths=[FIXTURE_TICKS],
     )
     typical = compute_all_levels(df, apoc_profile_source=TYPICAL_MVP_V1, **kwargs)
-    tick = compute_all_levels(
-        df,
-        apoc_profile_source=TICK_LAST_VOLUME_V1,
-        tick_paths=[FIXTURE_TICKS],
-        **kwargs,
-    )
+    tick = compute_all_levels(df, apoc_profile_source=TICK_LAST_VOLUME_V1, **kwargs)
     shared = [
         col for col in typical.columns if col in tick.columns and col not in {COL_APOC, COL_PAPOC}
     ]

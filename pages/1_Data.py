@@ -871,8 +871,9 @@ def _render_tick_attach(*, instrument: str) -> None:
             "Attach one or many Quantower Tick–Tick–Last CSVs for prior VA. "
             "This does not replace the 15-second (or one-minute) OHLCV file "
             "and is not an ingestion mode. No ticks → no `pdVA*` / `pw*` / "
-            "`pm*` columns; those names are tick Last×Volume VAP. APOC and "
-            "rolling POC remain 1m typical. Studies keep walking 1m."
+            "`pm*` columns; those names are tick Last×Volume VAP. APOC remains "
+            "1m typical. Rolling POC is tick Last×Volume (all-NaN without "
+            "`tick_paths`; never typical). Studies keep walking 1m."
         )
         uploader_nonce = int(st.session_state.get(TICK_UPLOADER_NONCE_KEY, 0))
         uploaded_files = st.file_uploader(

@@ -570,7 +570,7 @@ Implementation: `thesistester/levels/session_vwap.py`.
 | `va_source` | Identity key `tick_last` on the hashed levels settings when VA columns are in play. |
 | `dataset.tick_paths` | One or more Quantower Tick–Tick–Last files. Named-VA StudySpec / `run_experiment` refuses without this (`VA requires ticks`). |
 
-Implementation: table in `thesistester/levels/tick_vap.py`; join in `thesistester/levels/profile.py`. Rolling POC remains typical-price. Default APOC is typical-price (`typical_mvp_v1`); opt-in `tick_last_volume_v1` is an A-period tick profile, not this prior-VA family.
+Implementation: table in `thesistester/levels/tick_vap.py`; join in `thesistester/levels/profile.py`. Rolling POC is tick Last×Volume on `[now-W+1min, now+1min)` (`thesistester/levels/rolling_poc_tick.py`); missing ticks → all-NaN, never typical. Default APOC is typical-price (`typical_mvp_v1`); opt-in `tick_last_volume_v1` is an A-period tick profile, not this prior-VA family and not rolling POC.
 
 ## A-Period POC (`APOC`, `pAPOC`)
 

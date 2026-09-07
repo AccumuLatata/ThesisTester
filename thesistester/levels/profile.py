@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -10,6 +11,11 @@ import pandas as pd
 
 from ..config import INSTRUMENTS
 from .common import normalized_window_label, require_tz_aware_timestamp
+from .rolling_poc_tick import (
+    ROLLING_POC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
+    compute_rolling_poc_tick_levels,
+    resolve_rolling_poc_profile_source,
+)
 from .session_date import trading_session_date
 
 if TYPE_CHECKING:
@@ -117,18 +123,22 @@ def compute_profile_levels(
     prior_week_aggregation_ticks: int = 1,
     prior_month_aggregation_ticks: int = 1,
     prior_profile_table: PriorProfileTable | None = None,
+    rolling_poc_profile_source: str = ROLLING_POC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
+    tick_paths: Sequence[str | Path] | None = None,
 ) -> pd.DataFrame:
     """Compute rolling POC and, when a tick table is supplied, prior-profile VA.
 
-    Rolling POC still allocates each 1m bar's volume to typical
-    ``(high + low + close) / 3``. The nine ``pd*`` / ``pw*`` / ``pm*`` VA
-    columns are **tick Last×Volume** when ``prior_profile_table`` is set and
-    **absent** when it is ``None``. There is no 1m-typical fallback under those
-    names.
+    Rolling POC is tick Last×Volume on ``[now - W + 1min, now + 1min)``
+    (desk default ``tick_last_volume_v1``). Missing / empty / unsound
+    ``tick_paths`` emit all-NaN ``POC_rolling_*`` columns; they never fall
+    back to typical ``_rolling_poc``. ``PriorProfileTable`` is not a rolling
+    tick input. The nine ``pd*`` / ``pw*`` / ``pm*`` VA columns are tick
+    Last×Volume when ``prior_profile_table`` is set and **absent** when it is
+    ``None``.
 
     ``prior_*_aggregation_ticks`` remain on the signature for API compatibility.
     Day/week/month bin width is applied when the table is built, not when it is
-    joined.
+    joined. ``rolling_poc_profile_source`` / ``tick_paths`` are trailing.
     """
     require_tz_aware_timestamp(df)
     if instrument not in INSTRUMENTS:
@@ -155,23 +165,16 @@ def compute_profile_levels(
 
     out = df.sort_values("timestamp").reset_index(drop=True).copy()
     levels = pd.DataFrame(index=out.index)
-    volumes = pd.to_numeric(out["volume"], errors="coerce")
-    prices = (
-        pd.to_numeric(out["high"], errors="coerce")
-        + pd.to_numeric(out["low"], errors="coerce")
-        + pd.to_numeric(out["close"], errors="coerce")
-    ) / 3.0
-
+    resolve_rolling_poc_profile_source(rolling_poc_profile_source)
+    tick_levels = compute_rolling_poc_tick_levels(
+        out,
+        tick_paths=tick_paths,
+        windows=rolling_windows,
+        instrument=instrument,
+    )
     for window in rolling_windows:
         label = normalized_window_label(window)
-        levels[f"POC_rolling_{label}"] = _rolling_poc(
-            out,
-            prices,
-            volumes,
-            tick_size=inst.tick_size,
-            window=window,
-            value_area_pct=value_area_pct,
-        )
+        levels[f"POC_rolling_{label}"] = tick_levels[f"POC_rolling_{label}"]
 
     if prior_profile_table is not None:
         # Lazy import: tick_vap.py already imports this module's expander.

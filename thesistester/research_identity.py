@@ -20,6 +20,10 @@ from thesistester.levels.apoc_tick import (
     LEVELS_APOC_IDENTITY_KEYS,
     attach_apoc_identity,
 )
+from thesistester.levels.rolling_poc_tick import (
+    LEVELS_ROLLING_POC_IDENTITY_KEYS,
+    attach_rolling_poc_identity,
+)
 from thesistester.levels.tick_vap import (
     LEVELS_TICK_IDENTITY_KEYS,
     TICK_SOURCE_NONE,
@@ -76,7 +80,11 @@ def normalize_levels_config(
     raw.pop("instrument", None)
     # Tick identity is injected after normalize; inbound copies must not fail
     # the product-key allowlist (classic page / artifact round-trip).
-    for key in (*LEVELS_TICK_IDENTITY_KEYS, *LEVELS_APOC_IDENTITY_KEYS):
+    for key in (
+        *LEVELS_TICK_IDENTITY_KEYS,
+        *LEVELS_APOC_IDENTITY_KEYS,
+        *LEVELS_ROLLING_POC_IDENTITY_KEYS,
+    ):
         raw.pop(key, None)
     unknown = sorted(set(raw) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS)
     if unknown:
@@ -395,10 +403,14 @@ class LevelsIdentity:
             raw_id = config.get("tick_source_id")
             if isinstance(raw_id, str) and raw_id.strip():
                 inbound = raw_id
-        normalized = attach_apoc_identity(
-            attach_tick_identity(
-                normalize_levels_config(config, instrument=resolved_instrument),
-                tick_source_id=tick_source_id or inbound or TICK_SOURCE_NONE,
+        normalized = attach_rolling_poc_identity(
+            attach_apoc_identity(
+                attach_tick_identity(
+                    normalize_levels_config(config, instrument=resolved_instrument),
+                    tick_source_id=tick_source_id or inbound or TICK_SOURCE_NONE,
+                ),
+                tick_paths=tick_paths,
+                format_profile=resolve_tick_format_profile(tick_format_profile),
             ),
             tick_paths=tick_paths,
             format_profile=resolve_tick_format_profile(tick_format_profile),

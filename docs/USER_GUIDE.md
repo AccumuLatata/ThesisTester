@@ -71,7 +71,7 @@ datasets, dataset identity, message size, MessageSizeError
 | `Instrument` | Contract metadata (tick size, point value) | Wrong instrument → wrong R and costs |
 | `Source` | `Sample data` or `Upload CSV` | Sample auto-loads only on an empty session; it does not replace imported or already-loaded data when you navigate back |
 | `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; a few OHLC-identical 15s duplicate opens are resolved (lowest volume) before derive. Use R12 `subtimeframe_conservative` unless Build empty bars is on |
-| `Quantower tick-last (optional)` | One-or-many Tick–Tick–Last CSVs for prior VA | Not an ingestion mode and not a 15s replacement. Paths must sit under cwd or the local store (same as Studies launch). No ticks → no `pdVA*` columns |
+| `Quantower tick-last (optional)` | One-or-many Tick–Tick–Last CSVs for prior VA and rolling POC | Not an ingestion mode and not a 15s replacement. Paths must sit under cwd or the local store (same as Studies launch). No ticks → no `pdVA*` columns; `POC_rolling_*` all-NaN |
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
 | Futures roll controls | `Roll method`, contract/adjustment/rule fields | Validate before trusting continuous history |
@@ -103,9 +103,9 @@ levels and downstream results when the dataset identity changes.
 - Not a live data feed or broker connection.
 - Native one-minute primary duplicates are never silently auto-deduped (volume/VWAP honesty). On 15s-primary derive, OHLC-identical 15s source duplicates are resolved before 1m derivation (lowest volume kept; audit in provenance). OHLC conflicts still fail.
 - Lower-timeframe dual-upload is optional/legacy and for replay diagnostics.
-- Tick-last attach is optional and for prior VA only. No ticks → no `pdVA*`
-  / `pw*` / `pm*` columns (those names are Quantower-style tick Last×Volume
-  VAP). APOC and rolling POC remain 1m typical. 15s stays the bar clock.
+- Tick-last attach is optional. No ticks → no `pdVA*` / `pw*` / `pm*`
+  columns (those names are Quantower-style tick Last×Volume VAP) and
+  all-NaN `POC_rolling_*`. APOC remains 1m typical. 15s stays the bar clock.
 - Format profiles are explicit; wrong profile → bad bars, not a soft warning-only
   success.
 - `MessageSizeError` is Streamlit's frontend websocket limit (repo default
@@ -154,7 +154,8 @@ recalculations keep the previous successful levels. Levels are research inputs,
 not trade signals by themselves. Prior `pdVA*` / `pw*` / `pm*` are tick VAP
 when `dataset.tick_paths` (or a prior-profile table) is provided, and
 **absent** otherwise — they are not 1m typical under those names. Classic
-Calculate does not read Data-page attach. APOC and rolling POC remain typical.
+Calculate does not read Data-page attach. APOC remains typical. Rolling POC
+is tick Last×Volume (NaN without `dataset.tick_paths`).
 
 **Related pages.** Data (prerequisite); Setup Builder / Signals (consumers).
 

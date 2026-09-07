@@ -1689,8 +1689,8 @@ existing profile settings. Controls inside it:
 
 `thesistester/levels/defaults.py` is the canonical product configuration used by both the
 Levels page and the headless API: 15-minute opening range; SMA 50/200 and EMA 9/21 on
-`1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min`; 70% value area;
-and prior day/week/month profile aggregation of 4/8/10 ticks. All gate values are included
+`1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; NaN without ticks); 70% value area;
+and prior day/week/month profile aggregation of 1/8/10 ticks. All gate values are included
 in the levels settings object and therefore in the settings hash used for saved snapshot
 matching. `pivot_timeframes` is sorted deterministically alongside the other list-valued
 settings.
@@ -1710,10 +1710,15 @@ Tick–Tick–Last files; it is not `PriorProfileTable`. Headless `run_experimen
 still passes `dataset.tick_paths` into the A-period table when a prior-VA
 parquet is also attached. Explicit sources also record
 `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id`.
-`LEVEL_ENGINE_VERSION` remains 11 because the product default algorithm did not change.
-Program B Wave 7 packets stay implicit typical and are labeled
+`LEVEL_ENGINE_VERSION` remains 11 because the product default *APOC* algorithm
+did not change. Rolling POC identity keys (`rolling_poc_algorithm_version`,
+`rolling_poc_allocation`, `rolling_poc_tick_source_id`) always stamp tick
+Last×Volume so callers cannot treat omitted config as typical rolling.
+Program B Wave 7 packets stay implicit typical APOC and are labeled
 `legacy_typical_price` (AP3). `thesistester/study/apoc_provenance.py` is the
-sidecar helper; it does not change APOC math.
+sidecar helper; it does not change APOC math. Rolling POC in Program B YAML
+omits `rolling_poc_profile_source`; without `tick_paths` those studies emit
+NaN `POC_rolling_*` (they do not name rolling POC as a factor).
 Previous 30m VWAP is implemented in `thesistester/levels/prev30m_vwap.py` (`prev30m_vwap_enabled`, `prev30m_vwap_validity_periods`).
 When `prev30m_vwap_validity_periods > 1`, Phase 3 emits stack columns `prev30mVWAP_2`…`prev30mVWAP_N` (setup-selectable); age-1 `prev30mVWAP` semantics are unchanged.
 Diagnostic companions `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are excluded from setup/chart eligibility via `NON_LEVEL_OUTPUT_COLUMNS` in `thesistester/setup.py`.

@@ -22,6 +22,7 @@ from thesistester.levels.catalog import (
 from thesistester.levels.tick_vap import resolve_tick_format_profile
 from thesistester.levels.common import normalized_window_label
 from thesistester.levels.apoc_tick import APOC_PROFILE_SOURCES
+from thesistester.levels.rolling_poc_tick import ROLLING_POC_PROFILE_SOURCES
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
 from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES
@@ -479,6 +480,13 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
             raise StudySpecError(
                 "study.levels.apoc_profile_source must be one of "
                 f"{sorted(APOC_PROFILE_SOURCES)!r}, got {source!r}"
+            )
+    if "rolling_poc_profile_source" in levels_map:
+        source = levels_map["rolling_poc_profile_source"]
+        if not isinstance(source, str) or source not in ROLLING_POC_PROFILE_SOURCES:
+            raise StudySpecError(
+                "study.levels.rolling_poc_profile_source must be one of "
+                f"{sorted(ROLLING_POC_PROFILE_SOURCES)!r}, got {source!r}"
             )
     _validate_levels_map(levels_map)
 

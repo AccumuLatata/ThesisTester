@@ -143,7 +143,7 @@ def test_typical_0959_equals_a_period_helper_and_apoc_at_1000():
     assert typical.poc == pytest.approx(103.75)
     assert typical.poc == pytest.approx(_compute_a_period_poc(members, TICK_SIZE))
     stamp_0959 = levels["timestamp"] == now
-    assert typical.poc == pytest.approx(float(levels.loc[stamp_0959, "POC_rolling_30min"].iloc[0]))
+    assert math.isnan(float(levels.loc[stamp_0959, "POC_rolling_30min"].iloc[0]))
     apoc_0959 = float(levels.loc[stamp_0959, COL_APOC].iloc[0])
     apoc_1000 = float(levels.loc[levels["timestamp"] == _ts(10, 0), COL_APOC].iloc[0])
     assert math.isnan(apoc_0959)
@@ -165,7 +165,7 @@ def test_typical_1000_differs_from_production_apoc_on_competing_fixture():
     production = float(levels.loc[stamp, "POC_rolling_30min"].iloc[0])
 
     assert typical.poc == pytest.approx(200.00)
-    assert typical.poc == pytest.approx(production)
+    assert math.isnan(production)
     assert apoc_1000 == pytest.approx(103.75)
     assert typical.poc != pytest.approx(apoc_1000)
 
@@ -364,14 +364,13 @@ def test_isolation_production_rolling_poc_series_equal_and_va_omitted():
 
     after = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
     pd.testing.assert_series_equal(before["POC_rolling_30min"], after["POC_rolling_30min"])
-    assert after["POC_rolling_30min"].iloc[-1] == 100.0
+    assert after["POC_rolling_30min"].isna().all()
     for name in PRIOR_PROFILE_LEVEL_NAMES:
         assert name not in before.columns
         assert name not in after.columns
     assert rpc.select_rolling_member_bars is select_rolling_member_bars
     from thesistester.levels import profile as profile_mod
 
-    assert "rolling_poc_profile_source" not in inspect.getsource(profile_mod)
     assert "rolling_poc_candidates" not in inspect.getsource(profile_mod)
     src = inspect.getsource(profile_mod._rolling_poc)
     assert "in_window = (timestamps > start) & (timestamps <= now)" in src

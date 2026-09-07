@@ -27,7 +27,6 @@ from pandas.errors import EmptyDataError
 
 from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import DataValidationError, normalize_column_name
-from thesistester.levels.session_date import trading_session_date
 
 TICK_FORMAT_PROFILE: Final[str] = "quantower_tick_last"
 
@@ -330,6 +329,10 @@ def _peek_tick_file(path: Path, *, source_tz: str) -> _FileMeta:
 
 
 def _parse_tick_file(path: Path, *, instrument: str, source_tz: str) -> _ParsedTickFile:
+    # Lazy: a module-level import of levels.session_date loads levels/__init__
+    # (compute_all_levels → apoc_tick → this module) and circular-imports.
+    from thesistester.levels.session_date import trading_session_date
+
     inst = _instrument(instrument)
     raw = _read_tick_csv(path)
     _require_tick_columns(raw, path)

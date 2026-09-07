@@ -37,6 +37,10 @@ DEFAULT_LEVELS_SETTINGS: dict[str, Any] = {
     "prev30m_vwap_validity_periods": 1,
 }
 
-# First-class but omitted from product defaults so implicit typical APOC keeps
-# the pre-AP2 settings hash. Present only when a caller opts in explicitly.
-OPTIONAL_LEVELS_SETTINGS: frozenset[str] = frozenset({"apoc_profile_source"})
+# First-class but omitted from product DEFAULT_LEVELS_SETTINGS.
+# APOC: omitted key keeps implicit typical (pre-AP2 settings hash).
+# Rolling POC: omitted key is still tick Last×Volume via
+# attach_rolling_poc_identity (not typical).
+OPTIONAL_LEVELS_SETTINGS: frozenset[str] = frozenset(
+    {"apoc_profile_source", "rolling_poc_profile_source"}
+)

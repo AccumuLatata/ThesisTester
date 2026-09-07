@@ -241,7 +241,8 @@ def test_rolling_vwap_correctness_on_small_dataset():
     assert np.allclose(out["VWAP_rolling_3min"].to_numpy(), expected)
 
 
-def test_rolling_poc_correctness_on_simple_dataset():
+def test_rolling_poc_without_ticks_is_all_nan():
+    """Production rolling POC is tick-only; no tick_paths → columns present, all-NaN."""
     ts = pd.date_range("2026-06-02 09:00:00", periods=4, freq="10min", tz=TZ)
     df = pd.DataFrame(
         {
@@ -254,7 +255,7 @@ def test_rolling_poc_correctness_on_simple_dataset():
         }
     )
     out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
-    assert out["POC_rolling_30min"].iloc[-1] == 100.0
+    assert out["POC_rolling_30min"].isna().all()
 
 
 def _tick_chunk_from_bars(df: pd.DataFrame, *, instrument: str = "ES") -> list[TickChunk]:

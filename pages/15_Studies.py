@@ -1332,7 +1332,8 @@ _BUILDER_HONESTY = (
     "then Confirm and run on the Preview tab). Descriptive ranking after a run "
     "is not a validated edge. Named `pdVA*` / `pw*` / `pm*` tokens require "
     "`dataset.tick_paths` (Quantower Tick–Tick–Last). No ticks → those columns "
-    "are absent. APOC and rolling POC remain 1m typical. 15s stays the bar "
+    "are absent. APOC remains 1m typical. Rolling POC is tick Last×Volume "
+    "(all-NaN without `dataset.tick_paths`; never typical). 15s stays the bar "
     "clock. The child process is `python -m thesistester study run …`."
 )
 
@@ -1942,18 +1943,20 @@ def _render_build() -> None:
         key=WIDGET_KEY_TICK_PATHS,
         placeholder="data/es_ticks.csv",
         help=(
-            "Optional Quantower Tick–Tick–Last CSVs for prior VA. One path per "
-            "line. Omit unless factors name pdVA* / pw* / pm* tokens. Does not "
-            "replace the 15s bar CSV. Launch pins and refuses missing files "
-            "the same way as dataset.path."
+            "Optional Quantower Tick–Tick–Last CSVs for prior VA and rolling "
+            "POC. One path per line. Required for named pdVA* / pw* / pm* "
+            "tokens; without ticks those columns are absent and POC_rolling_* "
+            "is all-NaN. Does not replace the 15s bar CSV. Launch pins and "
+            "refuses missing files the same way as dataset.path."
         ),
     )
     st.caption(
-        "Optional Quantower Tick–Tick–Last files for prior VA only. "
+        "Optional Quantower Tick–Tick–Last files for prior VA and rolling POC. "
         "Emit writes `dataset.tick_paths` only when this box is set. "
-        "New drafts stay 15s-only. No ticks → no `pdVA*` columns; those "
-        "names are tick Last×Volume VAP. APOC / rolling POC remain 1m typical. "
-        "Studies keep walking 1m. Does not replace the 15s bar CSV."
+        "New drafts stay 15s-only. No ticks → no `pdVA*` columns (those "
+        "names are tick Last×Volume VAP) and all-NaN `POC_rolling_*`. "
+        "APOC remains 1m typical. Rolling POC is tick Last×Volume "
+        "(never typical). Studies keep walking 1m. Does not replace the 15s bar CSV."
     )
 
     st.markdown("### Levels → tokens")
