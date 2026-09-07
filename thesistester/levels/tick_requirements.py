@@ -105,7 +105,7 @@ def product_tick_family_message(*, apoc: bool, rolling: bool) -> str:
         return ""
     if len(families) == 1:
         return f"{families[0]} requires ticks: tick_paths is missing or empty"
-    return "APOC and rolling POC require ticks: tick_paths is missing or empty"
+    return "APOC requires ticks and rolling POC requires ticks: tick_paths is missing or empty"
 
 
 def disable_unneeded_tick_families(

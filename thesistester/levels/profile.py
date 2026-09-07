@@ -164,12 +164,12 @@ def compute_profile_levels(
     rolling_windows = (
         DEFAULT_ROLLING_POC_WINDOWS if rolling_windows is None else tuple(rolling_windows)
     )
+    resolve_rolling_poc_profile_source(rolling_poc_profile_source)
     if rolling_windows and not tick_paths_present(tick_paths):
         raise ValueError(f"{ROLLING_POC_REQUIRES_TICKS}: tick_paths is missing or empty")
 
     out = df.sort_values("timestamp").reset_index(drop=True).copy()
     levels = pd.DataFrame(index=out.index)
-    resolve_rolling_poc_profile_source(rolling_poc_profile_source)
     tick_levels = compute_rolling_poc_tick_levels(
         out,
         tick_paths=tick_paths,

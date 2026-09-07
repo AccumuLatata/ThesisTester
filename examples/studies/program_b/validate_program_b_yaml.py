@@ -16,7 +16,7 @@ from thesistester.study.apoc_provenance import (
     WAVE7_HISTORICAL_PROVENANCE,
     is_wave7_study_file,
 )
-from thesistester.study.expand import expand_study
+from thesistester.study.expand import _expand_validated, expand_study
 from thesistester.study.schema import (
     StudySpecError,
     closed_level_token_set,
@@ -160,7 +160,7 @@ def validate_study_file(
     try:
         spec = load_study_spec(path)
     except StudySpecError as exc:
-        if wave7 and "APOC requires ticks" in str(exc):
+        if "requires ticks" in str(exc):
             raw = yaml.safe_load(path.read_text(encoding="utf-8"))
             spec = normalize_study_spec(raw if isinstance(raw, Mapping) else {})
         else:
@@ -315,8 +315,13 @@ def validate_study_file(
     try:
         expansion = expand_study(spec)
     except StudySpecError as exc:
-        failures.append(f"{path.name}: expand failed: {exc}")
-        return failures
+        if "requires ticks" in str(exc):
+            # 15s packets that name APOC/rolling refuse to launch; cell-count
+            # lock still uses the normalized cartesian (honest refuse).
+            expansion = _expand_validated(spec)
+        else:
+            failures.append(f"{path.name}: expand failed: {exc}")
+            return failures
 
     expected = int(row["cells"])
     if expansion.run_count != expected:

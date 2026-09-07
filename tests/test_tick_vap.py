@@ -212,10 +212,10 @@ def test_compute_profile_levels_omits_pdva_without_table():
             "volume": [10.0, 30.0, 5.0],
         }
     )
-    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    out = compute_profile_levels(df, instrument="ES", rolling_windows=[])
     assert "pdVAH" not in out.columns
     assert "pdPOC" not in out.columns
-    assert "POC_rolling_30min" in out.columns
+    assert "POC_rolling_30min" not in out.columns
 
 
 def test_quantower_ticks_import_does_not_cycle_through_all_levels():

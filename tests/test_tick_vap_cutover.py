@@ -168,19 +168,22 @@ def _minimal_study(*, core: str = "ONH", tick_paths: list[str] | None = None) ->
     }
 
 
-def test_compute_profile_levels_omits_va_without_table_rolling_poc_value_equal():
+def test_compute_profile_levels_omits_va_without_table_and_rolling_refuses():
     df = _two_session_df()
-    without = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    without = compute_profile_levels(df, instrument="ES", rolling_windows=[])
     with_table = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         prior_profile_table=_table(df),
     )
     for name in PRIOR_PROFILE_LEVEL_NAMES:
         assert name not in without.columns
-    assert "POC_rolling_30min" in without.columns
-    pd.testing.assert_series_equal(without["POC_rolling_30min"], with_table["POC_rolling_30min"])
+    assert "POC_rolling_30min" not in without.columns
+    for name in PRIOR_PROFILE_LEVEL_NAMES:
+        assert name in with_table.columns
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
 
 
 def test_dvwap_series_equal_to_frozen_typical_vector():
@@ -239,7 +242,7 @@ def test_session_marks_value_equal_without_tick_table():
 def test_table_shift_maps_prior_session_and_first_session_is_nan():
     df = _two_session_df()
     out = compute_profile_levels(
-        df, instrument="ES", rolling_windows=["30min"], prior_profile_table=_table(df)
+        df, instrument="ES", rolling_windows=[], prior_profile_table=_table(df)
     )
     first = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-01").date()]
     second = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
@@ -255,14 +258,14 @@ def test_future_tick_session_does_not_change_earlier_pdva():
     base = _two_session_df()
     table_base = _table(base)
     out_base = compute_profile_levels(
-        base, instrument="ES", rolling_windows=["30min"], prior_profile_table=table_base
+        base, instrument="ES", rolling_windows=[], prior_profile_table=table_base
     )
     day3 = _bars("2026-06-03 09:30:00", [999.0, 1000.0], [9_999.0, 9_999.0], freq="1h")
     extended = pd.concat([base, day3], ignore_index=True)
     out_ext = compute_profile_levels(
         extended,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         prior_profile_table=_table(extended),
     )
     mask = out_base["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()
@@ -312,7 +315,7 @@ def test_partial_tick_coverage_does_not_fill_from_earlier_session():
     frame = pd.concat([d1, d2, d3], ignore_index=True)
     table = _table(pd.concat([d1, d3], ignore_index=True))
     out = compute_profile_levels(
-        frame, instrument="ES", rolling_windows=["30min"], prior_profile_table=table
+        frame, instrument="ES", rolling_windows=[], prior_profile_table=table
     )
     day2 = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
     day3 = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-03").date()]

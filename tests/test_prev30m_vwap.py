@@ -219,9 +219,10 @@ def test_existing_families_unchanged_when_prev30m_enabled():
         session_vwap_enabled=True,
         single_prints_enabled=True,
         apoc_enabled=True,
+        apoc_profile_source="typical_mvp_v1",
         prev30m_vwap_enabled=False,
-    
-        poc_windows=[])
+        poc_windows=[],
+    )
     with_prev = compute_all_levels(
         df,
         instrument="ES",
@@ -229,9 +230,10 @@ def test_existing_families_unchanged_when_prev30m_enabled():
         session_vwap_enabled=True,
         single_prints_enabled=True,
         apoc_enabled=True,
+        apoc_profile_source="typical_mvp_v1",
         prev30m_vwap_enabled=True,
-    
-        poc_windows=[])
+        poc_windows=[],
+    )
     for col in base.columns:
         pd.testing.assert_series_equal(base[col], with_prev[col], check_names=True)
     assert "prev30mVWAP" in with_prev.columns

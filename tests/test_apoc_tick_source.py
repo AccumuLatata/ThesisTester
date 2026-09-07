@@ -205,7 +205,9 @@ def test_tick_source_emits_apoc_and_papoc_from_a_period_table():
         apoc_profile_source=TICK_LAST_VOLUME_V1,
         tick_paths=[FIXTURE_TICKS],
     )
-    typical = compute_apoc_levels(df, instrument="ES", enabled=True)
+    typical = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source=TYPICAL_MVP_V1
+    )
     _assert_session_poc(result, df, date(2026, 6, 2), 100.25)
     _assert_session_poc(result, df, date(2026, 6, 3), 200.25)
 
@@ -221,18 +223,19 @@ def test_tick_source_emits_apoc_and_papoc_from_a_period_table():
     )
 
 
-def test_missing_tick_paths_emit_nan_without_typical_fallback():
+def test_missing_tick_paths_refuse_without_typical_fallback():
     df = _two_session_bars()
-    typical = compute_apoc_levels(df, instrument="ES", enabled=True)
-    missing = compute_apoc_levels(
-        df,
-        instrument="ES",
-        enabled=True,
-        apoc_profile_source=TICK_LAST_VOLUME_V1,
-        tick_paths=None,
+    typical = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source=TYPICAL_MVP_V1
     )
-    assert missing[COL_APOC].isna().all()
-    assert missing[COL_PAPOC].isna().all()
+    with pytest.raises(ValueError, match="APOC requires ticks"):
+        compute_apoc_levels(
+            df,
+            instrument="ES",
+            enabled=True,
+            apoc_profile_source=TICK_LAST_VOLUME_V1,
+            tick_paths=None,
+        )
     assert typical[COL_APOC].notna().any()
 
 
