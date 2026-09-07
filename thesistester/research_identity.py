@@ -11,11 +11,15 @@ import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
+from thesistester.levels.apoc_tick import (
+    LEVELS_APOC_IDENTITY_KEYS,
+    attach_apoc_identity,
+)
 from thesistester.levels.tick_vap import (
     LEVELS_TICK_IDENTITY_KEYS,
     TICK_SOURCE_NONE,
@@ -72,9 +76,9 @@ def normalize_levels_config(
     raw.pop("instrument", None)
     # Tick identity is injected after normalize; inbound copies must not fail
     # the product-key allowlist (classic page / artifact round-trip).
-    for key in LEVELS_TICK_IDENTITY_KEYS:
+    for key in (*LEVELS_TICK_IDENTITY_KEYS, *LEVELS_APOC_IDENTITY_KEYS):
         raw.pop(key, None)
-    unknown = sorted(set(raw) - set(DEFAULT_LEVELS_SETTINGS))
+    unknown = sorted(set(raw) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS)
     if unknown:
         raise ValueError(f"Unknown levels configuration keys: {unknown}")
     settings = {**DEFAULT_LEVELS_SETTINGS, **raw}
@@ -83,6 +87,16 @@ def normalize_levels_config(
         value = settings[key]
         settings[key] = sorted(list(value))
     return settings
+
+
+def _dataset_tick_paths(dataset: Mapping[str, Any] | None) -> list[str | Path] | None:
+    """Return dataset tick file paths only. A prior-VA table path is not APOC input."""
+    if not dataset:
+        return None
+    paths = dataset.get("tick_paths")
+    if isinstance(paths, list) and any(str(item).strip() for item in paths):
+        return [path for path in paths if str(path).strip()]
+    return None
 
 
 def _tick_source_id_from_dataset(dataset: Mapping[str, Any] | None) -> str:
@@ -372,6 +386,8 @@ class LevelsIdentity:
         *,
         instrument: str | None = None,
         tick_source_id: str | None = None,
+        tick_paths: Sequence[str | Path] | None = None,
+        tick_format_profile: str | None = None,
     ) -> LevelsIdentity:
         resolved_instrument = instrument or data_identity.instrument
         inbound = None
@@ -379,9 +395,13 @@ class LevelsIdentity:
             raw_id = config.get("tick_source_id")
             if isinstance(raw_id, str) and raw_id.strip():
                 inbound = raw_id
-        normalized = attach_tick_identity(
-            normalize_levels_config(config, instrument=resolved_instrument),
-            tick_source_id=tick_source_id or inbound or TICK_SOURCE_NONE,
+        normalized = attach_apoc_identity(
+            attach_tick_identity(
+                normalize_levels_config(config, instrument=resolved_instrument),
+                tick_source_id=tick_source_id or inbound or TICK_SOURCE_NONE,
+            ),
+            tick_paths=tick_paths,
+            format_profile=resolve_tick_format_profile(tick_format_profile),
         )
         return cls.from_normalized(data_identity, normalized)
 
@@ -397,6 +417,12 @@ class LevelsIdentity:
             data_identity,
             run.get("levels"),
             tick_source_id=_tick_source_id_from_dataset(dataset),
+            tick_paths=_dataset_tick_paths(dataset),
+            tick_format_profile=(
+                str(dataset["tick_format_profile"])
+                if dataset.get("tick_format_profile") is not None
+                else None
+            ),
         )
 
     @classmethod
@@ -407,7 +433,13 @@ class LevelsIdentity:
         if not isinstance(raw_settings, Mapping):
             raise ValueError("page state must include levels_settings mapping")
         # Bind through the shared normalizer so identity ignores key/list order.
-        return cls.from_config(data_identity, raw_settings, instrument=data_identity.instrument)
+        # Page state stores Quantower tick files at the top level (Data page).
+        return cls.from_config(
+            data_identity,
+            raw_settings,
+            instrument=data_identity.instrument,
+            tick_paths=_dataset_tick_paths(mapping),
+        )
 
     @classmethod
     def from_bundle_meta(

@@ -32,7 +32,7 @@ Assistant-related contracts:
 | Trade journal (fills + intent ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ9 landed** (series complete). Page 17 Journal + USER_GUIDE H2 + HC allowlist + CLI `journal report`. No engine/golden touch. Quantower *Trades* loader parked |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
-| A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP1 implemented — evidence collection pending.** Current APOC is a 1-minute typical-price proxy. The comparison harness is isolated from production APOC. A versioned source change still requires a reproducible Quantower oracle. |
+| A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP2 implemented.** Default APOC remains `typical_mvp_v1`. Opt-in `tick_last_volume_v1` is the AP1-selected Quantower source (4/4 exact on the written Levels2test scorecard). Bar-range proxy was not selected. AP3 is Program B provenance only. |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1485,14 +1485,14 @@ named-VA). Product day key is `prior_day_profile_aggregation_ticks`;
 Parked: `typical_mvp` same-name alias, developing `dVAH`, APOC/rolling-POC
 VAP, tick VWAP, bid/ask VAP.
 
-## A-Period POC Quantower parity (AP0–AP3) — AP1 implemented, evidence pending
+## A-Period POC Quantower parity (AP0–AP3) — AP2 implemented
 
 The desk observed a mismatch between Quantower A-period POC and ThesisTester's
-one-minute typical-price APOC. Current code confirms the ThesisTester
-approximation, but the repository has no 2026-09-04 MNQ source fixture or
-Quantower APOC oracle. AP0 therefore locks evidence collection and candidate
-discrimination before any production-math change. Do not infer Quantower's
-algorithm from one matching bar-range reconstruction.
+one-minute typical-price APOC. AP1 compared candidates; the written Levels2test
+scorecard selected **tick Last×Volume** (4/4 exact) and rejected the 15s
+bar-range proxy (2/4). AP2 adds that source as an explicit opt-in. Product
+default APOC is still typical-price. Do not present a bar proxy as
+Quantower-compatible.
 
 **Canonical spec:** `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md`
 
@@ -1500,13 +1500,14 @@ algorithm from one matching bar-range reconstruction.
 |---|---|
 | AP0 | Evidence contract, candidate-selection gate, and scoped PR sequence ✅ |
 | AP1 | Pure candidate comparator and optional desk-oracle test; no production output change ✅ |
-| AP2 | Implement one AP1-selected, versioned APOC source with PIT and failure-to-NaN contracts |
+| AP2 | Versioned `tick_last_volume_v1` opt-in with PIT and failure-to-NaN contracts ✅ |
 | AP3 | Stamp Program B Wave 7 APOC provenance; do not rewrite historical results |
 
 **Regression posture:** preserve the disabled APOC no-op, A-period/RTH/ETH
 availability, pAPOC freeze, and unrelated level families. Goldens remain
-unchanged. A product-default source change requires identity/cache versioning;
-missing selected-source inputs must not silently emit legacy typical APOC.
+unchanged. Product default source is unchanged (`typical_mvp_v1`); no
+`LEVEL_ENGINE_VERSION` bump. Missing tick inputs under the selected source
+emit `NaN`, never legacy typical APOC.
 
 ## Trade Journal (TJ0–TJ9) — TJ9 landed (series complete)
 

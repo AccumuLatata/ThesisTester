@@ -885,7 +885,7 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
   the entries carry edge under a mechanical bracket.
 - Program C conditional locks (ToD + OTF) — after Run 2 readout; TJ6 level
   attribution is a candidate source of the level list.
-- AP2 (blocked on a Quantower APOC oracle).
+- AP2 (implemented — opt-in `tick_last_volume_v1`; default APOC remains typical).
 - Journal as an R21 portfolio `setup_id` (after TJ5 bar indices exist).
 - Tag vocabulary governance (desk-owned list; repo holds the map).
 - Entry-time jitter null (shift entries ±k bars) as a second TJ7 null once

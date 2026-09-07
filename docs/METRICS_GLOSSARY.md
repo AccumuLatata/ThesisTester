@@ -570,7 +570,15 @@ Implementation: `thesistester/levels/session_vwap.py`.
 | `va_source` | Identity key `tick_last` on the hashed levels settings when VA columns are in play. |
 | `dataset.tick_paths` | One or more Quantower Tick–Tick–Last files. Named-VA StudySpec / `run_experiment` refuses without this (`VA requires ticks`). |
 
-Implementation: table in `thesistester/levels/tick_vap.py`; join in `thesistester/levels/profile.py`. APOC / rolling POC remain typical-price and are not this family.
+Implementation: table in `thesistester/levels/tick_vap.py`; join in `thesistester/levels/profile.py`. Rolling POC remains typical-price. Default APOC is typical-price (`typical_mvp_v1`); opt-in `tick_last_volume_v1` is an A-period tick profile, not this prior-VA family.
+
+## A-Period POC (`APOC`, `pAPOC`)
+
+- `APOC` is the POC of the first completed RTH 30-minute bracket.
+- `pAPOC` is the immediately prior observed RTH session's finalized `APOC`.
+- `apoc_profile_source=typical_mvp_v1` (default): 1-minute typical `(H+L+C)/3` full-bar volume.
+- `apoc_profile_source=tick_last_volume_v1` (opt-in): Quantower Tick–Tick–Last Last×Volume inside the A-period. Selected by the AP1 Levels2test scorecard (4/4 exact). Missing tick inputs emit `NaN`.
+- Implementation: `thesistester/levels/apoc.py`, A-period table in `thesistester/levels/apoc_tick.py`.
 
 ## Previous 30m VWAP levels (`prev30mVWAP`)
 

@@ -61,8 +61,14 @@ from thesistester.engine import (
 )
 from thesistester.levels.all import compute_all_levels
 from thesistester.levels.catalog import named_prior_profile_tokens
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.sessions import compute_session_levels
+from thesistester.levels.apoc_tick import (
+    APOC_PROFILE_SOURCES,
+    LEVELS_APOC_IDENTITY_KEYS,
+    attach_apoc_identity,
+    build_a_period_tick_profile_table,
+)
 from thesistester.levels.tick_vap import (
     LEVELS_TICK_IDENTITY_KEYS,
     PriorProfileTable,
@@ -613,7 +619,10 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     _require_mapping(levels, section="levels")
     _validate_keys(
         levels,
-        set(_LEVEL_DEFAULTS) | set(LEVELS_TICK_IDENTITY_KEYS),
+        set(_LEVEL_DEFAULTS)
+        | set(LEVELS_TICK_IDENTITY_KEYS)
+        | set(LEVELS_APOC_IDENTITY_KEYS)
+        | OPTIONAL_LEVELS_SETTINGS,
         section="levels",
     )
     _validate_bool_fields(
@@ -627,6 +636,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         },
         section="levels",
     )
+    if "apoc_profile_source" in levels:
+        source = levels["apoc_profile_source"]
+        if not isinstance(source, str) or source not in APOC_PROFILE_SOURCES:
+            raise ValueError(
+                "levels.apoc_profile_source must be one of "
+                f"{sorted(APOC_PROFILE_SOURCES)!r}, got {source!r}"
+            )
     _validate_number_fields(
         levels,
         {"value_area_pct"},
@@ -887,9 +903,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     )
     if backtest.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
         raise ValueError(f"backtest.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
-    _require_same_bar_opposite_direction(
-        backtest.get("same_bar_opposite_direction", "legacy")
-    )
+    _require_same_bar_opposite_direction(backtest.get("same_bar_opposite_direction", "legacy"))
     validate_exit_management_config(
         breakeven_after_r=backtest.get("breakeven_after_r"),
         trailing_after_r=backtest.get("trailing_after_r"),
@@ -1567,7 +1581,11 @@ def compute_levels(
         prior_profile_table_path=prior_profile_table_path,
         tick_source_id=tick_source_id,
     )
-    settings = attach_tick_identity(settings, tick_source_id=resolved_tick_source_id)
+    settings = attach_apoc_identity(
+        attach_tick_identity(settings, tick_source_id=resolved_tick_source_id),
+        tick_paths=tick_paths,
+        format_profile=resolve_tick_format_profile(tick_format_profile),
+    )
     policy = normalize_cache_policy(cache_policy)
     cache_status = "bypassed"
     cache_detail: str | None = None
@@ -1594,12 +1612,23 @@ def compute_levels(
     kwargs = {
         _LEVEL_ARGUMENT_MAP.get(key, key): value
         for key, value in settings.items()
-        if key != "instrument" and key not in LEVELS_TICK_IDENTITY_KEYS
+        if key != "instrument"
+        and key not in LEVELS_TICK_IDENTITY_KEYS
+        and key not in LEVELS_APOC_IDENTITY_KEYS
     }
+    apoc_tick_table = None
+    if str(settings.get("apoc_profile_source") or "") == "tick_last_volume_v1":
+        apoc_tick_table = build_a_period_tick_profile_table(
+            tick_paths,
+            instrument=instrument,
+            format_profile=resolve_tick_format_profile(tick_format_profile),
+        )
     levels = compute_all_levels(
         data,
         instrument=instrument,
         prior_profile_table=table,
+        apoc_tick_table=apoc_tick_table,
+        tick_paths=tick_paths,
         **kwargs,
     )
     session_levels = compute_session_levels(
@@ -2833,11 +2862,9 @@ def run_experiment(
     dataset_id = data_identity.dataset_id()
 
     table_path = dataset_config.get("prior_profile_table_path")
-    resolved_tick_paths = None
-    if not table_path:
-        resolved_tick_paths = _resolve_dataset_tick_paths(
-            dataset_config, base_directory=base_directory
-        )
+    # Always resolve tick files. A prebuilt PriorProfileTable is not an APOC
+    # input; starving tick_paths here made tick_last_volume_v1 emit all-NaN.
+    resolved_tick_paths = _resolve_dataset_tick_paths(dataset_config, base_directory=base_directory)
     tick_format_profile = (
         str(dataset_config["tick_format_profile"])
         if dataset_config.get("tick_format_profile") is not None
@@ -2849,7 +2876,7 @@ def run_experiment(
     table, resolved_tick_source_id = _resolve_prior_profile_table(
         instrument=instrument,
         settings=normalize_levels_config(run.get("levels"), instrument=instrument),
-        tick_paths=resolved_tick_paths,
+        tick_paths=None if table_path else resolved_tick_paths,
         tick_format_profile=tick_format_profile,
         prior_profile_table=None,
         prior_profile_table_path=table_path,
@@ -2863,6 +2890,9 @@ def run_experiment(
         data_identity=data_identity,
         store_root=store_root,
         prior_profile_table=table,
+        prior_profile_table_path=None,
+        tick_paths=resolved_tick_paths,
+        tick_format_profile=tick_format_profile,
         tick_source_id=resolved_tick_source_id,
     )
     levels_status = str(level_result.get("cache_status", "bypassed"))

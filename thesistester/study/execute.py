@@ -262,9 +262,7 @@ def classify_directional_integrity(
     short_trade_count: int,
 ) -> str:
     """Label a cell from accepted-trade counts. Empty when ``trade_count == 0``."""
-    n = _direction_n(
-        trade_count, long_n=int(long_trade_count), short_n=int(short_trade_count)
-    )
+    n = _direction_n(trade_count, long_n=int(long_trade_count), short_n=int(short_trade_count))
     if n == 0:
         return "empty"
     if int(short_trade_count) == 0:
@@ -411,8 +409,7 @@ def _cell_execution_kwargs(
         "breakeven_after_r": settings.get("breakeven_after_r"),
         "trailing_after_r": settings.get("trailing_after_r"),
         "trailing_distance_ticks": settings.get("trailing_distance_ticks"),
-        "same_bar_opposite_direction": settings.get("same_bar_opposite_direction")
-        or "legacy",
+        "same_bar_opposite_direction": settings.get("same_bar_opposite_direction") or "legacy",
     }
     if inst is not None:
         try:

@@ -60,9 +60,7 @@ def join_journal_bars(
         raise JournalIngestError(
             f"join_resolution must be one of {sorted(JOIN_RESOLUTIONS)} (got {join_resolution!r})"
         )
-    bars_15s = _normalize_ohlcv(
-        subtimeframe_data, name="subtimeframe_data", grid="15s"
-    )
+    bars_15s = _normalize_ohlcv(subtimeframe_data, name="subtimeframe_data", grid="15s")
     parent_1m = _normalize_ohlcv(data, name="data", grid="1m")
     tick_frame = _normalize_ticks(ticks) if join_resolution == JOIN_RESOLUTION_TICK else None
     if trades.empty:
@@ -154,17 +152,12 @@ def _as_utc_series(values: pd.Series) -> pd.Series:
 
 
 def _assert_bar_grid(stamps: pd.Series, *, name: str, grid: str) -> None:
-    if (
-        (stamps.dt.microsecond != 0).any()
-        or (stamps.dt.nanosecond != 0).any()
-    ):
+    if (stamps.dt.microsecond != 0).any() or (stamps.dt.nanosecond != 0).any():
         raise JournalIngestError(f"{name} timestamps must be whole-second bar opens")
     seconds = stamps.dt.second
     if grid == "15s":
         if not seconds.isin(_VALID_15S_SECONDS).all():
-            raise JournalIngestError(
-                f"{name} timestamps must be 15s bar opens (:00/:15/:30/:45)"
-            )
+            raise JournalIngestError(f"{name} timestamps must be 15s bar opens (:00/:15/:30/:45)")
         return
     if (seconds != 0).any():
         raise JournalIngestError(f"{name} timestamps must be 1-minute bar opens")
@@ -341,7 +334,10 @@ def _gap_connects(
     series_month, series_year = series
     if trade_month is None or series_month is None:
         return False
-    previous = (_month_token(gap.get("previous_contract")), _year_token(gap.get("previous_contract")))
+    previous = (
+        _month_token(gap.get("previous_contract")),
+        _year_token(gap.get("previous_contract")),
+    )
     nxt = (_month_token(gap.get("next_contract")), _year_token(gap.get("next_contract")))
     prev_month, prev_year = previous
     next_month, next_year = nxt

@@ -165,6 +165,20 @@ def test_named_va_core_with_tick_paths_validates(core_level):
     assert validated["study"]["factors"]["core_level"] == [core_level]
 
 
+def test_study_levels_accepts_explicit_apoc_tick_source():
+    raw = _minimal_study()
+    raw["study"]["levels"]["apoc_profile_source"] = "tick_last_volume_v1"
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["levels"]["apoc_profile_source"] == "tick_last_volume_v1"
+
+
+def test_study_levels_rejects_bar_range_apoc_proxy():
+    raw = _minimal_study()
+    raw["study"]["levels"]["apoc_profile_source"] = "bar_range_uniform_volume_v1"
+    with pytest.raises(StudySpecError, match="apoc_profile_source"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
 def test_lc1_closed_set_includes_prior_profile_twins_not_gated_or_rolling():
     tokens = closed_level_token_set(
         {

@@ -387,20 +387,23 @@ This engine is for **research screening**, not proof of a durable edge.
 - **Single Prints and APOC/pAPOC are independent level families.** Single Prints are TPO auction-structure levels; APOC/pAPOC are profile/POC levels. They are computed independently. Passing `apoc_enabled=True` to `compute_tpo_levels` now raises `ValueError` (see 5d).
 - Known limitations: no full market-profile object, no volume-at-price, no dynamic list of all Single Print bins.
 
-### 5d) APOC / pAPOC are opt-in profile-based scalar levels (Stage 5)
+### 5d) APOC / pAPOC are opt-in profile-based scalar levels (Stage 5 / AP2)
 - `APOC` and `pAPOC` are **profile / POC levels**, not Single Print levels. They are implemented in `thesistester/levels/apoc.py` and are independent of `tpo.py`.
-- `APOC` = POC of the first completed RTH 30-minute bracket (the A-period). Not derived from Single Prints; uses profile-style OHLCV approximation.
+- `APOC` = POC of the first completed RTH 30-minute bracket (the A-period). Not derived from Single Prints.
 - `pAPOC` = prior completed RTH session's APOC. Frozen at the start of the new RTH session.
-- The Levels page and headless API enable APOC / pAPOC in their built-in configuration. Direct `compute_all_levels` calls retain `apoc_enabled=False` by default.
-- `apoc_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
-- Profile approximation: `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max).
+- `apoc_profile_source` is a keyword-only versioned token. Library and product default is `typical_mvp_v1` (legacy typical-price). `tick_last_volume_v1` is the AP1-selected Quantower source and is **explicit opt-in**. A 15s bar-range proxy is not a production source.
+- The Levels page and headless API enable APOC / pAPOC in their built-in configuration with the typical default. Direct `compute_all_levels` calls retain `apoc_enabled=False` by default.
+- `apoc_enabled=False` is a true no-op: no validation, no source checks, no new columns, no timestamp checks.
+- `typical_mvp_v1`: `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max).
+- `tick_last_volume_v1`: Quantower Tick–Tick–Last Last×Volume prints inside `[RTH_open, RTH_open + 30 min)` in exchange time, keyed by RTH session date. Histogram math is `apoc_candidates.compute_tick_last_volume_profile`. Full-session `PriorProfileTable` is not a substitute. `run_experiment` still forwards `dataset.tick_paths` to the A-period table when a prior-VA parquet is also present. Missing, malformed, off-grid, or incomplete tick inputs emit `NaN`; they never fall back to typical while this source is selected.
+- Implicit typical (key omitted) keeps the pre-AP2 settings hash. When `apoc_profile_source` is explicit, settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). Product default algorithm is unchanged; `LEVEL_ENGINE_VERSION` stays 11.
 - APOC availability: `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after that timestamp. Non-RTH bars always emit `NaN`.
 - pAPOC availability: available from the first RTH bar of each session; frozen throughout. NaN on non-RTH bars and if the prior session produced no valid APOC.
-- ETH bars never contribute to APOC computation; only RTH bars in `[RTH_open, RTH_open + 30 min)` are included.
+- ETH bars/ticks never contribute to APOC computation; only the A-period window is included.
 - If the `session` column is absent, RTH membership is derived from the instrument configuration.
 - `compute_tpo_levels(..., apoc_enabled=True)` raises `ValueError` with a redirect message. Use `compute_apoc_levels(..., enabled=True)` or `compute_all_levels(..., apoc_enabled=True)` instead.
 - `compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces all six independent columns: four Single Print columns plus `APOC` and `pAPOC`.
-- Known limitations: not true volume-at-price (bar-level approximation), not full-session POC, not Single Print-derived, approximation matches `profile.py` MVP.
+- Known limitations: default source is not true volume-at-price; tick source requires matching Tick–Tick–Last files; not full-session POC; not Single Print-derived.
 
 ### 5e) Previous 30m VWAP (`prev30mVWAP`) is opt-in (Phase 1)
 
@@ -575,12 +578,14 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - `pSinglePrint_30m_NearestAbove/Below` use the prior completed RTH session's frozen
   SP set. Once a session is complete its SP set is immutable. Non-RTH bars always
   emit `NaN`. If the prior session had no Single Prints, columns are `NaN`.
-- `APOC` uses only RTH bars in `[RTH_open, RTH_open + 30 min)` of the current session.
-  It is `NaN` before `RTH_open + 30 min`. Appending future bars cannot alter APOC at
-  earlier timestamps. Non-RTH bars always emit `NaN`.
-- `pAPOC` uses the prior completed RTH session's APOC. Once a session's APOC is computed
-  it is immutable. Appending future session bars cannot change prior sessions' pAPOC
-  values. Non-RTH bars always emit `NaN`.
+- `APOC` uses only the current session's A-period (`[RTH_open, RTH_open + 30 min)`).
+  Typical source uses RTH bars; `tick_last_volume_v1` uses Tick–Tick–Last prints in
+  that same exchange-time window. It is `NaN` before `RTH_open + 30 min`. Appending
+  future bars/ticks cannot alter APOC at earlier timestamps. Non-RTH bars always
+  emit `NaN`.
+- `pAPOC` uses the prior completed RTH session's APOC (same source). Once a session's
+  APOC is computed it is immutable. Appending future session bars cannot change prior
+  sessions' pAPOC values. Non-RTH bars always emit `NaN`.
 - RTH_Open and ONH/ONL are NaN until the first RTH bar of the session; no future RTH
   or overnight data can change ETH-bar values.
 - `AsiaHigh`/`AsiaLow` aggregate only ETH bars in the instrument Asia window
@@ -612,8 +617,11 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   Attach Quantower Tick–Tick–Last files on Data (path helper) or Studies
   Build (`dataset.tick_paths`); classic Calculate does not read Data-page
   attach. 15s remains the bar clock. New drafts omit the key.
-  APOC and rolling POC remain 1m typical `(H+L+C)/3`. Product day aggregation
-  is 1 tick (`prior_day_profile_aggregation_ticks`); week/month stay 8/10.
+  Rolling POC remains 1m typical `(H+L+C)/3`. Default APOC is also typical
+  (`apoc_profile_source=typical_mvp_v1`). Opt-in `tick_last_volume_v1` is the
+  Quantower A-period object and is a different settings identity; it is not
+  prior-day VA. Product day aggregation is 1 tick
+  (`prior_day_profile_aggregation_ticks`); week/month stay 8/10.
   `LEVEL_ENGINE_VERSION` is 11. Residual vs Quantower on the session-20 MNQ
   desk fixture is ~2–3 points at 1-tick (not a transferability claim).
 - ONH/ONL is not available during ETH (by design; the overnight has not yet closed).

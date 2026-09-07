@@ -105,8 +105,8 @@ future-shock tests and/or code inspection.
 
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
-| `APOC` | POC of RTH bars in `[RTH_open, RTH_open + 30 min)`, using typical-price profile approximation | **Yes** | `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after A-period completion; `NaN` on all non-RTH bars | Bar-level typical-price approximation (not true volume-at-price); ETH bars never contribute; only the first 30-minute bracket is used, never full-session | `tests/test_stage5_apoc_levels.py` (future-shock tests: `test_future_shock_appending_current_session_bars_does_not_change_apoc`, `test_future_shock_appending_next_session_bars_does_not_change_papoc`) |
-| `pAPOC` | Prior completed RTH session's APOC; frozen at the start of each new session | **Yes** | First RTH bar of the next session; frozen throughout; `NaN` on non-RTH bars and if prior session had no valid APOC | Same approximation note as APOC; uses only prior completed sessions | Same |
+| `APOC` | POC of the A-period `[RTH_open, RTH_open + 30 min)`. Default `typical_mvp_v1` uses RTH-bar typical-price allocation. Opt-in `tick_last_volume_v1` uses Quantower Tick–Tick–Last Last×Volume in the same exchange-time window | **Yes** | `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after A-period completion; `NaN` on all non-RTH bars | Default is bar-level typical-price (not VAP). Tick source fails to `NaN` on missing/malformed/off-grid inputs (no typical fallback). ETH never contributes. Not full-session POC and not `PriorProfileTable` | `tests/test_stage5_apoc_levels.py`; tick source `tests/test_apoc_tick_source.py` (`test_tick_source_future_shock_does_not_change_prior_apoc`) |
+| `pAPOC` | Prior completed RTH session's APOC (same `apoc_profile_source`); frozen at the start of each new session | **Yes** | First RTH bar of the next session; frozen throughout; `NaN` on non-RTH bars and if prior session had no valid APOC | Same source contract as APOC; uses only prior completed sessions | Same |
 
 ### Previous 30m VWAP — `levels/prev30m_vwap.py`
 
@@ -290,11 +290,11 @@ Contract reference: `docs/otf-filter.md` §6 / §13b.
    signal proximity queries but do not provide the full Single Print set for manual
    analysis. APOC / pAPOC are now implemented (Stage 5; see `levels/apoc.py`).
 
-11. **APOC / pAPOC use bar-level typical-price approximation.** `typical_price = (high + low + close) / 3`
-   with full bar volume allocated to one tick bin. This is an MVP approximation consistent
-   with `profile.py`. True intrabar volume-at-price data would produce different POC values
-   but would not introduce look-ahead bias. APOC uses only the first RTH 30-minute bracket;
-   it is not the full-session POC and is not derived from Single Prints.
+11. **APOC / pAPOC default to bar-level typical-price approximation.** `typical_mvp_v1`
+   uses `typical_price = (high + low + close) / 3` with full bar volume in one tick bin
+   (same MVP as `profile.py`). Opt-in `tick_last_volume_v1` is Last×Volume on A-period
+   Tick–Tick–Last prints and is a different settings identity. Neither source uses
+   future bars/ticks; APOC is not full-session POC and is not derived from Single Prints.
 
 ## Trade journal fill → bar / tick join (TJ5)
 

@@ -12,6 +12,7 @@ import pytest
 
 from thesistester.api import compute_levels, run_experiment
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.levels.apoc_tick import attach_apoc_identity
 from thesistester.levels.tick_vap import TICK_SOURCE_NONE, attach_tick_identity
 from thesistester.persistence.local_store import (
     LEVEL_ENGINE_VERSION,
@@ -87,18 +88,29 @@ def test_normalize_levels_config_rejects_unknown_keys():
         normalize_levels_config({"lookahead": True}, instrument="ES")
 
 
+def test_normalize_levels_config_accepts_explicit_apoc_profile_source():
+    implicit = normalize_levels_config({}, instrument="ES")
+    explicit = normalize_levels_config(
+        {"apoc_profile_source": "tick_last_volume_v1"}, instrument="ES"
+    )
+    assert "apoc_profile_source" not in implicit
+    assert explicit["apoc_profile_source"] == "tick_last_volume_v1"
+
+
 def test_compute_levels_uses_shared_normalizer():
     result = compute_levels(
         _bars(),
         instrument="ES",
         config={"sma_lengths": [200, 50], "poc_windows": []},
     )
-    assert result["levels_settings"] == attach_tick_identity(
-        normalize_levels_config(
-            {"sma_lengths": [200, 50], "poc_windows": []},
-            instrument="ES",
-        ),
-        tick_source_id=TICK_SOURCE_NONE,
+    assert result["levels_settings"] == attach_apoc_identity(
+        attach_tick_identity(
+            normalize_levels_config(
+                {"sma_lengths": [200, 50], "poc_windows": []},
+                instrument="ES",
+            ),
+            tick_source_id=TICK_SOURCE_NONE,
+        )
     )
 
 
