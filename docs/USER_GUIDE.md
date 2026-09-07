@@ -1061,8 +1061,9 @@ study list, StudyDraft
 - Cross-study readout lives on **Study Observatory**. Inspect remains one
   study at a time.
 
-**Related pages.** Study Observatory; Research Study Runner (headless); Time
-Analysis; Focus vs Admit; Research Bundles; Validation and robustness.
+**Related pages.** Study Observatory; Journal; Research Study Runner
+(headless); Time Analysis; Focus vs Admit; Research Bundles; Validation
+and robustness.
 
 ## Study Observatory
 
@@ -1127,8 +1128,60 @@ observatory CLI
   facets are query state, not Admit. No classic-key mutate. Catalog
   membership is not a quality score. SO5/SO6 parked.
 
-**Related pages.** Studies viewer (read-only); Research Study Runner
+**Related pages.** Studies viewer (read-only); Journal; Research Study Runner
 (headless); Focus vs Admit; Validation and robustness.
+
+## Journal
+
+**What it is.** Streamlit **Journal** (page 17) is a read-only Q1–Q8 report
+over ingested `journal/v1` artifacts: AMP-reconciled net, direction / NY hour
+/ hold / day-intensity slices, level attribution + tag verification, own-entry
+counterfactuals, named-cell match, and the forward ledger. Headless:
+`journal report`.
+
+**When to use it.** After `journal reconcile` (then attribute / counterfactual
+/ match as needed). Use it to read costs, leaks, and live adherence — not to
+rank study cells.
+
+**Related terms.** Journal, journal report, Q1 costs, fee ticks, break-even
+gross, hold-time cut, level attribution, tag alignment, intent mismatch,
+exit-rule delta, direction-shuffle, declared rule, named-cell match,
+product mismatch, adherence, forward ledger, n < 30
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| Journal directory | Ingested artifacts; default `.thesistester_store/journal/v1/` | Not under `execution_artifacts/` or `results/studies/` |
+| Load report | Rebuild Q1–Q8 from files on disk | Does not run experiments or studies |
+| Show slices with n < 30 | Reveal Q2 rows below the n gate | Hidden by default. Applies after Load without clicking Load again. Every table still shows n |
+| Q1 | Per instrument-day net / fee / break-even gross | Qty-scaled dollar-ticks. Fees from AMP, not TradesViz |
+| Q2 | Direction × NY hour × hold × day intensity | Hold-time cuts are outcome-conditioned |
+| Q3–Q8 | Attribution / brackets / null / rules / match / ledger | Missing later files omit the section; not an error |
+
+**How to use.**
+
+1. Export TradesViz executions + AMP Daily Statements (keep desk PII out of git).
+2. CLI: `journal reconcile` → optional `attribute` / `counterfactual` / `match`.
+   Write into the journal dir (default store `journal/v1/`).
+3. Open **Journal**. Confirm the directory. **Load report**.
+4. Read Q1 first (gross must clear fee ticks/trade; one row per instrument-day).
+   Toggle n < 30 only when you mean to look at thin slices — it rebuilds Q2
+   from the last loaded artifacts. Q8 compares mean live E to cell E; the
+   session sum is a separate column.
+5. Headless: `python -m thesistester journal report --journal-dir … --output-dir …`.
+
+**What it is not.**
+
+- Not a study cell, Observatory corpus match, or `results_index` rank key.
+- Not an in-process runner. No classic session hydrate.
+- Tags are trader intent. Alignment is a distance check, not a trigger.
+- Counterfactuals assume bar/tick fills; no slippage model. Rules are
+  declared, never searched. `in_sample` and `forward` are never blended.
+- Adherence is `executed_cell / (executed_cell + systematic_unfilled)`.
+
+**Related pages.** Study Observatory; Studies viewer (read-only); Research
+Study Runner (headless); Validation and robustness.
 
 ## When to use Help vs Discuss results
 

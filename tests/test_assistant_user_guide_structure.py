@@ -35,6 +35,7 @@ REQUIRED_USER_GUIDE_H2S = (
     "Research Study Runner (headless)",
     "Studies viewer (read-only)",
     "Study Observatory",
+    "Journal",
     "When to use Help vs Discuss results",
 )
 

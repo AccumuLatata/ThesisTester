@@ -1,4 +1,4 @@
-"""Journal typed records (TJ1–TJ8).
+"""Journal typed records (TJ1–TJ9).
 
 Does not call ``simulate_trades`` or ``compute_all_levels``.
 """
@@ -207,6 +207,28 @@ MATCH_OUTPUT_COLUMNS: Final[tuple[str, ...]] = (
     "cell_stop_loss_ticks",
     "cell_bars_held",
 )
+
+# --- report / page 17 (TJ9) ---
+REPORT_MIN_N: Final[int] = 30
+REPORT_HONESTY: Final[str] = (
+    "journal is not a study cell; fees from AMP; TradesViz P/L ignored; "
+    "tags are trader intent; hold-time cuts are outcome-conditioned; "
+    "counterfactuals carry no slippage."
+)
+REPORT_SLICE_DIRECTION: Final[str] = "direction"
+REPORT_SLICE_NY_HOUR: Final[str] = "ny_hour"
+REPORT_SLICE_HOLD: Final[str] = "hold"
+REPORT_SLICE_DAY_INTENSITY: Final[str] = "day_intensity"
+HOLD_LT_15S: Final[str] = "<15s"
+HOLD_15_60S: Final[str] = "15-60s"
+HOLD_1_5MIN: Final[str] = "1-5min"
+HOLD_GT_5MIN: Final[str] = ">5min"
+DAY_INTENSE: Final[str] = "days>=60"
+DAY_QUIET: Final[str] = "days<60"
+RESOLUTION_UNJOINED: Final[str] = "unjoined"
+RESOLUTION_MIXED: Final[str] = "mixed"
+RECON_UNKNOWN: Final[str] = "unknown"
+REPORT_TABLE_META: Final[tuple[str, ...]] = ("n", "resolution", "recon_status")
 
 
 class JournalIngestError(ValueError):

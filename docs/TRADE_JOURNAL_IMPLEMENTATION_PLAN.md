@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
-**Status:** **TJ8 landed.** TJ9 (page 17 / USER_GUIDE H2) is next.
+**Status:** **TJ9 landed.** Series complete (page 17 / USER_GUIDE H2).
 **Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -810,19 +810,19 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 
 ### TJ9 — UX
 
-- New page **17 · Journal** (`pages/17_Journal.py`), read-only over ingested
+- [x] New page **17 · Journal** (`pages/17_Journal.py`), read-only over ingested
   artifacts. No in-process `run_experiment` / `run_study`; no classic session
   hydrate. Filename `17_` sorts after Observatory `16_`.
-- Sections follow Q1–Q8 in order; every table shows n, resolution, recon
+- [x] Sections follow Q1–Q8 in order; every table shows n, resolution, recon
   status, and hides slices with n < 30 behind an explicit toggle.
-- USER_GUIDE new H2 exact title **`Journal`**, inserted after **Study
+- [x] USER_GUIDE new H2 exact title **`Journal`**, inserted after **Study
   Observatory** and before **When to use Help vs Discuss results**. Same PR
   amends **all** H2 gates: `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` §6.1,
   `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` §7.1.4,
   `thesistester/assistant/help_corpus.py` `_USER_GUIDE_SECTIONS`,
   `tests/test_assistant_user_guide_structure.py` `REQUIRED_USER_GUIDE_H2S`.
   Omitting any of those fails CI. This is HC maintenance, not a new HC series.
-- Honesty caption: journal ≠ study cell; fees from AMP; TradesViz P/L ignored;
+- [x] Honesty caption: journal ≠ study cell; fees from AMP; TradesViz P/L ignored;
   tags are trader intent; hold-time cuts are outcome-conditioned;
   counterfactuals carry no slippage.
 

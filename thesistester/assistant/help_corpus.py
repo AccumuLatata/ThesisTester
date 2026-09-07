@@ -113,6 +113,7 @@ _USER_GUIDE_SECTIONS = frozenset(
         "Research Study Runner (headless)",
         "Studies viewer (read-only)",
         "Study Observatory",
+        "Journal",
         "When to use Help vs Discuss results",
     }
 )
