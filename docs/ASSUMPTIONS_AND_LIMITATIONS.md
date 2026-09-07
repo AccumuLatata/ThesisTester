@@ -1365,9 +1365,9 @@ other than the last bar in the dataset.
 ## Trade journal (TJ6 — tags are intent, not evidence)
 
 - Tags are what the desk wrote. TradesViz `tags` are comma-separated.
-  Level-class tokens are thesis confluence; one of `ITR` / `CTR` /
-  `ITR-C` / `CTR-R` is the plan horizon; `touch` and `3c` are first-class
-  context (entry style). `3c` is desk-labeled — the engine does not infer
+  Level-class tokens are thesis confluence; `ITR` / `CTR` / `ITR-C` /
+  `CTR-R` name the plan horizon; `touch` and `3c` are first-class context
+  (entry style). `3c` is desk-written — journal inference does not emit
   it. Attribution is what the already-built 1m levels frame shows at the
   fill. Alignment is a **distance check** against `tag_tolerance_ticks`
   (default 10), not a trigger and not proof the tag caused the trade.

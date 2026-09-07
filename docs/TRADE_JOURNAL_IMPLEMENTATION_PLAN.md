@@ -588,7 +588,7 @@ is “nearby tokens”, not “the level you meant”.
 | `p30POC` | — (no engine token; parked) | `unmapped` |
 | `5m21EMA`, `5m50SMA`, `1m9EMA` | `EMA_21_5min`, `SMA_50_5min`, `EMA_9_1min` | confirm |
 | suffix `_retest`, `_SFP`, `_RTH` | stripped into `qualifier`; `_RTH` only re-maps for `pdH` | qualifier |
-| `ITR`, `ITR-C`, `CTR`, `CTR-R`, `DeltaNode`, `GEX2`, `5mCOT`, `5mSFP` | — | context (never a level) |
+| `ITR`, `ITR-C`, `CTR`, `CTR-R`, `touch`, `3c`, `DeltaNode`, `GEX2`, `5mCOT`, `5mSFP` | — | context (never a level) |
 
 The map is frozen against `closed_level_token_set` at TJ6 time; a mapped
 token that is not in the set **under `DEFAULT_LEVELS_SETTINGS`** fails the
