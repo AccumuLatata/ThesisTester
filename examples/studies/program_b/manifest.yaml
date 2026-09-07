@@ -56,12 +56,27 @@ studies:
 - file: progB_w7_apoc_ma.yaml
   cells: 24
   min_valid: 1
+  apoc_provenance:
+    apoc_profile_source: typical_mvp_v1
+    apoc_algorithm_version: typical_mvp_v1
+    apoc_object: legacy_typical_price
+    recorded: inferred_historical
 - file: progB_w7_apoc_rvwap.yaml
   cells: 4
   min_valid: 1
+  apoc_provenance:
+    apoc_profile_source: typical_mvp_v1
+    apoc_algorithm_version: typical_mvp_v1
+    apoc_object: legacy_typical_price
+    recorded: inferred_historical
 - file: progB_w7_apoc_pivot.yaml
   cells: 16
   min_valid: 1
+  apoc_provenance:
+    apoc_profile_source: typical_mvp_v1
+    apoc_algorithm_version: typical_mvp_v1
+    apoc_object: legacy_typical_price
+    recorded: inferred_historical
 - file: progB_w8_prev30m_ma.yaml
   cells: 12
   min_valid: 1

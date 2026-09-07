@@ -397,6 +397,13 @@ This engine is for **research screening**, not proof of a durable edge.
 - `typical_mvp_v1`: `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max).
 - `tick_last_volume_v1`: Quantower Tick–Tick–Last Last×Volume prints inside `[RTH_open, RTH_open + 30 min)` in exchange time, keyed by RTH session date. Histogram math is `apoc_candidates.compute_tick_last_volume_profile`. Full-session `PriorProfileTable` is not a substitute. `run_experiment` still forwards `dataset.tick_paths` to the A-period table when a prior-VA parquet is also present. Missing, malformed, off-grid, or incomplete tick inputs emit `NaN`; they never fall back to typical while this source is selected.
 - Implicit typical (key omitted) keeps the pre-AP2 settings hash. When `apoc_profile_source` is explicit, settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). Product default algorithm is unchanged; `LEVEL_ENGINE_VERSION` stays 11.
+- Program B Wave 7 packets omit `apoc_profile_source` and are labeled
+  `legacy_typical_price` on the 15s manifest. Fresh `study.expansion.json`
+  writes an additive `apoc_provenance` sidecar when the spec names
+  `apoc_enabled` or an explicit source; the sidecar is **not** part of
+  `study_identity_hash`. Pre-AP3 expansions and research ZIPs are not
+  rewritten: a missing sidecar is inferred typical. Do not treat Wave 7
+  typical-price results as Quantower A-period POC.
 - APOC availability: `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after that timestamp. Non-RTH bars always emit `NaN`.
 - pAPOC availability: available from the first RTH bar of each session; frozen throughout. NaN on non-RTH bars and if the prior session produced no valid APOC.
 - ETH bars/ticks never contribute to APOC computation; only the A-period window is included.

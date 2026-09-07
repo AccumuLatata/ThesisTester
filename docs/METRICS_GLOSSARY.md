@@ -579,6 +579,10 @@ Implementation: table in `thesistester/levels/tick_vap.py`; join in `thesisteste
 - `apoc_profile_source=typical_mvp_v1` (default): 1-minute typical `(H+L+C)/3` full-bar volume.
 - `apoc_profile_source=tick_last_volume_v1` (opt-in): Quantower Tick–Tick–Last Last×Volume inside the A-period. Selected by the AP1 Levels2test scorecard (4/4 exact). Missing tick inputs emit `NaN`.
 - Implementation: `thesistester/levels/apoc.py`, A-period table in `thesistester/levels/apoc_tick.py`.
+- `apoc_object` (AP3 provenance): `legacy_typical_price` for implicit/explicit
+  `typical_mvp_v1`; `tick_last_volume` for explicit `tick_last_volume_v1`.
+  Recorded on Program B Wave 7 manifest rows and, for fresh expands, on
+  `study.expansion.json` as `apoc_provenance`. Not part of `study_identity_hash`.
 
 ## Previous 30m VWAP levels (`prev30mVWAP`)
 

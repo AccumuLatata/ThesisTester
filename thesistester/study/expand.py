@@ -16,6 +16,10 @@ import yaml
 from thesistester.api import build_setup, validate_run_spec
 from thesistester.cli import EXPERIMENT_SCHEMA_VERSION
 from thesistester.setup import normalize_otf_filter_config
+from thesistester.study.apoc_provenance import (
+    apoc_provenance_from_levels,
+    should_write_apoc_provenance,
+)
 from thesistester.study.naming import build_run_name
 from thesistester.study.schema import (
     RUN_NAME_RE,
@@ -504,6 +508,13 @@ def write_expansion_artifacts(
     }
     if parent is not None:
         expansion_payload["source_spec_parent"] = str(parent)
+    written_study = spec_to_write.get("study") if isinstance(spec_to_write, Mapping) else None
+    written_levels = (
+        written_study.get("levels") if isinstance(written_study, Mapping) else None
+    )
+    if isinstance(written_levels, Mapping) and should_write_apoc_provenance(written_levels):
+        # Sidecar only. Not part of study_identity_hash. Historical ZIPs untouched.
+        expansion_payload["apoc_provenance"] = apoc_provenance_from_levels(written_levels)
     expansion_path.write_text(
         json.dumps(expansion_payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

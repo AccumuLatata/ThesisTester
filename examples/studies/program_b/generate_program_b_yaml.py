@@ -5,6 +5,10 @@ Defaults reproduce the Run 1 packet in this directory (touch, implicit legacy
 same-bar policy, random baseline omitted). ``--trigger fade`` fills the rest of
 the Run 2 lock table (raise, baseline 50, packet 15s, prefix r2) and **refuses**
 this directory — pass ``--output-dir`` elsewhere.
+
+Wave 7 YAML ``study.levels`` omits ``apoc_profile_source`` (implicit
+``typical_mvp_v1`` / legacy typical-price). Manifest Wave 7 rows stamp
+``apoc_provenance``. Do not rewrite historical research ZIPs.
 """
 
 from __future__ import annotations
@@ -13,6 +17,11 @@ import argparse
 from pathlib import Path
 
 import yaml
+
+from thesistester.study.apoc_provenance import (
+    WAVE7_HISTORICAL_PROVENANCE,
+    is_wave7_study_file,
+)
 
 OUT = Path(__file__).resolve().parent
 VALID_TRIGGERS = ("touch", "fade")
@@ -463,6 +472,14 @@ def generate_packet(
             if tick_wave
             else "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
         )
+        if wave_key == "w7_apoc":
+            extra += (
+                "# APOC object: typical_mvp_v1 (legacy typical-price).\n"
+                "# Historical Wave 7 is not Quantower A-period POC and is not "
+                "tick_last_volume_v1.\n"
+                "# Selected Quantower-compatible source (AP1/AP2) is a different "
+                "study; this packet stays typical.\n"
+            )
         target = tick_gated if tick_wave else fifteen_s
         for family, partners in CONFIRMS.items():
             file_stem = f"progB_{wave_key}_{family}"
@@ -484,7 +501,14 @@ def generate_packet(
                 _header(f"{wave_key} / {family}", cells, extra, trigger=trigger),
                 spec,
             )
-            target.append({"file": f"{file_stem}.yaml", "cells": cells, "min_valid": 1})
+            row: dict[str, object] = {
+                "file": f"{file_stem}.yaml",
+                "cells": cells,
+                "min_valid": 1,
+            }
+            if is_wave7_study_file(row["file"]):
+                row["apoc_provenance"] = dict(WAVE7_HISTORICAL_PROVENANCE)
+            target.append(row)
 
     if write_15s:
         _write_manifest(out / "manifest.yaml", "15s", fifteen_s, locks=locks)

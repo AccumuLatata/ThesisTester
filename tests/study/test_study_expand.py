@@ -14,7 +14,14 @@ from thesistester.study.expand import (
     _build_setup_for_cell,
     expand_study,
     expand_study_to_directory,
+    study_identity_hash,
     write_expansion_artifacts,
+)
+from thesistester.study.apoc_provenance import (
+    APOC_OBJECT_LEGACY_TYPICAL,
+    APOC_OBJECT_TICK_LAST_VOLUME,
+    RECORDED_EXPLICIT,
+    RECORDED_INFERRED,
 )
 from thesistester.study.schema import (
     STUDY_SCHEMA_VERSION,
@@ -567,3 +574,43 @@ def test_expand_global_cluster_empty_partners_fails_closed():
                 "trigger_timeframe": "1min",
             },
         )
+
+
+def test_expansion_omits_apoc_provenance_when_spec_is_silent(tmp_path: Path):
+    raw = yaml.safe_load((FIXTURES / "golden_study.yaml").read_text(encoding="utf-8"))
+    expansion = expand_study_to_directory(raw, tmp_path)
+    payload = json.loads((tmp_path / "study.expansion.json").read_text(encoding="utf-8"))
+    assert "apoc_provenance" not in payload
+    assert payload["study_identity_hash"] == expansion.study_identity_hash
+
+
+def test_expansion_records_inferred_typical_when_apoc_enabled(tmp_path: Path):
+    raw = yaml.safe_load((FIXTURES / "golden_study.yaml").read_text(encoding="utf-8"))
+    raw["study"]["levels"]["apoc_enabled"] = True
+    normalized = validate_study_spec(normalize_study_spec(raw))
+    identity = study_identity_hash(normalized)
+    expansion = expand_study_to_directory(raw, tmp_path)
+    payload = json.loads((tmp_path / "study.expansion.json").read_text(encoding="utf-8"))
+    assert payload["apoc_provenance"] == {
+        "apoc_profile_source": "typical_mvp_v1",
+        "apoc_algorithm_version": "typical_mvp_v1",
+        "apoc_object": APOC_OBJECT_LEGACY_TYPICAL,
+        "recorded": RECORDED_INFERRED,
+    }
+    assert payload["study_identity_hash"] == identity == expansion.study_identity_hash
+
+
+def test_expansion_records_explicit_tick_source(tmp_path: Path):
+    raw = yaml.safe_load((FIXTURES / "golden_study.yaml").read_text(encoding="utf-8"))
+    raw["study"]["levels"]["apoc_profile_source"] = "tick_last_volume_v1"
+    normalized = validate_study_spec(normalize_study_spec(raw))
+    identity = study_identity_hash(normalized)
+    expand_study_to_directory(raw, tmp_path)
+    payload = json.loads((tmp_path / "study.expansion.json").read_text(encoding="utf-8"))
+    assert payload["apoc_provenance"] == {
+        "apoc_profile_source": "tick_last_volume_v1",
+        "apoc_algorithm_version": "tick_last_volume_v1",
+        "apoc_object": APOC_OBJECT_TICK_LAST_VOLUME,
+        "recorded": RECORDED_EXPLICIT,
+    }
+    assert payload["study_identity_hash"] == identity

@@ -52,7 +52,9 @@ order and summarized in `results_index.csv`.
 ## Research Study Runner boundary (RS1–RS5 + RS-D7/RS6/RS-D2/RS-D8/RS-D9)
 
 `thesistester/study/` is an additive headless module for closed factorial
-StudySpecs. RS1 validates; RS2 expands to R18 `experiment.yaml` + factor map;
+StudySpecs. RS1 validates; RS2 expands to R18 `experiment.yaml` + factor map
+(fresh `study.expansion.json` may include additive `apoc_provenance`; not
+hashed; historical ZIPs unchanged);
 RS3 wires `python -m thesistester study expand|run` and a **study-owned**
 execute loop (`run_experiment` + `build_research_bundle`) with per-cell ledger,
 soft resume, and continue-on-failure; RS4 adds `study report` (overview CSV/MD,
@@ -1694,6 +1696,9 @@ still passes `dataset.tick_paths` into the A-period table when a prior-VA
 parquet is also attached. Explicit sources also record
 `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id`.
 `LEVEL_ENGINE_VERSION` remains 11 because the product default algorithm did not change.
+Program B Wave 7 packets stay implicit typical and are labeled
+`legacy_typical_price` (AP3). `thesistester/study/apoc_provenance.py` is the
+sidecar helper; it does not change APOC math.
 Previous 30m VWAP is implemented in `thesistester/levels/prev30m_vwap.py` (`prev30m_vwap_enabled`, `prev30m_vwap_validity_periods`).
 When `prev30m_vwap_validity_periods > 1`, Phase 3 emits stack columns `prev30mVWAP_2`…`prev30mVWAP_N` (setup-selectable); age-1 `prev30mVWAP` semantics are unchanged.
 Diagnostic companions `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are excluded from setup/chart eligibility via `NON_LEVEL_OUTPUT_COLUMNS` in `thesistester/setup.py`.
