@@ -489,13 +489,18 @@ typical per minute; A-period mode at 09:45; competing mode at 10:00):
 - 10:00 members drop 09:30 (09:31…10:00). Typical rolling differs from
   frozen `APOC` at 10:00.
 - Tick print window at 10:00 is `[09:31, 10:01)` even if a 1m row is missing
-  (interior gap skips the member; prints unchanged). Tick / 15s filtering
-  uses that theoretical interval, not the A-period selector.
+  (interior gap skips the member; prints unchanged). A missing **edge** 09:30
+  row at 09:59 also leaves prints `[09:30, 10:00)` — not `min/max(members)`.
+  Tick / 15s filtering uses that theoretical interval, not the A-period
+  selector.
 
 Env-gated oracle: `THESISTESTER_RP_QT_1M` + `THESISTESTER_RP_QT_EXPECTED`
 (`session_date,stamp_ny,poc`); optional `THESISTESTER_RP_QT_TICKS` /
 `THESISTESTER_RP_QT_15S`. Skipped in CI. Reports per-stamp MNQ-tick error;
-does **not** fail CI on miss. Proprietary desk CSVs are not committed.
+does **not** fail CI on miss. Naive 1m/15s stamps localize as
+`America/New_York` (Quantower HE default); naive tick-fallback stamps
+localize as UTC (TV1 disk convention). `session_date` is applied to the
+stamp clock when present. Proprietary desk CSVs are not committed.
 
 ### RP1g — scorecard record (docs only)
 

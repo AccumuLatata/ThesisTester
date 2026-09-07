@@ -7,11 +7,14 @@ import math
 import os
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 
-from thesistester.levels import PRIOR_PROFILE_LEVEL_NAMES, compute_all_levels, compute_profile_levels
+from thesistester.levels import (
+    PRIOR_PROFILE_LEVEL_NAMES,
+    compute_all_levels,
+    compute_profile_levels,
+)
 from thesistester.levels.apoc import COL_APOC, _compute_a_period_poc
 from thesistester.levels.apoc_candidates import (
     BAR_CANDIDATES,
@@ -132,13 +135,9 @@ def test_typical_0959_equals_a_period_helper_and_apoc_at_1000():
     now = _ts(9, 59)
     members = select_rolling_member_bars(bars, now, WINDOW)
     a_period = select_a_period_rows(bars, session_date=SESSION, exchange_tz=TZ)
-    comparison = compare_rolling_poc_candidates(
-        bars, now=now, window=WINDOW, tick_size=TICK_SIZE
-    )
+    comparison = compare_rolling_poc_candidates(bars, now=now, window=WINDOW, tick_size=TICK_SIZE)
     typical = comparison.candidates[TYPICAL_MVP_V1]
-    levels = compute_all_levels(
-        bars, instrument="ES", poc_windows=["30min"], apoc_enabled=True
-    )
+    levels = compute_all_levels(bars, instrument="ES", poc_windows=["30min"], apoc_enabled=True)
 
     assert _opens(members) == _opens(a_period)
     assert typical.poc == pytest.approx(103.75)
@@ -159,9 +158,7 @@ def test_typical_1000_differs_from_production_apoc_on_competing_fixture():
     comparison = compare_rolling_poc_candidates(
         bars, now=_ts(10, 0), window=WINDOW, tick_size=TICK_SIZE
     )
-    levels = compute_all_levels(
-        bars, instrument="ES", poc_windows=["30min"], apoc_enabled=True
-    )
+    levels = compute_all_levels(bars, instrument="ES", poc_windows=["30min"], apoc_enabled=True)
     stamp = levels["timestamp"] == _ts(10, 0)
     apoc_1000 = float(levels.loc[stamp, COL_APOC].iloc[0])
     typical = comparison.candidates[TYPICAL_MVP_V1]
@@ -221,7 +218,10 @@ def test_print_window_is_theoretical_and_stable_when_interior_1m_missing():
     assert len(members) == 29
     assert comparison.print_start == _ts(9, 30)
     assert comparison.print_end == _ts(10, 0)
-    assert rolling_print_window(_ts(9, 59), WINDOW) == (comparison.print_start, comparison.print_end)
+    assert rolling_print_window(_ts(9, 59), WINDOW) == (
+        comparison.print_start,
+        comparison.print_end,
+    )
     assert comparison.bar_range_input == "1m"
     tick = comparison.candidates[TICK_LAST_VOLUME_V1]
     assert tick.source_rows == 1
@@ -251,13 +251,42 @@ def test_tick_print_window_at_1000_includes_missing_interior_minute():
     assert tick.poc == pytest.approx(103.75)
 
 
+def test_print_window_does_not_shrink_when_edge_1m_bar_missing():
+    """Theoretical prints stay [now-W+1min, now+1min) if the edge 1m open is absent.
+
+    ``min/max(members)`` would become ``[09:31, 10:00)`` and drop 09:30 tape.
+    """
+    bars = _competing_hour_bars()
+    gapped = bars.loc[bars["timestamp"] != _ts(9, 30)].reset_index(drop=True)
+    members = select_rolling_member_bars(gapped, _ts(9, 59), WINDOW)
+    comparison = compare_rolling_poc_candidates(
+        gapped,
+        now=_ts(9, 59),
+        window=WINDOW,
+        tick_size=TICK_SIZE,
+        ticks=pd.DataFrame(
+            {
+                "timestamp": [_ts(9, 30, 15), _ts(9, 31)],
+                "price": [99.00, 100.25],
+                "volume": [5.0, 1.0],
+            }
+        ),
+    )
+
+    assert _ts(9, 30) not in _opens(members)
+    assert members["timestamp"].min() == _ts(9, 31)
+    assert comparison.print_start == _ts(9, 30)
+    assert comparison.print_end == _ts(10, 0)
+    tick = comparison.candidates[TICK_LAST_VOLUME_V1]
+    assert tick.source_rows == 2
+    assert tick.poc == pytest.approx(99.00)
+
+
 # --- §8.1 item 6 -------------------------------------------------------------
 
 
 def test_shared_helpers_keep_ap1_numeric_contracts():
-    bars = pd.DataFrame(
-        [{"high": 100.50, "low": 100.00, "close": 100.25, "volume": 9.0}]
-    )
+    bars = pd.DataFrame([{"high": 100.50, "low": 100.00, "close": 100.25, "volume": 9.0}])
     uniform = compute_bar_candidate_profile(
         bars, candidate=BAR_RANGE_UNIFORM_VOLUME_V1, tick_size=TICK_SIZE
     )
@@ -285,9 +314,7 @@ def test_shared_helpers_keep_ap1_numeric_contracts():
 
 def test_comparator_stamps_nan_for_off_grid_ticks_instead_of_raising():
     bars = _competing_hour_bars()
-    ticks = pd.DataFrame(
-        {"timestamp": [_ts(9, 40)], "price": [100.1], "volume": [1.0]}
-    )
+    ticks = pd.DataFrame({"timestamp": [_ts(9, 40)], "price": [100.1], "volume": [1.0]})
     comparison = compare_rolling_poc_candidates(
         bars, now=_ts(10, 0), window=WINDOW, tick_size=TICK_SIZE, ticks=ticks
     )
@@ -315,9 +342,7 @@ def test_15s_typical_is_labeled_after_typical_mvp_v1_call():
     )
     labeled = comparison.candidates[TYPICAL_MVP_15S_V1]
     direct = compute_bar_candidate_profile(
-        bars_15s.loc[
-            (bars_15s["timestamp"] >= _ts(9, 31)) & (bars_15s["timestamp"] < _ts(10, 1))
-        ],
+        bars_15s.loc[(bars_15s["timestamp"] >= _ts(9, 31)) & (bars_15s["timestamp"] < _ts(10, 1))],
         candidate=TYPICAL_MVP_V1,
         tick_size=TICK_SIZE,
     )
@@ -368,7 +393,10 @@ def test_optional_desk_oracle_reports_errors_without_failing_on_miss():
     bars_15s = _optional_oracle_15s()
     reports: list[str] = []
     for row in expected.itertuples(index=False):
-        stamp = _parse_oracle_stamp(getattr(row, "stamp_ny"))
+        stamp = _parse_oracle_stamp(
+            getattr(row, "stamp_ny"),
+            session_date=getattr(row, "session_date", None),
+        )
         qt = float(row.poc)
         comparison = compare_rolling_poc_candidates(
             bars,
@@ -384,8 +412,7 @@ def test_optional_desk_oracle_reports_errors_without_failing_on_miss():
                 continue
             error_ticks = (result.poc - qt) / TICK_SIZE
             reports.append(
-                f"{stamp} {token}: poc={result.poc:.4f} qt={qt:.4f} "
-                f"error_ticks={error_ticks:.2f}"
+                f"{stamp} {token}: poc={result.poc:.4f} qt={qt:.4f} error_ticks={error_ticks:.2f}"
             )
     print("\n".join(reports))
     assert reports, "expected CSV produced no oracle rows"
@@ -400,21 +427,51 @@ def test_oracle_env_gate_is_inactive_in_ci(monkeypatch):
     assert not os.environ.get("THESISTESTER_RP_QT_EXPECTED")
 
 
-def _read_frame(path: Path) -> pd.DataFrame:
+def test_oracle_bar_frame_localizes_naive_timestamps_as_exchange_tz(tmp_path):
+    path = tmp_path / "bars.csv"
+    path.write_text("timestamp,open,high,low,close,volume\n2026-06-02 09:30:00,100,100,100,100,1\n")
+    frame = _read_frame(path)
+    assert frame["timestamp"].iloc[0] == _ts(9, 30)
+
+
+def test_oracle_tick_fallback_localizes_naive_timestamps_as_utc(tmp_path):
+    path = tmp_path / "ticks.csv"
+    path.write_text("timestamp,price,volume\n2026-06-02 13:31:00,100.25,1\n")
+    frame = _read_frame(path, naive_tz="UTC")
+    assert frame["timestamp"].iloc[0] == _ts(9, 31)
+
+
+def test_oracle_stamp_applies_session_date_to_clock_time():
+    stamp = _parse_oracle_stamp("10:00:00", session_date="2026-06-02")
+    assert stamp == _ts(10, 0)
+
+
+def _read_frame(path: Path, *, naive_tz: str = TZ) -> pd.DataFrame:
+    """Load a desk CSV/parquet and make ``timestamp`` timezone-aware.
+
+    Naive 1m/15s stamps localize as exchange TZ (Quantower HE default). Pass
+    ``naive_tz="UTC"`` for Tick–Tick–Last fallback (TV1 disk convention).
+    Already-aware stamps convert to ``TZ``.
+    """
     if path.suffix.lower() in {".parquet", ".pq"}:
         frame = pd.read_parquet(path)
     else:
         frame = pd.read_csv(path)
-    frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
-    if frame["timestamp"].dt.tz is None:
-        frame["timestamp"] = frame["timestamp"].dt.tz_localize(TZ)
+    parsed = pd.to_datetime(frame["timestamp"], errors="coerce")
+    if parsed.isna().any():
+        raise ValueError(f"Unparseable timestamps in {path}")
+    if parsed.dt.tz is None:
+        frame["timestamp"] = parsed.dt.tz_localize(naive_tz).dt.tz_convert(TZ)
     else:
-        frame["timestamp"] = frame["timestamp"].dt.tz_convert(TZ)
+        frame["timestamp"] = parsed.dt.tz_convert(TZ)
     return frame
 
 
-def _parse_oracle_stamp(raw: object) -> pd.Timestamp:
+def _parse_oracle_stamp(raw: object, session_date: object | None = None) -> pd.Timestamp:
     stamp = pd.Timestamp(raw)
+    if session_date is not None and pd.notna(session_date):
+        day = pd.Timestamp(session_date)
+        stamp = stamp.replace(year=int(day.year), month=int(day.month), day=int(day.day))
     if stamp.tzinfo is None:
         return stamp.tz_localize(TZ)
     return stamp.tz_convert(TZ)
@@ -443,4 +500,4 @@ def _optional_oracle_ticks() -> pd.DataFrame | None:
             return pd.concat(parts, ignore_index=True)
     except Exception:
         pass
-    return _read_frame(path)
+    return _read_frame(path, naive_tz="UTC")
