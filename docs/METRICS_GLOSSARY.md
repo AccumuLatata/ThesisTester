@@ -719,11 +719,6 @@ Journal trades are **not** study cells. These quantities live on
 | `level_context` | TJ6 attribution of the entry price on the derived 1m parent: `at_level` (at least one closed-set token with \|distance\| ≤ `level_tolerance_ticks`, default **10**), `between_levels` (tokens exist, none inside tolerance), `no_frame` (no covering 1m bar or no usable token values). Nearby tokens, not “the level you meant”. |
 | `tag_alignment` | TJ6 verification of **level-class** tags only: `all_aligned` / `partial` / `none_aligned` / `unverifiable`. A tag is aligned when \|`tag_distance_ticks`\| ≤ `tag_tolerance_ticks` (default **10**). Missing token → `tag_level_missing`. Context / confirm / unmapped tags never drive this field. Distance check, not a trigger. |
 | `intent_mismatch` | `True` when at least one level-class tag is present, none of those tags is within tag tolerance, and `levels_within_tolerance` is non-empty (tagged A; the frame says B was at hand). |
-| `zone_params_hash` | SHA-256 of the declared JS1 zone-parameter payload (`level_columns` + `tolerance_ticks` + `min_confluences` + `max_confluences`). Stamped on every zone row. Rows of different hashes are never averaged. |
-| `zone_id` | `session_date:bar_ts:zone_low:zone_high` for an `inside` / within-tol attribution on the previous completed 1m bar. Null when `entry_zone_relation=no_zone`. |
-| `zone_width_ticks` | `(zone_high − zone_low) / tick_size` from `detect_confluence_zones` on that previous 1m bar. |
-| `entry_zone_relation` | JS1: `inside` (`zone_low ≤ entry ≤ zone_high`), `above_within_tol` / `below_within_tol` (outside the zone but within the **same** declared `tolerance_ticks` of the near edge), or `no_zone`. If several zones exist on the bar, a **containing** zone wins over a closer foreign mid; otherwise nearest `zone_mid` (tie: `zone_low`, then `level_names`). Not TJ6 `level_context`. |
-| `nearest_zone_distance_ticks` | JS1: absolute `\|entry_price − zone_mid\| / tick_size` when `no_zone` and another zone exists on that bar; else null. Not signed `entry_offset_ticks`. |
 | `exit_rule_delta` | Per declared bracket × resolution: `Σ cf_net_ticks − Σ net_ticks` on the **same paired entries** (finite `cf_net_ticks` and finite realized `net_ticks`). Open / unresolved rows are omitted, not treated as zero. Positive = the mechanical rule beats realized exits (exit leak); negative = the desk's exits add value. Qty-scaled dollar-ticks; AMP fees applied. Caption must say how many brackets were looked at. Never mix 15s and tick rows. |
 | `entry_edge_flag` | `True` when the best-bracket mean `cf_net_ticks` is `> 0` with **resolved** n ≥ 30 **per resolution**. Mean is over resolved CF rows only (null `cf_net_ticks` is omitted, not zero). Not a single pre-registered test. |
 | `direction_null_pct` | Percentile of realized `Σ gross_ticks` inside a seeded direction-shuffle null (K default 1000). Labels are permuted within `session_date` and that day's long/short counts are preserved. High ≈ the which-way call carries information; ~50 ≈ it does not. Not a global sign-flip. |
@@ -731,6 +726,18 @@ Journal trades are **not** study cells. These quantities live on
 
 Point values are MNQ $2 / MES $5; tick 0.25. Engine `simulate_trades` is 1-lot
 — do not copy those formulas onto journal rows.
+
+## Trade journal metrics (JS1)
+
+JS1 zone columns are **not** TJ6 token-near. They come from `detect_confluence_zones` on the previous completed 1m bar.
+
+| Key | Definition |
+|---|---|
+| `zone_params_hash` | SHA-256 of the declared payload (`level_columns` + `tolerance_ticks` + `min_confluences` + `max_confluences`). Rows of different hashes are never averaged. |
+| `zone_id` | `session_date:bar_ts:zone_low:zone_high` for `inside` / within-tol. Null when `no_zone`. |
+| `zone_width_ticks` | `(zone_high − zone_low) / tick_size` on that previous 1m bar. |
+| `entry_zone_relation` | `inside` (`zone_low ≤ entry ≤ zone_high`), `above_within_tol` / `below_within_tol` (same declared `tolerance_ticks` of the near edge), or `no_zone`. A **containing** zone wins over a closer foreign mid; else nearest mid (tie: `zone_low`, `level_names`). Not TJ6 `level_context`. |
+| `nearest_zone_distance_ticks` | Absolute `\|entry − zone_mid\| / tick_size` when `no_zone` and a zone exists on that bar; else null. |
 
 ## Trade journal metrics (TJ8)
 
