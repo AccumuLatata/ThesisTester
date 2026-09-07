@@ -17,7 +17,7 @@ Compute and run count are not constraints. Completeness and structure are.
 | Side | What | Count |
 |---|---|---:|
 | **Anchors** | Named locations you test | **50** (49 static + `prev30mVWAP`) |
-| **Wave 0 — solo** | Each anchor, **no** partner | **50** (41 in `progB_w0_solo.yaml`; 9 VA in `progB_w0_va.yaml`) |
+| **Wave 0 — solo** | Each anchor, **no** partner | **50** (39 in `progB_w0_solo.yaml`; 9 VA in `progB_w0_va.yaml`; 2 APOC in `progB_w0_apoc.yaml`) |
 | **Confirms (default)** | What you test them against | **22** (12 MA + 2 rolling VWAP + 8 pivot) |
 | **One-partner cells / product** | `core=L`, `partners=[X]` | **1,100** |
 | **Confirms (widget-maximal)** | Same families, full editor catalog | **48** (36 MA + 4 rolling VWAP + 8 pivot) |
@@ -59,20 +59,21 @@ Do not omit costs (engine default 0/0 is gross-era). Do not cartesian 40 vs 80, 
 
 ---
 
-## 0.2 Wave 0 — levels alone (50 cells, two StudySpecs)
+## 0.2 Wave 0 — levels alone (50 cells, three StudySpecs)
 
 Question: which of the 50 named locations have **positive expectancy when traded with no confluence**?
 
-The catalog is still 50. After TV3, the nine prior-profile VA tokens (`pd*` / `pw*` / `pm*` VAH/VAL/POC) are tick VAP. A StudySpec that names any of them refuses without `dataset.tick_paths`. VA and non-VA results are different objects — they must not share a YAML.
+The catalog is still 50. After TV3, the nine prior-profile VA tokens (`pd*` / `pw*` / `pm*` VAH/VAL/POC) are tick VAP. APOC / pAPOC are tick Last×Volume. A StudySpec that names any of them refuses without `dataset.tick_paths`. Tick-gated and 15s results are different objects — they must not share a YAML.
 
 | Packet | File | Cores | When |
 |---|---|---:|---|
-| 15s (`manifest.yaml`) | `progB_w0_solo.yaml` | **41** non-VA | Run now on the 15s export |
-| Tick (`manifest_va.yaml`) | `progB_w0_va.yaml` | **9** VA | Park until Tick–Tick–Last is pinned |
+| 15s (`manifest.yaml`) | `progB_w0_solo.yaml` | **39** non-tick | Run now on the 15s export |
+| Tick (`manifest_tick.yaml`) | `progB_w0_va.yaml` | **9** VA | Park until Tick–Tick–Last is pinned |
+| Tick (`manifest_tick.yaml`) | `progB_w0_apoc.yaml` | **2** APOC | Park until Tick–Tick–Last is pinned |
 
 ```yaml
 factors:
-  core_level: [<41 non-VA anchors>]   # or the 9 VA names in progB_w0_va.yaml
+  core_level: [<39 non-tick anchors>]   # or the 9 VA / 2 APOC names in tick solos
   partner_levels:
     - []
   confluence_mode: [anchor_rules]
@@ -86,7 +87,7 @@ AO1 (`docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md`, shipped on `main`): empty rules 
 
 Same product locks as §0.1 otherwise (MNQ, 80/80, costs 0.5 / 1.0, flatten true).
 
-Run **15s Wave 0 first** (`progB_w0_solo.yaml`, 41 cells), then the 902 pair cells in waves 1–3 and 5–8. Wave 4 (198) and `progB_w0_va.yaml` (9) wait for ticks. A pair’s ΔE vs its solo cell mixes “value of the confirm” with **zone-shape change** (point vs partner bounding box). Report both; do not treat ΔE as a pure confluence effect. Do not compare a 15s pair to a missing VA solo.
+Run **15s Wave 0 first** (`progB_w0_solo.yaml`, 39 cells), then the 858 pair cells in waves 1–3, 5–6, and 8. Wave 4 (198), Wave 7 (44), `progB_w0_va.yaml` (9), and `progB_w0_apoc.yaml` (2) wait for ticks. A pair’s ΔE vs its solo cell mixes “value of the confirm” with **zone-shape change** (point vs partner bounding box). Report both; do not treat ΔE as a pure confluence effect. Do not compare a 15s pair to a missing VA solo.
 
 Readout (same honesty as pairs): n, `expectancy_r`, PF. Interpret at n≥30. Coin-flip hold if `|E|<0.03` or PF ∈ [0.95, 1.05]. “Positive expectancy” for this question = n≥30 and E≥0.03 and PF>1.05. Descriptive, not Admit.
 
@@ -94,7 +95,7 @@ Readout (same honesty as pairs): n, `expectancy_r`, PF. Interpret at n≥30. Coi
 
 ## 1. Anchors — complete list (50)
 
-Every default token that is **not** an MA, **not** a rolling VWAP, **not** a pivot. Work through **by wave**. Wave 0 uses this same list with no partners, split across `progB_w0_solo.yaml` (41 non-VA) and `progB_w0_va.yaml` (9 VA, tick-gated). Do not skip a later wave because an earlier name bled.
+Every default token that is **not** an MA, **not** a rolling VWAP, **not** a pivot. Work through **by wave**. Wave 0 uses this same list with no partners, split across `progB_w0_solo.yaml` (39 non-tick), `progB_w0_va.yaml` (9 VA, tick-gated), and `progB_w0_apoc.yaml` (2 APOC, tick-gated). Do not skip a later wave because an earlier name bled.
 
 ### Wave 1 — Session extremes (12)
 
@@ -149,7 +150,7 @@ There is **no** `RTH_High` / `RTH_Low` / `dHigh` / `OR_Mid` token.
 
 ### Wave 4 — Prior profile (9)
 
-Tick-gated (`manifest_va.yaml` + `progB_w0_va.yaml`). After TV3 these nine names are tick VAP. A StudySpec that lists any of them refuses without `dataset.tick_paths`. Do not launch on 15s-only. Do not treat 15s typical-price MVP as these tokens.
+Tick-gated (`manifest_tick.yaml` + `progB_w0_va.yaml`). After TV3 these nine names are tick VAP. A StudySpec that lists any of them refuses without `dataset.tick_paths`. Do not launch on 15s-only. Do not treat 15s typical-price MVP as these tokens.
 
 | # | Token |
 |---|---|
@@ -187,11 +188,11 @@ No `wVWAP_RTH` / `mVWAP_RTH`.
 
 ### Wave 7 — APOC (2)
 
-Committed Program B Wave 7 packets omit `apoc_profile_source` and
-`tick_paths` (identity lock). Omitted source is now product tick
-Last×Volume; fresh validate / expand / launch refuse (`APOC requires ticks`).
-Historical ZIPs stay labeled `legacy_typical_price` on the manifest. They
-are not Quantower A-period POC. Do not reintroduce typical.
+Fresh Program B Wave 7 packets live in `manifest_tick.yaml`, omit
+`apoc_profile_source` (product tick Last×Volume), and carry placeholder
+`tick_paths`. Manifest rows record tick provenance. Historical ZIPs stay
+labeled `legacy_typical_price`. They are not Quantower A-period POC. Do
+not reintroduce typical.
 
 | # | Token |
 |---|---|
@@ -273,11 +274,11 @@ Finish a wave before the next. Inside a wave, finish one confirm **family** acro
 pick ONE product lock (do not mix touch/10 with 3c/20)
 
 Wave 0 15s  (progB_w0_solo.yaml, min_valid: 0)
-  for L in 41 non-VA anchors:
+  for L in 39 non-tick anchors:
     core=L, partner_levels=[]          # point zone at L
 
-Waves 1–3, 5–8  (own studies, min_valid: 1)
-  for wave in (1, 2, 3, 5, 6, 7, 8):
+Waves 1–3, 5–6, 8  (own studies, min_valid: 1)
+  for wave in (1, 2, 3, 5, 6, 8):
     for family in (MA, rolling VWAP, pivot):
       for L in wave:
         for X in family:
@@ -285,7 +286,7 @@ Waves 1–3, 5–8  (own studies, min_valid: 1)
           required, anchor_rules
           NO dVWAP partner
 
-Wave 0 VA + Wave 4  (manifest_va.yaml) — park until ticks
+Wave 0 VA + Wave 0 APOC + Wave 4 + Wave 7  (manifest_tick.yaml) — park until ticks
 ```
 
 **First product lock:** §0.1. MNQ, `touch` @ `1min`, confluence **10** ticks, SL/TP **80 / 80**, costs **0.5 / 1.0**, flatten **true**. No `dVWAP` partner.

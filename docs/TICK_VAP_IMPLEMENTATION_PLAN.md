@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-24  
-**Status:** Series complete (TV0–TV4). TV4 landed Data page / Study Builder `tick_paths` + Help honesty.  
+**Status:** Series complete (TV0–TV4). TV4 landed Data page / Study Builder `tick_paths` + Help honesty. Living product day/week/month bins are **4/8/10** (desk preference). TV3’s day=1 was a Quantower row-size trial, not a QT day lock.  
 **Series code:** **TV** (Tick volume-at-price)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 
@@ -43,7 +43,7 @@ Series complete when:
 | 15s path | Unchanged: `ingestion_mode: 15s_primary_derive_1m` remains the OHLC product path |
 | Default without ticks | **Omit** the nine VA columns. Do **not** emit 1m-typical under those names |
 | Parked typical proxy | `va_source: typical_mvp` only if it ships later as **different column names** (`pdVAH_typical` …). Not this series |
-| Day bin (product) | Product key `prior_day_profile_aggregation_ticks`: **4 → 1** in TV3 (Quantower row-size match; 4-tick tick-VAP still misses session-20 POC by 12.75). `compute_all_levels` / `compute_profile_levels` kwargs stay `prior_*_aggregation_ticks` (no `_profile_`); API already maps the product key → kwarg |
+| Day bin (product) | Product key `prior_day_profile_aggregation_ticks`: TV3 used **4 → 1** as a Quantower row-size trial (4-tick tick-VAP still misses session-20 POC by 12.75). **Living product default is 4** (desk preference 4/8/10; not a QT day lock). `compute_all_levels` / `compute_profile_levels` kwargs stay `prior_*_aggregation_ticks` (no `_profile_`); API already maps the product key → kwarg |
 | Week / month bins | Stay **8 / 10** until a QT weekly/monthly fixture exists. Same object type; **not** QT-locked |
 | Engine version | `LEVEL_ENGINE_VERSION` **10 → 11** in TV3 |
 | Study schema | Stays `1`. Additive `dataset.tick_paths` |
@@ -78,7 +78,7 @@ Series complete when:
 
 After TV3, `pdVAH` / `pdVAL` / `pdPOC` means:
 
-> Frozen 70% value-area high / low / POC of the **prior completed CME session**, built from Quantower **Last × Volume** ticks, binned at `instrument_tick_size * prior_day_profile_aggregation_ticks` (product default **1**), expanded with the existing `_compute_profile` neighbor-volume rule. Mapped onto the current session’s 1m bars with the existing `shift(1)` period key (`trading_session_date`).
+> Frozen 70% value-area high / low / POC of the **prior completed CME session**, built from Quantower **Last × Volume** ticks, binned at `instrument_tick_size * prior_day_profile_aggregation_ticks` (product default **4**; desk preference, not a QT lock), expanded with the existing `_compute_profile` neighbor-volume rule. Mapped onto the current session’s 1m bars with the existing `shift(1)` period key (`trading_session_date`).
 
 `pw*` / `pm*` are the same object on the existing `W-SUN` / `M` keys derived from `trading_session_date`. Week/month product bins stay 8 / 10 until a Quantower HTF fixture exists. They are **not** a live-map acceptance lock.
 

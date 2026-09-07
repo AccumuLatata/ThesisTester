@@ -27,13 +27,13 @@ Assistant-related contracts:
 | Level Catalog Contract | `docs/LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md` (LC) | **LC4 landed.** Series complete. Catalog completeness/correctness for already-emitted levels. No new price series; no `LEVEL_ENGINE_VERSION`; no golden regen |
 | Developing week/month VWAP | `docs/WVWAP_MVWAP_IMPLEMENTATION_PLAN.md` (WMV) | **WMV2 landed.** Series complete. Developing `wVWAP` / `mVWAP` siblings of `dVWAP`; Setup/Study tokens; Help/UI copy. Same `session_vwap_enabled` gate; `LEVEL_ENGINE_VERSION` 10; no golden regen |
 | Level-as-anchor combination protocol | `docs/LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md` | **Program A** (docs-only, executed desk funnel). Closed token inventory + staged `core_level` × complementary partners; L1 coin-flip-first / L2 low-N stop / Admit=`backtest.entry_window`. No new factor axes / engine / goldens |
-| Level-combination research concept | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` · inventory `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` · runbook `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | **Program B** (operator packet). Wave 0 solo (AO1) + 50 × MA / rolling VWAP / pivot, split 15s (`manifest.yaml`, 23/944) vs tick-gated VA (`manifest_va.yaml`, 4/207). `dVWAP` is an optional core, not a required partner. Does not amend the Notion desk lock page |
+| Level-combination research concept | `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` · inventory `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` · runbook `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` | **Program B** (operator packet). Wave 0 solo (AO1) + 50 × MA / rolling VWAP / pivot, split 15s (`manifest.yaml`, 20/898, no VA/APOC, `apoc_enabled: false`, `poc_windows: []`) vs tick-gated (`manifest_tick.yaml`, 8/253: VA + APOC solos + Wave 4 + Wave 7). `dVWAP` is an optional core, not a required partner. Does not amend the Notion desk lock page |
 | Directional integrity & edge attribution | `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA) | **DA6 landed** (DA0 locked, DA1–DA5 landed). Program B Run 2 packet (`fade` @ 1min, `same_bar_opposite_direction: raise`, `report.random_baseline` 50). Series code is **DA** (DI is Discuss Intelligence). Run 1 YAMLs untouched; generator defaults unchanged; no existing-golden regen |
 | Trade journal (fills + intent ↔ FCM truth) | `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ) | **TJ9 landed** (series complete). Page 17 Journal + USER_GUIDE H2 + HC allowlist + CLI `journal report`. No engine/golden touch. Quantower *Trades* loader parked |
 | Journal → Study (zones / triggers / proposal) | `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS) | **JS2 landed** (JS0 locked, JS1 landed). Zone attribution + trigger inference (`classify_zone_triggers` wrapper; 1m + `15s_proxy`) + Q3 Zones / Inferred trigger + CLI `journal zones` / `journal triggers`. Gate A can stop after JS2. No 15s trigger lane; no golden regen |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
-| Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
-| A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP3 + desk default-tick follow-up.** Library/product default is `tick_last_volume_v1`. Named/product APOC refuses without ticks (`APOC requires ticks`); no typical fallback. `LEVEL_ENGINE_VERSION` stays 11 (identity keys). Wave 7 omits source + ticks (identity lock) and refuses on fresh validate; historical ZIPs stay typical-labeled. |
+| Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day/week/month bins **4/8/10** (desk preference; day=1 was a TV3 QT row-size trial, not a QT lock); `LEVEL_ENGINE_VERSION` 11; no golden regen |
+| A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP3 + desk default-tick follow-up.** Library/product default is `tick_last_volume_v1`. Named/product APOC refuses without ticks (`APOC requires ticks`); no typical fallback. `LEVEL_ENGINE_VERSION` stays 11 (identity keys). Fresh Wave 7 lives in `manifest_tick.yaml` (placeholder ticks, tick provenance). Historical ZIPs stay typical-labeled. |
 | Rolling POC Quantower parity | `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md` (RP) | **RP2 default tick Last×Volume + VA-style refuse.** No QT sliding oracle; no RP2-cancel. Missing ticks refuse when rolling is required (`rolling POC requires ticks`), not all-NaN as the product path. `_rolling_poc` body untouched. Not a Quantower rolling-widget claim. |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
@@ -1322,7 +1322,7 @@ or write `results/studies/`. Do **not** unpark SO5/SO6.
 | SO0 | Plan lock + docs index ✅ |
 | SO1 | Fact table + mtime cache + `study observatory` CLI ✅ |
 | SO2 | `pages/16_Study_Observatory.py` + USER_GUIDE H2 + HC allowlist ✅ |
-| SO3 | Program B lens (desk_class, ΔE vs `w0_solo` / `w0_va`, heatmap) ✅ |
+| SO3 | Program B lens (desk_class, ΔE vs `w0_solo` / `w0_va` / `w0_apoc`, heatmap) ✅ |
 | SO4 | Saved desks under store `study_observatory/` ✅ |
 | SO5 | Parked — opt-in corpus-strip watch |
 | SO6 | Parked — grounded Discuss over the filtered frame |
@@ -1462,7 +1462,8 @@ Prior-profile `pdVAH` / `pdVAL` / `pdPOC` (and `pw*` / `pm*` VA) become
 Quantower tick Last×Volume VAP. 15s stays the OHLC / study clock. Ticks
 are ingest-only for those nine columns. No ticks → columns absent →
 named-VA generate refuses / cells `failed`. Product day aggregation
-becomes 1-tick in TV3 so POC is the same grid Accumu fades. Do not
+is desk **4/8/10** (TV3 briefly used day=1 as a QT row-size trial; that
+is not a Quantower day lock). Do not
 retick `dVWAP`, OR, ONH, touch, 3c, or R12. Do not keep 1m typical under
 the same token names.
 

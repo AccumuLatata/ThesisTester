@@ -277,8 +277,8 @@ def test_future_tick_session_does_not_change_earlier_pdva():
         )
 
 
-def test_product_day_aggregation_is_one_week_month_unchanged():
-    assert DEFAULT_LEVELS_SETTINGS["prior_day_profile_aggregation_ticks"] == 1
+def test_product_day_aggregation_is_four_week_month_unchanged():
+    assert DEFAULT_LEVELS_SETTINGS["prior_day_profile_aggregation_ticks"] == 4
     assert DEFAULT_LEVELS_SETTINGS["prior_week_profile_aggregation_ticks"] == 8
     assert DEFAULT_LEVELS_SETTINGS["prior_month_profile_aggregation_ticks"] == 10
 

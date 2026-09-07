@@ -3,15 +3,18 @@
 
 Defaults reproduce the Run 1 packet in this directory (touch, implicit legacy
 same-bar policy, random baseline omitted). ``--trigger fade`` fills the rest of
-the Run 2 lock table (raise, baseline 50, packet 15s, prefix r2) and **refuses**
+the Run 2 lock table (raise, baseline 50, packet both, prefix r2) and **refuses**
 this directory — pass ``--output-dir`` elsewhere.
 
-Wave 7 YAML ``study.levels`` omits ``apoc_profile_source`` (identity lock).
-Product omitted source is now tick Last×Volume; this packet also omits
-``tick_paths``, so fresh validate / expand / launch refuse with
-``APOC requires ticks``. Manifest Wave 7 rows keep
-``WAVE7_HISTORICAL_PROVENANCE`` (typical) for historical ZIPs. Do not
-rewrite those ZIPs and do not add ``apoc_profile_source`` or ticks.
+15s packet: no VA / APOC / pAPOC cores, no ``tick_paths``, explicit
+``apoc_enabled: false`` and ``poc_windows: []`` so product tick defaults
+cannot refuse a 15s-only launch. Tick packet: VA + Wave 0 APOC solos +
+Wave 7, placeholder ``tick_paths``, ``apoc_enabled: true`` on APOC studies
+only, omitted ``apoc_profile_source`` (product tick). Manifest Wave 7 rows
+record ``WAVE7_TICK_PROVENANCE``. Historical ZIP typical labels stay
+elsewhere; do not rewrite those ZIPs and do not add ``apoc_profile_source``.
+``POC_rolling_30min`` is not a Program B core wave — 15s shuts
+``poc_windows`` instead of inventing a rolling-POC research wave.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from pathlib import Path
 import yaml
 
 from thesistester.study.apoc_provenance import (
-    WAVE7_HISTORICAL_PROVENANCE,
+    WAVE7_TICK_PROVENANCE,
     is_wave7_study_file,
 )
 
@@ -30,6 +33,8 @@ OUT = Path(__file__).resolve().parent
 VALID_TRIGGERS = ("touch", "fade")
 VALID_SAME_BAR = ("legacy", "skip_both", "raise")
 VALID_PACKETS = ("15s", "tick", "both")
+TICK_MANIFEST_NAME = "manifest_tick.yaml"
+LEGACY_VA_MANIFEST_NAME = "manifest_va.yaml"
 
 ANCHORS: dict[str, list[str]] = {
     "w1_ext": [
@@ -93,10 +98,21 @@ ANCHORS: dict[str, list[str]] = {
 ALL_ANCHORS = [token for keys in ANCHORS.values() for token in keys]
 VA_ANCHORS = list(ANCHORS["w4_profile"])
 VA_ANCHOR_SET = set(VA_ANCHORS)
-FIFTEEN_S_ANCHORS = [token for token in ALL_ANCHORS if token not in VA_ANCHOR_SET]
-# Placeholder only. TV3 needs a non-empty list so the StudySpec loads.
+APOC_ANCHORS = list(ANCHORS["w7_apoc"])
+APOC_ANCHOR_SET = set(APOC_ANCHORS)
+TICK_GATED_ANCHORS = VA_ANCHORS + APOC_ANCHORS
+TICK_GATED_SET = set(TICK_GATED_ANCHORS)
+TICK_WAVES = frozenset({"w4_profile", "w7_apoc"})
+FIFTEEN_S_ANCHORS = [token for token in ALL_ANCHORS if token not in TICK_GATED_SET]
+# Placeholder only. Schema/expand need a non-empty list so the StudySpec loads.
 # Launch still refuses until the operator pins a real Tick–Tick–Last export.
-VA_TICK_PATHS = ["data/mnq_tick_last.csv"]
+TICK_PATHS = ["data/mnq_tick_last.csv"]
+VA_TICK_PATHS = TICK_PATHS  # alias: older tests / validator copy
+LOCKED_AGGREGATION = {
+    "prior_day_profile_aggregation_ticks": 4,
+    "prior_week_profile_aggregation_ticks": 8,
+    "prior_month_profile_aggregation_ticks": 10,
+}
 
 CONFIRMS: dict[str, list[list[str]]] = {
     "ma": [
@@ -154,6 +170,26 @@ def study_name(base: str, prefix: str) -> str:
     return f"{token}_{base}"
 
 
+def _levels(*, tick_gated: bool, apoc_enabled: bool) -> dict[str, object]:
+    """Shared StudySpec levels. 15s must disable product APOC / rolling defaults."""
+    levels: dict[str, object] = {
+        "sma_lengths": [50, 200],
+        "ema_lengths": [9, 21],
+        "sma_timeframes": ["1min", "5min", "30min"],
+        "ema_timeframes": ["1min", "5min", "30min"],
+        "vwap_windows": ["30min", "4h"],
+        "poc_windows": ["30min"] if tick_gated else [],
+        "pivots_enabled": True,
+        "pivot_timeframes": ["1min", "5min", "30min", "4h"],
+        "prev30m_vwap_enabled": True,
+        "session_vwap_enabled": True,
+        "single_prints_enabled": True,
+        "apoc_enabled": bool(apoc_enabled),
+        **LOCKED_AGGREGATION,
+    }
+    return levels
+
+
 def _shared(
     *,
     name: str,
@@ -163,6 +199,7 @@ def _shared(
     trigger: str = "touch",
     same_bar_policy: str | None = None,
     random_baseline: int | None = None,
+    apoc_enabled: bool = False,
 ) -> dict:
     dataset: dict[str, object] = {
         "path": r"/Users/florianrichling/Dropbox/thesistester/data/MNQ AMP Futures (Rithmic), Time - Time - 15s, 8_1_2024 120000 AM-8_7_2026 120000 AM_72578ad9-eaad-41cc-a03e-cf056050cf77.csv",
@@ -216,19 +253,7 @@ def _shared(
             "confirm_above_runs": 200,
             "output_dir": f"results/studies/{name}",
             "dataset": dataset,
-            "levels": {
-                "sma_lengths": [50, 200],
-                "ema_lengths": [9, 21],
-                "sma_timeframes": ["1min", "5min", "30min"],
-                "ema_timeframes": ["1min", "5min", "30min"],
-                "vwap_windows": ["30min", "4h"],
-                "pivots_enabled": True,
-                "pivot_timeframes": ["1min", "5min", "30min", "4h"],
-                "prev30m_vwap_enabled": True,
-                "session_vwap_enabled": True,
-                "single_prints_enabled": True,
-                "apoc_enabled": True,
-            },
+            "levels": _levels(tick_gated=bool(tick_paths), apoc_enabled=apoc_enabled),
             "constants": {
                 "direction": "both",
                 "tolerance_ticks": 10,
@@ -305,23 +330,32 @@ def _run2_readme(*, trigger: str, same_bar_policy: str, n_replicas: int) -> str:
         "§1 Run 2 lock table.\n"
         "Generator: [`generate_program_b_yaml.py`](../program_b/generate_program_b_yaml.py).\n"
         "\n"
-        f"**15s packet:** 23 studies / **944** cells (`manifest.yaml`). "
+        f"**15s packet:** 20 studies / **898** cells (`manifest.yaml`). "
         f"Trigger `{trigger}` @ 1min, `same_bar_opposite_direction: {same_bar_policy}`, "
         f"`report.random_baseline.n_replicas: {n_replicas}`.\n"
+        "**Tick-gated packet:** 8 studies / **253** cells (`manifest_tick.yaml`) — "
+        "Wave 0 VA + Wave 0 APOC solos + Wave 4 + Wave 7. Placeholder "
+        "`tick_paths: [data/mnq_tick_last.csv]`; launch refuses until a real "
+        "Tick–Tick–Last export is pinned.\n"
         "Study names are `progB_r2_*` so `output_dir` does not collide with Run 1.\n"
         "Filenames stay `progB_*.yaml` so the validator Wave 0 / smoke stems still match.\n"
+        "15s levels set `apoc_enabled: false` and `poc_windows: []` so product "
+        "tick defaults cannot refuse a 15s-only launch. `POC_rolling_30min` is "
+        "not a Program B core wave.\n"
         "Do not hand-edit token lists. Do not treat Run 1 vs Run 2 as a paired ΔE.\n"
         "\n"
         "```bash\n"
         "python3 examples/studies/program_b/generate_program_b_yaml.py \\\n"
         "  --trigger fade --output-dir examples/studies/program_b_run2\n"
         "# fade defaults the rest of the Run 2 lock table: raise, baseline 50, "
-        "packet 15s, prefix r2.\n"
+        "packet both, prefix r2.\n"
         "PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py \\\n"
         "  examples/studies/program_b_run2/manifest.yaml\n"
+        "PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py \\\n"
+        "  examples/studies/program_b_run2/manifest_tick.yaml\n"
         "```\n"
         "\n"
-        "Expect: `ok 23 studies / 944 cells`.\n"
+        "Expect: `ok 20 studies / 898 cells` and `ok 8 studies / 253 cells`.\n"
     )
 
 
@@ -400,7 +434,8 @@ def generate_packet(
             _header(
                 "smoke",
                 1,
-                "# Run first. Do not start Wave 0 until this cell is ok.\n",
+                "# Run first. Do not start Wave 0 until this cell is ok.\n"
+                "# 15s: apoc_enabled false, poc_windows []. No tick families.\n",
                 trigger=trigger,
             ),
             smoke,
@@ -411,7 +446,7 @@ def generate_packet(
         solo = _shared(
             name=solo_name,
             description=(
-                "Program B Wave 0 (15s): 41 non-VA anchors alone (AO1 point zone, min_valid 0)."
+                "Program B Wave 0 (15s): 39 non-tick anchors alone (AO1 point zone, min_valid 0)."
             ),
             min_valid=0,
             **shared_kw,
@@ -424,9 +459,9 @@ def generate_packet(
                 "Wave 0 solo 15s (AO1)",
                 len(FIFTEEN_S_ANCHORS),
                 "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
-                "# No pd/pw/pm VA tokens. Tick-gated VA solos are progB_w0_va.yaml.\n"
-                "# Names APOC/pAPOC; validate/expand/launch refuse (APOC requires ticks).\n"
-                "# Do not add tick_paths or apoc_profile_source (packet lock).\n",
+                "# No VA / APOC / pAPOC cores. Tick-gated solos are progB_w0_va.yaml "
+                "and progB_w0_apoc.yaml.\n"
+                "# apoc_enabled: false, poc_windows: []. Validates on 15s-only.\n",
                 trigger=trigger,
             ),
             solo,
@@ -443,7 +478,7 @@ def generate_packet(
                 "(AO1 point zone, min_valid 0). Tick-gated."
             ),
             min_valid=0,
-            tick_paths=VA_TICK_PATHS,
+            tick_paths=TICK_PATHS,
             **shared_kw,
         )
         solo_va["study"]["factors"]["core_level"] = list(VA_ANCHORS)
@@ -463,27 +498,58 @@ def generate_packet(
         )
         tick_gated.append({"file": "progB_w0_va.yaml", "cells": len(VA_ANCHORS), "min_valid": 0})
 
+        solo_apoc = _shared(
+            name=study_name("progB_w0_apoc", study_prefix),
+            description=(
+                "Program B Wave 0 APOC: APOC/pAPOC alone (AO1 point zone, min_valid 0). Tick-gated."
+            ),
+            min_valid=0,
+            tick_paths=TICK_PATHS,
+            apoc_enabled=True,
+            **shared_kw,
+        )
+        solo_apoc["study"]["factors"]["core_level"] = list(APOC_ANCHORS)
+        solo_apoc["study"]["factors"]["partner_levels"] = [[]]
+        _dump(
+            out / "progB_w0_apoc.yaml",
+            _header(
+                "Wave 0 solo APOC (AO1, tick-gated)",
+                len(APOC_ANCHORS),
+                "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
+                "# Tick-gated APOC/pAPOC. Omit apoc_profile_source (product tick).\n"
+                "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
+                "missing files.\n",
+                trigger=trigger,
+            ),
+            solo_apoc,
+        )
+        tick_gated.append(
+            {"file": "progB_w0_apoc.yaml", "cells": len(APOC_ANCHORS), "min_valid": 0}
+        )
+
     for wave_key, cores in ANCHORS.items():
-        tick_wave = wave_key == "w4_profile"
+        tick_wave = wave_key in TICK_WAVES
         if tick_wave and not write_tick:
             continue
         if not tick_wave and not write_15s:
             continue
         extra = (
             "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
-            "# Tick-gated: prior-profile VA cores. Do not launch on 15s-only.\n"
+            "# Tick-gated cores. Do not launch on 15s-only.\n"
             "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
             "missing files.\n"
             if tick_wave
-            else "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
+            else (
+                "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
+                "# 15s: apoc_enabled false, poc_windows []. No VA/APOC cores.\n"
+            )
         )
         if wave_key == "w7_apoc":
             extra += (
-                "# Historical ZIP / manifest: typical_mvp_v1 (legacy typical-price).\n"
-                "# Omitted apoc_profile_source is now product tick Last×Volume.\n"
-                "# Packet omits tick_paths; validate/expand/launch refuse "
-                "(APOC requires ticks). Do not add apoc_profile_source or ticks "
-                "(identity lock). Not a Quantower A-period claim.\n"
+                "# Fresh packet identity is tick Last×Volume (omitted "
+                "apoc_profile_source). Manifest apoc_provenance is tick, not "
+                "typical_mvp historical. Historical ZIPs stay typical-labeled "
+                "elsewhere. Not a Quantower A-period claim.\n"
             )
         target = tick_gated if tick_wave else fifteen_s
         for family, partners in CONFIRMS.items():
@@ -496,7 +562,8 @@ def generate_packet(
                     f"Program B {wave_key} ({WAVE_TITLE[wave_key]}) x {FAMILY_TITLE[family]}."
                 ),
                 min_valid=1,
-                tick_paths=VA_TICK_PATHS if tick_wave else None,
+                tick_paths=TICK_PATHS if tick_wave else None,
+                apoc_enabled=wave_key == "w7_apoc",
                 **shared_kw,
             )
             spec["study"]["factors"]["core_level"] = list(cores)
@@ -512,13 +579,16 @@ def generate_packet(
                 "min_valid": 1,
             }
             if is_wave7_study_file(row["file"]):
-                row["apoc_provenance"] = dict(WAVE7_HISTORICAL_PROVENANCE)
+                row["apoc_provenance"] = dict(WAVE7_TICK_PROVENANCE)
             target.append(row)
 
     if write_15s:
         _write_manifest(out / "manifest.yaml", "15s", fifteen_s, locks=locks)
     if write_tick:
-        _write_manifest(out / "manifest_va.yaml", "tick", tick_gated, locks=locks)
+        _write_manifest(out / TICK_MANIFEST_NAME, "tick", tick_gated, locks=locks)
+        stale = out / LEGACY_VA_MANIFEST_NAME
+        if stale.exists():
+            stale.unlink()
     if write_readme:
         policy = same_bar_policy or "legacy"
         n_rep = int(random_baseline) if random_baseline else 0
@@ -570,7 +640,7 @@ def main(argv: list[str] | None = None) -> None:
         "--packet",
         choices=VALID_PACKETS,
         default=None,
-        help="Which manifests to write. Default both (Run 1). Fade defaults to 15s.",
+        help="Which manifests to write. Default both (Run 1 and fade).",
     )
     parser.add_argument(
         "--study-prefix",
@@ -592,7 +662,7 @@ def main(argv: list[str] | None = None) -> None:
         random_baseline = 50
     packet = args.packet
     if packet is None:
-        packet = "15s" if run2 else "both"
+        packet = "both"
     # README is the Run 2 operator note; never stamp it on a touch packet.
     write_readme = run2 and Path(args.output_dir).resolve() != OUT.resolve()
     locks = "run2" if run2 else None

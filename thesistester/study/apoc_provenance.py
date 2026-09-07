@@ -44,6 +44,15 @@ WAVE7_HISTORICAL_PROVENANCE: dict[str, str] = {
     "recorded": RECORDED_INFERRED_HISTORICAL,
 }
 
+# Fresh Program B Wave 7 operator packets (tick-gated). Historical ZIPs
+# stay WAVE7_HISTORICAL_PROVENANCE. Omitted study.levels source is tick.
+WAVE7_TICK_PROVENANCE: dict[str, str] = {
+    "apoc_profile_source": APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
+    "apoc_algorithm_version": APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
+    "apoc_object": APOC_OBJECT_TICK_LAST_VOLUME,
+    "recorded": RECORDED_INFERRED,
+}
+
 
 def is_wave7_study_file(filename: str) -> bool:
     """True for the three Program B Wave 7 YAML stems (Run 1 and Run 2)."""
@@ -83,9 +92,10 @@ def apoc_provenance_from_levels(levels: Mapping[str, Any] | None) -> dict[str, s
     """Derive APOC provenance from written ``study.levels``.
 
     Omitted ``apoc_profile_source`` is implicit ``tick_last_volume_v1``
-    (desk default). An explicit key is recorded as explicit. Historical
-    Wave 7 packets keep ``WAVE7_HISTORICAL_PROVENANCE`` (typical) on the
-    manifest; missing expansion sidecars still infer typical.
+    (desk default). An explicit key is recorded as explicit. Fresh
+    Wave 7 operator packets record ``WAVE7_TICK_PROVENANCE``. Historical
+    ZIPs keep ``WAVE7_HISTORICAL_PROVENANCE`` (typical); missing expansion
+    sidecars still infer typical.
     """
     source = _explicit_source(levels)
     if source is None:

@@ -14,6 +14,7 @@ from thesistester.study.apoc_provenance import (
     RECORDED_EXPLICIT,
     RECORDED_INFERRED,
     WAVE7_HISTORICAL_PROVENANCE,
+    WAVE7_TICK_PROVENANCE,
     apoc_provenance_from_levels,
     is_wave7_study_file,
     read_apoc_provenance,
@@ -91,6 +92,9 @@ def test_missing_sidecar_reads_as_inferred_typical():
     assert provenance["recorded"] == RECORDED_INFERRED
     assert WAVE7_HISTORICAL_PROVENANCE["apoc_object"] == APOC_OBJECT_LEGACY_TYPICAL
     assert WAVE7_HISTORICAL_PROVENANCE["recorded"] == "inferred_historical"
+    assert WAVE7_TICK_PROVENANCE["apoc_object"] == "tick_last_volume"
+    assert WAVE7_TICK_PROVENANCE["recorded"] == "inferred"
+    assert WAVE7_TICK_PROVENANCE["apoc_profile_source"] == "tick_last_volume_v1"
 
 
 def test_read_derives_object_from_source_when_object_omitted():

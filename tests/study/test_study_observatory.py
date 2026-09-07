@@ -1055,15 +1055,15 @@ def test_observatory_page_ast_and_contract():
     assert "n<15 is unidentified" in source
     assert "15≤n<30 is noisy" in source
     assert "n<30 is unidentified" not in source
-    assert "15s operator packet: 23" in source
-    assert "Parked VA packet: 4" in source
+    assert "15s operator packet: 20" in source
+    assert "Parked tick packet: 8" in source
     assert "lens chrome, not catalog membership" in source
     assert "heatmap_class_z" in source
     assert "_HEATMAP_CLASS_INDEX" not in source
     assert "import plotly" not in observatory
     assert "st.fragment" not in observatory
-    assert "23 files" in PROGRAM_B_LENS_PACKET_CHROME
-    assert "4 files" in PROGRAM_B_LENS_PACKET_CHROME
+    assert "20 files" in PROGRAM_B_LENS_PACKET_CHROME
+    assert "8 files" in PROGRAM_B_LENS_PACKET_CHROME
 
 
 def test_delta_e_vs_wave0_solo_and_missing_solo(tmp_path: Path):
@@ -1117,6 +1117,8 @@ def test_delta_e_vs_wave0_solo_and_missing_solo(tmp_path: Path):
 def test_delta_e_pdpoc_uses_w0_va_and_duplicate_w0_nulls(tmp_path: Path):
     assert wave0_study_name_for_core("pdPOC") == "progB_w0_va"
     assert wave0_study_name_for_core("ONH") == "progB_w0_solo"
+    assert wave0_study_name_for_core("APOC") == "progB_w0_apoc"
+    assert wave0_study_name_for_core("pAPOC") == "progB_w0_apoc"
     studies = tmp_path / "va" / "results" / "studies"
     _write_study(
         studies,
@@ -1176,6 +1178,64 @@ def test_delta_e_pdpoc_uses_w0_va_and_duplicate_w0_nulls(tmp_path: Path):
     )
     dup_pair = dup_attached.loc[dup_attached["run_name"] == "pair_dup"].iloc[0]
     assert pd.isna(dup_pair["delta_e"])
+
+
+def test_delta_e_apoc_uses_w0_apoc_and_run2_prefix(tmp_path: Path):
+    studies = tmp_path / "apoc" / "results" / "studies"
+    _write_study(
+        studies,
+        "progB_w0_apoc",
+        core="APOC",
+        partners=[],
+        min_valid=0,
+        cells=[{"run_name": "w0_apoc", "trade_count": 40, "expectancy_r": 0.01}],
+    )
+    _write_study(
+        studies,
+        "progB_w0_solo",
+        core="APOC",
+        partners=[],
+        min_valid=0,
+        cells=[{"run_name": "w0_solo_wrong", "trade_count": 40, "expectancy_r": 0.99}],
+    )
+    _write_study(
+        studies,
+        "progB_w7_apoc_ma",
+        core="APOC",
+        partners=["SMA"],
+        cells=[{"run_name": "pair_apoc", "trade_count": 40, "expectancy_r": 0.11}],
+    )
+    attached = attach_program_b_projections(
+        load_observatory_frame(roots=((tmp_path / "apoc").resolve(),)).frame
+    )
+    pair = attached.loc[attached["run_name"] == "pair_apoc"].iloc[0]
+    assert pair["delta_e"] == pytest.approx(0.10)
+
+    run2 = tmp_path / "r2" / "results" / "studies"
+    _write_study(
+        run2,
+        "progB_r2_w0_apoc",
+        study_name="progB_r2_w0_apoc",
+        core="pAPOC",
+        partners=[],
+        min_valid=0,
+        trigger="fade",
+        cells=[{"run_name": "w0_r2_apoc", "trade_count": 40, "expectancy_r": -0.02}],
+    )
+    _write_study(
+        run2,
+        "progB_r2_w7_apoc_ma",
+        study_name="progB_r2_w7_apoc_ma",
+        core="pAPOC",
+        partners=["SMA"],
+        trigger="fade",
+        cells=[{"run_name": "pair_r2_apoc", "trade_count": 40, "expectancy_r": 0.08}],
+    )
+    run2_attached = attach_program_b_projections(
+        load_observatory_frame(roots=((tmp_path / "r2").resolve(),)).frame
+    )
+    run2_pair = run2_attached.loc[run2_attached["run_name"] == "pair_r2_apoc"].iloc[0]
+    assert run2_pair["delta_e"] == pytest.approx(0.10)
 
 
 def test_desk_class_matches_section_4_7():

@@ -31,11 +31,12 @@ POINT_VALUE = 50.0
 # stamps APOC identity even when apoc_enabled=False (LEVEL_ENGINE_VERSION
 # stays 11) and parity 15s-only specs disable APOC so they do not refuse.
 # Scoped by pandas major — frame bytes differ on 2 vs 3.
-# pandas 2: CI py3.10 after this PR (baf96592…); previous RP2 pin 2628bb5c…
-# no longer matches once omitted APOC identity is always tick.
+# pandas 2: CI py3.10 after desk 4/8/10 (4aff4ae6…); pandas 3: CI py3.12
+# (b4538113…). Previous tick-default pins (baf96592… / 15d12f6b…) no longer
+# match once product day aggregation is 4.
 _POST_TICK_DEFAULT_TOUCH_BUNDLE_HASH_BY_PANDAS_MAJOR = {
-    2: "baf96592f42133c8dd770e113fd41d8709e213e776af7663c50a6a97b8ca6be9",
-    3: "15d12f6b9f18da2c21b9cb5b8276e945eccbe89d3ab7e622e4f0d4d63e9a8724",
+    2: "4aff4ae600a46df32cfb21ec68e64b2c37e230310a9fdfcac20aa2638c1a7fe7",
+    3: "b4538113af76d9a745bcbf71babd777fa6a69f1e9665b23b1504457529bd4b94",
 }
 
 
