@@ -1322,7 +1322,7 @@ or write `results/studies/`. Do **not** unpark SO5/SO6.
 | SO0 | Plan lock + docs index ✅ |
 | SO1 | Fact table + mtime cache + `study observatory` CLI ✅ |
 | SO2 | `pages/16_Study_Observatory.py` + USER_GUIDE H2 + HC allowlist ✅ |
-| SO3 | Program B lens (desk_class, ΔE vs `w0_solo` / `w0_va`, heatmap) ✅ |
+| SO3 | Program B lens (desk_class, ΔE vs `w0_solo` / `w0_va` / `w0_apoc`, heatmap) ✅ |
 | SO4 | Saved desks under store `study_observatory/` ✅ |
 | SO5 | Parked — opt-in corpus-strip watch |
 | SO6 | Parked — grounded Discuss over the filtered frame |

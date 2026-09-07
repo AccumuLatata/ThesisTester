@@ -1221,11 +1221,13 @@ other than the last bar in the dataset.
   the operator runbook, not a new primary metric and not Admit. `desk_class`
   covers the runbook split (`plus_e` / `hold` / `dead` / `noisy` /
   `unidentified`) plus `failed` / `other`. n<15 is unidentified;
-  15≤n<30 is noisy. ΔE looks up `progB_w0_solo` or `progB_w0_va` by
-  core and the shared lock (instrument / dataset / ingest / costs) except
-  `min_valid_confluences`; it mixes confirm value with zone-shape
-  (point vs partner box). Heatmap grey is missing/pending, not `failed`.
-  Packet file counts (15s 23 / parked VA 4) are lens chrome, not ingest.
+  15≤n<30 is noisy. ΔE looks up `progB_w0_solo`, `progB_w0_va`, or
+  `progB_w0_apoc` by core and the shared lock (instrument / dataset /
+  ingest / costs) except `min_valid_confluences`; Run 2 `progB_r2_w0_*`
+  stems canonicalize to the same lookup. It mixes confirm value with
+  zone-shape (point vs partner box). Heatmap grey is missing/pending,
+  not `failed`. Packet file counts (15s 20 / parked tick 8) are lens
+  chrome, not ingest.
   The lens is optional chrome — ingest stays generic.
 - Saved desks (SO4) persist query state only (facets / cohort / lens / sort)
   under `{store}/study_observatory/desks` with `schema_version: 1`. A desk is

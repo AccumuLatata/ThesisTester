@@ -1116,8 +1116,10 @@ observatory CLI
    the raw key. A caption lists lock fields that differ in the filtered set.
 4. Read n×E + table. `sample_class` is n vs that study’s `min_trades`.
 5. Lens `auto` when `progB_*` exist. ΔE = pair E − Wave 0 (`w0_va` for
-   prior-profile cores, else `w0_solo`). Lens on: facet `desk_class` /
-   `useful_confluence`. **Heatmap cell** writes Core / Partner.
+   prior-profile cores, `w0_apoc` for APOC/pAPOC, else `w0_solo`;
+   Run 2 `progB_r2_w0_*` stems match the same lookup). Lens on: facet
+   `desk_class` / `useful_confluence`. **Heatmap cell** writes Core /
+   Partner.
 6. Optionally **Save desk**. Select a cell → **Open in Inspect**. CLI:
    `python -m thesistester study observatory`.
 

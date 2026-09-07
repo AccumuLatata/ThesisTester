@@ -94,6 +94,15 @@ def test_program_b_tick_manifest_validates_separately():
     assert not (PROGRAM_B / "manifest_va.yaml").exists()
 
 
+def test_program_b_validator_rejects_stale_manifest_va(tmp_path):
+    validate = _validator()
+    copied = tmp_path / "program_b"
+    shutil.copytree(PROGRAM_B, copied)
+    (copied / "manifest_va.yaml").write_text("packet: va\n", encoding="utf-8")
+    _, failures, _, _ = validate.validate_manifest(copied, manifest_name="manifest_tick.yaml")
+    assert any("manifest_va.yaml" in item and "stale live path" in item for item in failures)
+
+
 def test_program_b_w0_solo_excludes_tick_gated_tokens():
     spec = yaml.safe_load((PROGRAM_B / "progB_w0_solo.yaml").read_text(encoding="utf-8"))
     cores = spec["study"]["factors"]["core_level"]
@@ -418,6 +427,26 @@ def test_program_b_generate_wave7_provenance_is_deterministic(tmp_path):
     assert tick_generated == tick_committed
 
 
+def test_program_b_run2_generate_matches_committed(tmp_path):
+    gen = _generate()
+    gen.main(["--trigger", "fade", "--output-dir", str(tmp_path)])
+    for name in (
+        "manifest.yaml",
+        "manifest_tick.yaml",
+        "progB_w0_solo.yaml",
+        "progB_w0_va.yaml",
+        "progB_w0_apoc.yaml",
+        "progB_w7_apoc_ma.yaml",
+        "README.md",
+    ):
+        generated = (tmp_path / name).read_text(encoding="utf-8")
+        committed = (PROGRAM_B_RUN2 / name).read_text(encoding="utf-8")
+        if name.endswith(".yaml"):
+            assert yaml.safe_load(generated) == yaml.safe_load(committed), name
+        else:
+            assert generated == committed, name
+
+
 def test_program_b_wave7_expand_succeeds_with_placeholder_paths():
     spec = yaml.safe_load((PROGRAM_B / "progB_w7_apoc_ma.yaml").read_text(encoding="utf-8"))
     normalized = normalize_study_spec(spec)
@@ -538,12 +567,32 @@ def test_program_b_validator_rejects_provenance_on_non_wave7(tmp_path):
 
 
 def test_program_b_fifteen_s_levels_disable_apoc_and_rolling():
-    fifteen_s = yaml.safe_load((PROGRAM_B / "manifest.yaml").read_text(encoding="utf-8"))
-    for row in fifteen_s["studies"]:
-        spec = yaml.safe_load((PROGRAM_B / row["file"]).read_text(encoding="utf-8"))
-        levels = spec["study"]["levels"]
-        assert levels["apoc_enabled"] is False, row["file"]
-        assert levels["poc_windows"] == [], row["file"]
-        assert levels["prior_day_profile_aggregation_ticks"] == 4, row["file"]
-        assert levels["prior_week_profile_aggregation_ticks"] == 8, row["file"]
-        assert levels["prior_month_profile_aggregation_ticks"] == 10, row["file"]
+    for root in (PROGRAM_B, PROGRAM_B_RUN2):
+        fifteen_s = yaml.safe_load((root / "manifest.yaml").read_text(encoding="utf-8"))
+        for row in fifteen_s["studies"]:
+            spec = yaml.safe_load((root / row["file"]).read_text(encoding="utf-8"))
+            levels = spec["study"]["levels"]
+            assert levels["apoc_enabled"] is False, f"{root}/{row['file']}"
+            assert levels["poc_windows"] == [], f"{root}/{row['file']}"
+            assert levels["prior_day_profile_aggregation_ticks"] == 4, f"{root}/{row['file']}"
+            assert levels["prior_week_profile_aggregation_ticks"] == 8, f"{root}/{row['file']}"
+            assert levels["prior_month_profile_aggregation_ticks"] == 10, f"{root}/{row['file']}"
+
+
+def test_program_b_tick_levels_keep_aggregation_and_rolling():
+    gen = _generate()
+    for root in (PROGRAM_B, PROGRAM_B_RUN2):
+        tick = yaml.safe_load((root / "manifest_tick.yaml").read_text(encoding="utf-8"))
+        for row in tick["studies"]:
+            spec = yaml.safe_load((root / row["file"]).read_text(encoding="utf-8"))
+            levels = spec["study"]["levels"]
+            cores = spec["study"]["factors"]["core_level"]
+            assert levels["poc_windows"] == ["30min"], f"{root}/{row['file']}"
+            assert levels["prior_day_profile_aggregation_ticks"] == 4, f"{root}/{row['file']}"
+            assert levels["prior_week_profile_aggregation_ticks"] == 8, f"{root}/{row['file']}"
+            assert levels["prior_month_profile_aggregation_ticks"] == 10, f"{root}/{row['file']}"
+            assert "apoc_profile_source" not in levels, f"{root}/{row['file']}"
+            if set(cores) & set(gen.APOC_ANCHOR_SET):
+                assert levels["apoc_enabled"] is True, f"{root}/{row['file']}"
+            else:
+                assert levels["apoc_enabled"] is False, f"{root}/{row['file']}"

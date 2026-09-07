@@ -155,7 +155,7 @@ Per cell, n≥30 to *interpret*. n<30 = unidentified, not “killed class.”
 |---|---|
 | `n`, `expectancy_r`, PF, CI | Descriptive screen. Primary rank key is `expectancy_r`, never `total_r` |
 | **ΔE vs other confirms on the same L** | Did this family change E vs the other two families at the same location? |
-| **ΔE vs Wave 0 (same core)** | Did the partner change E vs the AO1 point-zone solo cell? 15s cores: `progB_w0_solo.yaml`. VA cores: `progB_w0_va.yaml` (tick-gated) |
+| **ΔE vs Wave 0 (same core)** | Did the partner change E vs the AO1 point-zone solo cell? 15s cores: `progB_w0_solo.yaml`. VA cores: `progB_w0_va.yaml` (tick-gated). APOC cores: `progB_w0_apoc.yaml` (tick-gated) |
 | **ΔE vs partner-alone** | Is this the partner’s edge with a location sticker? (Setup replay; MA / pivot / rVWAP are confirms, not cores) |
 | **Thinning** `n(combo)/n(core)` | Confirmation that only starves |
 | **Year split** | Stability, not a new factor |
@@ -179,7 +179,7 @@ Combo attribution (already shipped) is **retrospective** on optional/mixed setup
 
 ```text
 B0  Lock this file + LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md
-B0s Solo map              50 cores, partner [], min_valid: 0 (AO1). 15s = 41 (`progB_w0_solo`); VA = 9 (`progB_w0_va`, ticks)
+B0s Solo map              50 cores, partner [], min_valid: 0 (AO1). 15s = 39 (`progB_w0_solo`); VA = 9 (`progB_w0_va`); APOC = 2 (`progB_w0_apoc`) — last two tick-gated
 B1  Default pair grid     50 × 22, touch @ 1min, confluence 10, SL/TP 80/80 ($40). Wave 4 tick-gated
 B2  Second product        same 1,100, other trigger/width — separate study
 B3  Widget pass           extra MA lengths + VWAP_rolling_15min/1h on interesting waves
@@ -221,7 +221,7 @@ Primitives and the operator packet exist. Remaining work is **running** the grid
 | Need | Today | Gap |
 |---|---|---|
 | `core_level` × `partner_levels` | StudySpec / Study Runner | None for the 50×22 grid |
-| Location-only (no partner) | AO1 + `progB_w0_solo.yaml` (15s) / `progB_w0_va.yaml` (VA) (`[[]]` + `min_valid: 0` → point zone `[P,P]`) | None. Do not replay Setup Builder for the solo baseline |
+| Location-only (no partner) | AO1 + `progB_w0_solo.yaml` (15s) / `progB_w0_va.yaml` (VA) / `progB_w0_apoc.yaml` (APOC) (`[[]]` + `min_valid: 0` → point zone `[P,P]`) | None. Do not replay Setup Builder for the solo baseline |
 | Interaction report | Cells have E, n, PF | Spreadsheet / research report remains valid. Product readout (not a runbook step): Study Observatory SO3 Program B lens shipped (`desk_class` / ΔE vs Wave 0) — `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md` |
 | Matrix | `examples/studies/program_b/` + `generate_program_b_yaml.py` | Do not hand-edit token lists. Regenerator + `validate_program_b_yaml.py` |
 | Product Admit | `study promote --admit-tod auto` | Unchanged. Do not auto-promote from this grid |

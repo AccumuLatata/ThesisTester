@@ -195,6 +195,8 @@ _PRIOR_PROFILE_CORES = frozenset(PRIOR_PROFILE_LEVEL_NAMES)
 _WAVE0_SOLO = "progB_w0_solo"
 _WAVE0_VA = "progB_w0_va"
 _WAVE0_APOC = "progB_w0_apoc"
+_WAVE0_STUDIES = frozenset({_WAVE0_SOLO, _WAVE0_VA, _WAVE0_APOC})
+_RUN2_STUDY_PREFIX = "progB_r2_"
 _APOC_CORES = frozenset({"APOC", "pAPOC"})
 DESK_CLASS_ORDER: tuple[str, ...] = (
     "plus_e",
@@ -501,13 +503,27 @@ def desk_class_for(
 
 
 def wave0_study_name_for_core(core: Any) -> str:
-    """Tick-gated cores look up ``progB_w0_va`` / ``progB_w0_apoc``; else solo."""
+    """Tick-gated cores look up ``progB_w0_va`` / ``progB_w0_apoc``; else solo.
+
+    Returns the canonical (Run 1) stem. Run 2 ``progB_r2_*`` Wave 0 rows
+    canonicalize to the same stem so ΔE matches inside the fade lock.
+    """
     token = _display_token(core)
     if token in _PRIOR_PROFILE_CORES:
         return _WAVE0_VA
     if token in _APOC_CORES:
         return _WAVE0_APOC
     return _WAVE0_SOLO
+
+
+def _canonical_wave0_study_name(name: Any) -> str | None:
+    """Map ``progB_w0_*`` / ``progB_r2_w0_*`` stems onto the Wave 0 set."""
+    token = str(name or "").strip()
+    if token.startswith(_RUN2_STUDY_PREFIX):
+        token = "progB_" + token.removeprefix(_RUN2_STUDY_PREFIX)
+    if token in _WAVE0_STUDIES:
+        return token
+    return None
 
 
 def partners_nonempty(value: Any) -> bool:
@@ -1130,8 +1146,8 @@ def _wave0_lookup(
     for record in frame.to_dict(orient="records"):
         if str(record.get("lens_hint") or "") != "program_b":
             continue
-        name = str(record.get("study_name") or "")
-        if name not in {_WAVE0_SOLO, _WAVE0_VA}:
+        name = _canonical_wave0_study_name(record.get("study_name"))
+        if name is None:
             continue
         if is_program_b_pair_row(record):
             continue

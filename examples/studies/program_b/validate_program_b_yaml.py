@@ -434,9 +434,15 @@ def validate_manifest(
     base = root or ROOT
     generate = _load_generate()
     assert_inventory_matches_catalog(generate)
-    manifest = yaml.safe_load((base / manifest_name).read_text(encoding="utf-8"))
     failures: list[str] = []
     ok_lines: list[str] = []
+    stale_va = base / generate.LEGACY_VA_MANIFEST_NAME
+    if stale_va.exists():
+        failures.append(
+            f"{generate.LEGACY_VA_MANIFEST_NAME}: stale live path; "
+            f"tick packet is {generate.TICK_MANIFEST_NAME}"
+        )
+    manifest = yaml.safe_load((base / manifest_name).read_text(encoding="utf-8"))
     packet = manifest.get("packet")
     if packet not in {"15s", "tick"}:
         failures.append(f"{manifest_name}: packet must be 15s or tick")

@@ -17,7 +17,7 @@
 
 ## 1. Purpose
 
-SV shipped a read-only **single-study** Inspect. Program B (and every later packet) writes many `output_dir`s under `results/studies/`. The operator then file-hunts the 15s packet (23 files) plus parked VA (4), then N overviews. `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` §12 already named the research gap: cells have n / E / PF; there is **no first-class cross-study map**.
+SV shipped a read-only **single-study** Inspect. Program B (and every later packet) writes many `output_dir`s under `results/studies/`. The operator then file-hunts the 15s packet (20 files) plus parked tick packet (8: VA + APOC), then N overviews. `docs/LEVEL_COMBINATION_RESEARCH_CONCEPT.md` §12 already named the research gap: cells have n / E / PF; there is **no first-class cross-study map**.
 
 Ship a **Study Observatory**: a corpus-level, program-agnostic investigation surface over artifacts the runner already writes. New studies appear because they are study dirs, not because someone edits a registry. Program B is the first **lens**, not the product identity.
 
@@ -235,7 +235,9 @@ Apply only to rows with `lens_hint == program_b` (plus Wave 0 lookup). Numeric l
 **ΔE vs Wave 0.** For a pair row (`min_valid_confluences >= 1` and non-empty partners), look up exactly one Wave 0 cell with the same `factor_core_level`:
 
 - `factor_core_level` ∈ `PRIOR_PROFILE_LEVEL_NAMES` (`thesistester.levels.catalog`) → `study_name == "progB_w0_va"`
+- `factor_core_level` ∈ `{APOC, pAPOC}` → `study_name == "progB_w0_apoc"`
 - else → `study_name == "progB_w0_solo"`
+- Run 2 `progB_r2_w0_*` stems canonicalize to the same three names so fade ΔE matches inside the Run 2 lock
 
 `delta_e = E_pair - E_solo`. **Null** if the solo is missing, either E is null, or the lookup is not exactly one cell (two dirs with the same `study_name` + core → fail closed). Caption **must** say ΔE mixes confirm value with zone-shape (point vs partner box) — runbook §5.
 
@@ -366,7 +368,7 @@ Helpers (Streamlit/Plotly-free): `heatmap_focus_label(core, partner) -> str` (pa
 | **SO0** | Plan lock + living-doc pointers | Docs only (historical) |
 | **SO1** | Fact table + cache + facets/sort/cohort helpers + `study observatory` | `observatory.py`, `cli_study.py` (`observatory` only), tests |
 | **SO2** | Page 16: corpus strip, facets, cohort lock, n×E scatter, table, Inspect drill | `pages/16_Study_Observatory.py` + page tests + USER_GUIDE H2 + HC allowlist |
-| **SO3** | Program B lens: `desk_class`, ΔE vs `w0_solo`/`w0_va`, thinning, heatmap, class counts | `observatory.py` + page pane; both manifests are chrome only |
+| **SO3** | Program B lens: `desk_class`, ΔE vs `w0_solo`/`w0_va`/`w0_apoc`, thinning, heatmap, class counts | `observatory.py` + page pane; both manifests are chrome only |
 | **SO4** | Saved desks + schema-versioned store sidecar (default unused) | store helper + page load/save |
 | **SO5** | Parked — opt-in fragment refresh of **corpus strip only** | — |
 | **SO6** | Parked — grounded Discuss over the filtered frame | — |
@@ -478,12 +480,12 @@ No engine/golden edits. §4.2.
 |---|---|
 | **Depends on** | SO2 |
 | **Likely files** | `thesistester/study/observatory.py` (ΔE / `desk_class` / thinning helpers); `pages/16_Study_Observatory.py` (lens chrome + heatmap); `tests/study/test_study_observatory.py`; `tests/study/test_program_b_yaml.py` **untouched**; USER_GUIDE Observatory H2 + ASSUMPTIONS; `LEVEL_COMBINATION_RESEARCH_CONCEPT.md` §12 gap row (pointer only); roadmap |
-| **Behavior** | §4.7. Lens control: `auto` (attach if any `progB_` row in **filtered** frame) / `program_b` / `generic`. Heatmap + class-count strip + ΔE / thinning columns when lens is active. Wave 0 lookup: `PRIOR_PROFILE` cores → `progB_w0_va`, else `progB_w0_solo`; not exactly one match → `delta_e` null |
+| **Behavior** | §4.7. Lens control: `auto` (attach if any `progB_` row in **filtered** frame) / `program_b` / `generic`. Heatmap + class-count strip + ΔE / thinning columns when lens is active. Wave 0 lookup: `PRIOR_PROFILE` cores → `progB_w0_va`, APOC/pAPOC → `progB_w0_apoc`, else `progB_w0_solo` (Run 2 `progB_r2_w0_*` canonicalizes); not exactly one match → `delta_e` null |
 | **Out of scope** | Changing Program B YAMLs / validator / generator; Admit auto-promote; Program A map writes; treating manifest as ingest |
 | **Regression** | Generic page still works with zero `progB_*` dirs; Program B validate tests unchanged; no study-dir writes |
 | **Acceptance checklist** | |
 | | ☑ Fixture: solo ONH E=0.00 + pair ONH+SMA E=0.10 → `delta_e == 0.10`; missing solo → `delta_e` null |
-| | ☑ `pdPOC` pair looks up `progB_w0_va`; two `progB_w0_solo` dirs → `delta_e` null |
+| | ☑ `pdPOC` pair looks up `progB_w0_va`; `APOC` pair looks up `progB_w0_apoc`; two `progB_w0_solo` dirs → `delta_e` null |
 | | ☑ `desk_class` matches §4.7 on n=30 / n=20 / n=10 / PF=1.0 / E=0.05+PF=0.90 / failed |
 | | ☑ Heatmap absent in generic-only corpus |
 | | ☑ Caption: ΔE is not a pure confluence effect; +E ≠ Admit |
@@ -495,7 +497,8 @@ No engine/golden edits. §4.2.
 ```text
 Implement SO3 only from docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md §6.4
 and §4.7. Add Program B lens projections (desk_class including noisy/other,
-delta_e vs Wave 0 via PRIOR_PROFILE → progB_w0_va else progB_w0_solo,
+delta_e vs Wave 0 via PRIOR_PROFILE → progB_w0_va, APOC/pAPOC →
+progB_w0_apoc, else progB_w0_solo (Run 2 progB_r2_w0_* canonicalizes),
 thinning, useful-confluence boolean) and page heatmap/class counts.
 Not exactly one Wave 0 match → delta_e null. Lens auto-attaches when
 filtered rows include progB_*. Do not edit examples/studies/program_b/
@@ -675,7 +678,7 @@ edits. §4.2.
 
 ## 7. End-to-end product acceptance (after SO9)
 
-A researcher running many studies (Program B 15s packet of 23 files, parked VA packet of 4, or any later StudySpecs) can:
+A researcher running many studies (Program B 15s packet of 20 files, parked tick packet of 8, or any later StudySpecs) can:
 
 1. Open **Study Observatory** while cells are finishing.
 2. See corpus progress (ok / failed / running / pending / skipped) and the catalog-dir table without opening one Inspect session per study. Ledger-only dirs stay on the studies pane.
