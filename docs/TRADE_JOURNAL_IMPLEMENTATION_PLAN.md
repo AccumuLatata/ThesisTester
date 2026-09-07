@@ -3,7 +3,8 @@
 **Document type:** Focused implementation plan (fully scoped PRs)
 **Date:** 2026-09-06 (rev 4 — clock/qty/PIT locks vs live engine)
 **Status:** **TJ9 landed.** Series complete (page 17 / USER_GUIDE H2).
-**Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21.
+**Follow-up:** `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS0 locked).
+**Series prefix:** **TJ** (Trade Journal). Not DA, not DI, not R21, not JS.
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1
 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
 **Reader:** desk owner (Edge Finder), ThesisTester bot, engine contributors.
@@ -299,6 +300,14 @@ nulls, or study corpus.
 - Re-costing historical Program A/B cells onto the AMP schedule (parked).
 - Rule *search* (optimising Q6 rules in-sample). Rules are declared, then
   evaluated; the code never ranks candidate rules.
+
+The Journal → Study series (`docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md`)
+is the only permitted TJ follow-up. It may call the already-pure
+`detect_confluence_zones` (JS1) and, in JS2 only, add a public
+`classify_zone_triggers` wrapper in `engine/signals.py` that delegates to
+existing `_check_*` functions without editing their bodies. Journal code
+still never calls `simulate_trades` or `compute_all_levels`. Do not
+implement JS inside a TJ PR.
 
 ---
 
@@ -880,11 +889,16 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
   product need is the order-type column).
 - TradesViz *trades* (aggregated) export as an alternative to executions.
 - Re-cost Program B cells onto the AMP $1.24 RT schedule (separate series).
+- Journal → Study (zone attribution, trigger inference, StudySpec
+  proposal, rule-vs-desk): `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md`
+  (JS0 locked). Do not implement inside a TJ PR. Gate A can stop that
+  series after JS2.
 - A 15s / tick-clock study lane for the scalp product the desk actually
-  trades (§0.8) — Program C or a new lane, decided after TJ7 says whether
-  the entries carry edge under a mechanical bracket.
-- Program C conditional locks (ToD + OTF) — after Run 2 readout; TJ6 level
-  attribution is a candidate source of the level list.
+  trades (§0.8) — Program C or a new lane, decided after the JS §8 Q4
+  tick-vs-15s readout **and** whether JS4 `product_mismatch` dominates.
+- Program C conditional locks (ToD + OTF) — after Run 2 readout; TJ6
+  level attribution / JS1 zone families are candidate sources of the
+  level list.
 - AP2 (implemented — opt-in `tick_last_volume_v1`; default APOC remains typical).
 - Journal as an R21 portfolio `setup_id` (after TJ5 bar indices exist).
 - Tag vocabulary governance (desk-owned list; repo holds the map).

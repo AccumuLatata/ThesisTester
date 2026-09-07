@@ -483,6 +483,7 @@ Hard rules:
 
 ## 8. Follow-ups (out of scope, recorded)
 
-- **Trade-journal import** — now a separate series: `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ0 locked). TradesViz executions CSV + AMP Daily Statement PDF; `spread_id` pairing; AMP fees are the cost SoT; tags verified against the levels frame. Do not implement TJ inside a DA PR.
+- **Trade-journal import** — now a separate series: `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ9 landed). TradesViz executions CSV + AMP Daily Statement PDF; `spread_id` pairing; AMP fees are the cost SoT; tags verified against the levels frame. Do not implement TJ inside a DA PR.
+- **Journal → Study** — follow-up series: `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS0 locked). Zone / trigger inference over journal fills → frequency-selected StudySpec. Do not implement JS inside a DA PR.
 - **Conditional locks** for a small Program C: pre-registered ToD window and OTF state as part of the L0 lock, not post-hoc slices.
 - **Notion Results schema**: add `Long n`, `Short n`, `Integrity`, `E − null` columns so DA2/DA5 outputs have a home. Manual desk change; not a repo task.
