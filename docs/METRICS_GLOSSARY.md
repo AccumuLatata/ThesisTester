@@ -564,7 +564,7 @@ Implementation: `thesistester/levels/session_vwap.py`.
 
 | Name | Definition |
 |---|---|
-| `pdVAH` / `pdVAL` / `pdPOC` | Prior CME session value-area high / low / point of control from Quantower tick-last **Last × Volume** histograms (70% expander, product day bin = 1 tick). Joined onto the 1m frame via `shift(1)`. **Absent** when no tick table is supplied. Not 1m typical under these names. |
+| `pdVAH` / `pdVAL` / `pdPOC` | Prior CME session value-area high / low / point of control from Quantower tick-last **Last × Volume** histograms (70% expander, product day bin = **4** ticks; desk preference, not a QT lock). Joined onto the 1m frame via `shift(1)`. **Absent** when no tick table is supplied. Not 1m typical under these names. |
 | `pwVAH` / `pwVAL` / `pwPOC` | Prior trading-week (`W-SUN` on `trading_session_date`) tick VAP. Week histogram is the merge of session-day histograms. Product week bin = 8 ticks (not QT-locked). Absent without ticks. |
 | `pmVAH` / `pmVAL` / `pmPOC` | Prior trading-month (`M` on `trading_session_date`) tick VAP. Product month bin = 10 ticks (not QT-locked). Absent without ticks. |
 | `va_source` | Identity key `tick_last` on the hashed levels settings when VA columns are in play. |

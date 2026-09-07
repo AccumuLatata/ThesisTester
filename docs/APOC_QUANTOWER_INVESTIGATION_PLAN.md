@@ -11,9 +11,9 @@ stamps tick APOC; ``LEVEL_ENGINE_VERSION`` stays 11. Explicit
 ``typical_mvp_v1`` is a dead/test-only library helper, not a production
 source.
 ``bar_range_uniform_volume_v1`` is a proxy only and is not a production
-source. Program B Wave 7 packets omit the source key and ``tick_paths``
-(identity lock) and refuse on fresh validate; historical ZIPs stay
-legacy-typical labeled.
+source. Fresh Program B Wave 7 packets live in ``manifest_tick.yaml``,
+omit the source key (product tick), and carry placeholder ``tick_paths``.
+Historical ZIPs stay legacy-typical labeled.
 **Series code:** **AP** (A-Period POC)  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including the
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).

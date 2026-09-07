@@ -214,7 +214,7 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   windows, and prior day/week/month profile levels (`pdVAH`/`pdVAL`/`pdPOC`, `pw*`, `pm*`)
   as tick Last×Volume VAP when `dataset.tick_paths` (or a prior-profile table) is
   provided — **absent** otherwise, not 1m typical under those names. APOC / rolling
-  POC remain typical-price. 70% value area; product day bin is 1 tick.
+  POC are tick Last×Volume and refuse without ticks. 70% value area; product day/week/month bins are 4/8/10 (desk preference).
 - **Phase 4 (confluence detection, naked levels, signal generation):** tick-based
   confluence zone detection (`detect_confluence_zones`), naked/untested level flags
   (`flag_naked_levels`), and five trigger types — `touch`, `reject`, `break`, `reclaim`,

@@ -18,23 +18,18 @@ Run the locked Program B grid on MNQ and collect n / `expectancy_r` / PF per cel
 | Stage | What | Cells | StudySpec |
 |---|---|---:|---|
 | Smoke | `ONH` × `SMA_50_5min` | 1 | `progB_smoke_ONH_SMA50_5min.yaml` |
-| Wave 0 (15s) | 41 non-VA anchors **alone** | 41 | `progB_w0_solo.yaml` |
-| Waves 1–3, 5–8 | same 41 × 22 confirms | 902 | 21 family YAMLs |
-| **15s total** | | **944** | 23 files (`manifest.yaml`) |
+| Wave 0 (15s) | 39 non-tick anchors **alone** | 39 | `progB_w0_solo.yaml` |
+| Waves 1–3, 5–6, 8 | same 39 × 22 confirms | 858 | 18 family YAMLs |
+| **15s total** | | **898** | 20 files (`manifest.yaml`) |
 | Wave 0 VA | 9 prior-profile anchors alone | 9 | `progB_w0_va.yaml` — **tick-gated** |
+| Wave 0 APOC | `APOC` / `pAPOC` alone | 2 | `progB_w0_apoc.yaml` — **tick-gated** |
 | Wave 4 | same 9 × 22 confirms | 198 | 3 family YAMLs — **tick-gated** |
-| **Tick total** | | **207** | 4 files (`manifest_va.yaml`) |
+| Wave 7 | `APOC` / `pAPOC` × 22 confirms | 44 | 3 family YAMLs — **tick-gated** |
+| **Tick total** | | **253** | 8 files (`manifest_tick.yaml`) |
 
-Catalog is still 50 anchors. VA and non-VA are different objects (TV3 tick VAP). They must not share a YAML: one named-VA token refuses the **whole** study when `dataset.tick_paths` is empty.
+Catalog is still 50 anchors. VA and APOC are tick-gated objects. They must not share a YAML with 15s cores: one named-VA / APOC token refuses the **whole** study when `dataset.tick_paths` is empty. Every 15s StudySpec sets `apoc_enabled: false` and `poc_windows: []` so product tick defaults cannot refuse a 15s-only launch. `POC_rolling_30min` is **not** a Program B core wave — shutting `poc_windows` on 15s is the rolling fix.
 
-**15s-only (this desk):** run `manifest.yaml` studies that do **not** name
-APOC / rolling POC. Order: **smoke → Wave 0 non-APOC cores if split, else
-honest refuse → Wave 1 MA → rVWAP → pivot → Wave 2 → Wave 3 → Wave 5 …
-Wave 8.** `progB_w0_solo.yaml` names `APOC` / `pAPOC` and Wave 7 names
-APOC; both refuse without ticks (`APOC requires ticks`). Skip Wave 4 and
-`progB_w0_va.yaml` until a Quantower Tick–Tick–Last export is pinned. Do
-not skip ahead because a cell is green. Do not drop a name because solo E
-< 0. Do not reintroduce typical.
+**15s-only (this desk):** run `manifest.yaml` in order: **smoke → Wave 0 → Wave 1 MA → rVWAP → pivot → Wave 2 → Wave 3 → Wave 5 → Wave 6 → Wave 8.** Skip `manifest_tick.yaml` (Wave 0 VA / Wave 0 APOC / Wave 4 / Wave 7) until a Quantower Tick–Tick–Last export is pinned. Do not skip ahead because a cell is green. Do not drop a name because solo E < 0. Do not reintroduce typical.
 
 ---
 
@@ -90,7 +85,7 @@ PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py \
   examples/studies/program_b_run2/manifest.yaml
 ```
 
-Expect: `ok 23 studies / 944 cells`. Smoke should finish `collision_pairs == 0` and `directional_integrity == mixed` (or a documented reason, e.g. a directional-by-construction core).
+Expect: `ok 20 studies / 898 cells`. Tick packet: `manifest_tick.yaml` → `ok 8 studies / 253 cells`. Smoke should finish `collision_pairs == 0` and `directional_integrity == mixed` (or a documented reason, e.g. a directional-by-construction core).
 
 ---
 
@@ -99,8 +94,8 @@ Expect: `ok 23 studies / 944 cells`. Smoke should finish `collision_pairs == 0` 
 1. Code tree includes **AO1** (empty `partner_levels: [[]]` + `min_valid_confluences: 0` expands). `main` at/after PR #423.
 2. Dataset file exists. **15s YAMLs already pin** `study.dataset.path` to the
    operator AMP/Rithmic 15s Quantower HE CSV. Change it only if that file moves —
-   same path for all 23 files in `manifest.yaml`. Do **not** add `tick_paths` on
-   those files. Parked VA YAMLs already list the generate-owned placeholder
+   same path for all 20 files in `manifest.yaml`. Do **not** add `tick_paths` on
+   those files. Tick-gated YAMLs already list the generate-owned placeholder
    `dataset.tick_paths: [data/mnq_tick_last.csv]` so validate/expand succeed;
    launch still refuses until a real Tick–Tick–Last file is pinned. Do not use
    the session-20 CI tick fixture.
@@ -110,11 +105,12 @@ Expect: `ok 23 studies / 944 cells`. Smoke should finish `collision_pairs == 0` 
 PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py
 ```
 
-Expect: `ok 23 studies / 944 cells`. The script expand-checks `manifest.yaml` **and**
+Expect: `ok 20 studies / 898 cells`. The script expand-checks `manifest.yaml` **and**
 the lock table (MNQ, exclusive `anchor_rules`, `from_partners: required`,
-Wave 0 `[[]]` + `min_valid: 0`, no VA cores, no `dVWAP` partner, 80/80, costs, flatten
+Wave 0 `[[]]` + `min_valid: 0`, no VA/APOC cores, `apoc_enabled: false`,
+`poc_windows: []`, no `dVWAP` partner, 80/80, costs, flatten
 `16:00` `America/New_York`). A file that fails a lock is **not** printed as
-`ok`. If this fails, do not run. Do not launch `manifest_va.yaml` on 15s-only.
+`ok`. If this fails, do not run. Do not launch `manifest_tick.yaml` on 15s-only.
 
 4. Start from the repo root. `workers: 1` first (Windows-safe).
 
@@ -149,7 +145,7 @@ Cross-study UI readout is a **separate** planned series (Study Observatory, `doc
 | # | File | Cells | `min_valid` |
 |---|---|---:|---:|
 | 0 | `progB_smoke_ONH_SMA50_5min.yaml` | 1 | 1 |
-| 1 | `progB_w0_solo.yaml` | 41 | 0 |
+| 1 | `progB_w0_solo.yaml` | 39 | 0 |
 | 2 | `progB_w1_ext_ma.yaml` | 144 | 1 |
 | 3 | `progB_w1_ext_rvwap.yaml` | 24 | 1 |
 | 4 | `progB_w1_ext_pivot.yaml` | 96 | 1 |
@@ -165,48 +161,46 @@ Cross-study UI readout is a **separate** planned series (Study Observatory, `doc
 | 14 | `progB_w6_sp_ma.yaml` | 48 | 1 |
 | 15 | `progB_w6_sp_rvwap.yaml` | 8 | 1 |
 | 16 | `progB_w6_sp_pivot.yaml` | 32 | 1 |
-| 17 | `progB_w7_apoc_ma.yaml` | 24 | 1 |
-| 18 | `progB_w7_apoc_rvwap.yaml` | 4 | 1 |
-| 19 | `progB_w7_apoc_pivot.yaml` | 16 | 1 |
-| 20 | `progB_w8_prev30m_ma.yaml` | 12 | 1 |
-| 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
-| 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
+| 17 | `progB_w8_prev30m_ma.yaml` | 12 | 1 |
+| 18 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
+| 19 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
 
-**Wave 7 APOC object (AP3 + desk default-tick):** these three files omit
-`apoc_profile_source` and `tick_paths` (identity lock). Omitted source is
-now product tick Last×Volume; fresh validate / expand / launch refuse
-(`APOC requires ticks`). Manifest rows keep `apoc_object:
-legacy_typical_price` for historical ZIPs. Do **not** compare Wave 7 cells
-to Quantower A-period POC. Do **not** add `apoc_profile_source` or ticks
-(that changes `study_identity_hash`). Do **not** rewrite historical ZIPs.
-Do **not** reintroduce typical.
-
-Parked until ticks (`manifest_va.yaml`; do not launch on 15s-only). Files already
-carry placeholder `tick_paths` so TV3 can load/expand; launch still refuses the
-missing Tick–Tick–Last file:
+Parked until ticks (`manifest_tick.yaml`; do not launch on 15s-only). Files
+already carry placeholder `tick_paths` so validate/expand succeed; launch
+still refuses the missing Tick–Tick–Last file. `POC_rolling_30min` is not
+a Program B core — tick studies keep `poc_windows: ["30min"]` because the
+packet has ticks, not because rolling POC is a research wave.
 
 | File | Cells | `min_valid` |
 |---|---:|---:|
 | `progB_w0_va.yaml` | 9 | 0 |
+| `progB_w0_apoc.yaml` | 2 | 0 |
 | `progB_w4_profile_ma.yaml` | 108 | 1 |
 | `progB_w4_profile_rvwap.yaml` | 18 | 1 |
 | `progB_w4_profile_pivot.yaml` | 72 | 1 |
+| `progB_w7_apoc_ma.yaml` | 24 | 1 |
+| `progB_w7_apoc_rvwap.yaml` | 4 | 1 |
+| `progB_w7_apoc_pivot.yaml` | 16 | 1 |
 
-Smoke must finish `status=ok` before Wave 0. Wave 0 (`progB_w0_solo`) names
-`APOC` / `pAPOC` and refuses without ticks (`APOC requires ticks`) — do not
-reintroduce typical. Non-APOC 15s cores still answer “which levels have +E
-alone” once ticks exist or APOC is split out. Pair waves 1–3 and 5–8 still
-run for every 15s name that does not require ticks. Wave 4 / `w0_va` wait
-for ticks.
+**Wave 7 APOC object (fresh packet):** these three files plus `progB_w0_apoc.yaml`
+omit `apoc_profile_source` (product tick Last×Volume) and carry placeholder
+`tick_paths`. Manifest rows record tick provenance (`apoc_object:
+tick_last_volume`). Historical ZIPs stay typical-labeled elsewhere — do
+**not** rewrite them. Do **not** compare Wave 7 cells to Quantower A-period
+POC. Do **not** reintroduce typical.
+
+Smoke must finish `status=ok` before Wave 0. `progB_w0_solo.yaml` is 15s-only
+(no APOC/VA). Pair waves 1–3, 5–6, and 8 run on 15s. Wave 0 VA / Wave 0 APOC /
+Wave 4 / Wave 7 wait for ticks.
 
 ### Run 2 (current, `examples/studies/program_b_run2/`)
 
-Same 23 files / 944 cells / same order. Paths are under `examples/studies/program_b_run2/`. Study names are `progB_r2_*`; write `results/studies/progB_r2_*`. Tick-gated VA is **not** in the Run 2 packet (15s only).
+Same 20 files / 898 cells / same 15s order. Paths are under `examples/studies/program_b_run2/`. Study names are `progB_r2_*`; write `results/studies/progB_r2_*`. Tick packet is `manifest_tick.yaml` (8 files / 253 cells) — same Wave 0 VA / Wave 0 APOC / Wave 4 / Wave 7 split as Run 1.
 
 | # | File | Cells | `min_valid` |
 |---|---|---:|---:|
 | 0 | `progB_smoke_ONH_SMA50_5min.yaml` | 1 | 1 |
-| 1 | `progB_w0_solo.yaml` | 41 | 0 |
+| 1 | `progB_w0_solo.yaml` | 39 | 0 |
 | 2 | `progB_w1_ext_ma.yaml` | 144 | 1 |
 | 3 | `progB_w1_ext_rvwap.yaml` | 24 | 1 |
 | 4 | `progB_w1_ext_pivot.yaml` | 96 | 1 |
@@ -222,16 +216,13 @@ Same 23 files / 944 cells / same order. Paths are under `examples/studies/progra
 | 14 | `progB_w6_sp_ma.yaml` | 48 | 1 |
 | 15 | `progB_w6_sp_rvwap.yaml` | 8 | 1 |
 | 16 | `progB_w6_sp_pivot.yaml` | 32 | 1 |
-| 17 | `progB_w7_apoc_ma.yaml` | 24 | 1 |
-| 18 | `progB_w7_apoc_rvwap.yaml` | 4 | 1 |
-| 19 | `progB_w7_apoc_pivot.yaml` | 16 | 1 |
-| 20 | `progB_w8_prev30m_ma.yaml` | 12 | 1 |
-| 21 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
-| 22 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
+| 17 | `progB_w8_prev30m_ma.yaml` | 12 | 1 |
+| 18 | `progB_w8_prev30m_rvwap.yaml` | 2 | 1 |
+| 19 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
 
-Same Wave 7 APOC object as Run 1: omitted source is product tick; packet
-omits ticks and refuses on fresh validate. Historical ZIPs stay
-typical-labeled. See the Wave 7 note above.
+Same Wave 7 / Wave 0 APOC object as Run 1: omitted source is product tick;
+placeholder `tick_paths`; launch refuses until a real Tick–Tick–Last file
+is pinned. Historical ZIPs stay typical-labeled. See the Wave 7 note above.
 
 ```bash
 SPEC=examples/studies/program_b_run2/progB_smoke_ONH_SMA50_5min.yaml
@@ -271,10 +262,11 @@ Do not `study promote` unless the human names a cell. Promote writes a draft onl
 
 - Invent tokens (`Pivot_1min_*`, `SMA_50_15min`, `RTH_High`, floor PP/R1).
 - Put `dVWAP` in `partner_levels`.
-- Put VA tokens (`pd*` / `pw*` / `pm*` VAH/VAL/POC) in a 15s YAML.
+- Put VA or APOC tokens (`pd*` / `pw*` / `pm*` VAH/VAL/POC, `APOC`, `pAPOC`) in a 15s YAML.
 - Add `tick_paths` on any `manifest.yaml` file.
-- Launch `manifest_va.yaml` on 15s-only, or swap the VA placeholder
+- Launch `manifest_tick.yaml` on 15s-only, or swap the tick placeholder
   `data/mnq_tick_last.csv` for the session-20 CI tick fixture.
+- Leave `apoc_enabled: true` or default `poc_windows: ["30min"]` on a 15s YAML.
 - Put `[]` in a `min_valid: 1` study, or `min_valid: 1` on Wave 0.
 - Cartesian 40 vs 80, 10 vs 20, touch vs 3c, cost-on vs cost-off.
 - Enable `grid` / `validation` / `walk_forward` / `factors.otf`.
@@ -299,12 +291,14 @@ rewrite examples/studies/program_b/ (Run 1, historical).
 1. Confirm the tree has AO1 (empty partner_levels + min_valid 0 expands),
    DA4 (fade), DA3 (same_bar_opposite_direction), and DA5 (random_baseline).
 2. 15s YAMLs already pin dataset.path to the AMP/Rithmic 15s HE CSV. Change it
-   only if that file moves. Same path for all 23 files. Do not add tick_paths.
-   Run 2 is 15s only — there is no manifest_va.yaml in this directory.
+   only if that file moves. Same path for all 20 15s files. Do not add tick_paths
+   on manifest.yaml. Park manifest_tick.yaml until a real Tick–Tick–Last file
+   is pinned (placeholder data/mnq_tick_last.csv; launch refuses missing files).
 3. PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py \
      examples/studies/program_b_run2/manifest.yaml
-   Must print: ok 23 studies / 944 cells. Stop if it fails.
-4. Run the §4 Run 2 list in order. Smoke first.
+   Must print: ok 20 studies / 898 cells. Stop if it fails.
+   Optionally validate the tick packet: manifest_tick.yaml → ok 8 studies / 253 cells.
+4. Run the §4 Run 2 15s list in order. Smoke first.
    Study names / output_dir are progB_r2_*. For each file:
      python -m thesistester study expand <yaml> --output-dir results/studies/<name>
      python -m thesistester study run <yaml> --output-dir results/studies/<name>

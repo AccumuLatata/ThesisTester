@@ -194,6 +194,8 @@ _PROGB_NAME = re.compile(r"^progB_")
 _PRIOR_PROFILE_CORES = frozenset(PRIOR_PROFILE_LEVEL_NAMES)
 _WAVE0_SOLO = "progB_w0_solo"
 _WAVE0_VA = "progB_w0_va"
+_WAVE0_APOC = "progB_w0_apoc"
+_APOC_CORES = frozenset({"APOC", "pAPOC"})
 DESK_CLASS_ORDER: tuple[str, ...] = (
     "plus_e",
     "hold",
@@ -218,8 +220,8 @@ HEATMAP_Z_MAX = 7
 HEATMAP_SOLO_PARTNER = "(solo)"
 # Lens chrome only — not ingest inventory (plan §4.6 / §6.4).
 PROGRAM_B_LENS_PACKET_CHROME = (
-    "15s operator packet: 23 files. Parked VA packet: 4 files. "
-    "These counts are lens chrome, not catalog membership."
+    "15s operator packet: 20 files. Parked tick packet: 8 files "
+    "(VA + APOC). These counts are lens chrome, not catalog membership."
 )
 _WAVE0_LOCK_FIELDS: tuple[str, ...] = tuple(
     field for field in COHORT_FIELDS if field != "min_valid_confluences"
@@ -499,10 +501,12 @@ def desk_class_for(
 
 
 def wave0_study_name_for_core(core: Any) -> str:
-    """PRIOR_PROFILE cores look up ``progB_w0_va``; else ``progB_w0_solo``."""
+    """Tick-gated cores look up ``progB_w0_va`` / ``progB_w0_apoc``; else solo."""
     token = _display_token(core)
     if token in _PRIOR_PROFILE_CORES:
         return _WAVE0_VA
+    if token in _APOC_CORES:
+        return _WAVE0_APOC
     return _WAVE0_SOLO
 
 

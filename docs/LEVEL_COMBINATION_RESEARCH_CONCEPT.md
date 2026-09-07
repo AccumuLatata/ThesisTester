@@ -8,7 +8,7 @@
 **Notion contract (short):** [Level combination research (Program B)](https://app.notion.com/p/3c2c7b8aa40d81c9a687ee6ec2129b42) — sibling of the locked desk page; does not amend it.  
 **Bot runbook + YAMLs:** `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` · `examples/studies/program_b/`
 
-**Current lock (2026-08-20):** `dVWAP` is **not** a required partner. **Wave 0:** all 50 locations **alone** (`partner_levels: [[]]`, `min_valid_confluences: 0`, AO1 point zone), split into a 15s StudySpec (41 non-VA) and a tick-gated VA StudySpec (9). Then the same 50 against **MAs, rolling VWAPs, and pivots** — Wave 4 is tick-gated. First product: MNQ `touch` @ `1min`, pair confluence **10** ticks, SL/TP **80/80** ($40 / $40), costs **`commission_per_side: 0.5`** + **`slippage_ticks: 1.0`**, flatten **true**. Full table: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` §0.1–§0.2. Compute / run count are not constraints.
+**Current lock (2026-08-20):** `dVWAP` is **not** a required partner. **Wave 0:** all 50 locations **alone** (`partner_levels: [[]]`, `min_valid_confluences: 0`, AO1 point zone), split into a 15s StudySpec (39 non-tick) and tick-gated solos (9 VA + 2 APOC). Then the same 50 against **MAs, rolling VWAPs, and pivots** — Wave 4 and Wave 7 are tick-gated. First product: MNQ `touch` @ `1min`, pair confluence **10** ticks, SL/TP **80/80** ($40 / $40), costs **`commission_per_side: 0.5`** + **`slippage_ticks: 1.0`**, flatten **true**. Full table: `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md` §0.1–§0.2. Compute / run count are not constraints.
 
 Program A answered a different question and is finished. This file is the concept that was asked for.
 
@@ -108,21 +108,21 @@ Two MAs in one set = negative control only. `dVWAP`+`VWAP_rolling_*` as partners
 ```text
 pick ONE product lock
 
-Wave 0 15s (progB_w0_solo.yaml, min_valid: 0)   # 41 non-VA cores, AO1
-  for L in 41 non-VA anchors:
+Wave 0 15s (progB_w0_solo.yaml, min_valid: 0)   # 39 non-tick cores, AO1
+  for L in 39 non-tick anchors:
     core=L, partner_levels=[]
 
-Waves 1–3, 5–8  (own studies, min_valid: 1)
-  for wave in (1, 2, 3, 5, 6, 7, 8):
+Waves 1–3, 5–6, 8  (own studies, min_valid: 1)
+  for wave in (1, 2, 3, 5, 6, 8):
     for family in (MA, rVWAP, pivot):  # all 22 default confirms
       for L in wave:
         for X in family:
           core=L, partners=[X]
 
-Wave 0 VA + Wave 4  (manifest_va.yaml) — park until ticks
+Wave 0 VA + Wave 0 APOC + Wave 4 + Wave 7  (manifest_tick.yaml) — park until ticks
 ```
 
-Catalog Wave 0 is still **50** solo cells (41 + 9). Then 50 × 22 = **1,100** pair cells per product. Operator 15s packet: `manifest.yaml` (smoke + 41 solos + 21 family YAMLs = **944**). Tick packet: `manifest_va.yaml` (9 solos + Wave 4 = **207**). Do not put VA tokens in a 15s YAML — TV3 refuses the whole study. Second product is a separate study. Widget 50 × 48 = 2,400 after the default 22.
+Catalog Wave 0 is still **50** solo cells (39 + 9 + 2). Then 50 × 22 = **1,100** pair cells per product. Operator 15s packet: `manifest.yaml` (smoke + 39 solos + 18 family YAMLs = **898**). Tick packet: `manifest_tick.yaml` (9 VA + 2 APOC solos + Wave 4 + Wave 7 = **253**). Do not put VA/APOC tokens in a 15s YAML — they refuse the whole study. Second product is a separate study. Widget 50 × 48 = 2,400 after the default 22.
 
 Do not stop a wave because cells are thin. n<30 = unidentified for *that pair*, not a license to skip the rest of the name.
 
@@ -247,6 +247,6 @@ Those facts bound one Program A corner. They do not thin this 50×22 grid.
 
 The original ask was Program B. The executed work was Program A.
 
-Next research step, if any, is **not** “another ONH leftover pair,” **not** “put `RTH_Open` back on the scalp map,” and **not** a required-`dVWAP` replay. It is: run the 15s operator packet in `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` — smoke, then Wave 0 (`progB_w0_solo.yaml`), then waves 1–3 and 5–8 of `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md`. Park `manifest_va.yaml` (Wave 0 VA + Wave 4) until ticks.
+Next research step, if any, is **not** “another ONH leftover pair,” **not** “put `RTH_Open` back on the scalp map,” and **not** a required-`dVWAP` replay. It is: run the 15s operator packet in `docs/PROGRAM_B_OPERATOR_RUNBOOK.md` — smoke, then Wave 0 (`progB_w0_solo.yaml`), then waves 1–3, 5–6, and 8 of `docs/LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md`. Park `manifest_tick.yaml` (Wave 0 VA + Wave 0 APOC + Wave 4 + Wave 7) until ticks.
 
 The Program A desk page stays locked / wait. This grid is a different contract.

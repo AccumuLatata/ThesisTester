@@ -214,7 +214,7 @@ Best-effort, never a quality score:
 
 SO3 **attaches** the Program B lens when the filtered frame contains any `program_b` row **or** the operator selects that lens. An empty corpus is generic empty-state, not an error.
 
-Manifests (`examples/studies/program_b/manifest.yaml` **and** `manifest_va.yaml`) are **wave order + expected cell counts** for the lens chrome, not the ingest inventory. 15s wave order lives in `manifest.yaml`; Wave 0 VA + Wave 4 live in `manifest_va.yaml`. Future programs get a new lens module/function in a later amend — they still ingest as `generic`.
+Manifests (`examples/studies/program_b/manifest.yaml` **and** `manifest_tick.yaml`) are **wave order + expected cell counts** for the lens chrome, not the ingest inventory. 15s wave order lives in `manifest.yaml`; Wave 0 VA + Wave 0 APOC + Wave 4 + Wave 7 live in `manifest_tick.yaml`. Future programs get a new lens module/function in a later amend — they still ingest as `generic`.
 
 ### 4.7 Program B lens projection (SO3 only)
 

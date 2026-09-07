@@ -1055,15 +1055,15 @@ def test_observatory_page_ast_and_contract():
     assert "n<15 is unidentified" in source
     assert "15≤n<30 is noisy" in source
     assert "n<30 is unidentified" not in source
-    assert "15s operator packet: 23" in source
-    assert "Parked VA packet: 4" in source
+    assert "15s operator packet: 20" in source
+    assert "Parked tick packet: 8" in source
     assert "lens chrome, not catalog membership" in source
     assert "heatmap_class_z" in source
     assert "_HEATMAP_CLASS_INDEX" not in source
     assert "import plotly" not in observatory
     assert "st.fragment" not in observatory
-    assert "23 files" in PROGRAM_B_LENS_PACKET_CHROME
-    assert "4 files" in PROGRAM_B_LENS_PACKET_CHROME
+    assert "20 files" in PROGRAM_B_LENS_PACKET_CHROME
+    assert "8 files" in PROGRAM_B_LENS_PACKET_CHROME
 
 
 def test_delta_e_vs_wave0_solo_and_missing_solo(tmp_path: Path):
@@ -1117,6 +1117,8 @@ def test_delta_e_vs_wave0_solo_and_missing_solo(tmp_path: Path):
 def test_delta_e_pdpoc_uses_w0_va_and_duplicate_w0_nulls(tmp_path: Path):
     assert wave0_study_name_for_core("pdPOC") == "progB_w0_va"
     assert wave0_study_name_for_core("ONH") == "progB_w0_solo"
+    assert wave0_study_name_for_core("APOC") == "progB_w0_apoc"
+    assert wave0_study_name_for_core("pAPOC") == "progB_w0_apoc"
     studies = tmp_path / "va" / "results" / "studies"
     _write_study(
         studies,

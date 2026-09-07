@@ -397,9 +397,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - `tick_last_volume_v1` (default): Quantower Tick–Tick–Last Last×Volume prints inside `[RTH_open, RTH_open + 30 min)` in exchange time, keyed by RTH session date. Histogram math is `apoc_candidates.compute_tick_last_volume_profile`. Full-session `PriorProfileTable` is not a substitute. `run_experiment` still forwards `dataset.tick_paths` to the A-period table when a prior-VA parquet is also present. Missing or empty `tick_paths` refuse (`APOC requires ticks`) when APOC is enabled. Unsound prints emit `NaN`; they never fall back to typical.
 - `typical_mvp_v1` (dead/test-only library helper): `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max). Not a production source and not a silent fallback. Product defaults never select it.
 - Identity always stamps tick APOC (omitted key = `tick_last_volume_v1`). Settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). `LEVEL_ENGINE_VERSION` stays 11.
-- Program B Wave 7 packets omit `apoc_profile_source` and `tick_paths`
-  (identity lock) and are labeled `legacy_typical_price` on the 15s
-  manifest. Fresh validate / expand / launch refuse (`APOC requires ticks`).
+- Fresh Program B Wave 7 / Wave 0 APOC packets live in `manifest_tick.yaml`,
+  omit `apoc_profile_source` (product tick Last×Volume), and carry placeholder
+  `tick_paths`. Manifest rows record tick provenance. Historical ZIPs stay
+  labeled `legacy_typical_price`. Do not rewrite those ZIPs.
   Fresh `study.expansion.json`
   writes an additive `apoc_provenance` sidecar when the spec enables APOC
   (`apoc_enabled: true`) or names an explicit source while APOC is not
@@ -532,7 +533,7 @@ This engine is for **research screening**, not proof of a durable edge.
 
 - The Levels page (`pages/2_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
 - Inside the expander: checkboxes for confirmed pivots, developing session VWAPs (`dVWAP_RTH` + `dVWAP` + `wVWAP` + `mVWAP`), TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
-- `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; refuse without ticks); 70% value area; and prior day/week/month profile aggregation of 1/8/10 ticks.
+- `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; refuse without ticks); 70% value area; and prior day/week/month profile aggregation of 4/8/10 ticks (desk preference).
 - When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
 - `session_vwap_anchor` is fixed to `"RTH"` for the RTH column gate; full-session `dVWAP` / `wVWAP` / `mVWAP` are emitted alongside when the session-VWAP gate is enabled.
 - No Single Print or APOC configuration controls are exposed beyond the enable checkbox.
@@ -639,10 +640,12 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   Named or product-default APOC refuses without ticks (`APOC requires ticks`).
   `typical_mvp_v1` is a dead/test-only library helper, not a production
   source. APOC is not
-  prior-day VA or rolling POC. Product day aggregation is 1 tick
-  (`prior_day_profile_aggregation_ticks`); week/month stay 8/10.
+  prior-day VA or rolling POC. Product day/week/month aggregation is **4/8/10**
+  (`prior_day_profile_aggregation_ticks` and siblings) — desk preference, not
+  a Quantower day lock. TV3 briefly used day=1 as a QT row-size trial.
   `LEVEL_ENGINE_VERSION` is 11. Residual vs Quantower on the session-20 MNQ
-  desk fixture is ~2–3 points at 1-tick (not a transferability claim).
+  desk fixture is still ~2–3 points at 1-tick and a full zone at 4-tick
+  (not a transferability claim).
 - ONH/ONL is not available during ETH (by design; the overnight has not yet closed).
 - AsiaHigh/AsiaLow are unavailable during the Asia window (by design; not a rolling
   extreme). Pre-Asia ETH (e.g. 18:00–20:00 under the default window) is excluded from

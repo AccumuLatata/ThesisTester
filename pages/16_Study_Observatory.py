@@ -112,8 +112,8 @@ _DELTA_E_CAPTION = (
     "Do not write these numbers onto the Program A scalp map."
 )
 _PACKET_CHROME_FALLBACK = (
-    "15s operator packet: 23 files. Parked VA packet: 4 files. "
-    "These counts are lens chrome, not catalog membership."
+    "15s operator packet: 20 files. Parked tick packet: 8 files "
+    "(VA + APOC). These counts are lens chrome, not catalog membership."
 )
 _LENS_FACET_COLUMNS: tuple[tuple[str, str], ...] = (
     ("desk_class", "desk_class"),

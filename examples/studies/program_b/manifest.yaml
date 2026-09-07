@@ -1,12 +1,12 @@
 packet: 15s
-total_studies: 23
-total_cells: 944
+total_studies: 20
+total_cells: 898
 studies:
 - file: progB_smoke_ONH_SMA50_5min.yaml
   cells: 1
   min_valid: 1
 - file: progB_w0_solo.yaml
-  cells: 41
+  cells: 39
   min_valid: 0
 - file: progB_w1_ext_ma.yaml
   cells: 144
@@ -53,30 +53,6 @@ studies:
 - file: progB_w6_sp_pivot.yaml
   cells: 32
   min_valid: 1
-- file: progB_w7_apoc_ma.yaml
-  cells: 24
-  min_valid: 1
-  apoc_provenance:
-    apoc_profile_source: typical_mvp_v1
-    apoc_algorithm_version: typical_mvp_v1
-    apoc_object: legacy_typical_price
-    recorded: inferred_historical
-- file: progB_w7_apoc_rvwap.yaml
-  cells: 4
-  min_valid: 1
-  apoc_provenance:
-    apoc_profile_source: typical_mvp_v1
-    apoc_algorithm_version: typical_mvp_v1
-    apoc_object: legacy_typical_price
-    recorded: inferred_historical
-- file: progB_w7_apoc_pivot.yaml
-  cells: 16
-  min_valid: 1
-  apoc_provenance:
-    apoc_profile_source: typical_mvp_v1
-    apoc_algorithm_version: typical_mvp_v1
-    apoc_object: legacy_typical_price
-    recorded: inferred_historical
 - file: progB_w8_prev30m_ma.yaml
   cells: 12
   min_valid: 1

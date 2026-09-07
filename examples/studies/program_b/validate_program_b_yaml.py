@@ -13,7 +13,7 @@ import yaml
 from thesistester.levels.catalog import STATIC_STUDY_LEVEL_NAMES
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.study.apoc_provenance import (
-    WAVE7_HISTORICAL_PROVENANCE,
+    WAVE7_TICK_PROVENANCE,
     is_wave7_study_file,
 )
 from thesistester.study.expand import _expand_validated, expand_study
@@ -66,10 +66,16 @@ def assert_inventory_matches_catalog(generate: Any | None = None) -> None:
         )
     if list(gen.VA_ANCHORS) != list(gen.ANCHORS["w4_profile"]):
         raise SystemExit("Program B VA_ANCHORS must equal wave-4 prior-profile tokens")
-    if set(gen.FIFTEEN_S_ANCHORS) & set(gen.VA_ANCHORS):
-        raise SystemExit("Program B 15s and VA anchor sets must be disjoint")
-    if set(gen.FIFTEEN_S_ANCHORS) | set(gen.VA_ANCHORS) != got:
-        raise SystemExit("Program B 15s ∪ VA anchors must equal ALL_ANCHORS")
+    if list(gen.APOC_ANCHORS) != list(gen.ANCHORS["w7_apoc"]):
+        raise SystemExit("Program B APOC_ANCHORS must equal wave-7 APOC tokens")
+    if set(gen.TICK_GATED_ANCHORS) != set(gen.VA_ANCHORS) | set(gen.APOC_ANCHORS):
+        raise SystemExit("Program B TICK_GATED_ANCHORS must equal VA ∪ APOC")
+    if set(gen.FIFTEEN_S_ANCHORS) & set(gen.TICK_GATED_SET):
+        raise SystemExit("Program B 15s and tick-gated anchor sets must be disjoint")
+    if set(gen.FIFTEEN_S_ANCHORS) | set(gen.TICK_GATED_SET) != got:
+        raise SystemExit("Program B 15s ∪ tick-gated anchors must equal ALL_ANCHORS")
+    if set(gen.FIFTEEN_S_ANCHORS) & set(gen.APOC_ANCHOR_SET):
+        raise SystemExit("Program B 15s anchors must not include APOC/pAPOC")
     closed = closed_level_token_set(DEFAULT_LEVELS_SETTINGS)
     confirms = [row[0] for family in gen.CONFIRMS.values() for row in family]
     unknown = [token for token in confirms if token not in closed]
@@ -81,9 +87,51 @@ def assert_inventory_matches_catalog(generate: Any | None = None) -> None:
 
 def _infer_packet(stem: str) -> str:
     """15s vs tick from the generate-owned filename when the caller omits packet."""
-    if stem == "progB_w0_va" or stem.startswith("progB_w4_profile_"):
+    if (
+        stem in {"progB_w0_va", "progB_w0_apoc"}
+        or stem.startswith("progB_w4_profile_")
+        or stem.startswith("progB_w7_apoc_")
+    ):
         return "tick"
     return "15s"
+
+
+def _check_levels_locks(
+    label: str,
+    *,
+    levels: Mapping[str, Any],
+    cores: list[str],
+    packet: str,
+    generate: Any,
+) -> list[str]:
+    """15s must disable product APOC/rolling; tick packet keeps explicit 4/8/10."""
+    failures: list[str] = []
+    for key, expected in generate.LOCKED_AGGREGATION.items():
+        if levels.get(key) != expected:
+            failures.append(f"{label}: {key} must be {expected} (desk 4/8/10)")
+    if packet == "15s":
+        if levels.get("apoc_enabled") is not False:
+            failures.append(f"{label}: 15s packet must set apoc_enabled: false")
+        windows = levels.get("poc_windows")
+        if not isinstance(windows, list) or list(windows) != []:
+            failures.append(f"{label}: 15s packet must set poc_windows: []")
+        return failures
+    if packet == "tick":
+        if list(levels.get("poc_windows") or []) != ["30min"]:
+            failures.append(f"{label}: tick packet must set poc_windows: ['30min']")
+        apoc_cores = [token for token in cores if token in generate.APOC_ANCHOR_SET]
+        if apoc_cores:
+            if levels.get("apoc_enabled") is not True:
+                failures.append(f"{label}: APOC tick studies must keep apoc_enabled: true")
+            if "apoc_profile_source" in levels:
+                failures.append(
+                    f"{label}: APOC tick studies must omit apoc_profile_source "
+                    "(product tick default)"
+                )
+        elif levels.get("apoc_enabled") is not False:
+            failures.append(f"{label}: non-APOC tick studies must set apoc_enabled: false")
+        return failures
+    return failures
 
 
 def _check_packet_locks(
@@ -94,29 +142,30 @@ def _check_packet_locks(
     packet: str,
     generate: Any,
 ) -> list[str]:
-    """Keep VA tokens and tick_paths inside the tick packet only."""
+    """Keep VA/APOC tokens and tick_paths inside the tick packet only."""
     failures: list[str] = []
     raw_ticks = dataset.get("tick_paths")
-    va_in_cores = [token for token in cores if token in generate.VA_ANCHOR_SET]
+    tick_in_cores = [token for token in cores if token in generate.TICK_GATED_SET]
     if packet == "15s":
         if raw_ticks not in (None, [], ()):
             failures.append(
-                f"{label}: 15s packet must omit tick_paths (VA studies live in manifest_va.yaml)"
+                f"{label}: 15s packet must omit tick_paths "
+                f"(tick-gated studies live in {generate.TICK_MANIFEST_NAME})"
             )
-        if va_in_cores:
+        if tick_in_cores:
             failures.append(
-                f"{label}: 15s packet cannot name VA cores {va_in_cores} "
-                "(TV3 requires ticks; park in manifest_va.yaml)"
+                f"{label}: 15s packet cannot name tick-gated cores {tick_in_cores} "
+                f"(VA/APOC require ticks; park in {generate.TICK_MANIFEST_NAME})"
             )
         return failures
     if packet == "tick":
-        if list(raw_ticks or []) != list(generate.VA_TICK_PATHS):
+        if list(raw_ticks or []) != list(generate.TICK_PATHS):
             failures.append(
                 f"{label}: tick packet tick_paths must be the generate-owned placeholder "
-                f"{list(generate.VA_TICK_PATHS)!r}"
+                f"{list(generate.TICK_PATHS)!r}"
             )
-        if not cores or any(token not in generate.VA_ANCHOR_SET for token in cores):
-            failures.append(f"{label}: tick packet must name only PRIOR_PROFILE VA cores")
+        if not cores or any(token not in generate.TICK_GATED_SET for token in cores):
+            failures.append(f"{label}: tick packet must name only VA and/or APOC cores")
         return failures
     failures.append(f"{label}: packet must be 15s or tick")
     return failures
@@ -180,21 +229,11 @@ def validate_study_file(
     partners = list(factors.get("partner_levels") or [])
     levels = study.get("levels") or {}
     if wave7:
-        if not isinstance(levels, Mapping) or levels.get("apoc_enabled") is not True:
-            failures.append(
-                f"{path.name}: Wave 7 study.levels must keep apoc_enabled: true "
-                "(historical ZIP identity lock; omitted source is now product tick)"
-            )
-        if isinstance(levels, Mapping) and "apoc_profile_source" in levels:
-            failures.append(
-                f"{path.name}: Wave 7 study.levels must omit apoc_profile_source "
-                "(historical ZIP identity lock; do not reintroduce typical)"
-            )
         provenance = row.get("apoc_provenance")
-        if provenance != WAVE7_HISTORICAL_PROVENANCE:
+        if provenance != WAVE7_TICK_PROVENANCE:
             failures.append(
                 f"{path.name}: Wave 7 manifest apoc_provenance must be "
-                f"{WAVE7_HISTORICAL_PROVENANCE!r}"
+                f"{WAVE7_TICK_PROVENANCE!r}"
             )
     elif "apoc_provenance" in row:
         failures.append(f"{path.name}: apoc_provenance is Wave 7 only")
@@ -216,6 +255,16 @@ def validate_study_file(
             generate=gen,
         )
     )
+    if isinstance(levels, Mapping):
+        failures.extend(
+            _check_levels_locks(
+                path.name,
+                levels=levels,
+                cores=cores,
+                packet=resolved_packet,
+                generate=gen,
+            )
+        )
     expected_trigger = LOCKED_TRIGGER_RUN2 if locks == "run2" else LOCKED_TRIGGER
     if list(factors.get("confluence_mode") or []) != [LOCKED_MODE]:
         failures.append(f"{path.name}: confluence_mode must be exclusive [{LOCKED_MODE}]")
@@ -260,6 +309,9 @@ def validate_study_file(
         elif stem == "progB_w0_va":
             if cores != list(gen.VA_ANCHORS):
                 failures.append(f"{path.name}: Wave 0 VA cores drifted from VA_ANCHORS")
+        elif stem == "progB_w0_apoc":
+            if cores != list(gen.APOC_ANCHORS):
+                failures.append(f"{path.name}: Wave 0 APOC cores drifted from APOC_ANCHORS")
         else:
             failures.append(f"{path.name}: unknown Wave 0 study stem")
     else:
@@ -373,11 +425,11 @@ def validate_manifest(
 ) -> tuple[list[str], list[str], int, int]:
     """Validate every row in one Program B manifest.
 
-    Default ``manifest.yaml`` is the 15s packet. ``manifest_va.yaml`` is
-    tick-gated (Wave 0 VA + Wave 4). Returns ``(ok_lines, failures,
-    n_studies, n_cells)``. A file is listed in ``ok_lines`` only when it
-    produced zero failures — callers must not print ``ok`` for a file that
-    failed a lock check.
+    Default ``manifest.yaml`` is the 15s packet. ``manifest_tick.yaml`` is
+    tick-gated (Wave 0 VA + Wave 0 APOC + Wave 4 + Wave 7). Returns
+    ``(ok_lines, failures, n_studies, n_cells)``. A file is listed in
+    ``ok_lines`` only when it produced zero failures — callers must not
+    print ``ok`` for a file that failed a lock check.
     """
     base = root or ROOT
     generate = _load_generate()

@@ -1690,7 +1690,7 @@ existing profile settings. Controls inside it:
 `thesistester/levels/defaults.py` is the canonical product configuration used by both the
 Levels page and the headless API: 15-minute opening range; SMA 50/200 and EMA 9/21 on
 `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; refuse without ticks); 70% value area;
-and prior day/week/month profile aggregation of 1/8/10 ticks. All gate values are included
+and prior day/week/month profile aggregation of 4/8/10 ticks (desk preference). All gate values are included
 in the levels settings object and therefore in the settings hash used for saved snapshot
 matching. `pivot_timeframes` is sorted deterministically alongside the other list-valued
 settings.
@@ -1715,9 +1715,10 @@ attached. Named or product-default APOC / rolling POC refuse without
 emit quiet all-NaN placeholders when those families are required. Studies
 that name neither family still run on 15s-only (`disable_unneeded_tick_families`).
 `typical_mvp_v1` is a dead/test-only library helper, not a production source.
-Program B Wave 7 packets omit `apoc_profile_source` and `tick_paths`
-(identity lock); fresh validate/expand/launch refuse. Manifest rows keep
-`WAVE7_HISTORICAL_PROVENANCE` (typical) for historical ZIPs.
+Fresh Program B Wave 7 packets live in `manifest_tick.yaml`, omit
+`apoc_profile_source` (product tick), and carry placeholder `tick_paths`.
+Manifest rows record `WAVE7_TICK_PROVENANCE`. Historical ZIPs keep
+`WAVE7_HISTORICAL_PROVENANCE` (typical).
 `thesistester/study/apoc_provenance.py` is the sidecar helper; a missing
 sidecar still infers typical (ZIP contract). Rolling POC identity keys
 always stamp tick Last×Volume.
