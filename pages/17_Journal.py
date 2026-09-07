@@ -60,6 +60,10 @@ def _show_table(frame: pd.DataFrame, *, empty: str) -> None:
     st.dataframe(frame, width="stretch", hide_index=True)
 
 
+def _clear_journal_cache() -> None:
+    st.session_state.pop(JOURNAL_CACHED_ARTIFACTS_KEY, None)
+
+
 _ensure_defaults()
 st.title("Journal")
 st.caption(
@@ -76,7 +80,7 @@ st.text_input(
 include_small = st.checkbox(
     "Show slices with n < 30",
     key=JOURNAL_INCLUDE_SMALL_N_KEY,
-    help="Q2 slices with n < 30 stay hidden unless this is on. Every table still shows n.",
+    help="Q2 slices with n < 30 stay hidden unless this is on. Applies after Load without a second click.",
 )
 load = st.button("Load report")
 
@@ -85,11 +89,15 @@ if load:
     if not raw_dir:
         st.warning("Set a journal directory first.")
         st.stop()
+    path = Path(raw_dir).expanduser()
+    if not path.is_dir():
+        _clear_journal_cache()
+        st.caption(_EMPTY)
+        st.stop()
     try:
-        st.session_state[JOURNAL_CACHED_ARTIFACTS_KEY] = load_journal_artifacts(
-            Path(raw_dir).expanduser()
-        )
+        st.session_state[JOURNAL_CACHED_ARTIFACTS_KEY] = load_journal_artifacts(path)
     except JournalIngestError as exc:
+        _clear_journal_cache()
         st.error(str(exc))
         st.stop()
 

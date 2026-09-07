@@ -36,6 +36,7 @@ from thesistester.journal.schema import (
     REPORT_SLICE_NY_HOUR,
     RESOLUTION_MIXED,
     RESOLUTION_UNJOINED,
+    STATUS_OPEN,
     JournalIngestError,
 )
 from thesistester.persistence.local_store import get_store_root
@@ -142,7 +143,11 @@ def build_journal_report(
         "q5": "Direction-shuffle preserves per-session long/short counts. Seeded. Not a global sign flip.",
         "q6": "Rules are declared, never searched. in_sample and forward are never blended.",
         "q7": "Named-cell match only (no Observatory corpus). product_mismatch names the failing dimension.",
-        "q8": "Adherence = executed_cell / (executed_cell + systematic_unfilled). Live ticks are qty-scaled.",
+        "q8": (
+            "Adherence = executed_cell / (executed_cell + systematic_unfilled). "
+            "live_expectancy_ticks is mean live E; live_net_ticks is the session sum. "
+            "Cell expectancy is 1-lot."
+        ),
     }
     if isinstance(counterfactual_payload, Mapping):
         brackets = counterfactual_payload.get("brackets")
@@ -250,6 +255,14 @@ def _coerce_trades(trades: pd.DataFrame | None) -> pd.DataFrame:
     return work.reset_index(drop=True)
 
 
+def _closed_for_pnl(trades: pd.DataFrame) -> pd.DataFrame:
+    """Drop leftover open lots from Q1/Q2 P&L cuts."""
+    if trades.empty or "status" not in trades.columns:
+        return trades
+    mask = trades["status"].map(lambda value: str(value) != STATUS_OPEN)
+    return trades.loc[mask].copy()
+
+
 def _q1_days(trades: pd.DataFrame) -> pd.DataFrame:
     columns = [
         "instrument",
@@ -263,11 +276,12 @@ def _q1_days(trades: pd.DataFrame) -> pd.DataFrame:
         "resolution",
         "recon_status",
     ]
-    if trades.empty:
+    closed = _closed_for_pnl(trades)
+    if closed.empty:
         return pd.DataFrame(columns=columns)
     rows: list[dict[str, object]] = []
-    grouped = trades.groupby(["instrument", "session_date", "resolution"], sort=True, dropna=False)
-    for (instrument, session, resolution), group in grouped:
+    grouped = closed.groupby(["instrument", "session_date"], sort=True, dropna=False)
+    for (instrument, session), group in grouped:
         fee = _mean(group.get("fee_ticks"))
         recon = _unique_or_mixed(group["recon_status"])
         rows.append(
@@ -280,7 +294,7 @@ def _q1_days(trades: pd.DataFrame) -> pd.DataFrame:
                 "mean_fee_ticks": fee,
                 "break_even_gross_ticks": fee,
                 "sum_net_ticks": _sum(group.get("net_ticks")),
-                "resolution": str(resolution),
+                "resolution": _unique_or_mixed(group["resolution"]),
                 "recon_status": recon,
             }
         )
@@ -298,9 +312,10 @@ def _q2_slices(trades: pd.DataFrame, *, include_small_n: bool) -> tuple[pd.DataF
         "resolution",
         "recon_status",
     ]
-    if trades.empty:
+    closed = _closed_for_pnl(trades)
+    if closed.empty:
         return pd.DataFrame(columns=columns), 0
-    labeled = trades.copy()
+    labeled = closed.copy()
     labeled["ny_hour"] = (
         labeled["entry_timestamp"].map(_ny_hour) if "entry_timestamp" in labeled.columns else None
     )
@@ -325,7 +340,7 @@ def _q2_slices(trades: pd.DataFrame, *, include_small_n: bool) -> tuple[pd.DataF
         if column not in labeled.columns:
             continue
         for value, group in labeled.groupby(column, sort=True, dropna=False):
-            if value is None or (isinstance(value, float) and not math.isfinite(value)):
+            if _is_missing(value):
                 continue
             n = int(len(group))
             if n < REPORT_MIN_N:
@@ -366,10 +381,8 @@ def _q3_attribution(
         meta = trades[["trade_id", "resolution", "recon_status"]].drop_duplicates("trade_id")
         work["trade_id"] = work["trade_id"].map(str)
         work = work.merge(meta, on="trade_id", how="left", suffixes=("", "_trade"))
-        if "resolution" not in work.columns or work["resolution"].isna().all():
-            work["resolution"] = RESOLUTION_UNJOINED
-        if "recon_status" not in work.columns or work["recon_status"].isna().all():
-            work["recon_status"] = RECON_UNKNOWN
+        work["resolution"] = _coalesce_meta(work, "resolution", default=RESOLUTION_UNJOINED)
+        work["recon_status"] = _coalesce_meta(work, "recon_status", default=RECON_UNKNOWN)
         work["resolution"] = work["resolution"].map(_as_resolution)
         work["recon_status"] = work["recon_status"].map(_as_recon)
     else:
@@ -392,6 +405,8 @@ def _q4_q6(
         "n",
         "exit_rule_delta",
         "mean_cf_net_ticks",
+        "entry_edge_flag",
+        "best_mean_cf_net_ticks",
         "resolution",
         "recon_status",
     ]
@@ -423,10 +438,18 @@ def _q4_q6(
         if raw_res:
             resolution = str(raw_res)
     brackets_src: object = None
+    edge_by_res: dict[str, Mapping[str, object]] = {}
     if isinstance(payload, Mapping):
         raw_brackets = payload.get("brackets")
         if isinstance(raw_brackets, Mapping) and "brackets" in raw_brackets:
             brackets_src = raw_brackets.get("brackets")
+            raw_flags = raw_brackets.get("entry_edge_flag")
+            if isinstance(raw_flags, Mapping):
+                edge_by_res = {
+                    str(key): value
+                    for key, value in raw_flags.items()
+                    if isinstance(value, Mapping)
+                }
         else:
             brackets_src = raw_brackets
     rows: list[dict[str, object]] = []
@@ -435,6 +458,7 @@ def _q4_q6(
             if not isinstance(bucket, Mapping):
                 continue
             bucket_res = str(bucket.get("resolution") or resolution)
+            flag_row = edge_by_res.get(bucket_res, {})
             rows.append(
                 {
                     "cf_id": str(bucket.get("cf_id") or ""),
@@ -443,6 +467,14 @@ def _q4_q6(
                     "n": int(bucket.get("n") or 0),
                     "exit_rule_delta": _optional_float(bucket.get("exit_rule_delta")),
                     "mean_cf_net_ticks": _optional_float(bucket.get("mean_cf_net_ticks")),
+                    "entry_edge_flag": _optional_bool(
+                        flag_row.get("entry_edge_flag") if isinstance(flag_row, Mapping) else None
+                    ),
+                    "best_mean_cf_net_ticks": (
+                        _optional_float(flag_row.get("best_mean_cf_net_ticks"))
+                        if isinstance(flag_row, Mapping)
+                        else None
+                    ),
                     "resolution": bucket_res,
                     "recon_status": recon,
                 }
@@ -468,13 +500,22 @@ def _q4_q6(
                 if not isinstance(item, Mapping):
                     continue
                 kept = item.get("n_kept")
+                n_total = item.get("n_total")
+                if n_total is not None:
+                    n_value = int(n_total)
+                elif item.get("n") is not None:
+                    n_value = int(item.get("n") or 0)
+                elif kept is not None:
+                    n_value = int(kept)
+                else:
+                    n_value = 0
                 rule_rows.append(
                     {
                         "name": str(item.get("name") or ""),
                         "declared_on": str(item.get("declared_on") or ""),
                         "split": str(item.get("split") or ""),
-                        "n": int(kept if kept is not None else item.get("n") or 0),
-                        "n_kept": int(kept or 0),
+                        "n": n_value,
+                        "n_kept": int(kept) if kept is not None else 0,
                         "trades_removed": int(item.get("trades_removed") or 0),
                         "rule_delta_ticks": _optional_float(item.get("rule_delta_ticks")),
                         "resolution": resolution,
@@ -497,6 +538,7 @@ def _q7_q8(
         "product_mismatch",
         "adherence",
         "live_net_ticks",
+        "live_expectancy_ticks",
         "cell_expectancy_ticks",
         "resolution",
         "recon_status",
@@ -531,6 +573,7 @@ def _q7_q8(
                         "product_mismatch": int(item.get("product_mismatch") or 0),
                         "adherence": _json_float(item.get("adherence")),
                         "live_net_ticks": _optional_float(item.get("live_net_ticks")),
+                        "live_expectancy_ticks": _optional_float(item.get("live_expectancy_ticks")),
                         "cell_expectancy_ticks": _optional_float(item.get("cell_expectancy_ticks")),
                         "resolution": RESOLUTION_UNJOINED,
                         "recon_status": RECON_UNKNOWN,
@@ -544,7 +587,7 @@ def _count_groups(frame: pd.DataFrame, column: str, columns: list[str]) -> pd.Da
         return pd.DataFrame(columns=columns)
     rows: list[dict[str, object]] = []
     for value, group in frame.groupby(column, sort=True, dropna=False):
-        if value is None or (isinstance(value, float) and pd.isna(value)):
+        if _is_missing(value):
             continue
         rows.append(
             {
@@ -562,7 +605,7 @@ def _tag_groups(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
         return pd.DataFrame(columns=columns)
     rows: list[dict[str, object]] = []
     for value, group in frame.groupby("tag_alignment", sort=True, dropna=False):
-        if value is None or (isinstance(value, float) and pd.isna(value)):
+        if _is_missing(value):
             continue
         mismatch = 0
         if "intent_mismatch" in group.columns:
@@ -752,6 +795,35 @@ def _as_date(value: object) -> date:
     return stamp.date()
 
 
+def _is_missing(value: object) -> bool:
+    if value is None:
+        return True
+    try:
+        if pd.isna(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, float) and not math.isfinite(value):
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    return False
+
+
+def _coalesce_meta(frame: pd.DataFrame, column: str, *, default: str) -> pd.Series:
+    """Prefer ``column``, then ``column_trade``, then ``default`` (per row)."""
+    own = frame[column] if column in frame.columns else None
+    trade = frame[f"{column}_trade"] if f"{column}_trade" in frame.columns else None
+    values: list[object] = []
+    length = len(frame)
+    for index in range(length):
+        candidate = own.iloc[index] if own is not None else None
+        if _is_missing(candidate):
+            candidate = trade.iloc[index] if trade is not None else None
+        values.append(default if _is_missing(candidate) else candidate)
+    return pd.Series(values, index=frame.index)
+
+
 def _as_resolution(value: object) -> str:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return RESOLUTION_UNJOINED
@@ -797,6 +869,22 @@ def _sum(series: pd.Series | None) -> float | None:
     return sum(finite)
 
 
+def _optional_bool(value: object) -> bool | None:
+    if value is None or _is_missing(value):
+        return None
+    if isinstance(value, bool):
+        return value
+    item = getattr(value, "item", None)
+    if callable(item) and type(value).__module__ == "numpy":
+        try:
+            value = item()
+        except (ValueError, AttributeError):
+            pass
+    if isinstance(value, bool):
+        return value
+    return bool(value)
+
+
 def _optional_float(value: object) -> float | None:
     if value is None or (isinstance(value, float) and not math.isfinite(value)):
         return None
@@ -819,17 +907,25 @@ def _json_float(value: object) -> float | None:
 def _jsonable(value: object) -> object:
     if value is None:
         return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        number = float(value) if isinstance(value, float) else value
-        if isinstance(number, float) and not math.isfinite(number):
-            return None
-        return value
     if isinstance(value, (date, datetime, pd.Timestamp)):
         if isinstance(value, pd.Timestamp) and pd.isna(value):
             return None
         return value.isoformat()
-    if pd.isna(value):
-        return None
+    item = getattr(value, "item", None)
+    if callable(item) and type(value).__module__ == "numpy":
+        try:
+            value = item()
+        except (ValueError, AttributeError):
+            pass
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value) if math.isfinite(value) else None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
     return value

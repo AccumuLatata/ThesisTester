@@ -1408,7 +1408,8 @@ does the same and assigns empty leftover `studies_viewer_selected_run`
 (do not pop that widget key). Neither drill writes classic research keys.
 Journal TJ9 adds `journal_dir`, `journal_include_small_n`, and
 `journal_cached_artifacts` on `pages/17_Journal.py` only — still not classic
-research state. The n < 30 toggle rebuilds Q2 from the cached artifacts.
+research state. The n < 30 toggle rebuilds Q2 from the cached artifacts
+without a second Load.
 
 Data-page source application: Sample data is ingested only when `data` is
 absent or the user clicks **Load sample data**. Upload CSV still applies when

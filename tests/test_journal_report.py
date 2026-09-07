@@ -31,7 +31,9 @@ from thesistester.journal.schema import (
     RECON_RECONCILED,
     REPORT_SLICE_DIRECTION,
     REPORT_SLICE_HOLD,
+    RESOLUTION_MIXED,
     RESOLUTION_UNJOINED,
+    STATUS_OPEN,
 )
 from thesistester.persistence.execution_artifacts import get_execution_artifacts_root
 from thesistester.persistence.local_store import get_store_root
@@ -230,6 +232,14 @@ def test_q3_q8_surface_ingested_artifacts() -> None:
                     "resolution": "15s",
                 }
             },
+            "entry_edge_flag": {
+                "15s": {
+                    "n": 2,
+                    "n_resolved": 2,
+                    "best_mean_cf_net_ticks": 1.0,
+                    "entry_edge_flag": True,
+                }
+            },
             "caption": "three brackets were looked at (not a single pre-registered test)",
         },
         "rules": [
@@ -237,6 +247,7 @@ def test_q3_q8_surface_ingested_artifacts() -> None:
                 "name": "cap",
                 "declared_on": "2026-05-01",
                 "split": "in_sample",
+                "n_total": 2,
                 "n_kept": 1,
                 "trades_removed": 1,
                 "rule_delta_ticks": -1.0,
@@ -245,6 +256,7 @@ def test_q3_q8_surface_ingested_artifacts() -> None:
                 "name": "cap",
                 "declared_on": "2026-05-01",
                 "split": "forward",
+                "n_total": 1,
                 "n_kept": 1,
                 "trades_removed": 0,
                 "rule_delta_ticks": 0.5,
@@ -266,6 +278,7 @@ def test_q3_q8_surface_ingested_artifacts() -> None:
                 "product_mismatch": 0,
                 "adherence": 0.5,
                 "live_net_ticks": 2.0,
+                "live_expectancy_ticks": 2.0,
                 "cell_expectancy_ticks": 1.5,
             }
         ]
@@ -292,14 +305,21 @@ def test_q3_q8_surface_ingested_artifacts() -> None:
     )
     assert report.q4_brackets.iloc[0]["exit_rule_delta"] == pytest.approx(4.0)
     assert report.q4_brackets.iloc[0]["n"] == 2
+    assert bool(report.q4_brackets.iloc[0]["entry_edge_flag"]) is True
+    assert report.q4_brackets.iloc[0]["best_mean_cf_net_ticks"] == pytest.approx(1.0)
     assert report.q5_null["direction_null_pct"] == pytest.approx(61.5)
     assert report.q5_null["seed"] == 0
     assert set(report.q6_rules["split"]) == {"in_sample", "forward"}
     assert "blended" not in "".join(report.q6_rules["split"].astype(str))
+    in_sample = report.q6_rules.loc[report.q6_rules["split"] == "in_sample"].iloc[0]
+    assert int(in_sample["n"]) == 2
+    assert int(in_sample["n_kept"]) == 1
     assert set(report.q7_matches["match_class"]) == {MATCH_EXECUTED_CELL, MATCH_SYSTEMATIC_UNFILLED}
     ledger = report.q8_ledger.iloc[0]
     assert ledger["adherence"] == pytest.approx(0.5)
     assert ledger["n"] == 2
+    assert ledger["live_expectancy_ticks"] == pytest.approx(2.0)
+    assert ledger["live_net_ticks"] == pytest.approx(2.0)
     assert ledger["resolution"] == RESOLUTION_UNJOINED
 
 
@@ -308,6 +328,49 @@ def test_unjoined_resolution_stamped_when_column_missing() -> None:
     del raw["resolution"]
     report = build_journal_report(pd.DataFrame([raw]))
     assert report.q1_days.iloc[0]["resolution"] == RESOLUTION_UNJOINED
+
+
+def test_q1_one_row_per_instrument_day_mixed_resolution() -> None:
+    trades = pd.DataFrame(
+        [
+            _trade(trade_id="a", resolution="15s"),
+            _trade(trade_id="b", resolution=None),
+        ]
+    )
+    report = build_journal_report(trades)
+    assert len(report.q1_days) == 1
+    assert report.q1_days.iloc[0]["n"] == 2
+    assert report.q1_days.iloc[0]["resolution"] == RESOLUTION_MIXED
+
+
+def test_q1_q2_exclude_open_lots() -> None:
+    closed = [_trade(trade_id=f"c:{index}") for index in range(REPORT_MIN_N)]
+    opened = _trade(trade_id="open", net_ticks=99.0, gross_ticks=101.0)
+    opened["status"] = STATUS_OPEN
+    report = build_journal_report(pd.DataFrame(closed + [opened]))
+    assert int(report.q1_days.iloc[0]["n"]) == REPORT_MIN_N
+    assert report.q1_days.iloc[0]["mean_net_ticks"] == pytest.approx(2.0)
+    direction = report.q2_slices.loc[report.q2_slices["slice_kind"] == REPORT_SLICE_DIRECTION]
+    assert int(direction.iloc[0]["n"]) == REPORT_MIN_N
+
+
+def test_q3_uses_trade_resolution_when_attribution_blank() -> None:
+    trades = pd.DataFrame([_trade()])
+    attribution = pd.DataFrame(
+        [
+            {
+                "trade_id": "jt:1:0",
+                "nearest_level_token": "pdVAL",
+                "level_context": "at_level",
+                "tag_alignment": "all_aligned",
+                "intent_mismatch": False,
+                "resolution": None,
+            }
+        ]
+    )
+    report = build_journal_report(trades, attribution=attribution)
+    assert report.q3_levels.iloc[0]["resolution"] == "15s"
+    assert report.q3_levels.iloc[0]["recon_status"] == RECON_RECONCILED
 
 
 def test_include_small_n_fails_closed() -> None:
