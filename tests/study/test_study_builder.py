@@ -733,9 +733,11 @@ def test_tick_paths_widget_is_studies_scoped():
     dataset = page.split('st.markdown("### Dataset")')[1].split('st.markdown("### Levels')[0]
     assert "WIDGET_KEY_TICK_PATHS" in dataset
     assert "Tick paths (optional)" in dataset
-    assert "Does not replace the 15s bar CSV" in dataset
-    assert "Rolling POC is tick Last×Volume" in page
+    assert "15s bar CSV" in dataset
+    assert "requires ticks" in page
+    assert "never typical" in page
     assert "rolling POC remain 1m typical" not in page
+    assert "APOC remains" not in page
     sync_body = page.split("def _sync_builder_widgets")[1].split("\ndef ")[0]
     collect_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_TICK_PATHS" in sync_body

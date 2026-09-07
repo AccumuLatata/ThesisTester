@@ -87,7 +87,7 @@ def test_compute_all_levels_with_pivots_disabled_has_no_pivot_columns():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         pivots_enabled=False,
     )
 

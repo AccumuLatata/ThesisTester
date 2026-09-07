@@ -823,8 +823,10 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert page_body.index("_render_tick_attach(") > page_body.index(
         "_hide_legacy_subtimeframe_uploader(ingestion_mode)"
     )
-    assert "Quantower tick-last (optional, prior VA only)" in page_text
-    assert "Rolling POC is tick Last×Volume" in page_text
+    assert "Quantower tick-last (optional; VA / APOC / rolling POC)" in page_text
+    assert "Named VA / APOC / rolling POC refuse without ticks" in page_text
+    assert "APOC remains" not in page_text
+    assert "all-NaN without" not in page_text
     assert "rolling POC remain 1m typical" not in page_text
     assert "{digest}_{name}" in page_text or 'f"{digest}_{name}"' in page_text
     assert "TICK_WARNINGS_KEY" in page_text

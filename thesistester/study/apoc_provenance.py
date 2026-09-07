@@ -70,16 +70,26 @@ def _inferred_typical() -> dict[str, str]:
     }
 
 
+def _inferred_tick() -> dict[str, str]:
+    return {
+        "apoc_profile_source": APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
+        "apoc_algorithm_version": APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
+        "apoc_object": APOC_OBJECT_TICK_LAST_VOLUME,
+        "recorded": RECORDED_INFERRED,
+    }
+
+
 def apoc_provenance_from_levels(levels: Mapping[str, Any] | None) -> dict[str, str]:
     """Derive APOC provenance from written ``study.levels``.
 
-    Omitted ``apoc_profile_source`` is implicit ``typical_mvp_v1`` (legacy
-    typical-price). An explicit key is recorded as explicit, including the
-    AP1/AP2 selected Quantower source ``tick_last_volume_v1``.
+    Omitted ``apoc_profile_source`` is implicit ``tick_last_volume_v1``
+    (desk default). An explicit key is recorded as explicit. Historical
+    Wave 7 packets keep ``WAVE7_HISTORICAL_PROVENANCE`` (typical) on the
+    manifest; missing expansion sidecars still infer typical.
     """
     source = _explicit_source(levels)
     if source is None:
-        return _inferred_typical()
+        return _inferred_tick()
     if source == APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1:
         return {
             "apoc_profile_source": source,
@@ -106,9 +116,10 @@ def should_write_apoc_provenance(levels: Mapping[str, Any] | None) -> bool:
     """Write the expansion sidecar when APOC is enabled or a source is named.
 
     Golden expansion fixtures omit both keys and stay byte-stable. Program B
-    Wave 7 writes ``apoc_enabled: true`` and therefore records inferred typical.
-    Explicit ``apoc_enabled: false`` is a no-op and must not claim an APOC
-    object, even if a source key is also present.
+    Wave 7 writes ``apoc_enabled: true``; a fresh expand now records inferred
+    tick (and validate refuses without ``tick_paths``). Explicit
+    ``apoc_enabled: false`` is a no-op and must not claim an APOC object,
+    even if a source key is also present.
     """
     if not isinstance(levels, Mapping) or not levels:
         return False
@@ -124,12 +135,14 @@ def read_apoc_provenance(
     *,
     levels: Mapping[str, Any] | None = None,
 ) -> dict[str, str]:
-    """Return recorded provenance, or infer typical from levels / a missing sidecar.
+    """Return recorded provenance, or infer from levels / a missing sidecar.
 
-    A present sidecar must be a mapping. Object/algorithm are derived from the
-    recorded source so a tick sidecar cannot be relabeled typical by a missing
-    ``apoc_object``. Source/object contradictions and unknown ``recorded``
-    tokens fail closed.
+    A missing sidecar with no written source stays inferred typical
+    (historical ZIP contract). New omitted-source levels infer tick.
+    A present sidecar must be a mapping. Object/algorithm are derived from
+    the recorded source so a tick sidecar cannot be relabeled typical by a
+    missing ``apoc_object``. Source/object contradictions and unknown
+    ``recorded`` tokens fail closed.
     """
     if expansion is not None and "apoc_provenance" in expansion:
         raw = expansion["apoc_provenance"]
@@ -157,4 +170,8 @@ def read_apoc_provenance(
         out = dict(derived)
         out["recorded"] = recorded_text
         return out
-    return apoc_provenance_from_levels(levels or {})
+    if levels and _explicit_source(levels) is not None:
+        return apoc_provenance_from_levels(levels)
+    if levels and levels.get("apoc_enabled") is True:
+        return apoc_provenance_from_levels(levels)
+    return _inferred_typical()

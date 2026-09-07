@@ -2,10 +2,18 @@
 
 **Document type:** Focused investigation plan  
 **Date:** 2026-09-05  
-**Status:** **AP3 implemented.** Desk evidence selected ``tick_last_volume_v1``
-(4/4 exact on Levels2test 2026-09-01…09-04). Product/library default remains
-``typical_mvp_v1``. ``bar_range_uniform_volume_v1`` is a proxy only and is not
-a production source. Program B Wave 7 packets are labeled legacy typical-price.
+**Status:** **AP3 implemented + desk default-tick amendment (2026-09-07).**
+Desk evidence selected ``tick_last_volume_v1`` (4/4 exact on Levels2test
+2026-09-01…09-04). Library/product default is now ``tick_last_volume_v1``.
+Named or product-default APOC refuses without ticks (``APOC requires ticks``),
+same fail-closed layer as named-VA. No typical fallback. Identity always
+stamps tick APOC; ``LEVEL_ENGINE_VERSION`` stays 11. Explicit
+``typical_mvp_v1`` is a dead/test-only library helper, not a production
+source.
+``bar_range_uniform_volume_v1`` is a proxy only and is not a production
+source. Program B Wave 7 packets omit the source key and ``tick_paths``
+(identity lock) and refuse on fresh validate; historical ZIPs stay
+legacy-typical labeled.
 **Series code:** **AP** (A-Period POC)  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including the
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).
@@ -190,11 +198,14 @@ skipped in CI because the proprietary desk oracle is not committed.
 | Acceptance | Reference fixture gate, complete current Stage 5 coverage, source-specific PIT tests, and series equality for unrelated level families |
 | Forbidden | Prior VA changes, tick simulation clock, rolling-POC rewrite, execution changes, golden regeneration |
 
-**AP2 implementation record:** `apoc_profile_source` is keyword-only. Library
-default and omitted product config remain implicit `typical_mvp_v1` (legacy
-typical-price; no `LEVEL_ENGINE_VERSION` bump; pre-AP2 settings hashes
-unchanged). `tick_last_volume_v1` is the AP1-selected Quantower source and
-is explicit opt-in. It builds an A-period `APeriodTickProfileTable` from the
+**AP2 implementation record (superseded by §8 desk amendment 2026-09-07):**
+`apoc_profile_source` is keyword-only. AP2 shipped library default and
+omitted product config as implicit `typical_mvp_v1`. The 2026-09-07 desk
+lock flipped the default to `tick_last_volume_v1` (omitted is **not**
+typical) and removed `typical_mvp_v1` from production sources. Historical
+note only — do not treat typical as current product behavior.
+`tick_last_volume_v1` is the AP1-selected Quantower source and is now the
+library/product default. It builds an A-period `APeriodTickProfileTable` from the
 Quantower Tick–Tick–Last loader, filtered to `[RTH open, RTH open + 30 min)`
 in exchange time; `PriorProfileTable` is not a substitute. `run_experiment`
 forwards `dataset.tick_paths` into that table even when a prior-VA parquet is
@@ -217,11 +228,13 @@ scorecard (proprietary CSVs not committed): 2026-09-01=29120, 09-02=29060,
 | Acceptance | YAML generation/validation remains deterministic; no historical ZIP rewrite; no non-APOC wave changes |
 | Forbidden | Rerunning studies, changing Program B research locks, or modifying VA waves |
 
-**AP3 implementation record:** Existing Wave 7 StudySpecs keep implicit
-``typical_mvp_v1`` (no ``apoc_profile_source`` in ``study.levels``) so
-``study_identity_hash`` and research locks stay pre-AP2. Generator comments
-and ``manifest.yaml`` Wave 7 rows stamp
-``apoc_object: legacy_typical_price``. Fresh ``study.expansion.json`` writes
+**AP3 implementation record (Wave 7 identity lock; compute path superseded
+by §8):** Existing Wave 7 StudySpecs omit ``apoc_profile_source`` so
+``study_identity_hash`` and research locks stay pre-AP2. Omitted source is
+now product tick Last×Volume; packets omit ``tick_paths`` and refuse on
+fresh validate. Generator comments and ``manifest.yaml`` Wave 7 rows stamp
+``apoc_object: legacy_typical_price`` for historical ZIPs. Fresh
+``study.expansion.json`` writes
 an additive ``apoc_provenance`` sidecar when the spec enables APOC
 (``apoc_enabled: true``) or names an explicit source while APOC is not
 disabled; the sidecar is not hashed. Explicit ``apoc_enabled: false``
@@ -232,8 +245,9 @@ rewritten; a missing sidecar is inferred typical. VA manifests and
 non-Wave-7 rows are unchanged.
 
 Merge order is AP0 → AP1 → AP2 → AP3. AP1’s written evidence gate selected
-``tick_last_volume_v1`` (4/4 exact; bar-range uniform 2/4). AP2 implements
-that source as an explicit opt-in.
+``tick_last_volume_v1`` (4/4 exact; bar-range uniform 2/4). AP2 shipped it
+as opt-in; the 2026-09-07 desk lock made it the library/product default
+and removed ``typical_mvp_v1`` from production sources.
 
 ## 6. Regression-safety checklist
 
@@ -258,8 +272,23 @@ Every AP1+ PR must:
 ## 7. Program B operational note
 
 Wave 7 enables APOC and pAPOC on the 15-second-primary/derived one-minute
-path. Committed Run 1 / Run 2 Wave 7 packets compute implicit
-``typical_mvp_v1`` (legacy typical-price) and are labeled as such. They must
-not be compared to Quantower A-period POC. The AP1/AP2 selected source
-``tick_last_volume_v1`` is a different study. AP3 records that provenance; it
-does not rewrite prior research ZIPs or change Wave 7 identity hashes.
+path. Historical Run 1 / Run 2 ZIPs computed implicit ``typical_mvp_v1``
+and stay labeled ``WAVE7_HISTORICAL_PROVENANCE``. They must not be compared
+to Quantower A-period POC. Desk amendment 2026-09-07: omitted source is now
+product tick Last×Volume; this packet still omits ``tick_paths``, so fresh
+validate / expand / launch refuse (``APOC requires ticks``). Do not add
+``apoc_profile_source`` or ticks (identity lock). Do not rewrite prior
+research ZIPs.
+
+## 8. Desk amendment record (2026-09-07)
+
+- Default ``apoc_profile_source`` = ``tick_last_volume_v1`` (omitted key is
+  not typical).
+- Refuse without ticks like named-VA (``APOC requires ticks``).
+- No typical fallback when the tick source is active/default.
+- Identity always stamps tick APOC; prefer identity keys over bumping
+  ``LEVEL_ENGINE_VERSION`` (stays 11).
+- APOC follow-up done in the unified tick-default + refuse PR.
+- ``typical_mvp_v1`` is dead/test-only (Stage 5 typical math / ZIP labels).
+  Not a production source. Product / StudySpec / ``normalize_levels_config``
+  reject it.

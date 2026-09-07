@@ -263,6 +263,7 @@ def test_compute_all_levels_emits_dvwap_when_enabled():
         opening_range_minutes=5,
         session_vwap_enabled=True,
         session_vwap_anchor="RTH",
+        poc_windows=[],
     )
     assert COL_DVWAP in out.columns
     assert COL_DVWAP_RTH in out.columns
@@ -287,7 +288,12 @@ def test_existing_columns_unchanged_when_session_vwap_enabled():
         "ES",
     )
     out_off = compute_all_levels(
-        df, instrument="ES", opening_range_minutes=5, sma_lengths=[2], session_vwap_enabled=False
+        df,
+        instrument="ES",
+        opening_range_minutes=5,
+        sma_lengths=[2],
+        session_vwap_enabled=False,
+        poc_windows=[],
     )
     out_on = compute_all_levels(
         df,
@@ -296,6 +302,7 @@ def test_existing_columns_unchanged_when_session_vwap_enabled():
         sma_lengths=[2],
         session_vwap_enabled=True,
         session_vwap_anchor="RTH",
+        poc_windows=[],
     )
     for col in out_off.columns:
         pd.testing.assert_series_equal(

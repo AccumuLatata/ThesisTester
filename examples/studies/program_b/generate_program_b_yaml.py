@@ -6,9 +6,12 @@ same-bar policy, random baseline omitted). ``--trigger fade`` fills the rest of
 the Run 2 lock table (raise, baseline 50, packet 15s, prefix r2) and **refuses**
 this directory — pass ``--output-dir`` elsewhere.
 
-Wave 7 YAML ``study.levels`` omits ``apoc_profile_source`` (implicit
-``typical_mvp_v1`` / legacy typical-price). Manifest Wave 7 rows stamp
-``apoc_provenance``. Do not rewrite historical research ZIPs.
+Wave 7 YAML ``study.levels`` omits ``apoc_profile_source`` (identity lock).
+Product omitted source is now tick Last×Volume; this packet also omits
+``tick_paths``, so fresh validate / expand / launch refuse with
+``APOC requires ticks``. Manifest Wave 7 rows keep
+``WAVE7_HISTORICAL_PROVENANCE`` (typical) for historical ZIPs. Do not
+rewrite those ZIPs and do not add ``apoc_profile_source`` or ticks.
 """
 
 from __future__ import annotations
@@ -421,7 +424,9 @@ def generate_packet(
                 "Wave 0 solo 15s (AO1)",
                 len(FIFTEEN_S_ANCHORS),
                 "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
-                "# 15s-safe: no pd/pw/pm VA tokens. Tick-gated solos are progB_w0_va.yaml.\n",
+                "# No pd/pw/pm VA tokens. Tick-gated VA solos are progB_w0_va.yaml.\n"
+                "# Names APOC/pAPOC; validate/expand/launch refuse (APOC requires ticks).\n"
+                "# Do not add tick_paths or apoc_profile_source (packet lock).\n",
                 trigger=trigger,
             ),
             solo,
@@ -474,11 +479,11 @@ def generate_packet(
         )
         if wave_key == "w7_apoc":
             extra += (
-                "# APOC object: typical_mvp_v1 (legacy typical-price).\n"
-                "# Historical Wave 7 is not Quantower A-period POC and is not "
-                "tick_last_volume_v1.\n"
-                "# Selected Quantower-compatible source (AP1/AP2) is a different "
-                "study; this packet stays typical.\n"
+                "# Historical ZIP / manifest: typical_mvp_v1 (legacy typical-price).\n"
+                "# Omitted apoc_profile_source is now product tick Last×Volume.\n"
+                "# Packet omits tick_paths; validate/expand/launch refuse "
+                "(APOC requires ticks). Do not add apoc_profile_source or ticks "
+                "(identity lock). Not a Quantower A-period claim.\n"
             )
         target = tick_gated if tick_wave else fifteen_s
         for family, partners in CONFIRMS.items():

@@ -570,17 +570,18 @@ Implementation: `thesistester/levels/session_vwap.py`.
 | `va_source` | Identity key `tick_last` on the hashed levels settings when VA columns are in play. |
 | `dataset.tick_paths` | One or more Quantower Tick–Tick–Last files. Named-VA StudySpec / `run_experiment` refuses without this (`VA requires ticks`). |
 
-Implementation: table in `thesistester/levels/tick_vap.py`; join in `thesistester/levels/profile.py`. Rolling POC is tick Last×Volume on `[now-W+1min, now+1min)` (`thesistester/levels/rolling_poc_tick.py`); missing ticks → all-NaN, never typical. Default APOC is typical-price (`typical_mvp_v1`); opt-in `tick_last_volume_v1` is an A-period tick profile, not this prior-VA family and not rolling POC.
+Implementation: table in `thesistester/levels/tick_vap.py`; join in `thesistester/levels/profile.py`. Rolling POC is tick Last×Volume on `[now-W+1min, now+1min)` (`thesistester/levels/rolling_poc_tick.py`); missing ticks refuse when windows are in play (`rolling POC requires ticks`), never typical. Default APOC is the same tick Last×Volume object (`tick_last_volume_v1`); it is an A-period profile, not this prior-VA family and not rolling POC. Named/product APOC refuses without ticks.
 
 ## A-Period POC (`APOC`, `pAPOC`)
 
 - `APOC` is the POC of the first completed RTH 30-minute bracket.
 - `pAPOC` is the immediately prior observed RTH session's finalized `APOC`.
-- `apoc_profile_source=typical_mvp_v1` (default): 1-minute typical `(H+L+C)/3` full-bar volume.
-- `apoc_profile_source=tick_last_volume_v1` (opt-in): Quantower Tick–Tick–Last Last×Volume inside the A-period. Selected by the AP1 Levels2test scorecard (4/4 exact). Missing tick inputs emit `NaN`.
+- `apoc_profile_source=tick_last_volume_v1` (library/product default): Quantower Tick–Tick–Last Last×Volume inside the A-period. Missing/empty `tick_paths` refuse (`APOC requires ticks`). Unsound prints emit `NaN`.
+- `apoc_profile_source=typical_mvp_v1` (dead/test-only library helper, not a production source): 1-minute typical `(H+L+C)/3` full-bar volume. Product / StudySpec reject it. Not a silent fallback.
 - Implementation: `thesistester/levels/apoc.py`, A-period table in `thesistester/levels/apoc_tick.py`.
-- `apoc_object` (AP3 provenance): `legacy_typical_price` for implicit/explicit
-  `typical_mvp_v1`; `tick_last_volume` for explicit `tick_last_volume_v1`.
+- `apoc_object` (AP3 provenance): `tick_last_volume` for omitted/explicit
+  `tick_last_volume_v1`; `legacy_typical_price` for explicit `typical_mvp_v1`.
+  A missing expansion sidecar still infers typical (historical ZIP contract).
   Recorded on Program B Wave 7 manifest rows and, for fresh expands, on
   `study.expansion.json` as `apoc_provenance`. Not part of `study_identity_hash`.
 

@@ -114,13 +114,28 @@ def _assert_session_poc(
 # ---------------------------------------------------------------------------
 
 
-def test_library_default_source_matches_explicit_typical():
+def test_library_default_source_matches_explicit_tick():
     df = _two_session_bars()
-    implicit = compute_apoc_levels(df, instrument="ES", enabled=True)
+    implicit = compute_apoc_levels(df, instrument="ES", enabled=True, tick_paths=[FIXTURE_TICKS])
     explicit = compute_apoc_levels(
-        df, instrument="ES", enabled=True, apoc_profile_source=TYPICAL_MVP_V1
+        df,
+        instrument="ES",
+        enabled=True,
+        apoc_profile_source=TICK_LAST_VOLUME_V1,
+        tick_paths=[FIXTURE_TICKS],
     )
     pd.testing.assert_frame_equal(implicit, explicit)
+    _assert_session_poc(implicit, df, date(2026, 6, 2), 100.25)
+
+
+def test_library_default_without_ticks_refuses():
+    df = _two_session_bars()
+    with pytest.raises(ValueError, match="APOC requires ticks"):
+        compute_apoc_levels(df, instrument="ES", enabled=True)
+    explicit_typical = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source=TYPICAL_MVP_V1
+    )
+    assert COL_APOC in explicit_typical.columns
 
 
 def test_apoc_profile_source_is_keyword_only():
@@ -188,7 +203,9 @@ def test_tick_source_emits_apoc_and_papoc_from_a_period_table():
         apoc_profile_source=TICK_LAST_VOLUME_V1,
         tick_paths=[FIXTURE_TICKS],
     )
-    typical = compute_apoc_levels(df, instrument="ES", enabled=True)
+    typical = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source=TYPICAL_MVP_V1
+    )
     _assert_session_poc(result, df, date(2026, 6, 2), 100.25)
     _assert_session_poc(result, df, date(2026, 6, 3), 200.25)
 
@@ -204,18 +221,19 @@ def test_tick_source_emits_apoc_and_papoc_from_a_period_table():
     )
 
 
-def test_missing_tick_paths_emit_nan_without_typical_fallback():
+def test_missing_tick_paths_refuse_without_typical_fallback():
     df = _two_session_bars()
-    typical = compute_apoc_levels(df, instrument="ES", enabled=True)
-    missing = compute_apoc_levels(
-        df,
-        instrument="ES",
-        enabled=True,
-        apoc_profile_source=TICK_LAST_VOLUME_V1,
-        tick_paths=None,
+    typical = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source=TYPICAL_MVP_V1
     )
-    assert missing[COL_APOC].isna().all()
-    assert missing[COL_PAPOC].isna().all()
+    with pytest.raises(ValueError, match="APOC requires ticks"):
+        compute_apoc_levels(
+            df,
+            instrument="ES",
+            enabled=True,
+            apoc_profile_source=TICK_LAST_VOLUME_V1,
+            tick_paths=None,
+        )
     assert typical[COL_APOC].notna().any()
 
 
@@ -298,15 +316,22 @@ def test_prior_profile_table_is_not_an_apoc_substitute():
 
 def test_settings_identity_includes_source_algorithm_allocation_and_tick_id():
     implicit = attach_apoc_identity(normalize_levels_config({}, instrument="ES"))
-    typical = attach_apoc_identity(
+    with pytest.raises(ValueError, match="apoc_profile_source"):
         normalize_levels_config({"apoc_profile_source": TYPICAL_MVP_V1}, instrument="ES")
+    typical = attach_apoc_identity(
+        {
+            **normalize_levels_config({}, instrument="ES"),
+            "apoc_profile_source": TYPICAL_MVP_V1,
+        }
     )
     tick = attach_apoc_identity(
         normalize_levels_config({"apoc_profile_source": TICK_LAST_VOLUME_V1}, instrument="ES"),
         tick_paths=[FIXTURE_TICKS],
     )
     assert "apoc_profile_source" not in implicit
-    assert "apoc_algorithm_version" not in implicit
+    assert implicit["apoc_algorithm_version"] == TICK_LAST_VOLUME_V1
+    assert implicit["apoc_allocation"] == APOC_ALLOCATION_LAST_TIMES_VOLUME
+    assert implicit["apoc_tick_source_id"] == TICK_SOURCE_NONE
     assert typical["apoc_profile_source"] == TYPICAL_MVP_V1
     assert typical["apoc_algorithm_version"] == TYPICAL_MVP_V1
     assert typical["apoc_allocation"] == "typical_hlc3_full_volume"
@@ -318,6 +343,9 @@ def test_settings_identity_includes_source_algorithm_allocation_and_tick_id():
     assert APOC_A_PERIOD_POLICY_ID
     assert compute_levels_settings_hash(implicit) != compute_levels_settings_hash(typical)
     assert compute_levels_settings_hash(typical) != compute_levels_settings_hash(tick)
+    pre_cutover = normalize_levels_config({}, instrument="ES")
+    assert "apoc_algorithm_version" not in pre_cutover
+    assert compute_levels_settings_hash(pre_cutover) != compute_levels_settings_hash(implicit)
 
 
 def test_apoc_tick_source_id_is_not_va_table_id():
@@ -662,3 +690,48 @@ def test_page_state_identity_includes_tick_paths_for_tick_source():
     assert page.levels_settings_hash == api.levels_settings_hash
     assert page.levels_settings is not None
     assert page.levels_settings["apoc_tick_source_id"] != TICK_SOURCE_NONE
+
+
+def test_compute_levels_default_apoc_without_ticks_refuses():
+    df = _two_session_bars()
+    with pytest.raises(ValueError, match="APOC requires ticks"):
+        compute_levels(
+            df,
+            instrument="ES",
+            config={"poc_windows": [], "apoc_enabled": True},
+        )
+
+
+def test_compute_levels_rejects_typical_apoc_source():
+    df = _two_session_bars()
+    with pytest.raises(ValueError, match="apoc_profile_source"):
+        compute_levels(
+            df,
+            instrument="ES",
+            config={
+                "poc_windows": [],
+                "apoc_enabled": True,
+                "apoc_profile_source": TYPICAL_MVP_V1,
+            },
+        )
+
+
+def test_run_experiment_named_apoc_without_ticks_refuses(tmp_path):
+    _write_two_session_bars_csv(tmp_path / "bars.csv")
+    spec = _lean_tick_apoc_spec(bars_name="bars.csv", tick_name="unused.csv")
+    spec["dataset"].pop("tick_paths")
+    spec["setup"]["selected_levels"] = ["APOC", "dOpen"]
+    with pytest.raises(ValueError, match="APOC requires ticks"):
+        run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+
+
+def test_run_experiment_15s_only_onh_still_runs(tmp_path):
+    _write_two_session_bars_csv(tmp_path / "bars.csv")
+    spec = _lean_tick_apoc_spec(bars_name="bars.csv", tick_name="unused.csv")
+    spec["dataset"].pop("tick_paths")
+    spec["levels"]["apoc_enabled"] = True
+    spec["setup"]["selected_levels"] = ["dOpen", "RTH_Open"]
+    state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+    assert "APOC" not in state["levels"].columns
+    assert "POC_rolling_30min" not in state["levels"].columns
+    assert "dOpen" in state["levels"].columns

@@ -6,9 +6,10 @@ sliding tick VAP, not a Quantower rolling-widget parity claim (desk has no
 such indicator). It is **not** A-period APOC, **not** prior-session VA, and
 **not** typical ``_rolling_poc``.
 
-Missing, empty, or unreadable ``tick_paths`` emit an all-NaN series (columns
-stay present). A window that contains an unsound tick (off-grid / non-finite /
-non-positive volume) emits ``NaN`` for that bar. There is no typical fallback.
+Missing or empty ``tick_paths`` refuse with ``rolling POC requires ticks``
+when windows are in play (product / ``compute_profile_levels``). Unreadable
+files or a window with an unsound tick (off-grid / non-finite / non-positive
+volume) emit ``NaN`` for that bar. There is no typical fallback.
 
 Do not reuse ``PriorProfileTable`` or ``APeriodTickProfileTable``. Histogram
 bins / lowest-price ties match ``compute_tick_last_volume_profile``; that

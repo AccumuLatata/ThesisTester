@@ -165,6 +165,47 @@ def test_named_va_core_with_tick_paths_validates(core_level):
     assert validated["study"]["factors"]["core_level"] == [core_level]
 
 
+@pytest.mark.parametrize("core_level", ["APOC", "pAPOC"])
+def test_named_apoc_core_without_tick_paths_refuses(core_level):
+    raw = _minimal_study()
+    raw["study"]["factors"]["core_level"] = [core_level]
+    with pytest.raises(StudySpecError, match="APOC requires ticks"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+@pytest.mark.parametrize("core_level", ["APOC", "pAPOC"])
+def test_named_apoc_core_with_tick_paths_validates(core_level):
+    raw = _minimal_study()
+    raw["study"]["factors"]["core_level"] = [core_level]
+    raw["study"]["dataset"]["tick_paths"] = ["data/es_ticks.csv"]
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["core_level"] == [core_level]
+
+
+def test_named_rolling_poc_without_tick_paths_refuses():
+    raw = _minimal_study()
+    raw["study"]["levels"]["poc_windows"] = ["30min"]
+    raw["study"]["factors"]["core_level"] = ["POC_rolling_30min"]
+    with pytest.raises(StudySpecError, match="rolling POC requires ticks"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_named_rolling_poc_with_tick_paths_validates():
+    raw = _minimal_study()
+    raw["study"]["levels"]["poc_windows"] = ["30min"]
+    raw["study"]["factors"]["core_level"] = ["POC_rolling_30min"]
+    raw["study"]["dataset"]["tick_paths"] = ["data/es_ticks.csv"]
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["core_level"] == ["POC_rolling_30min"]
+
+
+def test_onh_study_without_tick_families_validates_on_15s_only():
+    raw = _minimal_study()
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["core_level"] == ["ONH"]
+    assert "tick_paths" not in validated["study"]["dataset"]
+
+
 def test_study_levels_accepts_explicit_apoc_tick_source():
     raw = _minimal_study()
     raw["study"]["levels"]["apoc_profile_source"] = "tick_last_volume_v1"
@@ -175,6 +216,13 @@ def test_study_levels_accepts_explicit_apoc_tick_source():
 def test_study_levels_rejects_bar_range_apoc_proxy():
     raw = _minimal_study()
     raw["study"]["levels"]["apoc_profile_source"] = "bar_range_uniform_volume_v1"
+    with pytest.raises(StudySpecError, match="apoc_profile_source"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_study_levels_rejects_typical_apoc_source():
+    raw = _minimal_study()
+    raw["study"]["levels"]["apoc_profile_source"] = "typical_mvp_v1"
     with pytest.raises(StudySpecError, match="apoc_profile_source"):
         validate_study_spec(normalize_study_spec(raw))
 

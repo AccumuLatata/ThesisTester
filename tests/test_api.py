@@ -149,6 +149,7 @@ def _levels_config() -> dict:
         "ema_timeframes": [],
         "vwap_windows": [],
         "poc_windows": [],
+        "apoc_enabled": False,
     }
 
 
@@ -157,9 +158,18 @@ def test_compute_levels_uses_shared_product_defaults(tmp_path):
     _write_dataset(csv_path)
     data = load_dataset(csv_path, instrument="ES")
 
-    result = compute_levels(data, instrument="ES")
+    with pytest.raises(ValueError, match="requires ticks"):
+        compute_levels(data, instrument="ES")
+
+    result = compute_levels(
+        data,
+        instrument="ES",
+        config={"apoc_enabled": False, "poc_windows": []},
+    )
 
     expected = dict(DEFAULT_LEVELS_SETTINGS)
+    expected["apoc_enabled"] = False
+    expected["poc_windows"] = []
     for key in (
         "sma_timeframes",
         "ema_timeframes",
@@ -174,7 +184,8 @@ def test_compute_levels_uses_shared_product_defaults(tmp_path):
     )
     assert result["levels_settings"] == expected
     assert "dVWAP_RTH" in result["levels"]
-    assert "APOC" in result["levels"]
+    assert "APOC" not in result["levels"]
+    assert "POC_rolling_30min" not in result["levels"]
     assert "dSinglePrint_30m_NearestAbove" in result["levels"]
     assert any(column.startswith("Pivot_") for column in result["levels"])
 

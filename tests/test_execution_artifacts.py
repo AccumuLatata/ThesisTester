@@ -75,7 +75,11 @@ def _data_identity(data: pd.DataFrame, *, format_profile: str = "canonical") -> 
 def _levels_bundle(
     data: pd.DataFrame, identity: DataIdentity
 ) -> tuple[LevelsIdentity, dict, pd.DataFrame, pd.DataFrame]:
-    result = compute_levels(data, instrument=identity.instrument, config={"poc_windows": []})
+    result = compute_levels(
+        data,
+        instrument=identity.instrument,
+        config={"poc_windows": [], "apoc_enabled": False},
+    )
     levels_identity = LevelsIdentity.from_normalized(identity, result["levels_settings"])
     return levels_identity, result["levels_settings"], result["levels"], result["session_levels"]
 

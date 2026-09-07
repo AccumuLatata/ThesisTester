@@ -189,7 +189,6 @@ _KNOWN_LEVEL_COLUMNS = [
     "SMA_2",
     "EMA_2",
     "VWAP_rolling_15min",
-    "POC_rolling_30min",
 ]
 
 
@@ -202,7 +201,7 @@ def _compute_baseline(df):
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         value_area_pct=0.70,
     )
 
@@ -219,7 +218,7 @@ def test_compute_all_levels_no_new_columns_with_default_settings():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         value_area_pct=0.70,
         # All new Stage 1 gates explicitly disabled (matching defaults):
         pivots_enabled=False,
@@ -285,7 +284,7 @@ def test_explicit_disabled_gates_no_new_columns():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         value_area_pct=0.70,
         pivots_enabled=False,
         session_vwap_enabled=False,

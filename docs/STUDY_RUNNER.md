@@ -26,9 +26,10 @@ example is legacy 1m). Execute is still CLI / `run_experiment`. Studies does
 not walk the Data page. The 15s-primary derive loader resolves OHLC-identical
 source duplicate opens (lowest volume) before 1m derivation; OHLC conflicts
 fail the cell. Optional `dataset.tick_paths` (Quantower Tick–Tick–Last list)
-is required only when factors name `pdVA*` / `pw*` / `pm*` tokens; generate
-refuses without it (`VA requires ticks`). New drafts omit the key. Launch
-pins the list like `dataset.path` and refuses missing files.
+is required when factors name `pdVA*` / `pw*` / `pm*`, `APOC` / `pAPOC`,
+or `POC_rolling_*`; generate refuses without it (`requires ticks`). New
+drafts omit the key. Launch pins the list like `dataset.path` and refuses
+missing files. 15s-only studies that name none of those families still run.
 **SV** (Study Viewer) SV1–SV5 ✅
 `docs/STUDY_VIEWER_IMPLEMENTATION_PLAN.md`. SV0–**SV5** shipped (catalog +
 `study list` + click-to-load + quality panes + overview charts + cell peek +
@@ -141,7 +142,9 @@ A core/partner token is valid if it is in:
    (`STATIC_STUDY_LEVEL_NAMES` in `thesistester/levels/catalog.py`;
    `STUDY_STATIC_LEVEL_NAMES` is that set). Rolling VWAP/POC are not static.
    Naming any of those nine VA tokens without `dataset.tick_paths` fails
-   generate (`VA requires ticks`). The tokens stay in the catalog.
+   generate (`VA requires ticks`). Named `APOC` / `pAPOC` refuse
+   (`APOC requires ticks`); named `POC_rolling_*` refuse
+   (`rolling POC requires ticks`). The tokens stay in the catalog.
 2. **Implied by `study.levels`** — `SMA_{len}_{tf}` / `EMA_{len}_{tf}` from
    lengths×timeframes (`null` timeframes → bare `SMA_{len}` / `EMA_{len}` like
    the levels engine; explicit `[]` → no MA tokens), plus `VWAP_rolling_*` /

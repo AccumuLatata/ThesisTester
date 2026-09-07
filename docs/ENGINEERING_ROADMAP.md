@@ -33,8 +33,8 @@ Assistant-related contracts:
 | Journal → Study (zones / triggers / proposal) | `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS) | **JS2 landed** (JS0 locked, JS1 landed). Zone attribution + trigger inference (`classify_zone_triggers` wrapper; 1m + `15s_proxy`) + Q3 Zones / Inferred trigger + CLI `journal zones` / `journal triggers`. Gate A can stop after JS2. No 15s trigger lane; no golden regen |
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
-| A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP3 implemented.** Default APOC remains `typical_mvp_v1`. Opt-in `tick_last_volume_v1` is the AP1-selected Quantower source. Program B Wave 7 packets are labeled legacy typical-price; historical ZIPs are not rewritten. |
-| Rolling POC Quantower parity | `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md` (RP) | **RP2 default tick Last×Volume (desk amendment).** No QT sliding oracle; no RP2-cancel. Missing ticks → all-NaN `POC_rolling_*`. `_rolling_poc` body untouched (not the product path). APOC default stays typical. No golden regen. |
+| A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP3 + desk default-tick follow-up.** Library/product default is `tick_last_volume_v1`. Named/product APOC refuses without ticks (`APOC requires ticks`); no typical fallback. `LEVEL_ENGINE_VERSION` stays 11 (identity keys). Wave 7 omits source + ticks (identity lock) and refuses on fresh validate; historical ZIPs stay typical-labeled. |
+| Rolling POC Quantower parity | `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md` (RP) | **RP2 default tick Last×Volume + VA-style refuse.** No QT sliding oracle; no RP2-cancel. Missing ticks refuse when rolling is required (`rolling POC requires ticks`), not all-NaN as the product path. `_rolling_poc` body untouched. Not a Quantower rolling-widget claim. |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1492,8 +1492,9 @@ VAP, tick VWAP, bid/ask VAP.
 The desk observed a mismatch between Quantower A-period POC and ThesisTester's
 one-minute typical-price APOC. AP1 compared candidates; the written Levels2test
 scorecard selected **tick Last×Volume** (4/4 exact) and rejected the 15s
-bar-range proxy (2/4). AP2 adds that source as an explicit opt-in. Product
-default APOC is still typical-price. Do not present a bar proxy as
+bar-range proxy (2/4). AP2 added that source as an explicit opt-in. Desk amendment 2026-09-07
+cut the library/product default over to tick Last×Volume and refuses
+without ticks (VA-style). Do not present a bar proxy as
 Quantower-compatible.
 
 **Canonical spec:** `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md`
@@ -1507,9 +1508,10 @@ Quantower-compatible.
 
 **Regression posture:** preserve the disabled APOC no-op, A-period/RTH/ETH
 availability, pAPOC freeze, and unrelated level families. Goldens remain
-unchanged. Product default source is unchanged (`typical_mvp_v1`); no
-`LEVEL_ENGINE_VERSION` bump. Missing tick inputs under the selected source
-emit `NaN`, never legacy typical APOC.
+unchanged. Desk follow-up: omitted source is tick; `LEVEL_ENGINE_VERSION`
+stays 11 (identity keys change the hash). Missing tick inputs refuse when
+APOC is required (`APOC requires ticks`), never silent typical.
+`typical_mvp_v1` is dead/test-only, not a production source.
 
 ## Rolling POC Quantower parity (RP0–RP2) — RP2 default tick landed
 
@@ -1533,11 +1535,12 @@ has already dropped 09:30. Quantower Step 30m is the A-period’s cousin
 | RP2-cancel | **Not opened** — desk amendment superseded retain-typical |
 
 **Regression posture:** default rolling POC is tick Last×Volume. No ticks →
-all-NaN `POC_rolling_*` (columns present). Typical `_rolling_poc` is not the
-product path. TV3 VA omit/fail-closed unchanged. Default APOC remains typical.
+refuse when rolling is required (`rolling POC requires ticks`), not all-NaN
+as the product path. Typical `_rolling_poc` is not the product path. TV3 VA
+omit/fail-closed unchanged. Default APOC is the same tick+refuse posture.
 Goldens: no regen (`run_legacy_pipeline` does not call `compute_all_levels`).
-`LEVEL_ENGINE_VERSION` stays 11; rolling identity keys change the settings
-hash. Do not reuse `PriorProfileTable` or `APeriodTickProfileTable`.
+`LEVEL_ENGINE_VERSION` stays 11; identity keys change the settings hash.
+Do not reuse `PriorProfileTable` or `APeriodTickProfileTable`.
 
 ## Trade Journal (TJ0–TJ9) — TJ9 landed (series complete)
 

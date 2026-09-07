@@ -44,11 +44,12 @@ APOC_A_PERIOD_POLICY_ID: Final[str] = "rth_a_period_30m_v1"
 
 APOC_PROFILE_SOURCE_TYPICAL_MVP_V1: Final[str] = TYPICAL_MVP_V1
 APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1: Final[str] = TICK_LAST_VOLUME_V1
-APOC_PROFILE_SOURCES: Final[frozenset[str]] = frozenset(
-    {
-        APOC_PROFILE_SOURCE_TYPICAL_MVP_V1,
-        APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
-    }
+# Desk production allowlist. ``typical_mvp_v1`` is a dead/test-only helper
+# (Stage 5 typical math / historical ZIP labels). Product, StudySpec, and
+# ``normalize_levels_config`` reject it so defaults cannot select typical.
+APOC_PROFILE_SOURCES: Final[frozenset[str]] = frozenset({APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1})
+APOC_PROFILE_SOURCES_TEST_ONLY: Final[frozenset[str]] = frozenset(
+    {APOC_PROFILE_SOURCE_TYPICAL_MVP_V1}
 )
 
 APOC_ALLOCATION_TYPICAL_HLC3: Final[str] = "typical_hlc3_full_volume"
@@ -169,16 +170,19 @@ def attach_apoc_identity(
     apoc_tick_source_id: str | None = None,
     format_profile: str = TICK_FORMAT_PROFILE,
 ) -> dict[str, Any]:
-    """Put APOC source / algorithm / allocation / tick-input id in the hash dict.
+    """Stamp APOC tick identity into the hashed settings dict.
 
-    Implicit typical (key omitted) is a no-op so pre-AP2 settings hashes and
-    persisted typical APOC identity stay unchanged. Identity keys attach only
-    when ``apoc_profile_source`` is explicit.
+    Always attaches. Implicit omitted source is tick Last×Volume (desk
+    default), not typical. ``typical_mvp_v1`` is test-only identity, not a
+    product default. Identity keys are stripped before
+    ``compute_all_levels``. ``LEVEL_ENGINE_VERSION`` stays 11; the settings
+    hash changes via these keys.
     """
     attached = dict(settings)
-    if "apoc_profile_source" not in attached:
-        return attached
-    source = str(attached.get("apoc_profile_source") or APOC_PROFILE_SOURCE_TYPICAL_MVP_V1)
+    if "apoc_profile_source" in attached:
+        source = resolve_apoc_profile_source(attached.get("apoc_profile_source"))
+    else:
+        source = APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
     algorithm, allocation = _SOURCE_META.get(
         source,
         (source, "unknown"),
@@ -197,16 +201,23 @@ def attach_apoc_identity(
 
 
 def resolve_apoc_profile_source(value: object | None) -> str:
-    """Return a supported versioned source, or raise."""
+    """Return a supported versioned source, or raise.
+
+    Blank / omitted resolves to ``tick_last_volume_v1``. ``typical_mvp_v1``
+    is a dead/test-only library helper (not a production source). Product
+    ``normalize_levels_config`` / StudySpec / ``validate_run_spec`` reject
+    it. This resolver still accepts it so Stage 5 typical-math tests can
+    call ``compute_apoc_levels`` directly.
+    """
     if value is None or (isinstance(value, str) and not value.strip()):
-        return APOC_PROFILE_SOURCE_TYPICAL_MVP_V1
+        return APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
     source = str(value)
-    if source not in APOC_PROFILE_SOURCES:
-        raise ValueError(
-            f"Unsupported apoc_profile_source: {source!r}. "
-            f"Supported sources: {sorted(APOC_PROFILE_SOURCES)}"
-        )
-    return source
+    if source in APOC_PROFILE_SOURCES or source in APOC_PROFILE_SOURCES_TEST_ONLY:
+        return source
+    raise ValueError(
+        f"Unsupported apoc_profile_source: {source!r}. "
+        f"Supported production sources: {sorted(APOC_PROFILE_SOURCES)}"
+    )
 
 
 def build_a_period_tick_profile_table(

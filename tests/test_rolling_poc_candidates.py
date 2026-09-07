@@ -137,17 +137,24 @@ def test_typical_0959_equals_a_period_helper_and_apoc_at_1000():
     a_period = select_a_period_rows(bars, session_date=SESSION, exchange_tz=TZ)
     comparison = compare_rolling_poc_candidates(bars, now=now, window=WINDOW, tick_size=TICK_SIZE)
     typical = comparison.candidates[TYPICAL_MVP_V1]
-    levels = compute_all_levels(bars, instrument="ES", poc_windows=["30min"], apoc_enabled=True)
+    levels = compute_all_levels(
+        bars,
+        instrument="ES",
+        poc_windows=[],
+        apoc_enabled=True,
+        apoc_profile_source=TYPICAL_MVP_V1,
+    )
 
     assert _opens(members) == _opens(a_period)
     assert typical.poc == pytest.approx(103.75)
     assert typical.poc == pytest.approx(_compute_a_period_poc(members, TICK_SIZE))
     stamp_0959 = levels["timestamp"] == now
-    assert math.isnan(float(levels.loc[stamp_0959, "POC_rolling_30min"].iloc[0]))
     apoc_0959 = float(levels.loc[stamp_0959, COL_APOC].iloc[0])
     apoc_1000 = float(levels.loc[levels["timestamp"] == _ts(10, 0), COL_APOC].iloc[0])
     assert math.isnan(apoc_0959)
     assert typical.poc == pytest.approx(apoc_1000)
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_all_levels(bars, instrument="ES", poc_windows=["30min"], apoc_enabled=False)
 
 
 # --- §8.1 item 3 -------------------------------------------------------------
@@ -158,16 +165,22 @@ def test_typical_1000_differs_from_production_apoc_on_competing_fixture():
     comparison = compare_rolling_poc_candidates(
         bars, now=_ts(10, 0), window=WINDOW, tick_size=TICK_SIZE
     )
-    levels = compute_all_levels(bars, instrument="ES", poc_windows=["30min"], apoc_enabled=True)
+    levels = compute_all_levels(
+        bars,
+        instrument="ES",
+        poc_windows=[],
+        apoc_enabled=True,
+        apoc_profile_source=TYPICAL_MVP_V1,
+    )
     stamp = levels["timestamp"] == _ts(10, 0)
     apoc_1000 = float(levels.loc[stamp, COL_APOC].iloc[0])
     typical = comparison.candidates[TYPICAL_MVP_V1]
-    production = float(levels.loc[stamp, "POC_rolling_30min"].iloc[0])
 
     assert typical.poc == pytest.approx(200.00)
-    assert math.isnan(production)
     assert apoc_1000 == pytest.approx(103.75)
     assert typical.poc != pytest.approx(apoc_1000)
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_all_levels(bars, instrument="ES", poc_windows=["30min"], apoc_enabled=False)
 
 
 # --- §8.1 item 4 -------------------------------------------------------------
@@ -359,12 +372,12 @@ def test_15s_typical_is_labeled_after_typical_mvp_v1_call():
 
 def test_isolation_production_rolling_poc_series_equal_and_va_omitted():
     df = _phase3_simple_dataset()
-    before = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
     import thesistester.levels.rolling_poc_candidates as rpc
 
-    after = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
-    pd.testing.assert_series_equal(before["POC_rolling_30min"], after["POC_rolling_30min"])
-    assert after["POC_rolling_30min"].isna().all()
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    before = compute_profile_levels(df, instrument="ES", rolling_windows=[])
+    after = compute_profile_levels(df, instrument="ES", rolling_windows=[])
     for name in PRIOR_PROFILE_LEVEL_NAMES:
         assert name not in before.columns
         assert name not in after.columns

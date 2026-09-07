@@ -27,13 +27,15 @@ POINT_VALUE = 50.0
 # Touch-run bundle pin for tests.fixtures.assistant_parity.
 # Job: pin the current touch run_experiment hash so DA4 fade cannot leak
 # ``approach_side`` into touch. Pre-DA4 capture was 50f9d271…; pre-RP2 main
-# already drifted (07d5304f… on some trees). RP2 always stamps rolling
-# identity keys (tick Last×Volume; typical rolling is obsolete), so this is
-# the post-RP2 identity-aware pin. Scoped by pandas major — frame bytes
-# differ on 2 vs 3 (same rule as test_golden_master.py).
-_POST_RP2_TOUCH_BUNDLE_HASH_BY_PANDAS_MAJOR = {
-    2: "2628bb5c2bf0d2469f0cf76bc73657cbd042556e535d78c60de8dd49c923f4c1",
-    3: "6af2f3fc670414a798733dccd70559eaf1154489cb43cb415f139b61de1ec949",
+# already drifted (07d5304f… on some trees). Desk tick-default follow-up
+# stamps APOC identity even when apoc_enabled=False (LEVEL_ENGINE_VERSION
+# stays 11) and parity 15s-only specs disable APOC so they do not refuse.
+# Scoped by pandas major — frame bytes differ on 2 vs 3.
+# pandas 2: CI py3.10 after this PR (baf96592…); previous RP2 pin 2628bb5c…
+# no longer matches once omitted APOC identity is always tick.
+_POST_TICK_DEFAULT_TOUCH_BUNDLE_HASH_BY_PANDAS_MAJOR = {
+    2: "baf96592f42133c8dd770e113fd41d8709e213e776af7663c50a6a97b8ca6be9",
+    3: "15d12f6b9f18da2c21b9cb5b8276e945eccbe89d3ab7e622e4f0d4d63e9a8724",
 }
 
 
@@ -303,7 +305,7 @@ def test_touch_run_experiment_bundle_hash_matches_pre_da4_capture():
         assert settings["rolling_poc_allocation"] == "last_times_volume"
         digest = canonical_bundle_hash(build_research_bundle(state))
         pandas_major = int(pd.__version__.split(".", maxsplit=1)[0])
-        expected = _POST_RP2_TOUCH_BUNDLE_HASH_BY_PANDAS_MAJOR.get(pandas_major)
+        expected = _POST_TICK_DEFAULT_TOUCH_BUNDLE_HASH_BY_PANDAS_MAJOR.get(pandas_major)
         if expected is None:
             pytest.skip(f"touch bundle hash is pandas-major-scoped: current={pandas_major}")
         assert digest == expected

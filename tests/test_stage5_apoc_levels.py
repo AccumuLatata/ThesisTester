@@ -227,18 +227,19 @@ def test_disabled_ignores_unknown_profile_source():
     assert len(result.columns) == 0
 
 
-def test_explicit_typical_source_matches_unnamed_default():
+def test_unnamed_default_refuses_without_ticks():
     df = _single_session_fixture()
-    unnamed = compute_apoc_levels(df, instrument="ES", enabled=True)
+    with pytest.raises(ValueError, match="APOC requires ticks"):
+        compute_apoc_levels(df, instrument="ES", enabled=True)
     named = compute_apoc_levels(
         df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
     )
-    pd.testing.assert_frame_equal(unnamed, named)
+    assert COL_APOC in named.columns
 
 
 def test_compute_all_levels_apoc_disabled_no_apoc_columns():
     df = tag_session(_base_df(), "ES")
-    out = compute_all_levels(df, instrument="ES", apoc_enabled=False)
+    out = compute_all_levels(df, instrument="ES", apoc_enabled=False, poc_windows=[])
     assert "APOC" not in out.columns
     assert "pAPOC" not in out.columns
 
@@ -250,26 +251,34 @@ def test_compute_all_levels_apoc_disabled_no_apoc_columns():
 
 def test_apoc_enabled_returns_exactly_apoc_and_papoc():
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
     assert set(result.columns) == {COL_APOC, COL_PAPOC}
 
 
 def test_apoc_column_names_are_exact():
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
     assert COL_APOC in result.columns
     assert COL_PAPOC in result.columns
 
 
 def test_apoc_output_no_extra_columns():
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
     assert len(result.columns) == 2
 
 
 def test_apoc_column_dtypes_are_float():
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
     assert result[COL_APOC].dtype == np.float64
     assert result[COL_PAPOC].dtype == np.float64
 
@@ -282,6 +291,8 @@ def test_compute_all_levels_sp_and_apoc_enabled_six_independent_columns():
         instrument="ES",
         single_prints_enabled=True,
         apoc_enabled=True,
+        apoc_profile_source="typical_mvp_v1",
+        poc_windows=[],
     )
     for col in SINGLE_PRINT_COLUMNS:
         assert col in out.columns, f"Missing Single Print column: {col}"
@@ -299,7 +310,9 @@ def test_compute_all_levels_sp_and_apoc_enabled_six_independent_columns():
 def test_apoc_is_nan_before_a_period_completion():
     """APOC must be NaN for bars before timestamp >= RTH_open + 30min."""
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     # Rows are returned in sorted timestamp order.
     # Rows 0 and 1 correspond to 09:30 and 09:45 (both inside A-period, before 10:00).
@@ -310,7 +323,9 @@ def test_apoc_is_nan_before_a_period_completion():
 def test_apoc_appears_at_a_period_completion():
     """APOC must appear at or after RTH_open + 30min (timestamp >= 10:00)."""
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     # Row 2 corresponds to 10:00 (first bar at/after A-period completion).
     assert not math.isnan(result[COL_APOC].iloc[2]), "10:00 bar should have non-NaN APOC"
@@ -319,7 +334,9 @@ def test_apoc_appears_at_a_period_completion():
 def test_apoc_correct_value_matches_profile_poc():
     """APOC must equal the POC computed from A-period bars using the profile approximation."""
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     # All bars from 10:00 onward should have APOC = 100.75.
     for i in range(2, len(result)):
@@ -331,7 +348,9 @@ def test_apoc_correct_value_matches_profile_poc():
 def test_apoc_does_not_change_for_later_rth_bars():
     """APOC must not change after A-period completion — it is frozen for the session."""
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     apoc_values = result[COL_APOC].iloc[2:].dropna()
     assert (apoc_values == apoc_values.iloc[0]).all(), "APOC must remain constant after A-period"
@@ -346,7 +365,9 @@ def test_apoc_zero_volume_a_period_returns_nan():
         _rth_bar(_rth_ts("2026-06-02", 10, 30), high=101.0, low=100.0, close=100.5, volume=10),
     ]
     df = pd.DataFrame(rows)
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     # All bars (including post-A-period) should have NaN APOC since A-period had no volume.
     assert result[COL_APOC].isna().all(), "Zero-volume A-period should produce NaN APOC"
@@ -360,7 +381,9 @@ def test_apoc_missing_a_period_returns_nan():
         _rth_bar(_rth_ts("2026-06-02", 11, 0), high=101.0, low=100.0, close=100.5, volume=10),
     ]
     df = pd.DataFrame(rows)
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     assert result[COL_APOC].isna().all(), "No A-period bars → NaN APOC for all rows"
 
@@ -373,7 +396,9 @@ def test_apoc_missing_a_period_returns_nan():
 def test_papoc_in_session2_equals_session1_apoc():
     """Session 2 pAPOC must equal session 1 APOC."""
     df = _two_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     sorted_df = df.sort_values("timestamp").reset_index(drop=True)
     s2_rth_mask = (sorted_df["session"] == "RTH") & (
@@ -388,7 +413,9 @@ def test_papoc_in_session2_equals_session1_apoc():
 def test_papoc_appears_from_session2_rth_open():
     """pAPOC must be available from the first RTH bar of session 2."""
     df = _two_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     sorted_df = df.sort_values("timestamp").reset_index(drop=True)
     s2_first_rth_idx = sorted_df[
@@ -404,7 +431,9 @@ def test_papoc_appears_from_session2_rth_open():
 def test_papoc_remains_frozen_through_session2():
     """pAPOC must remain constant for all RTH bars in session 2."""
     df = _two_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     sorted_df = df.sort_values("timestamp").reset_index(drop=True)
     s2_rth_mask = (sorted_df["session"] == "RTH") & (
@@ -420,7 +449,9 @@ def test_papoc_remains_frozen_through_session2():
 def test_papoc_nan_when_no_prior_session():
     """Session 1 pAPOC must be NaN (no prior session exists)."""
     df = _single_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     rth_rows = result[COL_PAPOC]
     assert rth_rows.isna().all(), "pAPOC must be NaN for session 1 (no prior session)"
@@ -445,7 +476,9 @@ def test_papoc_nan_when_prior_session_has_no_valid_apoc():
     rows.append(_rth_bar(_rth_ts(s2, 11, 0), high=106.0, low=105.0, close=105.5, volume=30))
 
     df = pd.DataFrame(rows)
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     sorted_df = df.sort_values("timestamp").reset_index(drop=True)
     s2_rth_mask = (sorted_df["session"] == "RTH") & (
@@ -472,7 +505,9 @@ def test_eth_bars_do_not_contribute_to_apoc():
     rows.append(_rth_bar(_rth_ts(s, 10, 0), high=100.5, low=99.5, close=100.0, volume=10))
 
     df = pd.DataFrame(rows)
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     sorted_df = df.sort_values("timestamp").reset_index(drop=True)
     post_a_mask = (sorted_df["session"] == "RTH") & (
@@ -490,7 +525,9 @@ def test_eth_bars_do_not_contribute_to_apoc():
 def test_non_rth_bars_emit_nan():
     """Non-RTH (ETH) bars must have NaN for both APOC and pAPOC."""
     df = _two_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     sorted_df = df.sort_values("timestamp").reset_index(drop=True)
     eth_mask = sorted_df["session"] == "ETH"
@@ -502,7 +539,9 @@ def test_session_column_absent_derives_from_instrument_config():
     """compute_apoc_levels must work when session column is absent."""
     df = _single_session_fixture()
     df_no_session = df.drop(columns=["session"])
-    result = compute_apoc_levels(df_no_session, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df_no_session, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     assert set(result.columns) == {COL_APOC, COL_PAPOC}
     # Should still produce valid APOC at 10:00+.
@@ -533,7 +572,9 @@ def test_apoc_tie_breaking_uses_lowest_price_bin():
         _rth_bar(_rth_ts("2026-06-02", 10, 0), high=100.5, low=100.0, close=100.25, volume=10),
     ]
     df = pd.DataFrame(rows)
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     sorted_df = df.sort_values("timestamp").reset_index(drop=True)
     post_a_mask = sorted_df["timestamp"] >= pd.Timestamp("2026-06-02 10:00:00", tz=TZ)
@@ -554,14 +595,18 @@ def test_apoc_tie_breaking_uses_lowest_price_bin():
 def test_future_shock_appending_current_session_bars_does_not_change_apoc():
     """Appending more bars to the current session must not alter prior APOC values."""
     df_base = _single_session_fixture()
-    result_base = compute_apoc_levels(df_base, instrument="ES", enabled=True)
+    result_base = compute_apoc_levels(
+        df_base, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     # Append a future bar in the same session with very different price/volume.
     extra = pd.DataFrame(
         [_rth_bar(_rth_ts("2026-06-02", 14, 0), high=200.0, low=150.0, close=175.0, volume=9999)]
     )
     df_extended = pd.concat([df_base, extra], ignore_index=True)
-    result_extended = compute_apoc_levels(df_extended, instrument="ES", enabled=True)
+    result_extended = compute_apoc_levels(
+        df_extended, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     # Values for the original rows (first 5 rows when sorted) must be unchanged.
     orig_len = len(df_base)
@@ -579,14 +624,18 @@ def test_future_shock_appending_current_session_bars_does_not_change_apoc():
 def test_future_shock_appending_next_session_bars_does_not_change_papoc():
     """Appending next-session bars must not alter prior session APOC/pAPOC values."""
     df_two = _two_session_fixture()
-    result_two = compute_apoc_levels(df_two, instrument="ES", enabled=True)
+    result_two = compute_apoc_levels(
+        df_two, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     # Append a bar in a third session.
     extra = pd.DataFrame(
         [_rth_bar(_rth_ts("2026-06-04", 9, 30), high=200.0, low=150.0, close=175.0, volume=9999)]
     )
     df_extended = pd.concat([df_two, extra], ignore_index=True)
-    result_extended = compute_apoc_levels(df_extended, instrument="ES", enabled=True)
+    result_extended = compute_apoc_levels(
+        df_extended, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
 
     # All original rows' APOC and pAPOC values must be unchanged.
     orig_len = len(df_two)
@@ -617,7 +666,7 @@ def test_existing_level_outputs_unchanged_when_apoc_disabled():
         sma_lengths=[3],
         ema_lengths=[3],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         apoc_enabled=False,
     )
     out_with_apoc = compute_all_levels(
@@ -626,8 +675,9 @@ def test_existing_level_outputs_unchanged_when_apoc_disabled():
         sma_lengths=[3],
         ema_lengths=[3],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         apoc_enabled=True,
+        apoc_profile_source="typical_mvp_v1",
     )
 
     shared_cols = [c for c in out_without_apoc.columns if c in out_with_apoc.columns]
@@ -645,10 +695,15 @@ def test_single_print_outputs_unchanged_when_apoc_enabled():
     df = _two_session_fixture()
 
     out_sp_only = compute_all_levels(
-        df, instrument="ES", single_prints_enabled=True, apoc_enabled=False
+        df, instrument="ES", single_prints_enabled=True, apoc_enabled=False, poc_windows=[]
     )
     out_sp_and_apoc = compute_all_levels(
-        df, instrument="ES", single_prints_enabled=True, apoc_enabled=True
+        df,
+        instrument="ES",
+        single_prints_enabled=True,
+        apoc_enabled=True,
+        apoc_profile_source="typical_mvp_v1",
+        poc_windows=[],
     )
 
     for col in SINGLE_PRINT_COLUMNS:
@@ -664,7 +719,7 @@ def test_single_print_outputs_unchanged_when_apoc_enabled():
 def test_no_apoc_columns_without_explicit_enable():
     """APOC columns must not appear unless apoc_enabled=True."""
     df = tag_session(_base_df(), "ES")
-    out = compute_all_levels(df, instrument="ES")
+    out = compute_all_levels(df, instrument="ES", poc_windows=[])
     assert COL_APOC not in out.columns
     assert COL_PAPOC not in out.columns
 
@@ -686,7 +741,13 @@ def test_compute_tpo_levels_apoc_enabled_raises_value_error():
 def test_apoc_column_present_when_enabled_via_compute_all():
     """APOC and pAPOC columns must be present when apoc_enabled=True in compute_all_levels."""
     df = tag_session(_base_df(), "ES")
-    out = compute_all_levels(df, instrument="ES", apoc_enabled=True)
+    out = compute_all_levels(
+        df,
+        instrument="ES",
+        apoc_enabled=True,
+        apoc_profile_source="typical_mvp_v1",
+        poc_windows=[],
+    )
     assert COL_APOC in out.columns
     assert COL_PAPOC in out.columns
 
@@ -698,13 +759,15 @@ def test_apoc_column_present_when_enabled_via_compute_all():
 
 def test_enabled_requires_tz_aware_timestamp():
     with pytest.raises(ValueError, match="timezone-aware"):
-        compute_apoc_levels(_naive_df(), enabled=True)
+        compute_apoc_levels(_naive_df(), enabled=True, apoc_profile_source="typical_mvp_v1")
 
 
 def test_enabled_requires_supported_instrument():
     df = tag_session(_base_df(), "ES")
     with pytest.raises(ValueError, match="Unsupported instrument"):
-        compute_apoc_levels(df, instrument="UNSUPPORTED", enabled=True)
+        compute_apoc_levels(
+            df, instrument="UNSUPPORTED", enabled=True, apoc_profile_source="typical_mvp_v1"
+        )
 
 
 def test_nq_instrument_supported():
@@ -716,14 +779,18 @@ def test_nq_instrument_supported():
         _rth_bar(_rth_ts("2026-06-02", 10, 0), high=18050.0, low=17950.0, close=18000.0, volume=50),
     ]
     df = pd.DataFrame(rows)
-    result = compute_apoc_levels(df, instrument="NQ", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="NQ", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
     assert set(result.columns) == {COL_APOC, COL_PAPOC}
 
 
 def test_output_index_length_matches_sorted_input():
     """Output row count must equal input row count."""
     df = _two_session_fixture()
-    result = compute_apoc_levels(df, instrument="ES", enabled=True)
+    result = compute_apoc_levels(
+        df, instrument="ES", enabled=True, apoc_profile_source="typical_mvp_v1"
+    )
     assert len(result) == len(df)
 
 

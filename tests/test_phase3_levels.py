@@ -241,8 +241,8 @@ def test_rolling_vwap_correctness_on_small_dataset():
     assert np.allclose(out["VWAP_rolling_3min"].to_numpy(), expected)
 
 
-def test_rolling_poc_without_ticks_is_all_nan():
-    """Production rolling POC is tick-only; no tick_paths → columns present, all-NaN."""
+def test_rolling_poc_without_ticks_refuses():
+    """Production rolling POC is tick-only; no tick_paths → refuse."""
     ts = pd.date_range("2026-06-02 09:00:00", periods=4, freq="10min", tz=TZ)
     df = pd.DataFrame(
         {
@@ -254,8 +254,8 @@ def test_rolling_poc_without_ticks_is_all_nan():
             "volume": [10.0, 5.0, 20.0, 1.0],
         }
     )
-    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
-    assert out["POC_rolling_30min"].isna().all()
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
 
 
 def _tick_chunk_from_bars(df: pd.DataFrame, *, instrument: str = "ES") -> list[TickChunk]:
@@ -302,10 +302,10 @@ def _table_from_bars(df: pd.DataFrame, **kwargs):
 
 def test_prior_profile_columns_omitted_without_table():
     df = _multi_period_profile_df()
-    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    out = compute_profile_levels(df, instrument="ES", rolling_windows=[])
     for name in PRIOR_PROFILE_LEVEL_NAMES:
         assert name not in out.columns
-    assert "POC_rolling_30min" in out.columns
+    assert "POC_rolling_30min" not in out.columns
 
 
 def test_prior_day_profile_levels_use_completed_prior_day_only():
@@ -333,7 +333,7 @@ def test_prior_day_profile_levels_use_completed_prior_day_only():
     out = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         prior_profile_table=_table_from_bars(df),
     )
     assert set(PRIOR_PROFILE_LEVEL_NAMES) <= set(out.columns)
@@ -366,7 +366,7 @@ def test_prior_day_profile_levels_use_trading_session_boundary():
     out = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         prior_profile_table=_table_from_bars(df),
     )
     session2 = out[out["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
@@ -398,7 +398,7 @@ def test_prior_week_profile_levels_use_trading_session_week_boundary():
     out = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         prior_profile_table=_table_from_bars(df),
     )
     new_week = out[out["timestamp"] >= pd.Timestamp("2026-06-07 18:00:00", tz=TZ)]
@@ -430,7 +430,7 @@ def test_prior_month_profile_levels_use_trading_session_month_boundary():
     out = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         prior_profile_table=_table_from_bars(df),
     )
     new_month = out[out["timestamp"] >= pd.Timestamp("2026-06-30 18:00:00", tz=TZ)]
@@ -457,7 +457,7 @@ def test_value_area_returns_sensible_bounds_around_poc():
     out = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         value_area_pct=0.70,
         prior_profile_table=_table_from_bars(df),
     )
@@ -474,14 +474,14 @@ def test_prior_profile_aggregation_defaults_preserve_existing_behavior():
     baseline = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         value_area_pct=0.70,
         prior_profile_table=table,
     )
     explicit_defaults = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         value_area_pct=0.70,
         prior_day_aggregation_ticks=1,
         prior_week_aggregation_ticks=1,
@@ -490,7 +490,6 @@ def test_prior_profile_aggregation_defaults_preserve_existing_behavior():
     )
 
     profile_columns = [
-        "POC_rolling_30min",
         "pdVAH",
         "pdVAL",
         "pdPOC",
@@ -510,14 +509,14 @@ def test_prior_day_aggregation_changes_only_prior_day_profile_levels():
     baseline = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         value_area_pct=0.70,
         prior_profile_table=_table_from_bars(df, prior_day_aggregation_ticks=1),
     )
     changed = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         value_area_pct=0.70,
         prior_day_aggregation_ticks=4,
         prior_profile_table=_table_from_bars(df, prior_day_aggregation_ticks=4),
@@ -563,14 +562,14 @@ def test_prior_profile_aggregation_settings_are_independent(
     baseline = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         value_area_pct=0.70,
         prior_profile_table=_table_from_bars(df),
     )
     changed = compute_profile_levels(
         df,
         instrument="ES",
-        rolling_windows=["30min"],
+        rolling_windows=[],
         value_area_pct=0.70,
         prior_profile_table=_table_from_bars(df, **kwargs),
         **kwargs,
@@ -587,23 +586,20 @@ def test_prior_profile_aggregation_settings_are_independent(
     pd.testing.assert_frame_equal(baseline[unchanged_columns], changed[unchanged_columns])
 
 
-def test_rolling_poc_is_unaffected_by_prior_profile_aggregation_settings():
+def test_rolling_poc_without_ticks_refuses_regardless_of_aggregation_settings():
     df = _multi_period_profile_df()
-
-    baseline = compute_profile_levels(
-        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
-    )
-    changed = compute_profile_levels(
-        df,
-        instrument="ES",
-        rolling_windows=["30min"],
-        value_area_pct=0.70,
-        prior_day_aggregation_ticks=4,
-        prior_week_aggregation_ticks=10,
-        prior_month_aggregation_ticks=10,
-    )
-
-    pd.testing.assert_series_equal(baseline["POC_rolling_30min"], changed["POC_rolling_30min"])
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(
+            df,
+            instrument="ES",
+            rolling_windows=["30min"],
+            value_area_pct=0.70,
+            prior_day_aggregation_ticks=4,
+            prior_week_aggregation_ticks=10,
+            prior_month_aggregation_ticks=10,
+        )
 
 
 @pytest.mark.parametrize(
@@ -618,7 +614,7 @@ def test_prior_profile_aggregation_ticks_validate_positive_integers(arg_name, va
     df = _base_df("2026-06-02 09:30:00", periods=4)
 
     with pytest.raises(ValueError, match="must be a positive integer"):
-        compute_profile_levels(df, instrument="ES", **{arg_name: value})
+        compute_profile_levels(df, instrument="ES", rolling_windows=[], **{arg_name: value})
 
 
 def test_compute_all_levels_includes_session_indicator_and_profile_columns():
@@ -630,7 +626,7 @@ def test_compute_all_levels_includes_session_indicator_and_profile_columns():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         value_area_pct=0.70,
     )
 
@@ -644,7 +640,6 @@ def test_compute_all_levels_includes_session_indicator_and_profile_columns():
         "SMA_2",
         "EMA_2",
         "VWAP_rolling_15min",
-        "POC_rolling_30min",
     ]:
         assert col in out.columns
     assert "pdVAH" not in out.columns
@@ -657,7 +652,7 @@ def test_compute_all_levels_includes_session_indicator_and_profile_columns():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         value_area_pct=0.70,
         prior_profile_table=_table_from_bars(df),
     )
@@ -671,7 +666,7 @@ def test_compute_all_levels_passes_prior_profile_aggregation_settings_through():
     baseline = compute_all_levels(
         df,
         instrument="ES",
-        poc_windows=["30min"],
+        poc_windows=[],
         sma_lengths=[],
         ema_lengths=[],
         vwap_windows=[],
@@ -680,7 +675,7 @@ def test_compute_all_levels_passes_prior_profile_aggregation_settings_through():
     changed = compute_all_levels(
         df,
         instrument="ES",
-        poc_windows=["30min"],
+        poc_windows=[],
         sma_lengths=[],
         ema_lengths=[],
         vwap_windows=[],
@@ -700,4 +695,5 @@ def test_compute_all_levels_passes_prior_profile_aggregation_settings_through():
         changed[["pdPOC", "pwPOC", "pmPOC"]].to_numpy(),
         equal_nan=True,
     )
-    pd.testing.assert_series_equal(baseline["POC_rolling_30min"], changed["POC_rolling_30min"])
+    assert "POC_rolling_30min" not in baseline.columns
+    assert "POC_rolling_30min" not in changed.columns

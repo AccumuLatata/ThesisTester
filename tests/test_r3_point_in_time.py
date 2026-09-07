@@ -441,7 +441,9 @@ def test_prior_day_profile_future_shock():
 
     base = _build_df(day1 + day2)
     table_base = _tick_table_from_bars(base)
-    r_base = compute_profile_levels(base, instrument="ES", prior_profile_table=table_base)
+    r_base = compute_profile_levels(
+        base, instrument="ES", rolling_windows=[], prior_profile_table=table_base
+    )
 
     first_day = r_base[r_base["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
     assert first_day["pdPOC"].isna().all()
@@ -455,10 +457,15 @@ def test_prior_day_profile_future_shock():
     day3_extreme = _extreme_future_bars(T, n=10)
     extended = _build_df(day1 + day2 + day3_extreme)
     # Same table on a longer 1m frame: VA is not recomputed from 1m close.
-    r_same_table = compute_profile_levels(extended, instrument="ES", prior_profile_table=table_base)
+    r_same_table = compute_profile_levels(
+        extended, instrument="ES", rolling_windows=[], prior_profile_table=table_base
+    )
     # Rebuilt table that includes the later tick session.
     r_ext = compute_profile_levels(
-        extended, instrument="ES", prior_profile_table=_tick_table_from_bars(extended)
+        extended,
+        instrument="ES",
+        rolling_windows=[],
+        prior_profile_table=_tick_table_from_bars(extended),
     )
 
     for frame in (r_same_table, r_ext):
@@ -479,7 +486,9 @@ def test_prior_week_profile_future_shock():
 
     base = _build_df(week1_bars + week2_bars)
     table_base = _tick_table_from_bars(base)
-    r_base = compute_profile_levels(base, instrument="ES", prior_profile_table=table_base)
+    r_base = compute_profile_levels(
+        base, instrument="ES", rolling_windows=[], prior_profile_table=table_base
+    )
 
     week2_rows = r_base[r_base["timestamp"].dt.date == pd.Timestamp("2026-06-08").date()]
     pw_before = week2_rows[["pwVAH", "pwVAL", "pwPOC"]].dropna(subset=["pwPOC"]).iloc[0]
@@ -487,9 +496,14 @@ def test_prior_week_profile_future_shock():
     T = base["timestamp"].iloc[-1]
     more_week2 = _extreme_future_bars(T, n=5)
     extended = _build_df(week1_bars + week2_bars + more_week2)
-    r_same_table = compute_profile_levels(extended, instrument="ES", prior_profile_table=table_base)
+    r_same_table = compute_profile_levels(
+        extended, instrument="ES", rolling_windows=[], prior_profile_table=table_base
+    )
     r_ext = compute_profile_levels(
-        extended, instrument="ES", prior_profile_table=_tick_table_from_bars(extended)
+        extended,
+        instrument="ES",
+        rolling_windows=[],
+        prior_profile_table=_tick_table_from_bars(extended),
     )
 
     for frame in (r_same_table, r_ext):
@@ -507,19 +521,12 @@ def test_rolling_poc_future_shock():
     )
 
     base = _build_df(bars)
-    r_base = compute_profile_levels(base, instrument="ES", rolling_windows=["1h"])
-    assert r_base["POC_rolling_1h"].isna().all()
+    with pytest.raises(ValueError, match="rolling POC requires ticks"):
+        compute_profile_levels(base, instrument="ES", rolling_windows=["1h"])
 
     T = base["timestamp"].iloc[-1]
-    poc_before = r_base["POC_rolling_1h"].tolist()
-
     future = _extreme_future_bars(T, n=5)
     extended = _build_df(bars + future)
-    r_ext = compute_profile_levels(extended, instrument="ES", rolling_windows=["1h"])
-    poc_after = r_ext["POC_rolling_1h"].iloc[: len(bars)].tolist()
-    assert poc_before == pytest.approx(poc_after, nan_ok=True), (
-        "Rolling POC values before T changed after future bars appended"
-    )
 
     ticks = pd.DataFrame(
         {

@@ -16,8 +16,13 @@ from thesistester.study.apoc_provenance import (
     WAVE7_HISTORICAL_PROVENANCE,
     is_wave7_study_file,
 )
-from thesistester.study.expand import expand_study
-from thesistester.study.schema import StudySpecError, closed_level_token_set, load_study_spec
+from thesistester.study.expand import _expand_validated, expand_study
+from thesistester.study.schema import (
+    StudySpecError,
+    closed_level_token_set,
+    load_study_spec,
+    normalize_study_spec,
+)
 
 ROOT = Path(__file__).resolve().parent
 
@@ -151,9 +156,16 @@ def validate_study_file(
     gen = generate if generate is not None else _load_generate()
     failures: list[str] = []
     resolved_packet = packet if packet in {"15s", "tick"} else _infer_packet(path.stem)
+    wave7 = is_wave7_study_file(path.name)
     try:
         spec = load_study_spec(path)
-    except (OSError, StudySpecError, yaml.YAMLError) as exc:
+    except StudySpecError as exc:
+        if "requires ticks" in str(exc) or (wave7 and "apoc_profile_source" in str(exc)):
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+            spec = normalize_study_spec(raw if isinstance(raw, Mapping) else {})
+        else:
+            return [f"{path.name}: load failed: {exc}"]
+    except (OSError, yaml.YAMLError) as exc:
         return [f"{path.name}: load failed: {exc}"]
 
     study = spec["study"]
@@ -167,17 +179,16 @@ def validate_study_file(
     cores = list(factors.get("core_level") or [])
     partners = list(factors.get("partner_levels") or [])
     levels = study.get("levels") or {}
-    wave7 = is_wave7_study_file(path.name)
     if wave7:
         if not isinstance(levels, Mapping) or levels.get("apoc_enabled") is not True:
             failures.append(
                 f"{path.name}: Wave 7 study.levels must keep apoc_enabled: true "
-                "(historical identity is implicit typical_mvp_v1)"
+                "(historical ZIP identity lock; omitted source is now product tick)"
             )
         if isinstance(levels, Mapping) and "apoc_profile_source" in levels:
             failures.append(
                 f"{path.name}: Wave 7 study.levels must omit apoc_profile_source "
-                "(historical identity is implicit typical_mvp_v1)"
+                "(historical ZIP identity lock; do not reintroduce typical)"
             )
         provenance = row.get("apoc_provenance")
         if provenance != WAVE7_HISTORICAL_PROVENANCE:
@@ -304,8 +315,13 @@ def validate_study_file(
     try:
         expansion = expand_study(spec)
     except StudySpecError as exc:
-        failures.append(f"{path.name}: expand failed: {exc}")
-        return failures
+        if "requires ticks" in str(exc):
+            # 15s packets that name APOC/rolling refuse to launch; cell-count
+            # lock still uses the normalized cartesian (honest refuse).
+            expansion = _expand_validated(spec)
+        else:
+            failures.append(f"{path.name}: expand failed: {exc}")
+            return failures
 
     expected = int(row["cells"])
     if expansion.run_count != expected:

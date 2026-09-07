@@ -1684,12 +1684,12 @@ existing profile settings. Controls inside it:
 | Enable confirmed pivots | `True` | `1min`, `5min`, `30min`, `4h`; left/right `2` |
 | Enable developing session VWAPs (dVWAP_RTH + dVWAP + wVWAP + mVWAP) | `True` | RTH column anchor fixed to RTH; `dVWAP` is full CME session; `wVWAP` / `mVWAP` are developing week/month (same `W-SUN` / `M` keys as `wOpen` / `mOpen`) |
 | Enable TPO 30m Single Prints | `True` | No additional config exposed |
-| Enable APOC / pAPOC | `True` | Independent of Single Prints; product source default `typical_mvp_v1` |
+| Enable APOC / pAPOC | `True` | Independent of Single Prints; product source default `tick_last_volume_v1` (refuse without ticks) |
 | Enable previous 30m VWAP (`prev30mVWAP`) | `True` | Session-open ETH+RTH brackets; validity periods default `1` |
 
 `thesistester/levels/defaults.py` is the canonical product configuration used by both the
 Levels page and the headless API: 15-minute opening range; SMA 50/200 and EMA 9/21 on
-`1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; NaN without ticks); 70% value area;
+`1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; refuse without ticks); 70% value area;
 and prior day/week/month profile aggregation of 1/8/10 ticks. All gate values are included
 in the levels settings object and therefore in the settings hash used for saved snapshot
 matching. `pivot_timeframes` is sorted deterministically alongside the other list-valued
@@ -1704,21 +1704,23 @@ product configuration is applied by the page and headless API.
 APOC / pAPOC are independent from Single Prints and are not routed through `compute_tpo_levels`.
 Single Prints are implemented in `thesistester/levels/tpo.py`; APOC / pAPOC are implemented in `thesistester/levels/apoc.py`.
 `apoc_profile_source` is an optional versioned settings key. Omitted config is
-implicit `typical_mvp_v1` (pre-AP2 identity). Opt-in `tick_last_volume_v1` builds
-an A-period tick table (`thesistester/levels/apoc_tick.py`) from Quantower
-Tick–Tick–Last files; it is not `PriorProfileTable`. Headless `run_experiment`
-still passes `dataset.tick_paths` into the A-period table when a prior-VA
-parquet is also attached. Explicit sources also record
+implicit `tick_last_volume_v1` (desk default). Identity always stamps
 `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id`.
-`LEVEL_ENGINE_VERSION` remains 11 because the product default *APOC* algorithm
-did not change. Rolling POC identity keys (`rolling_poc_algorithm_version`,
-`rolling_poc_allocation`, `rolling_poc_tick_source_id`) always stamp tick
-Last×Volume so callers cannot treat omitted config as typical rolling.
-Program B Wave 7 packets stay implicit typical APOC and are labeled
-`legacy_typical_price` (AP3). `thesistester/study/apoc_provenance.py` is the
-sidecar helper; it does not change APOC math. Rolling POC in Program B YAML
-omits `rolling_poc_profile_source`; without `tick_paths` those studies emit
-NaN `POC_rolling_*` (they do not name rolling POC as a factor).
+`LEVEL_ENGINE_VERSION` remains 11; the settings hash changes via those keys.
+The A-period tick table (`thesistester/levels/apoc_tick.py`) is not
+`PriorProfileTable`. Headless `run_experiment` still passes
+`dataset.tick_paths` into the A-period table when a prior-VA parquet is also
+attached. Named or product-default APOC / rolling POC refuse without
+`tick_paths` (`requires ticks`); they never fall back to typical and do not
+emit quiet all-NaN placeholders when those families are required. Studies
+that name neither family still run on 15s-only (`disable_unneeded_tick_families`).
+`typical_mvp_v1` is a dead/test-only library helper, not a production source.
+Program B Wave 7 packets omit `apoc_profile_source` and `tick_paths`
+(identity lock); fresh validate/expand/launch refuse. Manifest rows keep
+`WAVE7_HISTORICAL_PROVENANCE` (typical) for historical ZIPs.
+`thesistester/study/apoc_provenance.py` is the sidecar helper; a missing
+sidecar still infers typical (ZIP contract). Rolling POC identity keys
+always stamp tick Last×Volume.
 Previous 30m VWAP is implemented in `thesistester/levels/prev30m_vwap.py` (`prev30m_vwap_enabled`, `prev30m_vwap_validity_periods`).
 When `prev30m_vwap_validity_periods > 1`, Phase 3 emits stack columns `prev30mVWAP_2`…`prev30mVWAP_N` (setup-selectable); age-1 `prev30mVWAP` semantics are unchanged.
 Diagnostic companions `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are excluded from setup/chart eligibility via `NON_LEVEL_OUTPUT_COLUMNS` in `thesistester/setup.py`.

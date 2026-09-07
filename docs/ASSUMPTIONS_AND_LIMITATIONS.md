@@ -391,14 +391,16 @@ This engine is for **research screening**, not proof of a durable edge.
 - `APOC` and `pAPOC` are **profile / POC levels**, not Single Print levels. They are implemented in `thesistester/levels/apoc.py` and are independent of `tpo.py`.
 - `APOC` = POC of the first completed RTH 30-minute bracket (the A-period). Not derived from Single Prints.
 - `pAPOC` = prior completed RTH session's APOC. Frozen at the start of the new RTH session.
-- `apoc_profile_source` is a keyword-only versioned token. Library and product default is `typical_mvp_v1` (legacy typical-price). `tick_last_volume_v1` is the AP1-selected Quantower source and is **explicit opt-in**. A 15s bar-range proxy is not a production source.
-- The Levels page and headless API enable APOC / pAPOC in their built-in configuration with the typical default. Direct `compute_all_levels` calls retain `apoc_enabled=False` by default.
+- `apoc_profile_source` is a keyword-only versioned token. Library and product default is `tick_last_volume_v1` (Quantower Tick–Tick–Last Last×Volume). Omitted key is **not** typical. `typical_mvp_v1` is a dead/test-only library helper, not a production source (StudySpec / `normalize_levels_config` reject it). A 15s bar-range proxy is not a production source.
+- The Levels page and headless API enable APOC / pAPOC in their built-in configuration with the tick default. Direct `compute_all_levels` calls retain `apoc_enabled=False` by default.
 - `apoc_enabled=False` is a true no-op: no validation, no source checks, no new columns, no timestamp checks.
-- `typical_mvp_v1`: `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max).
-- `tick_last_volume_v1`: Quantower Tick–Tick–Last Last×Volume prints inside `[RTH_open, RTH_open + 30 min)` in exchange time, keyed by RTH session date. Histogram math is `apoc_candidates.compute_tick_last_volume_profile`. Full-session `PriorProfileTable` is not a substitute. `run_experiment` still forwards `dataset.tick_paths` to the A-period table when a prior-VA parquet is also present. Missing, malformed, off-grid, or incomplete tick inputs emit `NaN`; they never fall back to typical while this source is selected.
-- Implicit typical (key omitted) keeps the pre-AP2 settings hash. When `apoc_profile_source` is explicit, settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). Product default algorithm is unchanged; `LEVEL_ENGINE_VERSION` stays 11.
-- Program B Wave 7 packets omit `apoc_profile_source` and are labeled
-  `legacy_typical_price` on the 15s manifest. Fresh `study.expansion.json`
+- `tick_last_volume_v1` (default): Quantower Tick–Tick–Last Last×Volume prints inside `[RTH_open, RTH_open + 30 min)` in exchange time, keyed by RTH session date. Histogram math is `apoc_candidates.compute_tick_last_volume_profile`. Full-session `PriorProfileTable` is not a substitute. `run_experiment` still forwards `dataset.tick_paths` to the A-period table when a prior-VA parquet is also present. Missing or empty `tick_paths` refuse (`APOC requires ticks`) when APOC is enabled. Unsound prints emit `NaN`; they never fall back to typical.
+- `typical_mvp_v1` (dead/test-only library helper): `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max). Not a production source and not a silent fallback. Product defaults never select it.
+- Identity always stamps tick APOC (omitted key = `tick_last_volume_v1`). Settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). `LEVEL_ENGINE_VERSION` stays 11.
+- Program B Wave 7 packets omit `apoc_profile_source` and `tick_paths`
+  (identity lock) and are labeled `legacy_typical_price` on the 15s
+  manifest. Fresh validate / expand / launch refuse (`APOC requires ticks`).
+  Fresh `study.expansion.json`
   writes an additive `apoc_provenance` sidecar when the spec enables APOC
   (`apoc_enabled: true`) or names an explicit source while APOC is not
   disabled; the sidecar is **not** part of `study_identity_hash`.
@@ -413,7 +415,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - If the `session` column is absent, RTH membership is derived from the instrument configuration.
 - `compute_tpo_levels(..., apoc_enabled=True)` raises `ValueError` with a redirect message. Use `compute_apoc_levels(..., enabled=True)` or `compute_all_levels(..., apoc_enabled=True)` instead.
 - `compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces all six independent columns: four Single Print columns plus `APOC` and `pAPOC`.
-- Known limitations: default source is not true volume-at-price; tick source requires matching Tick–Tick–Last files; not full-session POC; not Single Print-derived.
+- Known limitations: default tick source requires matching Tick–Tick–Last files (refuse without them); not full-session POC; not Single Print-derived.
 
 ### 5e) Previous 30m VWAP (`prev30mVWAP`) is opt-in (Phase 1)
 
@@ -530,7 +532,7 @@ This engine is for **research screening**, not proof of a durable edge.
 
 - The Levels page (`pages/2_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
 - Inside the expander: checkboxes for confirmed pivots, developing session VWAPs (`dVWAP_RTH` + `dVWAP` + `wVWAP` + `mVWAP`), TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
-- `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; all-NaN without ticks); 70% value area; and prior day/week/month profile aggregation of 1/8/10 ticks.
+- `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min` (tick Last×Volume; refuse without ticks); 70% value area; and prior day/week/month profile aggregation of 1/8/10 ticks.
 - When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
 - `session_vwap_anchor` is fixed to `"RTH"` for the RTH column gate; full-session `dVWAP` / `wVWAP` / `mVWAP` are emitted alongside when the session-VWAP gate is enabled.
 - No Single Print or APOC configuration controls are exposed beyond the enable checkbox.
@@ -629,12 +631,15 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   attach. 15s remains the bar clock. New drafts omit the key.
   Rolling POC (`POC_rolling_*`) is tick Last×Volume on
   `[now-W+1min, now+1min)` (desk default `tick_last_volume_v1`). Missing /
-  empty / unsound ticks emit all-NaN columns; they never fall back to 1m
-  typical. This is ThesisTester sliding tick VAP, not a Quantower
-  rolling-widget claim (desk has no such indicator). Default APOC remains
-  typical (`apoc_profile_source=typical_mvp_v1`). Opt-in `tick_last_volume_v1`
-  APOC is the Quantower A-period object and is a different settings identity;
-  it is not prior-day VA or rolling POC. Product day aggregation is 1 tick
+  empty `tick_paths` refuse when rolling windows are in play (`rolling POC
+  requires ticks`); they never fall back to 1m typical. Unsound prints still
+  emit `NaN` for that bar. This is ThesisTester sliding tick VAP, not a
+  Quantower rolling-widget claim (desk has no such indicator). Default APOC
+  is the same tick Last×Volume object (`apoc_profile_source=tick_last_volume_v1`).
+  Named or product-default APOC refuses without ticks (`APOC requires ticks`).
+  `typical_mvp_v1` is a dead/test-only library helper, not a production
+  source. APOC is not
+  prior-day VA or rolling POC. Product day aggregation is 1 tick
   (`prior_day_profile_aggregation_ticks`); week/month stay 8/10.
   `LEVEL_ENGINE_VERSION` is 11. Residual vs Quantower on the session-20 MNQ
   desk fixture is ~2–3 points at 1-tick (not a transferability claim).

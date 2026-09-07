@@ -866,14 +866,15 @@ def _clear_tick_session_state(session_state=None) -> None:
 
 def _render_tick_attach(*, instrument: str) -> None:
     """Optional Quantower Tick–Tick–Last attach beside the 15s bar clock."""
-    with st.expander("Quantower tick-last (optional, prior VA only)", expanded=False):
+    with st.expander("Quantower tick-last (optional; VA / APOC / rolling POC)", expanded=False):
         st.caption(
-            "Attach one or many Quantower Tick–Tick–Last CSVs for prior VA. "
-            "This does not replace the 15-second (or one-minute) OHLCV file "
-            "and is not an ingestion mode. No ticks → no `pdVA*` / `pw*` / "
-            "`pm*` columns; those names are tick Last×Volume VAP. APOC remains "
-            "1m typical. Rolling POC is tick Last×Volume (all-NaN without "
-            "`tick_paths`; never typical). Studies keep walking 1m."
+            "Attach one or many Quantower Tick–Tick–Last CSVs for prior VA, "
+            "APOC, and rolling POC. This does not replace the 15-second "
+            "(or one-minute) OHLCV file and is not an ingestion mode. "
+            "Named VA / APOC / rolling POC refuse without ticks "
+            "(`requires ticks`). Production math is tick Last×Volume only "
+            "(never typical). Unsound prints still emit `NaN`. Studies keep "
+            "walking 1m."
         )
         uploader_nonce = int(st.session_state.get(TICK_UPLOADER_NONCE_KEY, 0))
         uploaded_files = st.file_uploader(

@@ -20,24 +20,26 @@ Conceptual definitions
     APOC  = POC of the first completed RTH 30-minute bracket after NY/RTH open.
     pAPOC = prior completed RTH session's APOC (frozen, carried forward).
 
-Profile sources (AP2)
----------------------
+Profile sources (desk default-tick amendment)
+---------------------------------------------
     ``apoc_profile_source`` is a keyword-only versioned token.
 
-    ``typical_mvp_v1`` (library and product default)
+    ``tick_last_volume_v1`` (library and product default)
+        Quantower Tick–Tick–Last prints inside the A-period, Last × Volume.
+        Built as an A-period table keyed by RTH session date.  Full-session
+        ``PriorProfileTable`` is not a substitute.  Missing or empty
+        ``tick_paths`` refuse with ``APOC requires ticks`` when APOC is
+        enabled.  Unsound / incomplete session inputs emit ``NaN``; they
+        never fall back to typical.  Histogram math is
+        ``apoc_candidates.compute_tick_last_volume_profile``.
+
+    ``typical_mvp_v1`` (dead/test-only library helper; not a production source)
         typical_price = (high + low + close) / 3
         Full bar volume is allocated to the tick bin containing
         ``typical_price``.  POC is the highest-volume bin (lowest bin wins
         ties via ``np.argmax`` on an ascending grid).  This matches
         ``_compute_profile`` in ``profile.py``.  Do not change those helpers.
-
-    ``tick_last_volume_v1`` (explicit opt-in; AP1-selected Quantower source)
-        Quantower Tick–Tick–Last prints inside the A-period, Last × Volume.
-        Built as an A-period table keyed by RTH session date.  Full-session
-        ``PriorProfileTable`` is not a substitute.  Missing, malformed, or
-        incomplete tick inputs emit ``NaN``; they never fall back to typical
-        while this source is selected.  Histogram math is
-        ``apoc_candidates.compute_tick_last_volume_profile``.
+        Product / StudySpec / ``normalize_levels_config`` reject this token.
 
 A-period bars
 -------------
@@ -85,7 +87,6 @@ from ..data.sessions import tag_session
 from .apoc_tick import (
     A_PERIOD_MINUTES,
     APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
-    APOC_PROFILE_SOURCE_TYPICAL_MVP_V1,
     APeriodTickProfileTable,
     build_a_period_tick_profile_table,
     resolve_apoc_profile_source,
@@ -93,6 +94,7 @@ from .apoc_tick import (
 from .common import require_tz_aware_timestamp
 from .profile import _compute_profile
 from .session_date import trading_session_date
+from .tick_requirements import APOC_REQUIRES_TICKS, tick_paths_present
 
 # Output column names.
 COL_APOC = "APOC"
@@ -151,7 +153,7 @@ def compute_apoc_levels(
     instrument: str = "ES",
     *,
     enabled: bool = False,
-    apoc_profile_source: str = APOC_PROFILE_SOURCE_TYPICAL_MVP_V1,
+    apoc_profile_source: str = APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
     apoc_tick_table: APeriodTickProfileTable | None = None,
     tick_paths: Sequence[str | Path] | None = None,
 ) -> pd.DataFrame:
@@ -171,16 +173,17 @@ def compute_apoc_levels(
         immediately — no timestamp validation, no source validation, no new
         columns.
     apoc_profile_source:
-        Versioned profile source.  Library default ``typical_mvp_v1`` preserves
-        legacy typical-price APOC.  ``tick_last_volume_v1`` is an explicit
-        opt-in and never becomes a silent default.
+        Versioned profile source.  Library default ``tick_last_volume_v1``
+        is the desk production source.  ``typical_mvp_v1`` is a dead/test-only
+        library helper (not a production source) and is never a silent
+        fallback.
     apoc_tick_table:
         Optional prebuilt A-period Last×Volume table.  Ignored unless the
         source is ``tick_last_volume_v1``.
     tick_paths:
         Quantower Tick–Tick–Last files used when the tick source is selected
-        and *apoc_tick_table* is omitted.  Missing/malformed inputs emit
-        ``NaN`` APOC/pAPOC.
+        and *apoc_tick_table* is omitted.  Missing or empty paths refuse
+        with ``APOC requires ticks``.
 
     Returns
     -------
@@ -223,6 +226,8 @@ def compute_apoc_levels(
     tick_table: APeriodTickProfileTable | None = None
     if source == APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1:
         tick_table = apoc_tick_table
+        if tick_table is None and not tick_paths_present(tick_paths):
+            raise ValueError(f"{APOC_REQUIRES_TICKS}: tick_paths is missing or empty")
         if tick_table is None:
             tick_table = build_a_period_tick_profile_table(
                 tick_paths,

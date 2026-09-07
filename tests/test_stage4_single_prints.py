@@ -207,7 +207,7 @@ def test_apoc_and_sp_enabled_raises_value_error():
 
 def test_compute_all_levels_sp_disabled_no_sp_columns():
     df = tag_session(_base_df(), "ES")
-    out = compute_all_levels(df, instrument="ES", single_prints_enabled=False)
+    out = compute_all_levels(df, instrument="ES", single_prints_enabled=False, poc_windows=[])
     sp_cols = [c for c in out.columns if "SinglePrint" in c]
     assert sp_cols == []
 
@@ -705,7 +705,7 @@ def _compute_baseline(df: pd.DataFrame) -> pd.DataFrame:
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         value_area_pct=0.70,
     )
 
@@ -721,7 +721,7 @@ def test_sp_disabled_existing_outputs_unchanged():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         value_area_pct=0.70,
         single_prints_enabled=False,
     )
@@ -741,7 +741,7 @@ def test_pivots_and_dvwap_unchanged_when_sp_enabled():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         pivots_enabled=True,
         session_vwap_enabled=True,
         single_prints_enabled=False,
@@ -753,7 +753,7 @@ def test_pivots_and_dvwap_unchanged_when_sp_enabled():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         pivots_enabled=True,
         session_vwap_enabled=True,
         single_prints_enabled=True,
@@ -780,7 +780,7 @@ def test_compute_all_levels_sp_enabled_adds_only_sp_columns():
         sma_lengths=[2],
         ema_lengths=[2],
         vwap_windows=["15min"],
-        poc_windows=["30min"],
+        poc_windows=[],
         value_area_pct=0.70,
         single_prints_enabled=True,
     )
