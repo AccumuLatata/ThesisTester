@@ -6,6 +6,7 @@ import ast
 import hashlib
 import inspect
 import json
+import os
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -49,6 +50,54 @@ _CHECK_NAMES = (
     "_check_confirm_3bar",
     "_check_approach_side_trigger",
 )
+_BASE_FETCH_BRANCH = "main"
+
+
+def _git_ok(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, cwd=REPO, check=False, capture_output=True, text=True)
+
+
+def _ref_exists(ref: str) -> bool:
+    return _git_ok(["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"]).returncode == 0
+
+
+def _regression_base_ref() -> str:
+    """Resolve main (or the PR base) for JS2 body/golden compares.
+
+    CI pytest uses a shallow checkout that often lacks ``origin/main``. Fetch
+    that ref when missing. Skip only when no baseline object can be resolved.
+    The compare itself is unchanged when a ref exists.
+    """
+    explicit = (
+        os.environ.get("JS2_REGRESSION_BASE") or os.environ.get("GITHUB_BASE_SHA") or ""
+    ).strip()
+    candidates = [item for item in (explicit, "origin/main", "main") if item]
+    for ref in candidates:
+        if _ref_exists(ref):
+            return ref
+    branch = (os.environ.get("GITHUB_BASE_REF") or _BASE_FETCH_BRANCH).strip() or _BASE_FETCH_BRANCH
+    fetched = _git_ok(
+        [
+            "git",
+            "fetch",
+            "--depth=1",
+            "--no-tags",
+            "origin",
+            f"+refs/heads/{branch}:refs/remotes/origin/{branch}",
+        ]
+    )
+    remote_ref = f"origin/{branch}"
+    if fetched.returncode == 0:
+        if _ref_exists(remote_ref):
+            return remote_ref
+        if _ref_exists("FETCH_HEAD"):
+            return "FETCH_HEAD"
+    detail = (fetched.stderr or fetched.stdout).strip() or "no output"
+    pytest.skip(
+        "JS2 regression base ref unavailable "
+        f"(tried {candidates + [remote_ref]}; "
+        f"git fetch origin {branch} exited {fetched.returncode}: {detail})"
+    )
 
 
 def _ts(stamp: str) -> pd.Timestamp:
@@ -254,9 +303,11 @@ def test_wrapper_calls_prepare_then_checkers_without_mutating_bodies() -> None:
 
 
 def test_check_helper_bodies_unchanged_vs_main() -> None:
+    base = _regression_base_ref()
     current = Path("thesistester/engine/signals.py").read_text(encoding="utf-8")
     main = subprocess.check_output(
-        ["git", "show", "origin/main:thesistester/engine/signals.py"],
+        ["git", "show", f"{base}:thesistester/engine/signals.py"],
+        cwd=REPO,
         text=True,
     )
     current_tree = ast.parse(current)
@@ -325,8 +376,10 @@ def test_wrapper_rejects_non_trade_direction() -> None:
 
 
 def test_existing_golden_files_byte_identical() -> None:
+    base = _regression_base_ref()
     diff = subprocess.check_output(
-        ["git", "diff", "--name-only", "origin/main", "--", "tests/fixtures/golden"],
+        ["git", "diff", "--name-only", base, "--", "tests/fixtures/golden"],
+        cwd=REPO,
         text=True,
     )
     assert diff.strip() == ""
@@ -335,6 +388,41 @@ def test_existing_golden_files_byte_identical() -> None:
         if path.is_file() and path.suffix in {".csv", ".parquet", ".json", ".txt"}:
             digest.update(path.read_bytes())
     assert digest.hexdigest()
+
+
+def test_regression_base_ref_resolves_when_origin_main_present() -> None:
+    ref = _regression_base_ref()
+    assert _ref_exists(ref)
+
+
+def test_regression_base_ref_fetches_when_local_base_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def exists(ref: str) -> bool:
+        return bool(calls) and ref == "origin/main"
+
+    def git_ok(args: list[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr("tests.test_journal_triggers._ref_exists", exists)
+    monkeypatch.setattr("tests.test_journal_triggers._git_ok", git_ok)
+    assert _regression_base_ref() == "origin/main"
+    assert any(
+        arg.endswith("refs/heads/main:refs/remotes/origin/main") for call in calls for arg in call
+    )
+
+
+def test_regression_base_ref_skips_only_when_unresolvable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("tests.test_journal_triggers._ref_exists", lambda _ref: False)
+    monkeypatch.setattr(
+        "tests.test_journal_triggers._git_ok",
+        lambda _args: subprocess.CompletedProcess(_args, 128, "", "not a valid object name"),
+    )
+    with pytest.raises(pytest.skip.Exception, match="regression base ref unavailable"):
+        _regression_base_ref()
 
 
 def test_exact_minute_uses_previous_1m_and_last_15s() -> None:
