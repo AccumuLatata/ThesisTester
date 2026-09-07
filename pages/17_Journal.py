@@ -14,15 +14,15 @@ import streamlit as st
 from thesistester.journal.report import (
     REPORT_HONESTY,
     JournalIngestError,
-    build_journal_report,
     journal_store_dir,
     load_journal_artifacts,
+    report_from_artifacts,
 )
 from thesistester.persistence.local_store import display_store_path
 
 JOURNAL_DIR_KEY = "journal_dir"
 JOURNAL_INCLUDE_SMALL_N_KEY = "journal_include_small_n"
-JOURNAL_CACHED_REPORT_KEY = "journal_cached_report"
+JOURNAL_CACHED_ARTIFACTS_KEY = "journal_cached_artifacts"
 
 _EMPTY = (
     "No `journal_trades.parquet` in this directory. Run "
@@ -80,31 +80,28 @@ include_small = st.checkbox(
 )
 load = st.button("Load report")
 
-report = st.session_state.get(JOURNAL_CACHED_REPORT_KEY)
 if load:
     raw_dir = str(st.session_state.get(JOURNAL_DIR_KEY) or "").strip()
     if not raw_dir:
         st.warning("Set a journal directory first.")
         st.stop()
-    path = Path(raw_dir).expanduser()
     try:
-        artifacts = load_journal_artifacts(path)
-        report = build_journal_report(
-            artifacts.trades,
-            attribution=artifacts.attribution,
-            counterfactuals=artifacts.counterfactuals,
-            counterfactual_payload=artifacts.counterfactual_payload,
-            matches=artifacts.matches,
-            match_payload=artifacts.match_payload,
-            include_small_n=bool(include_small),
+        st.session_state[JOURNAL_CACHED_ARTIFACTS_KEY] = load_journal_artifacts(
+            Path(raw_dir).expanduser()
         )
     except JournalIngestError as exc:
         st.error(str(exc))
         st.stop()
-    st.session_state[JOURNAL_CACHED_REPORT_KEY] = report
 
-if report is None:
+artifacts = st.session_state.get(JOURNAL_CACHED_ARTIFACTS_KEY)
+if artifacts is None:
     st.caption(_EMPTY)
+    st.stop()
+
+try:
+    report = report_from_artifacts(artifacts, include_small_n=bool(include_small))
+except JournalIngestError as exc:
+    st.error(str(exc))
     st.stop()
 
 present = report.present

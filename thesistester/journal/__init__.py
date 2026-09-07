@@ -44,6 +44,7 @@ from thesistester.journal.report import (
     journal_store_dir,
     load_journal_artifacts,
     report_files,
+    report_from_artifacts,
     write_report_artifacts,
 )
 from thesistester.journal.pair import pair_journal_trades
@@ -112,6 +113,7 @@ __all__ = [
     "journal_store_dir",
     "load_journal_artifacts",
     "report_files",
+    "report_from_artifacts",
     "write_report_artifacts",
     "counterfactual_files",
     "direction_shuffle_null",

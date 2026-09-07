@@ -24,7 +24,9 @@ from thesistester.journal.schema import (
     HOLD_GT_5MIN,
     HOLD_LT_15S,
     JOURNAL_EXCHANGE_TZ,
+    JOURNAL_POINT_VALUE,
     JOURNAL_STORE_SCHEMA,
+    JOURNAL_TICK_SIZE,
     RECON_UNKNOWN,
     REPORT_HONESTY,
     REPORT_MIN_N,
@@ -189,7 +191,17 @@ def report_files(
 ) -> dict[str, Path]:
     """Load ingested artifacts, build Q1–Q8, write ``report.json``."""
     artifacts = load_journal_artifacts(journal_dir)
-    report = build_journal_report(
+    report = report_from_artifacts(artifacts, include_small_n=include_small_n)
+    return write_report_artifacts(output_dir, report)
+
+
+def report_from_artifacts(
+    artifacts: JournalArtifacts,
+    *,
+    include_small_n: bool = False,
+) -> JournalReport:
+    """Rebuild Q1–Q8 from cached artifacts. Toggle does not reload files."""
+    return build_journal_report(
         artifacts.trades,
         attribution=artifacts.attribution,
         counterfactuals=artifacts.counterfactuals,
@@ -198,7 +210,6 @@ def report_files(
         match_payload=artifacts.match_payload,
         include_small_n=include_small_n,
     )
-    return write_report_artifacts(output_dir, report)
 
 
 def _coerce_trades(trades: pd.DataFrame | None) -> pd.DataFrame:
@@ -231,9 +242,7 @@ def _coerce_trades(trades: pd.DataFrame | None) -> pd.DataFrame:
     work["fee_ticks"] = (
         work["fee_ticks"].map(_optional_float) if "fee_ticks" in work.columns else None
     )
-    work["gross_ticks"] = (
-        work["gross_ticks"].map(_optional_float) if "gross_ticks" in work.columns else None
-    )
+    work["gross_ticks"] = _derive_gross_ticks(work)
     if "hold_seconds" in work.columns:
         work["hold_seconds"] = work["hold_seconds"].map(_optional_float)
     if "entry_timestamp" in work.columns:
@@ -627,6 +636,67 @@ def _assert_output_dir(path: Path) -> Path:
         if part == "results" and parts[index + 1] == "studies":
             raise JournalIngestError("journal report must not write into results/studies/")
     return resolved
+
+
+def _derive_gross_ticks(work: pd.DataFrame) -> list[float | None]:
+    """Prefer ``gross_ticks``, else ``gross_pnl_currency``, else net+fee+day extra."""
+    count = len(work)
+    explicit = (
+        [_optional_float(value) for value in work["gross_ticks"].tolist()]
+        if "gross_ticks" in work.columns
+        else [None] * count
+    )
+    currencies = (
+        list(work["gross_pnl_currency"].tolist())
+        if "gross_pnl_currency" in work.columns
+        else [None] * count
+    )
+    extras = (
+        list(work["day_fee_allocation"].tolist())
+        if "day_fee_allocation" in work.columns
+        else [None] * count
+    )
+    instruments = list(work["instrument"].tolist())
+    nets = (
+        [_optional_float(value) for value in work["net_ticks"].tolist()]
+        if "net_ticks" in work.columns
+        else [None] * count
+    )
+    fees = (
+        [_optional_float(value) for value in work["fee_ticks"].tolist()]
+        if "fee_ticks" in work.columns
+        else [None] * count
+    )
+    derived: list[float | None] = []
+    for index in range(count):
+        if explicit[index] is not None:
+            derived.append(explicit[index])
+            continue
+        from_currency = _currency_to_ticks(currencies[index], instruments[index])
+        if from_currency is not None:
+            derived.append(from_currency)
+            continue
+        net = nets[index]
+        fee = fees[index]
+        extra = _currency_to_ticks(extras[index], instruments[index]) or 0.0
+        if net is not None and fee is not None:
+            derived.append(net + fee + extra)
+            continue
+        derived.append(None)
+    return derived
+
+
+def _currency_to_ticks(currency: object, instrument: object) -> float | None:
+    value = _optional_float(currency)
+    if value is None:
+        return None
+    name = str(instrument)
+    if name not in JOURNAL_POINT_VALUE:
+        return None
+    tick_value = JOURNAL_TICK_SIZE * JOURNAL_POINT_VALUE[name]
+    if tick_value <= 0:
+        return None
+    return value / tick_value
 
 
 def _hold_bucket(value: object) -> str | None:

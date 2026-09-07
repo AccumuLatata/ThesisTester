@@ -15,10 +15,12 @@ from thesistester.cli import main as cli_main
 from thesistester.journal.report import (
     REPORT_HONESTY,
     REPORT_MIN_N,
+    JournalArtifacts,
     build_journal_report,
     journal_store_dir,
     load_journal_artifacts,
     report_files,
+    report_from_artifacts,
 )
 from thesistester.journal.schema import (
     HOLD_15_60S,
@@ -99,6 +101,22 @@ def test_report_module_does_not_import_engine_or_index_keys() -> None:
     assert "run_study(" not in source
 
 
+def test_q1_derives_gross_from_pnl_currency() -> None:
+    raw = _trade()
+    del raw["gross_ticks"]
+    raw["gross_pnl_currency"] = 2.24  # MNQ tick value $0.50 → 4.48 ticks
+    report = build_journal_report(pd.DataFrame([raw]))
+    assert report.q1_days.iloc[0]["mean_gross_ticks"] == pytest.approx(4.48)
+    assert report.q1_days.iloc[0]["break_even_gross_ticks"] == pytest.approx(2.48)
+
+
+def test_q1_derives_gross_from_net_plus_fee() -> None:
+    raw = _trade(net_ticks=2.0, fee_ticks=2.48)
+    del raw["gross_ticks"]
+    report = build_journal_report(pd.DataFrame([raw]))
+    assert report.q1_days.iloc[0]["mean_gross_ticks"] == pytest.approx(4.48)
+
+
 def test_q1_instrument_day_and_break_even() -> None:
     trades = pd.DataFrame(
         [
@@ -137,6 +155,18 @@ def test_q2_hides_n_below_30_unless_toggled() -> None:
     assert small["n"] == 5
     assert small["resolution"] == "15s"
     assert small["recon_status"] == RECON_RECONCILED
+    artifacts = JournalArtifacts(
+        journal_dir=Path("."),
+        trades=trades,
+        attribution=None,
+        counterfactuals=None,
+        counterfactual_payload=None,
+        matches=None,
+        match_payload=None,
+    )
+    rebuilt = report_from_artifacts(artifacts, include_small_n=True)
+    hold_rebuilt = rebuilt.q2_slices.loc[rebuilt.q2_slices["slice_kind"] == REPORT_SLICE_HOLD]
+    assert HOLD_LT_15S in set(hold_rebuilt["slice_value"])
 
 
 def test_q2_direction_slice_has_meta_columns() -> None:
@@ -373,6 +403,10 @@ def test_journal_page_ast_and_contract() -> None:
     assert "Show slices with n < 30" in source
     assert "REPORT_HONESTY" in source
     assert "journal_store_dir" in source
+    assert "journal_cached_artifacts" in source
+    assert "journal_cached_report" not in source
+    assert "report_from_artifacts" in source
+    assert source.index("if load:") < source.rindex("report_from_artifacts(")
     assert "execution_artifacts" in source
     assert JOURNAL_PAGE_SORT_TOKEN in page.name
 
