@@ -1,19 +1,22 @@
 # Rolling POC Quantower Parity — Investigation and Implementation Plan
 
 **Document type:** Focused investigation + fully scoped implementation plan
-**Date:** 2026-09-07 (rev 2 — review locks vs live helpers)
-**Status:** **RP0 locked. RP1 harness implemented (this PR).** Production
-opt-in (**RP2**) does not merge until the written §4.3 scorecard selects
-``tick_last_volume_v1`` or 1m ``bar_range_uniform_volume_v1``. Product/library
-default remains typical.
+**Date:** 2026-09-07 (rev 3 — desk default-tick amendment)
+**Status:** **RP2 implemented (this PR).** Desk amendment 2026-09-07: Quantower
+has no sliding 30m rolling-POC VAP oracle. RP1g-equivalent decision selects
+``tick_last_volume_v1`` as the **production default** (not opt-in). No
+typical / bar-proxy fallback. No ticks → all-NaN ``POC_rolling_*``.
+**RP2-cancel is not opened.** This is ThesisTester sliding tick VAP, not a
+Quantower rolling-widget parity claim.
 **Series code:** **RP** (Rolling POC)  
 **Related:** `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP — A-period only);
 `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV — prior-session VA only).  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including the
 golden-master operational specification (§4.1) and per-PR checklist (§4.2).
 
-**What’s next:** **RP1g** (write the §4.3 scorecard into this plan). Do not
-open RP2 until RP1g records the selected token or RP2-cancel.
+**What’s next:** series complete for rolling POC under the desk amendment.
+APOC library default remains typical (separate follow-up: desk wants APOC
+default tick with the same skip-if-no-ticks rule).
 
 ## 1. Problem statement and current evidence
 
@@ -21,16 +24,17 @@ open RP2 until RP1g records the selected token or RP2-cancel.
 
 AP1 showed that dumping each bar’s full volume onto typical `(H+L+C)/3` misses
 Quantower A-period POC, and that Tick–Tick–Last Last×Volume matched 4/4 on the
-written Levels2test scorecard. `POC_rolling_30min` still uses that same typical
-allocation via `profile._compute_profile` / `_rolling_poc`. The question is
-whether rolling / developing POC needs the same tick source to be the chart
-object.
+written Levels2test scorecard. Pre-RP2 `POC_rolling_30min` used that same
+typical allocation via `profile._compute_profile` / `_rolling_poc`. The
+question was whether rolling / developing POC needs the same tick source.
+Desk amendment 2026-09-07 answers **yes** as the production default (no QT
+sliding-widget oracle).
 
 ### 1.2 What the repository already proves
 
 | Claim | Evidence | Verdict |
 |---|---|---|
-| Rolling POC allocates each **derived-1m** bar’s volume to typical `(H+L+C)/3` | `thesistester/levels/profile.py` `_rolling_poc` + typical `prices` | **Confirmed** |
+| Pre-RP2 rolling POC allocated each **derived-1m** bar’s volume to typical `(H+L+C)/3` | `thesistester/levels/profile.py` `_rolling_poc` + typical `prices` | **Confirmed** (dead/non-default after RP2) |
 | Same histogram helper as default APOC (`typical_mvp_v1`) | `_compute_profile`; AP1 typical candidate matches `_compute_a_period_poc` | **Confirmed** |
 | 15s is not the levels clock | `compute_all_levels` consumes the 1m parent; 15s is ingest + R12 | **Confirmed** |
 | `PriorProfileTable` is a full-session prior-VA freeze, not a rolling window | TV3 join via `shift(1)` | **Confirmed** — must not be reused |
@@ -110,7 +114,7 @@ members = 30 bars `09:30…09:59`, `APOC` is **NaN**; 10:00 members =
 | `typical_mvp_15s_v1` as a helper token | `BAR_CANDIDATES` is `{typical_mvp_v1, bar_range_uniform_volume_v1, bar_range_tpo_v1}` — 15s is not in it | Select 15s rows, call `compute_bar_candidate_profile(..., candidate="typical_mvp_v1")`, **label** the result `typical_mvp_15s_v1`. Do not add tokens to `BAR_CANDIDATES` |
 | Shared tick helper returns NaN on bad ticks | `compute_tick_last_volume_profile` **raises** `APOCProfileInputError` (off-grid, non-finite, `volume<=0`) | Do not change that helper. RP1 catches → stamp `NaN`. RP2: file ingest fail → all-NaN series; sparse/empty window or unsound ticks in one window → **that bar** `NaN` |
 | RP1 “typical at 09:59 equals `compute_profile_levels` APOC” | `APOC` emits only at `timestamp >= RTH_open+30min` (10:00). 09:59 `APOC` is NaN | Typical rolling at 09:59 equals `_compute_a_period_poc(members)`, which equals **`APOC` at 10:00**, not the 09:59 APOC column |
-| `profile.py` typical branch “byte-identical” | Adding a source gate changes the file | Do **not** edit `_rolling_poc` **body**. Gate in `compute_profile_levels` / `all.py`: typical still calls existing `_rolling_poc` |
+| `profile.py` typical branch “byte-identical” | Adding a source gate changes the file | Do **not** edit `_rolling_poc` **body**. Production `compute_profile_levels` does **not** call it (desk default is tick; no typical fallback) |
 | “keyword-only” source | `compute_all_levels` has no `*`; `apoc_profile_source` is a trailing kwarg with default | New kwargs with defaults; do not insert before existing args (positional shift). Do not add `*` |
 | Bar-range 1m **or** 15s undeclared | Mixed clocks cannot share an 8/10 gate | Scorecard bar-proxy column is **1m** `bar_range_uniform_volume_v1`. 15s bar-range is diagnostic only. Never ship `typical_mvp_15s_v1` as a production source |
 | 8/10 of an unbounded stamp list | Extra easy stamps could inflate the hit rate | Predeclare **exactly 10** gate stamps. Extra stamps are diagnostic, not in §4.3 |
@@ -129,8 +133,8 @@ Do not reopen `_rolling_poc` math, TV3 omit/fail-closed, AP2 APOC source, golden
 - Identify the Quantower calculation object (tool + data type + period +
   session template + row size + POC tie) before changing production math.
 - Compare versioned allocation candidates on **the same locked window**.
-- If §4.3 selects a source, RP2 adds that versioned explicit rolling-POC
-  source (§5). Product default remains typical.
+- Desk amendment: RP2 ships `tick_last_volume_v1` as the **production
+  default** (§5). No typical / bar-proxy fallback.
 
 ### Out of scope (entire RP series unless a later plan amends this file)
 
@@ -140,20 +144,20 @@ Do not reopen `_rolling_poc` math, TV3 omit/fail-closed, AP2 APOC source, golden
 - Developing `dVAH` / `dVAL` / `dPOC` (parked; not emitted).
 - Replacing `15s_primary_derive_1m`.
 - Using `PriorProfileTable` or `APeriodTickProfileTable` as a rolling window.
-- Golden regeneration. Silent default cutover.
+- Golden regeneration. Flipping APOC’s library default (separate follow-up).
 
 ### Invariants
 
-1. `compute_profile_levels` without a new explicit source keeps today’s
-   typical `POC_rolling_*` values on the same 1m frame.
+1. Production `POC_rolling_*` is tick Last×Volume. Omitted
+   `rolling_poc_profile_source` is tick, not typical. No ticks → all-NaN
+   columns (present). Never silent typical.
 2. TV3 omit/fail-closed VA is unchanged: no ticks → nine VA columns absent;
    named-VA studies still refuse `VA requires ticks`.
 3. The **1m parent** remains the levels clock. 15s remains ingest / R12.
    Ticks are a side histogram input, never the simulation bar loop.
-4. Missing / malformed / off-grid tick inputs under a future tick source emit
-   `NaN`, never typical under a new source identity.
+4. Missing / malformed / off-grid tick inputs emit `NaN`, never typical.
 5. Bar-range uniform volume is a **proxy candidate only**. It is not a
-   Quantower claim without a written scorecard (AP1: 2/4 on A-period).
+   Quantower claim and is not a production source.
 6. A 15s typical dump is not a substitute for ticks. AP1 already showed
    finer bars / range-split still missed Quantower POC.
 
@@ -273,11 +277,25 @@ A-period overlap (09:59 typical rolling vs `_compute_a_period_poc(members)`
 / `APOC` **at 10:00**) is a **sanity check of membership**, not a
 Quantower hit. Do not compare to the 09:59 `APOC` column (NaN).
 
+#### 4.3 Result (desk amendment 2026-09-07)
+
+| Field | Record |
+|---|---|
+| Tool identity | **Unavailable.** Quantower has no sliding / custom last-30m rolling POC VAP indicator on the desk. |
+| Gate stamps | The 10 predeclared QT stamps were **not collectable** (oracle absent). 8/10 is **N/A**. |
+| Per-stamp errors | Not scored. No QT rolling export / screenshot / settings exist. |
+| `tick_last_volume_v1` | **Selected as production default by desk amendment**, not by an 8/10 QT table. Trust is AP1 Last×Volume math + the locked RP print window. |
+| 1m `bar_range_uniform_volume_v1` | **Not selected.** Comparator-only. Not a Quantower claim. |
+| `typical_mvp_v1` / 15s typical | **Not selected.** Old typical rolling runs are obsolete. |
+| AP1 A-period 4/4 | **Not reused** as this scorecard. Window ≠ A-period. Step 30m / Session / TPO ≠ rolling. |
+
+**Go / no-go line:** **No QT cutover table.** Select **`tick_last_volume_v1` as the default production source** (desk amendment). Do **not** open RP2-cancel. Do **not** retain typical as product default.
+
 ## 5. Implementation architecture (locked; RP2 implements only if §4.3 selects)
 
-RP2 implements **exactly one** RP1-selected production source. Until RP1g
-writes that selection, this section is the specification, not authorization
-to merge engine changes.
+RP2 implements **exactly one** production source: desk-selected
+`tick_last_volume_v1` as the **default**. Typical / bar-proxy are not
+production tokens. This section is the shipped architecture.
 
 ### 5.1 Object
 
@@ -304,25 +322,23 @@ until a separate oracle exists (same honesty as TV week/month bins 8/10).
 | Item | Lock |
 |---|---|
 | Settings / StudySpec key | `rolling_poc_profile_source` |
-| Library kwarg | `compute_all_levels(..., rolling_poc_profile_source=...)` and `compute_profile_levels(...)` gain **trailing kwargs with defaults** (AP2 `apoc_profile_source` pattern). Do not insert before existing args. Do not add `*` |
-| `tick_paths` pass-through | `compute_all_levels` already takes `tick_paths`. RP2 passes it into `compute_profile_levels` for the tick source. Do **not** introduce an `APeriodTickProfileTable`-shaped freeze (every bar has a different window) |
-| Omitted key | Implicit `typical_mvp_v1`; pre-RP2 settings hash **unchanged** (`attach_rolling_poc_identity` is a no-op when the key is absent, like `attach_apoc_identity`) |
-| Product `DEFAULT_LEVELS_SETTINGS` | **Does not** include the key (farm / Levels page stay typical) |
+| Library kwarg | `compute_all_levels(..., rolling_poc_profile_source=...)` and `compute_profile_levels(...)` gain **trailing kwargs with defaults**. Do not insert before existing args. Do not add `*` |
+| `tick_paths` pass-through | `compute_all_levels` already takes `tick_paths`. RP2 passes it into `compute_profile_levels` even when a prior-VA parquet is attached. Do **not** introduce an `APeriodTickProfileTable`-shaped freeze (every bar has a different window) |
+| Omitted key | Implicit **`tick_last_volume_v1`**. `attach_rolling_poc_identity` **always** stamps tick identity (not an AP2 no-op). Settings hash is not the pre-RP2 typical-looking hash |
+| Product `DEFAULT_LEVELS_SETTINGS` | **Does not** include the key. Identity attach still stamps tick. Without `tick_paths`, columns are all-NaN |
 | `OPTIONAL_LEVELS_SETTINGS` | Add `rolling_poc_profile_source` (same set as `apoc_profile_source`) |
-| Production source tokens | `typical_mvp_v1` and **only** the §4.3-selected token (`tick_last_volume_v1` **or** 1m `bar_range_uniform_volume_v1`). Never `typical_mvp_15s_v1` |
-| Bar-range / 15s-typical | Comparator-only unless §4.3 selects a bar proxy; never advertised as tick-equivalent |
-| `LEVEL_ENGINE_VERSION` | Stays **11** (default algorithm unchanged) |
-| Columns | Always emit `POC_rolling_*` for requested windows. Tick source with missing ticks → **`NaN`**, not column omit, not typical fallback |
-| Study refuse | **No** `VA requires ticks` analog. 15s-only studies that omit the key keep typical rolling POC |
+| Production source tokens | **`tick_last_volume_v1` only.** `typical_mvp_v1` and bar-proxy raise. Never `typical_mvp_15s_v1` |
+| Bar-range / 15s-typical | Comparator-only (RP1 harness). Never a production source |
+| `LEVEL_ENGINE_VERSION` | Stays **11**. Identity keys alone invalidate cache (AP2 pattern). Do not leave callers thinking typical is the default |
+| Columns | Always emit `POC_rolling_*` for requested windows. Missing / empty / unsound ticks → **`NaN`**, not column omit, not typical fallback |
+| Study refuse | **No** `VA requires ticks` analog. Program B / 15s-only studies that omit the key emit **NaN** rolling POC |
 
 ### 5.3 Tick path (do not reuse VA / APOC tables)
 
 ```text
 1m parent bars (clock)
         │
-        ├─ typical_mvp_v1 ──► existing _rolling_poc (unchanged)
-        │
-        └─ tick_last_volume_v1
+        └─ tick_last_volume_v1  (default; only production path)
                 │
 tick_paths[] ──► iter_tick_files (existing TV1 loader)
                 │
@@ -333,7 +349,9 @@ tick_paths[] ──► iter_tick_files (existing TV1 loader)
          incremental bin→volume; same bins / tie / conservation as
          compute_tick_last_volume_profile (do **not** call that helper per bar)
                 │
-         POC_rolling_* series
+         POC_rolling_* series  (all-NaN if ticks missing/empty/unsound)
+
+typical_mvp_v1 / `_rolling_poc` ──► dead/non-default helper (body untouched)
 ```
 
 Forbidden substitutes: `PriorProfileTable`, `APeriodTickProfileTable`,
@@ -364,15 +382,14 @@ this path even when a prior-VA parquet is already attached (AP2 foot-gun).
 
 ### 5.4 Identity
 
-New keys, **only when** `rolling_poc_profile_source` is explicit (implicit
-typical is a no-op, like `attach_apoc_identity`):
+New keys **always** attached (omitted source is tick, not typical):
 
-| Key | Typical explicit | Tick explicit |
-|---|---|---|
-| `rolling_poc_profile_source` | `typical_mvp_v1` | `tick_last_volume_v1` |
-| `rolling_poc_algorithm_version` | `typical_mvp_v1` | `tick_last_volume_v1` |
-| `rolling_poc_allocation` | `typical_hlc3_full_volume` | `last_times_volume` |
-| `rolling_poc_tick_source_id` | `none` | SHA-256 of tick files **plus** policy `rolling_lookback_v1` and canonical `poc_windows` |
+| Key | Implicit / explicit tick |
+|---|---|
+| `rolling_poc_profile_source` | omitted in product YAML; library default `tick_last_volume_v1` |
+| `rolling_poc_algorithm_version` | `tick_last_volume_v1` |
+| `rolling_poc_allocation` | `last_times_volume` |
+| `rolling_poc_tick_source_id` | SHA-256 of tick files **plus** policy `rolling_lookback_v1` and canonical `poc_windows` (`none` when paths are empty) |
 
 Must not equal VA `tick_source_id` or `apoc_tick_source_id` (different
 policy string even on the same files). Strip these keys before
@@ -380,9 +397,9 @@ policy string even on the same files). Strip these keys before
 mirror `LEVELS_APOC_IDENTITY_KEYS` in `api.py`, `research_identity.py`,
 and `classic_export.py` — all three strip APOC identity today). Add the
 source key to `OPTIONAL_LEVELS_SETTINGS` so StudySpec unknown-levels
-fail-closed still allows the opt-in. `attach_rolling_poc_identity` is
+fail-closed still allows the explicit token. `attach_rolling_poc_identity` is
 called from the same sites as `attach_apoc_identity` (`api.py`,
-`research_identity.py`).
+`research_identity.py`) and **always** stamps tick identity.
 
 ### 5.5 Point-in-time
 
@@ -399,9 +416,9 @@ as an intra-bar clock.
 | Surface | RP2 action |
 |---|---|
 | Levels page | **No** new dropdown (AP2 shipped headless opt-in only) |
-| Data page / Help | Honesty sentence only if the key can be set; do not require ticks for non-VA studies |
-| Program B YAML | **Do not** add the key (implicit typical). No Wave provenance analog |
-| Goldens | **No regen.** `run_legacy_pipeline` never calls `compute_all_levels` |
+| Data page / Help | Honesty: rolling POC is tick Last×Volume; NaN without ticks. Do not require ticks for non-VA studies |
+| Program B YAML | **Do not** add the key. Without ticks, rolling POC is **NaN** (not typical). No Wave provenance analog |
+| Goldens | **No regen** unless a golden encodes typical rolling (then update only as required by this default cutover). `run_legacy_pipeline` never calls `compute_all_levels` |
 
 ### 5.7 Performance bound
 
@@ -420,13 +437,13 @@ before merge — do not ship nested scans.
 |---|---|---|
 | RP0 — lock evidence + this spec | **Go** | Allocation confirmed; window ≠ A-period |
 | RP1 — comparator harness | **Go now** | Required discriminator; no production output change |
-| RP1g — write §4.3 scorecard into this plan | **Go after RP1** | Merge gate for RP2 |
-| RP2 — versioned source opt-in | **Go if RP1g selects `tick_last_volume_v1` or 1m `bar_range_uniform_volume_v1`** | Implement that **one** token |
-| RP2-cancel — docs-only “retain typical” | **Go if RP1g selects nothing / Session / Step / TPO / 15s typical** | Honesty; no engine change |
-| Product-default cutover | **No-go** | AP2 posture |
+| RP1g — write §4.3 scorecard into this plan | **Recorded in this PR** | QT oracle unavailable; desk selects tick default |
+| RP2 — default tick Last×Volume | **Go (desk amendment)** | Default `tick_last_volume_v1`; no typical fallback |
+| RP2-cancel — docs-only “retain typical” | **No-go** | Superseded by the desk amendment |
+| Product-default cutover (rolling POC) | **Go (desk amendment)** | Default is tick; no typical fallback |
 | Reuse `PriorProfileTable` / `APeriodTickProfileTable` | **No-go** | Wrong object |
-| 15s bar-range as Quantower-compatible | **No-go** without §4.3 | AP1 was 2/4 |
-| Program B YAML / `LEVEL_ENGINE_VERSION` / golden regen | **No-go** | Default algorithm unchanged |
+| 15s bar-range as Quantower-compatible | **No-go** | AP1 was 2/4; not selected |
+| Program B YAML key / `LEVEL_ENGINE_VERSION` bump / golden regen | **No-go** | Identity keys change the hash; engine version stays 11. Program B omits the key → NaN rolling |
 | Levels-page source widget | **No-go this series** | Narrow; AP2 had none |
 | Developing `dPOC` / tick VWAP | **No-go** | Out of series |
 
@@ -502,30 +519,51 @@ does **not** fail CI on miss. Naive 1m/15s stamps localize as
 localize as UTC (TV1 disk convention). `session_date` is applied to the
 stamp clock when present. Proprietary desk CSVs are not committed.
 
-### RP1g — scorecard record (docs only)
+### RP1g — scorecard record (docs; folded into this RP2 PR)
 
 | Field | Scope |
 |---|---|
-| Title | `RP1g: record rolling-POC Quantower scorecard` |
-| Files | This plan §4.3 result table + go/no-go line; one-line roadmap/agent status |
-| Behavior | Write the predeclared threshold outcome. Name the Quantower tool. Select exactly one of: `tick_last_volume_v1` / documented bar proxy / **retain typical (RP2-cancel)** |
-| Acceptance | The 10 predeclared gate stamps; tool identity recorded; per-stamp errors; explicit selected token or cancel. Extra stamps do not enter 8/10 |
-| Forbidden | Engine edits; treating AP1 4/4 as this scorecard; claiming Step 30m = rolling |
+| Title | Folded into `RP2: default rolling POC to tick Last×Volume` |
+| Files | This plan §4.3 result table + go/no-go line; roadmap/agent one-liners |
+| Behavior | Record desk amendment: QT sliding oracle unavailable; select `tick_last_volume_v1` as default; do not open RP2-cancel |
+| Acceptance | Tool identity = unavailable; 10 gate stamps not collectable (8/10 N/A); explicit selected token = `tick_last_volume_v1` (desk amendment, not QT 8/10) |
+| Forbidden | Treating AP1 4/4 as this scorecard; claiming Step 30m / Session / TPO = rolling |
 
-### RP2 — versioned source (merge-gated)
+**RP1g implementation record:** Accumu 2026-09-07. Quantower has no sliding /
+custom last-30m rolling POC VAP indicator, so no 10-stamp QT scorecard can
+be collected. 8/10 is N/A. The desk amendment selects
+`tick_last_volume_v1` as the **production default**. Tick / 1m bar-range
+were **not** selected by a QT table. AP1 A-period 4/4 is not this
+scorecard. RP2-cancel is not opened.
 
-Open **only** after RP1g selects `tick_last_volume_v1` or 1m
-`bar_range_uniform_volume_v1`. Implement **that** token, not both.
+### RP2 — default tick Last×Volume (desk amendment)
+
+Desk amendment supersedes “opt-in / omitted=typical”. Implement
+`tick_last_volume_v1` as the **default**.
 
 | Field | Scope |
 |---|---|
-| Title | `RP2: add versioned rolling-POC profile source` |
-| Files | `thesistester/levels/profile.py` (**source gate + trailing `rolling_poc_profile_source` / `tick_paths` kwargs**; do not edit `_rolling_poc` body); **new** `thesistester/levels/rolling_poc_tick.py` if ticks selected (two-pointer incremental histogram + `attach_rolling_poc_identity` + `LEVELS_ROLLING_POC_IDENTITY_KEYS` + source id policy) **or** a bar-proxy module if §4.3 selects 1m `bar_range_uniform_volume_v1` (no two-pointer; still catch `APOCProfileInputError` → bar `NaN`); `thesistester/levels/all.py` (pass `rolling_poc_profile_source` and `tick_paths` into `compute_profile_levels`); `thesistester/levels/defaults.py` (`OPTIONAL_LEVELS_SETTINGS` only); `thesistester/api.py` (forward `tick_paths` when rolling source is tick even if VA parquet present; `attach_rolling_poc_identity`; strip `LEVELS_ROLLING_POC_IDENTITY_KEYS`); `thesistester/research_identity.py` (attach + strip, same as APOC); `thesistester/classic_export.py` (strip); `thesistester/study/schema.py` (unknown levels already use `OPTIONAL_LEVELS_SETTINGS`); `tests/test_rolling_poc_tick_source.py`; living docs listed in §8.2 |
-| Behavior | Trailing kwarg with default. Omitted = today’s typical. Selected source = §5.1 object, failure-to-`NaN`. `_rolling_poc` body untouched |
-| Acceptance | See §8.2 |
-| Forbidden | Default cutover; VA/APOC math; tick VWAP; `dPOC`; Program B YAML; golden regen; Levels-page widget; nested tick scan; `LEVEL_ENGINE_VERSION` bump |
+| Title | `RP2: default rolling POC to tick Last×Volume` |
+| Files | `thesistester/levels/profile.py` (source gate + trailing kwargs; do **not** edit `_rolling_poc` body); **new** `thesistester/levels/rolling_poc_tick.py` (two-pointer + identity); `all.py`; `defaults.py` (`OPTIONAL_LEVELS_SETTINGS`); `api.py` / `research_identity.py` / `classic_export.py` (attach + strip); `study/schema.py`; `tests/test_rolling_poc_tick_source.py`; living docs |
+| Behavior | Default = tick Last×Volume when `tick_paths` present. No ticks / unsound → all-NaN series (columns present). Never typical. `_rolling_poc` retained as a dead/non-default helper. |
+| Acceptance | Amended §8.2: default-with-ticks matches RP1 harness tick POC; no ticks → all-NaN; isolation; future-shock; identity ≠ VA ≠ APOC; goldens green |
+| Forbidden | Typical fallback; VA/APOC math change; flipping APOC default; tick VWAP; `dPOC`; Program B YAML key; nested tick scan |
 
-### RP2-cancel — retain typical (docs only; exclusive with RP2)
+**RP2 implementation record:** Production `POC_rolling_*` is two-pointer
+Last×Volume on `[now-W+1min, now+1min)`. `compute_profile_levels` /
+`compute_all_levels` default `rolling_poc_profile_source=tick_last_volume_v1`.
+`attach_rolling_poc_identity` always stamps tick identity (omitted key is
+**not** typical; hash is not the pre-RP2 typical-looking hash).
+`LEVEL_ENGINE_VERSION` stays **11**; identity keys invalidate cache.
+`PriorProfileTable` / `APeriodTickProfileTable` are not substitutes.
+`run_experiment` forwards `dataset.tick_paths` even when a VA parquet is
+attached. Program B YAML still omits the key; without ticks those studies
+emit NaN rolling POC (they do not name it as a factor). Typical
+`_rolling_poc` body is unchanged and is not the product path. This is
+ThesisTester sliding tick VAP, not a Quantower rolling-widget claim.
+APOC library default remains typical (desk wants that flipped next).
+
+### RP2-cancel — retain typical (docs only; exclusive with RP2; **not opened**)
 
 | Field | Scope |
 |---|---|
@@ -570,52 +608,54 @@ Must pass:
 
 Must pass (in addition to §7 checklist):
 
-1. Omitted `rolling_poc_profile_source`: `POC_rolling_30min` series-equal to
-   pre-RP2 on the phase3 simple dataset **and** on an isolation fixture that
-   also has `prior_profile_table` (VA join unchanged).
-2. Explicit `typical_mvp_v1`: same values as omitted typical; identity keys
-   present; settings hash ≠ implicit hash (AP2 pattern).
-3. `tick_last_volume_v1` with synthetic ticks: sampled stamps match
-   `compare_rolling_poc_candidates` tick POC (RP1 harness is the oracle for
-   the engine).
-4. Missing / empty `tick_paths` under tick source: `POC_rolling_*` all-NaN;
-   no typical fallback; no exception at `compute_profile_levels`.
-5. Off-grid tick file: NaN, not snap.
-6. Future-shock: append future bars **and** future ticks; prefix values
+1. Omitted / blank `rolling_poc_profile_source` resolves to
+   `tick_last_volume_v1`. Explicit `typical_mvp_v1` / bar-proxy **raise**.
+2. Default with ticks: sampled stamps match
+   `compare_rolling_poc_candidates` tick POC (RP1 harness is the oracle).
+3. No ticks / missing file / empty paths: `POC_rolling_*` all-NaN
+   (columns present); values **≠** typical `_rolling_poc`; no exception at
+   `compute_profile_levels`.
+4. Off-grid / unsound tick in a window: that **bar** NaN, not snap.
+5. Future-shock: append future bars **and** future ticks; prefix values
    unchanged.
-7. `PriorProfileTable` present does not substitute for rolling ticks;
-   `APeriodTickProfileTable` does not either.
-8. `run_experiment` still forwards `dataset.tick_paths` when a VA parquet is
-   attached (mirror `tests/test_apoc_tick_source.py` wiring test) **and**
-   the rolling tick path consumes those same paths (no second attach, no
-   `PriorProfileTable` / `APeriodTickProfileTable` substitute).
-9. Unrelated families series-equal vs typical run: session marks, `dVWAP*`,
-   TPO, default APOC, `prev30mVWAP`, `pd*` when the same table is passed.
-10. StudySpec unknown key still fail-closed; `rolling_poc_profile_source`
-    accepted only as a supported token; Program B YAMLs still omit the key.
-11. Identity: rolling tick source id ≠ VA id ≠ APOC id.
-12. Two-pointer complexity: unit test that each tick is assigned at most a
-    constant number of pointer moves across the bar loop (monotonic
-    left/right), not a full rescan.
-13. Goldens green; no regen.
-14. Living docs in **this** PR: `ASSUMPTIONS_AND_LIMITATIONS.md`,
+6. `PriorProfileTable` present does not substitute for rolling ticks;
+   `APeriodTickProfileTable` does not either. VA join unchanged when a
+   table is passed.
+7. `run_experiment` still forwards `dataset.tick_paths` when a VA parquet is
+   attached (mirror AP2 wiring) **and** the rolling tick path consumes those
+   same paths.
+8. Unrelated families isolated: session marks, `dVWAP*`, TPO, default APOC
+   stay series-equal when only rolling ticks are added.
+9. StudySpec unknown key still fail-closed; `rolling_poc_profile_source`
+   accepted only as `tick_last_volume_v1`; Program B YAMLs still omit the key.
+10. Identity: `attach_rolling_poc_identity` always stamps tick; rolling tick
+    source id ≠ VA id ≠ APOC id. Implicit omitted config is tick identity,
+    not pre-RP2 typical.
+11. Two-pointer complexity: each tick is assigned at most a constant number
+    of pointer moves (monotonic left/right), not a full rescan.
+12. Goldens green; no regen unless a golden encoded typical rolling (then
+    update only as required by this default cutover and document in the PR).
+13. Living docs in **this** PR: `ASSUMPTIONS_AND_LIMITATIONS.md`,
     `POINT_IN_TIME_GUARANTEES.md`, `METRICS_GLOSSARY.md`, `ARCHITECTURE.md`,
-    this plan’s RP2 implementation record. USER_GUIDE one sentence if Help
-    already says “rolling POC remain 1m typical.”
+    this plan’s RP2 implementation record; USER_GUIDE honesty.
 
 ---
 
 ## 9. Regression-safety checklist (every RP1+ PR)
 
-- Typical `POC_rolling_*` value-identical when the new source is omitted.
+- Default `POC_rolling_*` is tick Last×Volume. No ticks → all-NaN (not
+  typical). `_rolling_poc` is dead/non-default, not the product path.
 - TV3 intact: no table → no `pdVAH`…`pmPOC`; named VA without ticks still
   raises `VA requires ticks`.
-- Default APOC remains implicit typical; AP2 tick APOC still independent.
+- Default APOC remains implicit typical; AP2 tick APOC still independent
+  (desk wants APOC default-tick next; out of this PR).
 - No change to session levels, session VWAP, TPO, signals, fills, or R12.
-- `tests/test_golden_master.py` preserved; no RP PR regenerates goldens.
+- `tests/test_golden_master.py` preserved; no RP PR regenerates goldens
+  unless a golden encoded typical rolling.
 - Honesty docs only in the PR that makes the described behavior true.
-- PR body includes a regression-safety paragraph: default behavior, identity
-  / cache, PIT proof, unaffected families.
+- PR body includes a regression-safety paragraph: default is now tick; no
+  ticks → NaN; typical `_rolling_poc` retained only as dead/non-default;
+  identity / cache; PIT proof; unaffected families.
 
 ---
 

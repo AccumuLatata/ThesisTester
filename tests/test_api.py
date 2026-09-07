@@ -20,6 +20,7 @@ from thesistester.api import (
 from thesistester.engine import apply_configured_otf_filter, simulate_trades
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.apoc_tick import attach_apoc_identity
+from thesistester.levels.rolling_poc_tick import attach_rolling_poc_identity
 from thesistester.levels.tick_vap import TICK_SOURCE_NONE, attach_tick_identity
 
 
@@ -168,7 +169,9 @@ def test_compute_levels_uses_shared_product_defaults(tmp_path):
     ):
         expected[key] = sorted(expected[key])
     expected["instrument"] = "ES"
-    expected = attach_apoc_identity(attach_tick_identity(expected, tick_source_id=TICK_SOURCE_NONE))
+    expected = attach_rolling_poc_identity(
+        attach_apoc_identity(attach_tick_identity(expected, tick_source_id=TICK_SOURCE_NONE))
+    )
     assert result["levels_settings"] == expected
     assert "dVWAP_RTH" in result["levels"]
     assert "APOC" in result["levels"]

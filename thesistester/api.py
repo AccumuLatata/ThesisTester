@@ -69,6 +69,11 @@ from thesistester.levels.apoc_tick import (
     attach_apoc_identity,
     build_a_period_tick_profile_table,
 )
+from thesistester.levels.rolling_poc_tick import (
+    LEVELS_ROLLING_POC_IDENTITY_KEYS,
+    ROLLING_POC_PROFILE_SOURCES,
+    attach_rolling_poc_identity,
+)
 from thesistester.levels.tick_vap import (
     LEVELS_TICK_IDENTITY_KEYS,
     PriorProfileTable,
@@ -622,6 +627,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         set(_LEVEL_DEFAULTS)
         | set(LEVELS_TICK_IDENTITY_KEYS)
         | set(LEVELS_APOC_IDENTITY_KEYS)
+        | set(LEVELS_ROLLING_POC_IDENTITY_KEYS)
         | OPTIONAL_LEVELS_SETTINGS,
         section="levels",
     )
@@ -642,6 +648,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             raise ValueError(
                 "levels.apoc_profile_source must be one of "
                 f"{sorted(APOC_PROFILE_SOURCES)!r}, got {source!r}"
+            )
+    if "rolling_poc_profile_source" in levels:
+        source = levels["rolling_poc_profile_source"]
+        if not isinstance(source, str) or source not in ROLLING_POC_PROFILE_SOURCES:
+            raise ValueError(
+                "levels.rolling_poc_profile_source must be one of "
+                f"{sorted(ROLLING_POC_PROFILE_SOURCES)!r}, got {source!r}"
             )
     _validate_number_fields(
         levels,
@@ -1581,8 +1594,12 @@ def compute_levels(
         prior_profile_table_path=prior_profile_table_path,
         tick_source_id=tick_source_id,
     )
-    settings = attach_apoc_identity(
-        attach_tick_identity(settings, tick_source_id=resolved_tick_source_id),
+    settings = attach_rolling_poc_identity(
+        attach_apoc_identity(
+            attach_tick_identity(settings, tick_source_id=resolved_tick_source_id),
+            tick_paths=tick_paths,
+            format_profile=resolve_tick_format_profile(tick_format_profile),
+        ),
         tick_paths=tick_paths,
         format_profile=resolve_tick_format_profile(tick_format_profile),
     )
@@ -1615,6 +1632,7 @@ def compute_levels(
         if key != "instrument"
         and key not in LEVELS_TICK_IDENTITY_KEYS
         and key not in LEVELS_APOC_IDENTITY_KEYS
+        and key not in LEVELS_ROLLING_POC_IDENTITY_KEYS
     }
     apoc_tick_table = None
     if str(settings.get("apoc_profile_source") or "") == "tick_last_volume_v1":

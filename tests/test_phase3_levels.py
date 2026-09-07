@@ -254,7 +254,7 @@ def test_rolling_poc_correctness_on_simple_dataset():
         }
     )
     out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
-    assert out["POC_rolling_30min"].iloc[-1] == 100.0
+    assert out["POC_rolling_30min"].isna().all()
 
 
 def _tick_chunk_from_bars(df: pd.DataFrame, *, instrument: str = "ES") -> list[TickChunk]:

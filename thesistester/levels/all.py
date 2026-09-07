@@ -14,6 +14,7 @@ from .indicators import compute_indicator_levels
 from .pivots import compute_pivot_levels
 from .prev30m_vwap import compute_prev30m_vwap_levels
 from .profile import compute_profile_levels
+from .rolling_poc_tick import ROLLING_POC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
 from .session_vwap import compute_session_vwap_levels
 from .sessions import compute_session_levels
 from .tpo import compute_tpo_levels
@@ -52,6 +53,7 @@ def compute_all_levels(
     tick_paths: Sequence[str | Path] | None = None,
     prev30m_vwap_enabled: bool = False,
     prev30m_vwap_validity_periods: int = 1,
+    rolling_poc_profile_source: str = ROLLING_POC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
 ) -> pd.DataFrame:
     """Compute Phase 2 + Phase 3 levels in one timeline-aligned DataFrame.
 
@@ -72,12 +74,16 @@ def compute_all_levels(
       requires Quantower Tick–Tick–Last inputs (or a prebuilt A-period
       table). ``apoc_enabled=False`` remains a true no-op.
     - ``prev30m_vwap_enabled`` — previous 30m VWAP (``prev30mVWAP``) with
-      early-window hit diagnostics; ``prev30m_vwap_validity_periods > 1``
-      also emits stack columns ``prev30mVWAP_2``…``_N`` (Stage 8 /
-      Phases 1–3, **implemented**)
+        early-window hit diagnostics; ``prev30m_vwap_validity_periods > 1``
+        also emits stack columns ``prev30mVWAP_2``…``_N`` (Stage 8 /
+        Phases 1–3, **implemented**)
+    - Rolling POC is tick Last×Volume by default (``tick_last_volume_v1``).
+      Missing ticks emit all-NaN ``POC_rolling_*``; they never fall back to
+      typical. APOC library default remains typical (separate follow-up).
 
-    With all new gates at their defaults the output is **identical** to the
-    pre-Stage-1 output.
+    With all new gates at their defaults, session / indicator / VA-omit /
+    APOC-off output matches the pre-Stage-1 additive contract. Rolling POC
+    is the exception: default is now tick (NaN without ``tick_paths``).
 
     Single Prints and APOC/pAPOC are independent level families.  Single Prints
     are TPO auction-structure levels implemented in ``tpo.py``.  APOC/pAPOC are
@@ -104,6 +110,8 @@ def compute_all_levels(
         prior_week_aggregation_ticks=prior_week_aggregation_ticks,
         prior_month_aggregation_ticks=prior_month_aggregation_ticks,
         prior_profile_table=prior_profile_table,
+        rolling_poc_profile_source=rolling_poc_profile_source,
+        tick_paths=tick_paths,
     )
     pivot_df = compute_pivot_levels(
         df,

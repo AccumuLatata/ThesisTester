@@ -34,7 +34,7 @@ Assistant-related contracts:
 | Anchor-only (`min_valid=0`) | `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md` (AO) | **AO1 implemented.** Opt-in `anchor_rules` with empty partners so a location can be traded alone. Default `min_valid` stays 1. Global cluster / `simulate_trades` / pipeline composition frozen. No golden regen |
 | Tick VAP (prior-profile allocation) | `docs/TICK_VAP_IMPLEMENTATION_PLAN.md` (TV) | **TV1–TV4 landed.** Series complete. Data / Study Builder `tick_paths` + Help honesty. Quantower tick-last ingest for `pd*` / `pw*` / `pm*` VA only; 15s stays the bar clock; omit/fail-closed without ticks; product day bin 1; `LEVEL_ENGINE_VERSION` 11; no golden regen |
 | A-period POC Quantower parity | `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP) | **AP3 implemented.** Default APOC remains `typical_mvp_v1`. Opt-in `tick_last_volume_v1` is the AP1-selected Quantower source. Program B Wave 7 packets are labeled legacy typical-price; historical ZIPs are not rewritten. |
-| Rolling POC Quantower parity | `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md` (RP) | **RP1 harness in this PR.** Next is RP1g scorecard. Print window is `[now-W+1min, now+1min)`, not `min/max(members)`. Do not edit `_rolling_poc` body. RP2 opt-in is merge-gated on RP1g (tick **or** 1m bar-range). Default stays typical. No golden regen. |
+| Rolling POC Quantower parity | `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md` (RP) | **RP2 default tick Last×Volume (desk amendment).** No QT sliding oracle; no RP2-cancel. Missing ticks → all-NaN `POC_rolling_*`. `_rolling_poc` body untouched (not the product path). APOC default stays typical. No golden regen. |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1511,17 +1511,16 @@ unchanged. Product default source is unchanged (`typical_mvp_v1`); no
 `LEVEL_ENGINE_VERSION` bump. Missing tick inputs under the selected source
 emit `NaN`, never legacy typical APOC.
 
-## Rolling POC Quantower parity (RP0–RP2) — RP1 harness landed, RP1g next
+## Rolling POC Quantower parity (RP0–RP2) — RP2 default tick landed
 
-`POC_rolling_30min` still dumps each derived-1m bar’s volume onto typical
-`(H+L+C)/3` via `_rolling_poc`. That is the same **allocation class** AP1
-killed for A-period POC, but it is not the same **window**. On a complete 1m
-grid the rolling 30m lookback equals the A-period only at 09:59 NY (typical
-rolling equals `_compute_a_period_poc` / `APOC` **at 10:00**; 09:59 `APOC` is
-NaN). At 10:00 APOC is frozen A-period and rolling has already dropped 09:30
-and included 10:00. Quantower Step 30m is the A-period’s cousin (fixed
-bricks), not a sliding lookback. Tick/15s prints use
-`[now-W+1min, now+1min)` — do not implement `min/max(members)`.
+Production `POC_rolling_*` is tick Last×Volume on `[now-W+1min, now+1min)`
+(desk amendment; no QT sliding-widget oracle). Typical `_rolling_poc` is
+retained as a dead/non-default helper. Window identity is unchanged: on a
+complete 1m grid the theoretical print window equals the A-period only at
+09:59 NY (`[09:30, 10:00)`). At 10:00 APOC is frozen A-period and rolling
+has already dropped 09:30. Quantower Step 30m is the A-period’s cousin
+(fixed bricks), not a sliding lookback. Do not implement
+`min/max(members)`.
 
 **Canonical spec:** `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md`
 
@@ -1529,18 +1528,16 @@ bricks), not a sliding lookback. Tick/15s prints use
 |---|---|
 | RP0 | Lock window identity, candidate table, oracle protocol, and RP1–RP2 spec ✅ (rev 2 review locks) |
 | RP1 | Pure sampled-stamp comparator; reuse `apoc_candidates` histograms; no production output change; do not edit `_rolling_poc` body ✅ |
-| RP1g | Write the §4.3 scorecard into the plan (docs only; exactly 10 gate stamps) |
-| RP2 | Versioned `rolling_poc_profile_source` opt-in — **merge only if RP1g selects Last×Volume or 1m `bar_range_uniform_volume_v1`** |
-| RP2-cancel | Docs-only retain typical if the scorecard selects nothing / Session / Step / TPO / 15s typical |
+| RP1g | QT oracle unavailable; desk selects `tick_last_volume_v1` as default (folded into RP2) ✅ |
+| RP2 | Default tick Last×Volume; no typical fallback; two-pointer print window ✅ |
+| RP2-cancel | **Not opened** — desk amendment superseded retain-typical |
 
-**Regression posture:** typical `POC_rolling_*` values and TV3 VA
-omit/fail-closed stay unchanged. Goldens: no regen. Default remains implicit
-typical (no `LEVEL_ENGINE_VERSION` bump). Trailing kwargs with defaults; no
-`*` on `compute_all_levels`. Do not reuse `PriorProfileTable` or
-`APeriodTickProfileTable`. RP2 tick path is two-pointer incremental
-histogram + lookback `max(requested windows)`, not a per-bar helper scan.
-Identity keys strip in `api.py` / `research_identity.py` / `classic_export.py`.
-Do not present 15s bar-range as Quantower-compatible without the RP scorecard.
+**Regression posture:** default rolling POC is tick Last×Volume. No ticks →
+all-NaN `POC_rolling_*` (columns present). Typical `_rolling_poc` is not the
+product path. TV3 VA omit/fail-closed unchanged. Default APOC remains typical.
+Goldens: no regen (`run_legacy_pipeline` does not call `compute_all_levels`).
+`LEVEL_ENGINE_VERSION` stays 11; rolling identity keys change the settings
+hash. Do not reuse `PriorProfileTable` or `APeriodTickProfileTable`.
 
 ## Trade Journal (TJ0–TJ9) — TJ9 landed (series complete)
 

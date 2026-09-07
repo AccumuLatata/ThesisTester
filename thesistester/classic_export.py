@@ -19,6 +19,7 @@ from thesistester.data.loader import DataValidationError, format_interval, valid
 from thesistester.engine.exit_management import validate_exit_management_config
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
 from thesistester.levels.apoc_tick import LEVELS_APOC_IDENTITY_KEYS
+from thesistester.levels.rolling_poc_tick import LEVELS_ROLLING_POC_IDENTITY_KEYS
 from thesistester.levels.tick_vap import LEVELS_TICK_IDENTITY_KEYS
 from thesistester.persistence.execution_artifacts import (
     ArtifactMiss,
@@ -158,6 +159,7 @@ def _levels_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExportG
             key != "instrument"
             and key not in LEVELS_TICK_IDENTITY_KEYS
             and key not in LEVELS_APOC_IDENTITY_KEYS
+            and key not in LEVELS_ROLLING_POC_IDENTITY_KEYS
         )
     }
     unknown = sorted(set(levels) - set(DEFAULT_LEVELS_SETTINGS) - OPTIONAL_LEVELS_SETTINGS)

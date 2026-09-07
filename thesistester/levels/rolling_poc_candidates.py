@@ -1,9 +1,11 @@
 """Sampled-stamp rolling-POC comparison harness (RP1).
 
-Comparison-only. Production ``_rolling_poc`` / ``compute_profile_levels`` are
-not imported and are not called. Histogram builders are reused from
+Comparison-only. Production rolling POC is tick Last×Volume
+(``rolling_poc_tick``); this harness does not import or call
+``compute_profile_levels``. Histogram builders are reused from
 :mod:`thesistester.levels.apoc_candidates`. Window membership is independent
-of the A-period row selector.
+of the A-period row selector. Typical ``_rolling_poc`` remains a
+dead/non-default helper.
 
 Window lock
 -----------
