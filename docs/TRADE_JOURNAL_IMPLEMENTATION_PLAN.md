@@ -578,9 +578,13 @@ data not code; unknown tag → `unmapped`, kept and counted). Normative
 importable list is the YAML. Desk short forms from the TJ6 export stay
 byte-stable. Remaining Program B `ANCHORS` (50 cores; generator
 `examples/studies/program_b/generate_program_b_yaml.py`) are registered as
-engine-token keys. No parallel short aliases (`pdHigh`, `pRTH_High`,
-`prevSettlement`, `prev30mVWAP`, `VWAP_rolling_4h` are not desk keys).
-`POC_rolling_*` is not a Program B core and is not a tag.
+engine-token keys. Default closed-set confirms and widget-maximal extras
+(inventory §2.2 MA / rVWAP / rPOC) use desk MA short forms
+(`{tf}{len}{SMA|EMA}`, tf = `1m`/`5m`/`30m`) or identity keys. No parallel
+aliases (`pdHigh`, `pRTH_High`, `prevSettlement`, `prev30mVWAP`,
+`VWAP_rolling_4h`, `SMA_50_1min` are not desk keys). `POC_rolling_*` is not
+a Program B core; it is a confirm tag via identity keys. `p30POC` stays
+parked (`unmapped`) and is not an alias for `POC_rolling_30min`.
 
 | Tag (as written) | Engine token (`thesistester/levels/catalog.py`) | Class |
 |---|---|---|
@@ -596,15 +600,20 @@ engine-token keys. No parallel short aliases (`pdHigh`, `pRTH_High`,
 | `pwHigh`, `pwLow`, `pwEQ`, `pmHigh`, `pmLow`, `pmEQ` | same token | level |
 | `dSinglePrint_30m_NearestAbove`, `dSinglePrint_30m_NearestBelow`, `pSinglePrint_30m_NearestAbove`, `pSinglePrint_30m_NearestBelow` | same token | level |
 | `p30POC` | — (no engine token; parked) | `unmapped` |
-| `5m21EMA`, `5m50SMA`, `1m9EMA` | `EMA_21_5min`, `SMA_50_5min`, `EMA_9_1min` | confirm |
+| `{tf}{len}{SMA|EMA}` (`1m`/`5m`/`30m` × widget lengths; includes `5m21EMA`, `5m50SMA`, `1m9EMA`, `1m50SMA`) | `SMA_*_*` / `EMA_*_*` | confirm |
+| `Pivot_*`, `VWAP_rolling_{15min,30min,1h}`, `POC_rolling_{30min,1h,4h}` | same token | confirm |
 | suffix `_retest`, `_SFP`, `_RTH` | stripped into `qualifier`; `_RTH` only re-maps for `pdH`. Exact `dVWAP_RTH` / `pdH_RTH` win first | qualifier |
 | `ITR`, `ITR-C`, `CTR`, `CTR-R`, `touch`, `3c`, `DeltaNode`, `GEX2`, `5mCOT`, `5mSFP` | — | context (never a level) |
 
-The map is frozen against `closed_level_token_set` under
-`DEFAULT_LEVELS_SETTINGS` (TJ6 suite: mapped tokens must be in that set;
-`EMA_9_1min` / `SMA_50_5min` / `EMA_21_5min` / `VWAP_rolling_4h` /
-`prev30mVWAP` / `mVWAP` / `APOC` plus the Program B session / VA / SP /
-`pAPOC` cores are in the product set). Exact-tag rows win before qualifier
+The map is frozen against the union of
+`closed_level_token_set(DEFAULT_LEVELS_SETTINGS)` and widget-maximal extras
+(`sma_lengths`/`ema_lengths` = {9,20,21,50,100,200} × {1min,5min,30min};
+`VWAP_rolling_15min`/`1h`; `POC_rolling_1h`/`4h`). Every token in that set
+is reachable via exactly one exact row. Widget extras are not in the
+product default closed set; they are still engine tokens the widget can
+emit. TJ6 suite pins `EMA_9_1min` / `SMA_50_5min` / `EMA_21_5min` /
+`SMA_50_1min` / `VWAP_rolling_4h` / `prev30mVWAP` / `mVWAP` / `APOC` plus
+the Program B session / VA / SP / `pAPOC` cores. Exact-tag rows win before qualifier
 stripping (`pdH_RTH` → `pRTH_High`, not `pdHigh` + `_RTH`; `dVWAP_RTH` →
 `dVWAP_RTH`, not `dVWAP` + `_RTH`). The desk owns additions; the repo owns
 the map. The May export’s observed 27-token vocabulary (§0.2) is unchanged
