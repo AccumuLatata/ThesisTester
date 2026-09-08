@@ -44,8 +44,9 @@ from thesistester.study.schema import closed_level_token_set
 
 UTC = "UTC"
 
-# Byte-stable TJ6 exact rows. Additive Program B keys may follow; these must not
-# be remapped, renamed, or dropped.
+# Byte-stable exact rows (TJ6 export + locked MA short forms). Additive
+# Program B / closed-set keys may follow; these must not be remapped,
+# renamed, or dropped.
 _FROZEN_EXACT_ROWS: dict[str, dict[str, object]] = {
     "pdH": {"token": "pdHigh", "class": "level"},
     "pdLow": {"token": "pdLow", "class": "level"},
@@ -64,6 +65,7 @@ _FROZEN_EXACT_ROWS: dict[str, dict[str, object]] = {
     "5m21EMA": {"token": "EMA_21_5min", "class": "confirm"},
     "5m50SMA": {"token": "SMA_50_5min", "class": "confirm"},
     "1m9EMA": {"token": "EMA_9_1min", "class": "confirm"},
+    "1m50SMA": {"token": "SMA_50_1min", "class": "confirm"},
 }
 
 _FROZEN_CONTEXT = [
@@ -89,11 +91,52 @@ _SHORT_FORM_TO_TOKEN: dict[str, str] = {
 }
 _SHORT_FORM_ENGINE_ALIASES = frozenset(_SHORT_FORM_TO_TOKEN.values()) | {"VWAP_rolling_4h"}
 
+# Widget-maximal extras (inventory §2.2) unioned with product defaults.
+# closed_level_token_set merges DEFAULT_LEVELS_SETTINGS; these overrides
+# add MA lengths + rolling windows the widget can emit.
+_WIDGET_MA_LENGTHS = (9, 20, 21, 50, 100, 200)
+_WIDGET_MA_TIMEFRAMES = ("1min", "5min", "30min")
+_MA_TF_SHORT = {"1min": "1m", "5min": "5m", "30min": "30m"}
+_WIDGET_MAXIMAL_LEVELS: dict[str, object] = {
+    "sma_lengths": list(_WIDGET_MA_LENGTHS),
+    "ema_lengths": list(_WIDGET_MA_LENGTHS),
+    "sma_timeframes": list(_WIDGET_MA_TIMEFRAMES),
+    "ema_timeframes": list(_WIDGET_MA_TIMEFRAMES),
+    "vwap_windows": ["15min", "30min", "1h", "4h"],
+    "poc_windows": ["30min", "1h", "4h"],
+}
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _TAG_MAP_YAML = _REPO_ROOT / "thesistester" / "journal" / "tag_map.yaml"
 _PROGRAM_B_GENERATE = (
     _REPO_ROOT / "examples" / "studies" / "program_b" / "generate_program_b_yaml.py"
 )
+
+
+def _ma_desk_key(kind: str, length: int, timeframe: str) -> str:
+    return f"{_MA_TF_SHORT[timeframe]}{length}{kind}"
+
+
+def _ma_engine_token(kind: str, length: int, timeframe: str) -> str:
+    return f"{kind}_{length}_{timeframe}"
+
+
+def _ma_short_form_to_token() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for kind in ("SMA", "EMA"):
+        for length in _WIDGET_MA_LENGTHS:
+            for timeframe in _WIDGET_MA_TIMEFRAMES:
+                token = _ma_engine_token(kind, length, timeframe)
+                mapping[_ma_desk_key(kind, length, timeframe)] = token
+    return mapping
+
+
+def _coverage_token_set() -> frozenset[str]:
+    """Product default closed set ∪ widget-maximal extras."""
+    return frozenset(
+        closed_level_token_set(DEFAULT_LEVELS_SETTINGS)
+        | closed_level_token_set(_WIDGET_MAXIMAL_LEVELS)
+    )
 
 
 def _program_b_all_anchors() -> list[str]:
@@ -234,16 +277,20 @@ def test_journal_levels_does_not_import_engine() -> None:
     assert "thesistester.levels.all" not in loaded.__dict__
 
 
-def test_mapped_tokens_are_in_default_closed_set() -> None:
+def test_mapped_tokens_are_in_coverage_set() -> None:
     closed = closed_level_token_set(DEFAULT_LEVELS_SETTINGS)
+    coverage = _coverage_token_set()
     tokens = mapped_engine_tokens()
     assert tokens
-    missing = sorted(tokens - closed)
-    assert missing == []
+    assert closed <= coverage
+    assert sorted(closed - tokens) == []
+    assert sorted(coverage - tokens) == []
+    assert sorted(tokens - coverage) == []
     for token in (
         "EMA_9_1min",
         "SMA_50_5min",
         "EMA_21_5min",
+        "SMA_50_1min",
         "VWAP_rolling_4h",
         "prev30mVWAP",
         "mVWAP",
@@ -295,6 +342,8 @@ def test_tag_map_is_data_not_code() -> None:
     assert resolve_tag("3C").tag_class == TAG_CLASS_UNMAPPED
     assert resolve_tag("5m21EMA").tag_class == TAG_CLASS_CONFIRM
     assert resolve_tag("5m21EMA").token == "EMA_21_5min"
+    assert resolve_tag("1m50SMA").tag_class == TAG_CLASS_CONFIRM
+    assert resolve_tag("1m50SMA").token == "SMA_50_1min"
     unknown = resolve_tag("notADeskTag")
     assert unknown.tag_class == TAG_CLASS_UNMAPPED
     assert unknown.raw == "notADeskTag"
@@ -320,12 +369,6 @@ def test_tag_map_covers_program_b_anchors_exactly_once() -> None:
     assert len(anchors) == len(set(anchors)) == 50
     assert "p30POC" not in anchors
     assert not any(name.startswith("POC_rolling") for name in anchors)
-    assert not any(str(key).startswith("POC_rolling") for key in exact)
-    assert not any(
-        str(row.get("token") or "").startswith("POC_rolling")
-        for row in exact.values()
-        if isinstance(row, dict)
-    )
 
     token_to_keys: dict[str, list[str]] = {}
     for key, row in exact.items():
@@ -361,6 +404,17 @@ def test_tag_map_covers_program_b_anchors_exactly_once() -> None:
     assert exact["p30POC"] == {"token": None, "class": "unmapped"}
     assert parked.tag_class == TAG_CLASS_UNMAPPED
     assert parked.token is None
+    # Rolling POC identity keys are confirms; they must not alias p30POC.
+    for poc_key in ("POC_rolling_30min", "POC_rolling_1h", "POC_rolling_4h"):
+        poc = resolve_tag(poc_key)
+        assert poc.token == poc_key
+        assert poc.tag_class == TAG_CLASS_CONFIRM
+        assert exact[poc_key] == {"token": poc_key, "class": "confirm"}
+    assert not any(
+        str(row.get("token") or "").startswith("POC_rolling")
+        for key, row in exact.items()
+        if isinstance(row, dict) and key == "p30POC"
+    )
 
     rth_vwap = resolve_tag("dVWAP_RTH")
     assert rth_vwap.token == "dVWAP_RTH"
@@ -371,6 +425,76 @@ def test_tag_map_covers_program_b_anchors_exactly_once() -> None:
     assert stripped.token == "dVWAP"
     assert stripped.tag_class == TAG_CLASS_LEVEL
     assert stripped.qualifier == "_RTH"
+
+
+def test_tag_map_covers_closed_and_widget_tokens_exactly_once() -> None:
+    """Every product/widget-closed token is reachable via exactly one exact row."""
+    payload = load_tag_map()
+    exact = payload.get("exact")
+    assert isinstance(exact, dict)
+    raw_keys = _exact_keys_from_yaml_text(_TAG_MAP_YAML.read_text(encoding="utf-8"))
+    assert len(raw_keys) == len(set(raw_keys))
+    assert set(raw_keys) == set(exact)
+
+    coverage = _coverage_token_set()
+    default_closed = closed_level_token_set(DEFAULT_LEVELS_SETTINGS)
+    assert default_closed <= coverage
+    assert "SMA_50_15min" not in coverage
+    assert "Pivot_1min_High" not in coverage
+    assert "wVWAP_RTH" not in coverage
+    assert "mVWAP_RTH" not in coverage
+    assert "RTH_High" not in coverage
+    assert "RTH_Low" not in coverage
+
+    token_to_keys: dict[str, list[str]] = {}
+    for key, row in exact.items():
+        assert isinstance(row, dict)
+        token = row.get("token")
+        if row.get("class") == TAG_CLASS_UNMAPPED or not token:
+            continue
+        token_to_keys.setdefault(str(token), []).append(str(key))
+
+    assert set(token_to_keys) == set(coverage)
+    ma_short = _ma_short_form_to_token()
+    short_forms = {**_SHORT_FORM_TO_TOKEN, "4hVWAP": "VWAP_rolling_4h", **ma_short}
+
+    for token in sorted(coverage):
+        keys = token_to_keys.get(token, [])
+        assert len(keys) == 1, f"{token} mapped by {keys}"
+        key = keys[0]
+        row = exact[key]
+        assert isinstance(row, dict)
+        mapped = resolve_tag(key)
+        assert mapped.token == token
+        assert mapped.qualifier is None
+        if token.startswith(("SMA_", "EMA_")):
+            assert row.get("class") == TAG_CLASS_CONFIRM
+            assert mapped.tag_class == TAG_CLASS_CONFIRM
+            assert key == next(desk for desk, engine in ma_short.items() if engine == token)
+            assert token not in exact
+            assert resolve_tag(token).tag_class == TAG_CLASS_UNMAPPED
+        elif token in _SHORT_FORM_TO_TOKEN.values() or token == "VWAP_rolling_4h":
+            assert row.get("class") == TAG_CLASS_LEVEL
+            assert mapped.tag_class == TAG_CLASS_LEVEL
+            assert token not in exact
+            assert resolve_tag(token).tag_class == TAG_CLASS_UNMAPPED
+        elif token.startswith(("Pivot_", "VWAP_rolling_", "POC_rolling_")):
+            assert key == token
+            assert row.get("class") == TAG_CLASS_CONFIRM
+            assert mapped.tag_class == TAG_CLASS_CONFIRM
+        else:
+            assert key == token
+            assert row.get("class") == TAG_CLASS_LEVEL
+            assert mapped.tag_class == TAG_CLASS_LEVEL
+
+    colliding = sorted(set(short_forms.values()) & set(exact))
+    assert colliding == []
+    assert resolve_tag("1m50SMA").token == "SMA_50_1min"
+    assert resolve_tag("30m200SMA").token == "SMA_200_30min"
+    assert resolve_tag("5m9EMA").token == "EMA_9_5min"
+    assert resolve_tag("Pivot_1m_High").token == "Pivot_1m_High"
+    assert resolve_tag("VWAP_rolling_30min").token == "VWAP_rolling_30min"
+    assert resolve_tag("POC_rolling_30min").token == "POC_rolling_30min"
 
 
 def test_at_level_between_levels_and_no_frame() -> None:

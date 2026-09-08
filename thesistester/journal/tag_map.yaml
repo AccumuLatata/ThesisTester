@@ -1,7 +1,9 @@
 # Frozen desk tag → engine token map (TJ6). Data, not code.
 # Exact rows win before qualifier stripping. Desk owns additions; repo owns this file.
-# Program B ANCHORS are covered exactly once: existing desk short forms stay
-# byte-stable; remaining anchors use engine-token keys (no parallel aliases).
+# Closed-set + widget-maximal extras are covered exactly once: existing desk
+# short forms stay byte-stable; remaining anchors use engine-token keys;
+# new MAs use {tf}{len}{SMA|EMA}; other new partners use identity keys.
+# No parallel aliases. p30POC stays unmapped (not a rolling-POC alias).
 
 exact:
   pdH:
@@ -170,6 +172,150 @@ exact:
   pSinglePrint_30m_NearestBelow:
     token: pSinglePrint_30m_NearestBelow
     class: level
+  # Remaining MA confirms (desk short form {tf}{len}{SMA|EMA}; 1m/5m/30m).
+  # Existing 5m21EMA / 5m50SMA / 1m9EMA stay above; no identity parallels.
+  1m9SMA:
+    token: SMA_9_1min
+    class: confirm
+  5m9SMA:
+    token: SMA_9_5min
+    class: confirm
+  30m9SMA:
+    token: SMA_9_30min
+    class: confirm
+  1m20SMA:
+    token: SMA_20_1min
+    class: confirm
+  5m20SMA:
+    token: SMA_20_5min
+    class: confirm
+  30m20SMA:
+    token: SMA_20_30min
+    class: confirm
+  1m21SMA:
+    token: SMA_21_1min
+    class: confirm
+  5m21SMA:
+    token: SMA_21_5min
+    class: confirm
+  30m21SMA:
+    token: SMA_21_30min
+    class: confirm
+  1m50SMA:
+    token: SMA_50_1min
+    class: confirm
+  30m50SMA:
+    token: SMA_50_30min
+    class: confirm
+  1m100SMA:
+    token: SMA_100_1min
+    class: confirm
+  5m100SMA:
+    token: SMA_100_5min
+    class: confirm
+  30m100SMA:
+    token: SMA_100_30min
+    class: confirm
+  1m200SMA:
+    token: SMA_200_1min
+    class: confirm
+  5m200SMA:
+    token: SMA_200_5min
+    class: confirm
+  30m200SMA:
+    token: SMA_200_30min
+    class: confirm
+  5m9EMA:
+    token: EMA_9_5min
+    class: confirm
+  30m9EMA:
+    token: EMA_9_30min
+    class: confirm
+  1m20EMA:
+    token: EMA_20_1min
+    class: confirm
+  5m20EMA:
+    token: EMA_20_5min
+    class: confirm
+  30m20EMA:
+    token: EMA_20_30min
+    class: confirm
+  1m21EMA:
+    token: EMA_21_1min
+    class: confirm
+  30m21EMA:
+    token: EMA_21_30min
+    class: confirm
+  1m50EMA:
+    token: EMA_50_1min
+    class: confirm
+  5m50EMA:
+    token: EMA_50_5min
+    class: confirm
+  30m50EMA:
+    token: EMA_50_30min
+    class: confirm
+  1m100EMA:
+    token: EMA_100_1min
+    class: confirm
+  5m100EMA:
+    token: EMA_100_5min
+    class: confirm
+  30m100EMA:
+    token: EMA_100_30min
+    class: confirm
+  1m200EMA:
+    token: EMA_200_1min
+    class: confirm
+  5m200EMA:
+    token: EMA_200_5min
+    class: confirm
+  30m200EMA:
+    token: EMA_200_30min
+    class: confirm
+  # Identity confirms: remaining rVWAP / rPOC / pivots (no 4hVWAP parallel).
+  VWAP_rolling_15min:
+    token: VWAP_rolling_15min
+    class: confirm
+  VWAP_rolling_30min:
+    token: VWAP_rolling_30min
+    class: confirm
+  VWAP_rolling_1h:
+    token: VWAP_rolling_1h
+    class: confirm
+  POC_rolling_30min:
+    token: POC_rolling_30min
+    class: confirm
+  POC_rolling_1h:
+    token: POC_rolling_1h
+    class: confirm
+  POC_rolling_4h:
+    token: POC_rolling_4h
+    class: confirm
+  Pivot_1m_High:
+    token: Pivot_1m_High
+    class: confirm
+  Pivot_1m_Low:
+    token: Pivot_1m_Low
+    class: confirm
+  Pivot_5m_High:
+    token: Pivot_5m_High
+    class: confirm
+  Pivot_5m_Low:
+    token: Pivot_5m_Low
+    class: confirm
+  Pivot_30m_High:
+    token: Pivot_30m_High
+    class: confirm
+  Pivot_30m_Low:
+    token: Pivot_30m_Low
+    class: confirm
+  Pivot_4h_High:
+    token: Pivot_4h_High
+    class: confirm
+  Pivot_4h_Low:
+    token: Pivot_4h_Low
+    class: confirm
 
 context:
   - ITR
