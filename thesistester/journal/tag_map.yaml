@@ -1,5 +1,7 @@
 # Frozen desk tag → engine token map (TJ6). Data, not code.
 # Exact rows win before qualifier stripping. Desk owns additions; repo owns this file.
+# Program B ANCHORS are covered exactly once: existing desk short forms stay
+# byte-stable; remaining anchors use engine-token keys (no parallel aliases).
 
 exact:
   pdH:
@@ -53,6 +55,121 @@ exact:
   1m9EMA:
     token: EMA_9_1min
     class: confirm
+  # Remaining Program B ANCHORS (engine-token desk keys).
+  pdPOC:
+    token: pdPOC
+    class: level
+  pdVAH:
+    token: pdVAH
+    class: level
+  pwPOC:
+    token: pwPOC
+    class: level
+  pwVAL:
+    token: pwVAL
+    class: level
+  pmPOC:
+    token: pmPOC
+    class: level
+  pmVAH:
+    token: pmVAH
+    class: level
+  pmVAL:
+    token: pmVAL
+    class: level
+  pAPOC:
+    token: pAPOC
+    class: level
+  ONH:
+    token: ONH
+    class: level
+  ONL:
+    token: ONL
+    class: level
+  pONH:
+    token: pONH
+    class: level
+  pONL:
+    token: pONL
+    class: level
+  AsiaHigh:
+    token: AsiaHigh
+    class: level
+  AsiaLow:
+    token: AsiaLow
+    class: level
+  LondonHigh:
+    token: LondonHigh
+    class: level
+  LondonLow:
+    token: LondonLow
+    class: level
+  OR_High:
+    token: OR_High
+    class: level
+  OR_Low:
+    token: OR_Low
+    class: level
+  pRTH_Low:
+    token: pRTH_Low
+    class: level
+  RTH_Open:
+    token: RTH_Open
+    class: level
+  pRTH_Open:
+    token: pRTH_Open
+    class: level
+  pdOpen:
+    token: pdOpen
+    class: level
+  wOpen:
+    token: wOpen
+    class: level
+  pwOpen:
+    token: pwOpen
+    class: level
+  mOpen:
+    token: mOpen
+    class: level
+  pmOpen:
+    token: pmOpen
+    class: level
+  pwHigh:
+    token: pwHigh
+    class: level
+  pwLow:
+    token: pwLow
+    class: level
+  pwEQ:
+    token: pwEQ
+    class: level
+  pmHigh:
+    token: pmHigh
+    class: level
+  pmLow:
+    token: pmLow
+    class: level
+  pmEQ:
+    token: pmEQ
+    class: level
+  dVWAP_RTH:
+    token: dVWAP_RTH
+    class: level
+  wVWAP:
+    token: wVWAP
+    class: level
+  dSinglePrint_30m_NearestAbove:
+    token: dSinglePrint_30m_NearestAbove
+    class: level
+  dSinglePrint_30m_NearestBelow:
+    token: dSinglePrint_30m_NearestBelow
+    class: level
+  pSinglePrint_30m_NearestAbove:
+    token: pSinglePrint_30m_NearestAbove
+    class: level
+  pSinglePrint_30m_NearestBelow:
+    token: pSinglePrint_30m_NearestBelow
+    class: level
 
 context:
   - ITR

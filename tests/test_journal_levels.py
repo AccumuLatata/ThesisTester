@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import inspect
 import json
 from datetime import date
@@ -42,6 +43,56 @@ from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.study.schema import closed_level_token_set
 
 UTC = "UTC"
+
+# Byte-stable TJ6 exact rows. Additive Program B keys may follow; these must not
+# be remapped, renamed, or dropped.
+_FROZEN_EXACT_ROWS: dict[str, dict[str, object]] = {
+    "pdH": {"token": "pdHigh", "class": "level"},
+    "pdLow": {"token": "pdLow", "class": "level"},
+    "pdEQ": {"token": "pdEQ", "class": "level"},
+    "pdH_RTH": {"token": "pRTH_High", "class": "level"},
+    "pdVAL": {"token": "pdVAL", "class": "level"},
+    "pwVAH": {"token": "pwVAH", "class": "level"},
+    "dVWAP": {"token": "dVWAP", "class": "level"},
+    "mVWAP": {"token": "mVWAP", "class": "level"},
+    "4hVWAP": {"token": "VWAP_rolling_4h", "class": "level"},
+    "p30VWAP": {"token": "prev30mVWAP", "class": "level"},
+    "APOC": {"token": "APOC", "class": "level"},
+    "pSettlement": {"token": "prevSettlement", "class": "level"},
+    "dOpen": {"token": "dOpen", "class": "level"},
+    "p30POC": {"token": None, "class": "unmapped"},
+    "5m21EMA": {"token": "EMA_21_5min", "class": "confirm"},
+    "5m50SMA": {"token": "SMA_50_5min", "class": "confirm"},
+    "1m9EMA": {"token": "EMA_9_1min", "class": "confirm"},
+}
+
+_FROZEN_CONTEXT = [
+    "ITR",
+    "ITR-C",
+    "CTR",
+    "CTR-R",
+    "3c",
+    "touch",
+    "DeltaNode",
+    "GEX2",
+    "5mCOT",
+    "5mSFP",
+]
+
+# Engine-token spellings already reached via a desk short form — do not add as
+# parallel exact keys.
+_SHORT_FORM_ENGINE_ALIASES = frozenset(
+    {"pdHigh", "pRTH_High", "prevSettlement", "prev30mVWAP", "VWAP_rolling_4h"}
+)
+
+
+def _program_b_all_anchors() -> list[str]:
+    path = Path("examples/studies/program_b/generate_program_b_yaml.py")
+    spec = importlib.util.spec_from_file_location("program_b_generate_for_tags", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return list(module.ALL_ANCHORS)
 
 
 def _ts(stamp: str) -> pd.Timestamp:
@@ -195,18 +246,7 @@ def test_tag_map_is_data_not_code() -> None:
     context = payload.get("context")
     assert isinstance(context, list)
     assert all(isinstance(item, str) for item in context)
-    assert context == [
-        "ITR",
-        "ITR-C",
-        "CTR",
-        "CTR-R",
-        "3c",
-        "touch",
-        "DeltaNode",
-        "GEX2",
-        "5mCOT",
-        "5mSFP",
-    ]
+    assert context == _FROZEN_CONTEXT
     stripped_touch = resolve_tag("touch_retest")
     assert stripped_touch.tag_class == TAG_CLASS_CONTEXT
     assert stripped_touch.token is None
@@ -222,6 +262,42 @@ def test_tag_map_is_data_not_code() -> None:
     unknown = resolve_tag("notADeskTag")
     assert unknown.tag_class == TAG_CLASS_UNMAPPED
     assert unknown.raw == "notADeskTag"
+    for key, expected in _FROZEN_EXACT_ROWS.items():
+        assert key in exact
+        row = exact[key]
+        assert isinstance(row, dict)
+        assert row.get("token") == expected["token"]
+        assert row.get("class") == expected["class"]
+    assert list(payload.get("qualifiers") or []) == ["_retest", "_SFP", "_RTH"]
+
+
+def test_tag_map_covers_program_b_anchors_exactly_once() -> None:
+    """Every Program B ANCHOR is reachable; existing short forms stay unique."""
+    payload = load_tag_map()
+    exact = payload.get("exact")
+    assert isinstance(exact, dict)
+    tokens = mapped_engine_tokens()
+    missing = sorted(set(_program_b_all_anchors()) - tokens)
+    assert missing == []
+    colliding = sorted(_SHORT_FORM_ENGINE_ALIASES & set(exact))
+    assert colliding == []
+    rth_vwap = resolve_tag("dVWAP_RTH")
+    assert rth_vwap.token == "dVWAP_RTH"
+    assert rth_vwap.tag_class == TAG_CLASS_LEVEL
+    assert rth_vwap.qualifier is None
+    for key in (
+        "ONH",
+        "OR_High",
+        "pAPOC",
+        "pdPOC",
+        "pRTH_Low",
+        "wVWAP",
+        "dSinglePrint_30m_NearestAbove",
+    ):
+        mapped = resolve_tag(key)
+        assert mapped.token == key
+        assert mapped.tag_class == TAG_CLASS_LEVEL
+        assert mapped.qualifier is None
 
 
 def test_at_level_between_levels_and_no_frame() -> None:
