@@ -79,20 +79,56 @@ _FROZEN_CONTEXT = [
     "5mSFP",
 ]
 
-# Engine-token spellings already reached via a desk short form — do not add as
-# parallel exact keys.
-_SHORT_FORM_ENGINE_ALIASES = frozenset(
-    {"pdHigh", "pRTH_High", "prevSettlement", "prev30mVWAP", "VWAP_rolling_4h"}
+# Program B desk short forms. ``4hVWAP`` → ``VWAP_rolling_4h`` is the other
+# short form (not a Program B core). Do not add those tokens as exact keys.
+_SHORT_FORM_TO_TOKEN: dict[str, str] = {
+    "pdH": "pdHigh",
+    "pdH_RTH": "pRTH_High",
+    "pSettlement": "prevSettlement",
+    "p30VWAP": "prev30mVWAP",
+}
+_SHORT_FORM_ENGINE_ALIASES = frozenset(_SHORT_FORM_TO_TOKEN.values()) | {"VWAP_rolling_4h"}
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_TAG_MAP_YAML = _REPO_ROOT / "thesistester" / "journal" / "tag_map.yaml"
+_PROGRAM_B_GENERATE = (
+    _REPO_ROOT / "examples" / "studies" / "program_b" / "generate_program_b_yaml.py"
 )
 
 
 def _program_b_all_anchors() -> list[str]:
-    path = Path("examples/studies/program_b/generate_program_b_yaml.py")
-    spec = importlib.util.spec_from_file_location("program_b_generate_for_tags", path)
+    spec = importlib.util.spec_from_file_location(
+        "program_b_generate_for_tags", _PROGRAM_B_GENERATE
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return list(module.ALL_ANCHORS)
+
+
+def _exact_keys_from_yaml_text(text: str) -> list[str]:
+    """Indent-2 exact keys from the raw file (PyYAML last-wins on duplicates)."""
+    keys: list[str] = []
+    in_exact = False
+    for line in text.splitlines():
+        if line.startswith("exact:"):
+            in_exact = True
+            continue
+        if in_exact and line and not line[0].isspace() and not line.startswith("#"):
+            break
+        if not in_exact:
+            continue
+        stripped = line.split("#", 1)[0].rstrip()
+        if (
+            len(stripped) >= 3
+            and stripped.startswith("  ")
+            and not stripped.startswith("    ")
+            and stripped.endswith(":")
+        ):
+            key = stripped[2:-1]
+            if key:
+                keys.append(key)
+    return keys
 
 
 def _ts(stamp: str) -> pd.Timestamp:
@@ -272,32 +308,69 @@ def test_tag_map_is_data_not_code() -> None:
 
 
 def test_tag_map_covers_program_b_anchors_exactly_once() -> None:
-    """Every Program B ANCHOR is reachable; existing short forms stay unique."""
+    """Every Program B ANCHOR is reachable exactly once via one exact row."""
     payload = load_tag_map()
     exact = payload.get("exact")
     assert isinstance(exact, dict)
-    tokens = mapped_engine_tokens()
-    missing = sorted(set(_program_b_all_anchors()) - tokens)
-    assert missing == []
+    raw_keys = _exact_keys_from_yaml_text(_TAG_MAP_YAML.read_text(encoding="utf-8"))
+    assert len(raw_keys) == len(set(raw_keys))
+    assert set(raw_keys) == set(exact)
+
+    anchors = _program_b_all_anchors()
+    assert len(anchors) == len(set(anchors)) == 50
+    assert "p30POC" not in anchors
+    assert not any(name.startswith("POC_rolling") for name in anchors)
+    assert not any(str(key).startswith("POC_rolling") for key in exact)
+    assert not any(
+        str(row.get("token") or "").startswith("POC_rolling")
+        for row in exact.values()
+        if isinstance(row, dict)
+    )
+
+    token_to_keys: dict[str, list[str]] = {}
+    for key, row in exact.items():
+        assert isinstance(row, dict)
+        token = row.get("token")
+        if row.get("class") == TAG_CLASS_UNMAPPED or not token:
+            continue
+        token_to_keys.setdefault(str(token), []).append(str(key))
+
+    for token in anchors:
+        keys = token_to_keys.get(token, [])
+        assert len(keys) == 1, f"{token} mapped by {keys}"
+        key = keys[0]
+        row = exact[key]
+        assert isinstance(row, dict)
+        assert row.get("class") == TAG_CLASS_LEVEL
+        mapped = resolve_tag(key)
+        assert mapped.token == token
+        assert mapped.tag_class == TAG_CLASS_LEVEL
+        assert mapped.qualifier is None
+        if token in _SHORT_FORM_TO_TOKEN.values():
+            assert key in _SHORT_FORM_TO_TOKEN
+            assert _SHORT_FORM_TO_TOKEN[key] == token
+            assert token not in exact
+            assert resolve_tag(token).tag_class == TAG_CLASS_UNMAPPED
+        else:
+            assert key == token
+
     colliding = sorted(_SHORT_FORM_ENGINE_ALIASES & set(exact))
     assert colliding == []
+
+    parked = resolve_tag("p30POC")
+    assert exact["p30POC"] == {"token": None, "class": "unmapped"}
+    assert parked.tag_class == TAG_CLASS_UNMAPPED
+    assert parked.token is None
+
     rth_vwap = resolve_tag("dVWAP_RTH")
     assert rth_vwap.token == "dVWAP_RTH"
     assert rth_vwap.tag_class == TAG_CLASS_LEVEL
     assert rth_vwap.qualifier is None
-    for key in (
-        "ONH",
-        "OR_High",
-        "pAPOC",
-        "pdPOC",
-        "pRTH_Low",
-        "wVWAP",
-        "dSinglePrint_30m_NearestAbove",
-    ):
-        mapped = resolve_tag(key)
-        assert mapped.token == key
-        assert mapped.tag_class == TAG_CLASS_LEVEL
-        assert mapped.qualifier is None
+    without_rth = {key: row for key, row in exact.items() if key != "dVWAP_RTH"}
+    stripped = resolve_tag("dVWAP_RTH", tag_map={**payload, "exact": without_rth})
+    assert stripped.token == "dVWAP"
+    assert stripped.tag_class == TAG_CLASS_LEVEL
+    assert stripped.qualifier == "_RTH"
 
 
 def test_at_level_between_levels_and_no_frame() -> None:

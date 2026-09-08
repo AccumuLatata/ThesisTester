@@ -55,8 +55,9 @@ def resolve_tag(tag: str, *, tag_map: Mapping[str, object] | None = None) -> Tag
     """Resolve one tag. Exact rows win; then qualifier suffixes are stripped.
 
     Qualifier strip applies to ``level`` and ``confirm`` exact rows. Context
-    tags keep class ``context``. ``_RTH`` remaps only via the exact ``pdH_RTH``
-    row; other ``*_RTH`` tags keep the base token.
+    tags keep class ``context``. Exact rows win, so ``pdH_RTH`` maps to
+    ``pRTH_High`` and ``dVWAP_RTH`` maps to ``dVWAP_RTH`` (not ``dVWAP`` +
+    ``_RTH``). Other ``*_RTH`` tags keep the base token.
     """
     raw = str(tag).strip()
     if not raw:
