@@ -573,30 +573,42 @@ already produced; recomputes nothing; no write to `results/studies/`.
 Default 10 ticks is the stop width of this scalper — `levels_within_tolerance`
 is “nearby tokens”, not “the level you meant”.
 
-**Closed tag→token map** (`journal/tags.py`, data not code; unknown tag →
-`unmapped`, kept and counted):
+**Closed tag→token map** (`journal/tag_map.yaml` via `journal/tags.py`;
+data not code; unknown tag → `unmapped`, kept and counted). Normative
+importable list is the YAML. Desk short forms from the TJ6 export stay
+byte-stable. Remaining Program B `ANCHORS` (50 cores; generator
+`examples/studies/program_b/generate_program_b_yaml.py`) are registered as
+engine-token keys. No parallel short aliases (`pdHigh`, `pRTH_High`,
+`prevSettlement`, `prev30mVWAP`, `VWAP_rolling_4h` are not desk keys).
+`POC_rolling_*` is not a Program B core and is not a tag.
 
 | Tag (as written) | Engine token (`thesistester/levels/catalog.py`) | Class |
 |---|---|---|
 | `pdH`, `pdLow`, `pdEQ` | `pdHigh`, `pdLow`, `pdEQ` | level |
 | `pdH_RTH` | `pRTH_High` | level |
-| `pdVAL`, `pwVAH` | `pdVAL`, `pwVAH` (tick-gated, TV3; absent without ticks → `tag_level_missing`) | level |
-| `dVWAP`, `mVWAP` | `dVWAP`, `mVWAP` | level |
+| `pdVAL`, `pwVAH`, `pdPOC`, `pdVAH`, `pwPOC`, `pwVAL`, `pmPOC`, `pmVAH`, `pmVAL` | same token (tick-gated VA, TV3; absent without ticks → `tag_level_missing`) | level |
+| `dVWAP`, `mVWAP`, `dVWAP_RTH`, `wVWAP` | same token | level |
 | `4hVWAP` | `VWAP_rolling_4h` | level |
 | `p30VWAP` | `prev30mVWAP` | level |
-| `APOC`, `pSettlement`, `dOpen` | `APOC`, `prevSettlement`, `dOpen` | level |
+| `APOC`, `pAPOC`, `pSettlement`, `dOpen` | `APOC`, `pAPOC`, `prevSettlement`, `dOpen` | level |
+| `ONH`, `ONL`, `pONH`, `pONL`, `AsiaHigh`, `AsiaLow`, `LondonHigh`, `LondonLow`, `OR_High`, `OR_Low`, `pRTH_Low` | same token | level |
+| `RTH_Open`, `pRTH_Open`, `pdOpen`, `wOpen`, `pwOpen`, `mOpen`, `pmOpen` | same token | level |
+| `pwHigh`, `pwLow`, `pwEQ`, `pmHigh`, `pmLow`, `pmEQ` | same token | level |
+| `dSinglePrint_30m_NearestAbove`, `dSinglePrint_30m_NearestBelow`, `pSinglePrint_30m_NearestAbove`, `pSinglePrint_30m_NearestBelow` | same token | level |
 | `p30POC` | — (no engine token; parked) | `unmapped` |
 | `5m21EMA`, `5m50SMA`, `1m9EMA` | `EMA_21_5min`, `SMA_50_5min`, `EMA_9_1min` | confirm |
-| suffix `_retest`, `_SFP`, `_RTH` | stripped into `qualifier`; `_RTH` only re-maps for `pdH` | qualifier |
+| suffix `_retest`, `_SFP`, `_RTH` | stripped into `qualifier`; `_RTH` only re-maps for `pdH`. Exact `dVWAP_RTH` / `pdH_RTH` win first | qualifier |
 | `ITR`, `ITR-C`, `CTR`, `CTR-R`, `touch`, `3c`, `DeltaNode`, `GEX2`, `5mCOT`, `5mSFP` | — | context (never a level) |
 
-The map is frozen against `closed_level_token_set` at TJ6 time; a mapped
-token that is not in the set **under `DEFAULT_LEVELS_SETTINGS`** fails the
-TJ6 test suite (`EMA_9_1min` / `SMA_50_5min` / `EMA_21_5min` /
-`VWAP_rolling_4h` / `prev30mVWAP` / `mVWAP` / `APOC` are in that product
-set). Exact-tag rows win before qualifier stripping (`pdH_RTH` → `pRTH_High`,
-not `pdHigh` + `_RTH`). The table is the desk vocabulary observed in this
-export; the desk owns additions, the repo owns the map.
+The map is frozen against `closed_level_token_set` under
+`DEFAULT_LEVELS_SETTINGS` (TJ6 suite: mapped tokens must be in that set;
+`EMA_9_1min` / `SMA_50_5min` / `EMA_21_5min` / `VWAP_rolling_4h` /
+`prev30mVWAP` / `mVWAP` / `APOC` plus the Program B session / VA / SP /
+`pAPOC` cores are in the product set). Exact-tag rows win before qualifier
+stripping (`pdH_RTH` → `pRTH_High`, not `pdHigh` + `_RTH`; `dVWAP_RTH` →
+`dVWAP_RTH`, not `dVWAP` + `_RTH`). The desk owns additions; the repo owns
+the map. The May export’s observed 27-token vocabulary (§0.2) is unchanged
+historical finding — not the importable set.
 
 **Tag verification (tagged trades).** Per level-class tag:
 `tag_distance_ticks`, `tag_aligned = |distance| ≤ tag_tolerance_ticks`
