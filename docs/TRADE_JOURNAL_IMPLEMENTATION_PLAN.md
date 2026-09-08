@@ -805,8 +805,10 @@ reason to unpark is the order-type column for a Market-vs-Limit entry cut).
 - [x] Attribution on a hand-built **1m** levels frame: `at_level`, `between_levels`,
   `no_frame`; developing token uses previous completed minute; tolerance
   keyword-only default 10.
-- [x] Map is data (YAML/dict), unit-tested against
-  `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`.
+- [x] Map is data (YAML/dict), unit-tested against the union of
+  `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)` and widget-maximal
+  extras (inventory §2.2 MA / rVWAP / rPOC). Every token in that set is
+  reachable via exactly one exact row.
 - [x] `unmapped` tags counted, never dropped; exact-tag before qualifier strip.
 - [x] Alignment classes + `intent_mismatch` tested (aligned / partial / missing
   token / tagged-A-but-at-B).

@@ -44,8 +44,9 @@ from thesistester.study.schema import closed_level_token_set
 
 UTC = "UTC"
 
-# Byte-stable TJ6 exact rows. Additive Program B keys may follow; these must not
-# be remapped, renamed, or dropped.
+# Byte-stable exact rows (TJ6 export + locked MA short forms). Additive
+# Program B / closed-set keys may follow; these must not be remapped,
+# renamed, or dropped.
 _FROZEN_EXACT_ROWS: dict[str, dict[str, object]] = {
     "pdH": {"token": "pdHigh", "class": "level"},
     "pdLow": {"token": "pdLow", "class": "level"},
@@ -283,6 +284,7 @@ def test_mapped_tokens_are_in_coverage_set() -> None:
     assert tokens
     assert closed <= coverage
     assert sorted(closed - tokens) == []
+    assert sorted(coverage - tokens) == []
     assert sorted(tokens - coverage) == []
     for token in (
         "EMA_9_1min",
