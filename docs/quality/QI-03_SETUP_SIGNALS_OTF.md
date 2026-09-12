@@ -7,7 +7,9 @@
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, pytest 9.1.1, radon 6.0.1
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi03-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data.
 **Finding count:** 12 (C/H/M/L = 0/3/6/3)
-**Time spent:** one agent run on 2026-09-12.
+**Time spent:** one agent run on 2026-09-12; review pass the same day corrected count/schema honesty (product tree unchanged).
+
+Review corrections (evidence re-measured on the same `e30cc48` product files): CRUD compared **16** BSC identity keys (not 15); Signals preview omits **34** `_SIGNAL_COLUMNS` (not 33); `# noqa` / `type: ignore` is **6** lines (not 5); CAI 780/1560 used `L1=L2=close` synthetic clusters on CAI OHLC; `iso25010` token `operability` is not in plan §A.5; generate/chart `except Exception` fails §3.2.3 (raw traceback), it does not *hide* the exception; `prior_id` only keeps `AUDIT_FINAL`/`W*` IDs.
 
 Locked inputs treated as premises (not re-audited): `AUDIT_FINAL.md` §5 on `origin/cursor/audit-final-merge-3a8e`; `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1. `_check_touch`, candidate sort key, and 3c four-rule math were not re-audited (DA0 / AUDIT S3).
 
@@ -32,8 +34,12 @@ radon cc thesistester/setup.py thesistester/engine/signals.py \
   pages/6_Signals.py -s -n D --total-average
 radon mi <same files> -s
 vulture <same files> --min-confidence 60
+# review: original agent log had `vulture: command not found`; re-run on the
+# same 15 files → 12 candidates. Dropping engine/__init__.py (re-export only)
+# yields 13, which is the count the first draft used.
 rg -n 'except Exception|except:' <same files>
 rg -c 'st\.session_state' pages/3_Setup_Builder.py pages/6_Signals.py
+rg -n 'type: ignore|noqa' <same files>
 rg -n 'confirm_3bar' thesistester pages docs
 
 # probes
@@ -107,11 +113,11 @@ Read-as-call-site only (not owned): `thesistester/api.py` `build_setup` / `gener
 | Physical lines > 150 | `generate_signals` 588 · `detect_3c_setups_with_trigger_timeframe` 297 · `_sync_editor_widget_state` 223 · `detect_3c_setups` 205 · `validate_setup_config` 204 · `build_signals_chart` 185 | Yes |
 | MI | `signals.py` **0.00** · `3_Setup_Builder.py` **0.00** · `6_Signals.py` **0.00** · `setup.py` 14.80 · others A (23.9–100) | Yes — structural |
 | Broad `except` | 3: `otf_filter.py` (re-raises `ValueError`) · `pages/6_Signals.py` generate · `pages/6_Signals.py` chart | Classified below |
-| `vulture` ≥60 | 13 candidates. Real unused: `_check_confirm_3bar`, `_normalize_confirm_3bar_params`, `pages/6` `ANCHOR_DIAGNOSTIC_COLUMNS`, `_get_stored_signal_settings`. False friends: `apply_configured_otf_filter` / `to_summary_dict` / `classify_zone_triggers` (used by QI-4/6/8) | confirm_3bar → QI-03-07 |
+| `vulture` ≥60 | **12** on the stated 15-file set (incl. `engine/__init__.py`). **13** if `__init__.py` is omitted — that extra hit is `apply_configured_otf_filter` (re-exported; used by QI-4/6). Real unused: `_check_confirm_3bar`, `_normalize_confirm_3bar_params`, `pages/6` `ANCHOR_DIAGNOSTIC_COLUMNS`, `_get_stored_signal_settings`. Also unused-in-scope: `to_summary_dict`, `classify_zone_triggers` (QI-4/8), `trade_time_window` / `selected_trade_time_window` (QI-4 charts), `anchor_fallback` local, `CandidateLevel.timestamp`, `OtfFilterResult.accepted_signals`/`rejected_signals` | confirm_3bar → QI-03-07 |
 | Streamlit in library (QI-3) | 0 | none |
 | Cross-module private imports | 0 in scope | none |
 | `st.session_state` matching lines | page 3: **82** · page 6: **60** | QI-10 graph |
-| `# noqa` / `# type: ignore` | 5 (float coercion + pandas `== False`) | none |
+| `# noqa` / `# type: ignore` | **6** (five `# type: ignore[arg-type]` float coercions + one pandas `== False` `# noqa: E712`) | none |
 | Coverage (QI-0) | all QI-3 library modules ≥ 76% (`chart_window` 76%; rest ≥ 84%) | none < 70% |
 
 ### 2.2 Trigger protocol (not a shared protocol)
@@ -140,7 +146,7 @@ thesistester/setup.py         VALID_TRIGGERS
 | Site | Class |
 |---|---|
 | `otf_filter.py` `pd.to_datetime(..., errors="raise")` → `ValueError` | *narrow-guard OK* |
-| `pages/6_Signals.py` generate `except Exception` + `st.exception` | *hides defect* in the §3.2.3 sense (raw traceback in UI) — QI-03-05 |
+| `pages/6_Signals.py` generate `except Exception` + `st.exception` | *fails §3.2.3* (raw traceback in the UI via `st.exception`; exception is shown, not swallowed) — QI-03-05 |
 | `pages/6_Signals.py` chart `except Exception` | same |
 
 ### 2.4 D-grade notes (classified, not findings)
@@ -158,14 +164,14 @@ Entry points: Setup Builder (page 3), Signals (page 6), engine `generate_signals
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Happy path on synthetic / CAI | `detect_confluence_zones` + `generate_signals(touch, both)` on CAI realistic (780 bars) → 780 zones / 1560 signal rows in 0.18 s. **Not** a claim that those signals or any downstream backtest are correct. |
+| 1 | Happy path on synthetic / CAI | CAI realistic OHLC (780 bars) with **injected** `L1=L2=close` (not product CAI levels) → `detect_confluence_zones` 780 zones / `generate_signals(touch, both)` 1560 rows in ~0.18 s. Construction is a cheap per-bar cluster so every bar emits a zone. **Not** a claim that CAI product levels or any downstream backtest are correct. |
 | 2 | Empty / minimal | Empty `zones` → 0-row frame whose columns **equal** `_SIGNAL_COLUMNS` (51). Empty setup name → `"Setup name must not be empty."` |
 | 3 | Malformed | `trigger="not_a_trigger"` / `"confirm_3bar"` and `direction="sideways"` fail closed (`ValueError` / validate error list). Page 6 generate wraps remaining exceptions in `st.exception` (QI-03-05). |
 | 4 | Stale-state | Dataset load pops `signals` (QI-1). Setup Builder save / Set active does **not** pop `signals`. Levels page does not mention `signals`. Page 6 invalidates only on **save** via `_validate_signal_artifact_identity_for_save`. QI-03-12 + QI-10 handoff. |
 | 5 | Composer parity | Trigger table §3.2. AO1 `min_valid=0` table §3.3. Signals generate **bypasses** `api.build_setup` (AH §2 two-composer lock — recorded as maintainability, not a collapse proposal). |
 | 6 | Honesty | No confirmatory p-value / “proven” copy on pages 3/6. OTF stored-not-applied copy is present (quote §3.4). DA0 **missing** at direction widgets (QI-03-08). Naked zone-level **missing** on Setup Builder (QI-03-09). |
-| 7 | Persistence | Setup library save→load under `/tmp` store: all 15 execution keys including `min_valid_confluences=0` round-tripped; save adds `setup_id` / `dataset_id` / OTF hash+version; delete empties the namespace. |
-| 8 | Perf envelope | CAI realistic: zones 0.030 s, `generate_signals` 0.151 s. Informational; not compared as a correctness claim vs `SIMULATE_PERF.md`. Handoff QI-14. |
+| 7 | Persistence | Setup library save→load under `/tmp` store: all **16** compared BSC identity keys including `min_valid_confluences=0` round-tripped (`name`…`min_valid_confluences`; `trigger_params` / `otf_filter` / `entry_window` checked separately — `api._SETUP_EXECUTION_KEYS` is 19). Save adds `setup_id` / `dataset_id` / OTF hash+version; delete empties the namespace. |
+| 8 | Perf envelope | Same `L1=L2=close` CAI-OHLC construction: zones ~0.030 s, `generate_signals` ~0.151 s. Informational; not product-level CAI timing and not a correctness claim vs `SIMULATE_PERF.md`. Handoff QI-14. |
 | 9 | Operability | OTF hash/version caption on Signals. Signal table **omits** `trigger_timestamp` / 3c fields (QI-03-11). |
 | 10 | Copy consistency | Trigger tokens identical on pages 3/6. Naked labels differ (“Naked only” vs “Naked / untested levels only”). Admit copy lives on Setup Builder only (correct). |
 
@@ -240,11 +246,11 @@ Probe: engine `generate_signals` output has **zero** `otf_*` columns. `apply_con
 
 Contract: 51 columns in `thesistester/engine/signals.py` `_SIGNAL_COLUMNS`. `ARCHITECTURE.md` points at that list (DA4: `approach_side` is **not** in the contract).
 
-Page 6 display subset (18 names): includes post-engine `setup_name` (not in contract). Omits 33 contract columns including `trigger_timestamp`, `trigger_timeframe`, `tested_level_price`, and the 3c field set. Preview subset — operability gap for HTF/H14 (QI-03-11).
+Page 6 display subset (18 names): includes post-engine `setup_name` (not in contract). Omits **34** contract columns (51 − 17 shown from contract) including `trigger_timestamp`, `trigger_timeframe`, `tested_level_price`, and the 3c field set. Preview subset — operability gap for HTF/H14 (QI-03-11).
 
 ### 3.6 Setup library CRUD
 
-Namespace: `{THESISTESTER_STORE_DIR}/setups/{setup_id}/meta.json` (`schema_version=1`, `kind=setup`). Operations: `save_setup` / `load_setup` / `list_saved_setups` / `delete_setup`. Probe round-trip of an AO1 config: 15/15 exec keys identical; listed=1; after delete=0. Fail-closed copy on page 3 for unavailable levels / validate errors / invalid OTF on load.
+Namespace: `{THESISTESTER_STORE_DIR}/setups/{setup_id}/meta.json` (`schema_version=1`, `kind=setup`). Operations: `save_setup` / `load_setup` / `list_saved_setups` / `delete_setup`. Probe round-trip of an AO1 config: **16/16** compared exec keys identical; listed=1; after delete=0. Fail-closed copy on page 3 for unavailable levels / validate errors / invalid OTF on load.
 
 ### 3.7 DA0 and naked labels
 
@@ -295,11 +301,11 @@ What was checked and is fine — do not re-audit:
 2. **`confirm_3bar` cannot be generated** on UI / validate / engine / `build_setup`. Product generation is closed.
 3. **OTF is not applied at signal generation.** Engine output has no `otf_*` columns. Signals page copy states stored-not-applied. Matches AH §2 item 4 / `ARCHITECTURE.md` / `docs/otf-filter.md`.
 4. **AO1 `min_valid_confluences: 0`** is accepted by `build_setup_config`, `validate_setup_config`, `api.build_setup`, and Study expand `anchor_rules` + empty partners. Setup Builder / Signals manual set 0 when no partners.
-5. **Setup library CRUD** under throwaway store: save→load preserves execution keys including AO1; delete removes the row.
+5. **Setup library CRUD** under throwaway store: save→load preserves the **16** compared BSC identity keys including AO1 `min_valid=0`; delete removes the row.
 6. **Empty zones** return a schema-stable empty `_SIGNAL_COLUMNS` frame. Bad trigger/direction fail closed with typed messages.
 7. **H3/AH6 still holds:** `BASE_COLUMNS` / `close` rejected in `validate_setup_config`; AH6 probe tests exist.
 8. **Simple HTF vs 3c zone handling matches the audit description:** simple triggers keep only `base_end` zones; 3c projects intra-window zones and keeps their prices. (Status of H14, not a new class.)
-9. **`generate_signals` determinism** on the CAI realistic fixture: two runs, identical SHA-256 of CSV bytes. Scoped suite 366 passed ×2 with `PYTHONHASHSEED=0` and default.
+9. **`generate_signals` determinism** on the CAI-OHLC + `L1=L2=close` cluster: two runs, identical SHA-256 (`051156523cc872fa83dda2606c08edd64c057987002d9764b66a7fb916bc8101`). Scoped suite 366 passed ×2 with `PYTHONHASHSEED=0` and default (review re-ran: 366 passed).
 10. **No Streamlit import and no private-import leaks** in QI-3 library modules. `otf_filter` broad-except is a narrow pandas→`ValueError` translation.
 11. **Naked filter is documented in the engine docstring** as zone-level (`any`/`all` on `level_names`). Signals manual radio repeats that.
 12. Nothing in this slice was verified as a correct backtest, metric, or Study result.
@@ -321,7 +327,7 @@ What was checked and is fine — do not re-audit:
 | QI-10 | Session-key graph for `setup_config`, `signals`, `signal_settings*`; stale-state matrix; classic `AppTest` feasibility. |
 | QI-11 | Mutation sample on `generate_signals` / `signals_3c`; page-helper vs AppTest coverage of pages 3/6. |
 | QI-13 | DA0 / naked / H14 / confirm_3bar living-doc wording; USER_GUIDE Setup/Signals H2 vs widgets. |
-| QI-14 | `generate_signals` 0.15 s on CAI realistic (780 bars / 1560 rows); chart CC 29. |
+| QI-14 | `generate_signals` ~0.15 s on CAI-OHLC + `L1=L2=close` (780 bars / 1560 rows); not product CAI levels. Chart CC 29. |
 
 ---
 
@@ -359,7 +365,7 @@ generate_signals(..., trigger="touch", trigger_timeframe="5min")  # 0 rows
 generate_signals(..., trigger="3c", trigger_timeframe="5min")     # 1 row @ 5200.125
 ```
 
-Trigger parity + AO1 + CRUD + empty schema: same script sections `triggers`, `ao1`, `crud`, `empty_malformed`, `otf`. Full JSON: `/tmp/qi03-probe-results.json`.
+Trigger parity + AO1 + CRUD + empty schema: same script sections `triggers`, `ao1`, `crud`, `empty_malformed`, `otf`. Full JSON: `/tmp/qi03-probe-results.json`. Review re-probe (`/tmp/qi03-review-probe-results.json`) reproduced H14 0.375 / trigger lockstep / AO1 / **16/16** CRUD keys / empty 51-col schema / **34** omitted display columns / CAI-OHLC+`L1=L2=close` 780/1560 (SHA-256 unchanged).
 
 ### Suite identity (guardrail 2)
 
