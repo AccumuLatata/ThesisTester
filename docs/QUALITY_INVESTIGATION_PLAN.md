@@ -76,7 +76,7 @@ All metrics are reproducible from the commands in §A.1. Thresholds are *investi
 | Test → module traceability | coverage per module (`--cov-report=term-missing`), plus manual mapping of the 145 test files to the 15 slices | any library module < 70% or any public function with 0 tests | Suite-wide coverage is high but unevenly distributed |
 | Test wall-time | `pytest --durations=25` | any single test > 5 s; any file > 60 s | Feedback-loop cost is a maintainability metric |
 | Determinism | run the slice's suite twice with `-p no:randomly` and once with `PYTHONHASHSEED` varied; diff outputs | any difference | Repo policy: no dict-order or wall-clock dependence |
-| Mutation score (sample) | `mutmut` on `engine/backtest.py`, `engine/intrabar.py`, `analytics/metrics.py`, `analytics/walk_forward.py` only | < 70% killed → coverage is shallow | Only way to distinguish "covered" from "asserted"; sampled because the full suite takes ~40 min |
+| Mutation score (sample) | `mutmut` on `engine/backtest.py`, `engine/intrabar.py`, `analytics/metrics.py`, `analytics/walk_forward.py` only | < 70% killed → coverage is shallow | Only way to distinguish "covered" from "asserted"; sampled (four files, their own test files only) because mutation testing multiplies suite runs by the mutant count |
 | Dependency vulnerabilities | `pip-audit` (project deps only; environment-only packages recorded separately) | any known CVE in a declared dependency | See §4 for the environment-vs-project distinction |
 | Static security | `bandit -r thesistester -ll` | Medium+ | Yaml load, subprocess spawn (Studies launch), zip extraction (bundles), pickle/parquet, secrets |
 | Type-check strictness probe | `mypy --strict` / `pyright` on `thesistester/engine`, `analytics`, `api.py` (read-only, no config committed) | error count per module | Annotations exist almost everywhere (1,588 annotated vs 6 unannotated defs); their *soundness* has never been checked |
@@ -183,7 +183,7 @@ These numbers are the **starting line**. QR success is measured against them (§
 | **CI status on `main`** | **Red since 2026-09-05** (first red run: merge of [#440](https://github.com/AccumuLatata/ThesisTester/pull/440); last green: [#439](https://github.com/AccumuLatata/ThesisTester/pull/439) on 2026-08-30). All **37** subsequent merges through `e82c2a9` ([#476](https://github.com/AccumuLatata/ThesisTester/pull/476)) landed on a red `main`; the last 100 `main` runs are 61 success / 38 failure / 1 cancelled. `ruff`, editable-install, and golden-guard jobs pass; all three `pytest` matrix cells fail |
 | Root cause of the red (verified in CI logs and reproduced locally) | `tests/test_assistant_page_render.py::test_disabled_discuss_chat_input_does_not_call_handle_results_turn` — Streamlit **1.63.0** `AppTest` now raises `AppTestError: Cannot update a disabled chat_input widget` on `set_value()`; the test's *intent* (handler must not run when disabled) is now enforced by the framework itself, so the test's mechanism is obsolete, not the product. `pyproject.toml` allows `streamlit>=1.56,<2`, so CI silently picked up the new minor |
 | Second failure, py3.10 cell only (since at least `e82c2a9`) | `tests/test_journal_join.py::test_nullable_join_columns_stay_object_none — assert nan is None`. The py3.10 cell resolves **pandas 2.3.3** while py3.11/3.12 resolve **pandas 3.0.5** (pandas 3 requires ≥3.11): the matrix is a *pandas-major* split by accident, not by design, and nullable-object semantics differ |
-| CI (`.github/workflows/ci.yml`) | ruff lint+format (blocking) · pytest 3.10/3.11/3.12 with coverage (coverage informational, floor 85%, R9 baseline 88%) · clean editable install + `pip check` · golden-regen label guard. **No branch protection is stopping merges on red** (evidence: the 37 merges above) |
+| CI (`.github/workflows/ci.yml`) | ruff lint+format (blocking) · pytest 3.10/3.11/3.12 with coverage (coverage informational, floor 85%, R9 baseline 88%) · clean editable install + `pip check` · golden-regen label guard. **Whatever branch protection exists did not stop 37 merges on red**: e.g. [#476](https://github.com/AccumuLatata/ThesisTester/pull/476) merged with all three `pytest` checks `FAILURE`; [#450](https://github.com/AccumuLatata/ThesisTester/pull/450) merged with `pytest` ×3 **and** `ruff (lint + format)` `FAILURE` (required-status configuration is not visible from the checkout; QI-12 verifies it via repository settings) |
 | CI test count / wall time (`e82c2a9`) | 3,966 collected (3,965 pass + 1 fail on py3.11/3.12; 3,963 + 2 fail on py3.10), 5–6 skipped; 4:55–8:08 min per cell |
 | Type checker in CI | **none** (no mypy/pyright config anywhere) |
 | Security scanning in CI | **none** (no bandit, pip-audit, CodeQL, dependabot/renovate) |
@@ -194,7 +194,7 @@ These numbers are the **starting line**. QR success is measured against them (§
 
 ### 4.4 What the baseline already tells us (hypotheses for the slices, not findings)
 
-- **H-0 (verified, not a hypothesis). The regression-safety framework's CI gate (`ENGINEERING_PROPOSAL` §4 rule 9, "no merge on red") is not operating.** `main` has been red for a week and 37 PRs merged over it; every "CI green" claim in those PR bodies was false for the suite job. Two independent dependency-drift events (Streamlit minor, pandas major split across the matrix) went unnoticed because nothing blocks on red. This is exactly the `ENGINEERING_PROPOSAL` §7 "pandas/numpy major-version drift" risk, realized, plus its Streamlit sibling that the risk register did not list. → **Pre-QI action (§4.6)**, then QI-12 (controls), QI-11 (test mechanism), QI-13 (roadmap "CI green" claims).
+- **H-0 (verified, not a hypothesis). The regression-safety framework's CI gate (`ENGINEERING_PROPOSAL` §4 rule 9, "no merge on red") is not operating.** `main` has been red for a week and 37 PRs merged over it; since the failing tests are dependency-induced, the same `pytest` cells were red on those PR branches too, so the gate was visibly red and did not block. Two independent dependency-drift events (Streamlit minor, pandas major split across the matrix) went unnoticed because nothing blocks on red. This is exactly the `ENGINEERING_PROPOSAL` §7 "pandas/numpy major-version drift" risk, realized, plus its Streamlit sibling that the risk register did not list. → **Pre-QI action (§4.6)**, then QI-12 (controls), QI-11 (test mechanism), QI-13 (roadmap "CI green" claims).
 - **H-A. The complexity is concentrated exactly where the audit found defects.** `simulate_trades` (133) and `generate_signals` (120) are the two most critical functions in the product and two of the four most complex. R22 isolated `engine.sim_core` but the orchestrating function did not shrink. → QI-4, QI-3, QI-14.
 - **H-B. Pages are the under-tested half.** Nine pages have MI 0.00. Streamlit `AppTest` is used for exactly two pages (`tests/test_assistant_page_render.py` → page 14; `tests/study/test_study_observatory.py` → page 16); the thirteen classic/Studies/Journal pages are covered only via `*_page_helpers` unit tests of extracted helpers. The one `AppTest` suite is also the one that broke on the Streamlit minor bump (§4.3). → QI-10, QI-11.
 - **H-C. Contracts are prose, not code.** Dozens of "X must not import Y" rules exist in `AGENT_GUIDE.md` with no `import-linter` contract; `app_state.py` already breaks the "library is Streamlit-free" rule. → QI-12, QI-6.
@@ -239,7 +239,7 @@ Legend for each slice: **Scope** (files owned) · **Why** · **Code-quality chec
 
 ### QI-1 — Data ingestion, sessions, derivation, dataset persistence
 
-**Scope:** `thesistester/data/` (`loader.py`, `vendor_loaders.py`, `derive.py`, `resample.py`, `rolls.py`, `quantower_ticks.py`, `sessions`-tagging helpers), `thesistester/persistence/local_store.py` (dataset namespace), `pages/1_Data.py` (46 defs, 170 session refs), `config.py` instrument presets, `sample_data/`.
+**Scope:** `thesistester/data/` (`loader.py` incl. R17 vendor profiles, `derive.py`, `resample.py`, `rolls.py`, `sessions.py`, `quantower_ticks.py`), `thesistester/persistence/local_store.py` (dataset namespace), `pages/1_Data.py` (46 defs, 170 session refs), `config.py` instrument presets, `sample_data/`.
 **Why:** first gate of every composer; `AUDIT_FINAL` H10/H11 still open; the 15s→1m derivation and tick attach are the newest and most operator-error-prone paths.
 **Code-quality checks:** `pages/1_Data.py` MI 0.00 — decompose render tree into the extraction candidates; classify every broad `except` in the loader path; verify `format_profile` allow-list is a single source of truth (loader vs Studies builder `getattr` fallback rule in `AGENT_GUIDE.md` R17 section suggests duplication).
 **Application-quality checks:** §3.2 for Upload CSV (canonical, each vendor profile, 15s-primary), Sample, saved dataset restore, tick attach, subtimeframe upload; DST-crossing aware timestamps on the canonical path (H11); duplicate 1m bars on legacy primary (H10); ETH/RTH tagging on holiday-shortened and early-close days; `trading_session_date` vs `session` semantics; roll metadata modes; store round-trip incl. `raw.parquet` sidecar and `ingestion_provenance` schema v1→v2.
@@ -252,7 +252,7 @@ Legend for each slice: **Scope** (files owned) · **Why** · **Code-quality chec
 
 ### QI-2 — Levels engine and point-in-time surface
 
-**Scope:** `thesistester/levels/` (all families: sessions, pivots, session VWAP incl. w/mVWAP, single prints, APOC + `apoc_tick.py`, tick VAP, prev30m VWAP, rolling POC, defaults/catalog), `pages/2_Levels.py`, `thesistester/persistence/local_store.py` (levels namespace), `docs/POINT_IN_TIME_GUARANTEES.md` as spec.
+**Scope:** `thesistester/levels/` (`all.py` orchestrator, `common.py`, `session_date.py`, `sessions.py`, `indicators.py`, `pivots.py`, `session_vwap.py` incl. w/mVWAP, `tpo.py` single prints, `profile.py`, `apoc.py` + `apoc_candidates.py` + `apoc_tick.py`, `rolling_poc_candidates.py` + `rolling_poc_tick.py`, `tick_vap.py` + `tick_requirements.py`, `prev30m_vwap.py`, `defaults.py`, `catalog.py`), `visualization/levels_chart.py`, `pages/2_Levels.py`, `thesistester/persistence/local_store.py` (levels namespace), `docs/POINT_IN_TIME_GUARANTEES.md` as spec.
 **Why:** PIT correctness is the product's core claim; the family count has doubled since the R3 audit; two settings planes (product defaults vs keyword defaults, H4) still exist.
 **Code-quality checks:** per-family module shape consistency (does every family expose the same compute signature and identity stamping?); `_sync_levels_widget_state` (CC 39) and the Stage-6 widget/persistence sync; `LEVEL_ENGINE_VERSION`/identity-key discipline — is the "no version bump, identity stamps tick" rule mechanically enforced or convention?; dead/non-default bodies (`_rolling_poc` body is documented dead — is it the only one?).
 **Application-quality checks:** future-shock property test *generated* for every emitted column (append N bars → earlier values byte-identical), not just the R3 named set — report which columns lack a future-shock test; tick-gated refusals (`APOC requires ticks`, `rolling POC requires ticks`) surface identically in UI/API/Study; Levels page stale-fingerprint logic vs `ARCHITECTURE.md`; catalog completeness (LC series) vs `USER_GUIDE.md`.
@@ -265,7 +265,7 @@ Legend for each slice: **Scope** (files owned) · **Why** · **Code-quality chec
 
 ### QI-3 — Setup, confluence, signals, triggers, OTF
 
-**Scope:** `thesistester/setup.py`, `thesistester/engine/signals.py`, `signals_3c.py`, `candidate_level.py`, `otf.py`, confluence/zone detection, `pages/3_Setup_Builder.py` (23 defs, MI 0.00), `pages/6_Signals.py` (33 defs, MI 0.00), `docs/otf-filter.md` as spec.
+**Scope:** `thesistester/setup.py`, `thesistester/engine/signals.py`, `signals_3c.py`, `confluence.py`, `anchor_confluence.py`, `naked.py`, `candidate_level.py`, `otf.py`, `otf_filter.py`, `otf_integration.py`, `visualization/signals_chart.py` (`build_signals_chart` CC 29), `visualization/chart_window.py`, `pages/3_Setup_Builder.py` (23 defs, MI 0.00), `pages/6_Signals.py` (33 defs, MI 0.00), `docs/otf-filter.md` as spec.
 **Why:** `generate_signals` CC 120 and both 3c detectors CC 55–59 are the least-decomposed engine functions; `validate_setup_config` CC 69 is the setup contract for five composers; H14 (stale developing-level projection on HTF triggers) is open.
 **Code-quality checks:** trigger implementations (`touch`/`reject`/`break`/`reclaim`/`fade`/`3c`) — is there a common trigger protocol or five ad-hoc branches?; `confluence_mode` (`global_cluster` vs `anchor_rules`) code-path duplication; setup normalization vs validation vs API `build_setup` vs Studies expand `_build_setup_for_cell` (CC 25) — how many places normalize a setup?; `_sync_editor_widget_state` CC 47.
 **Application-quality checks:** the DA0 lock (`touch`+`both`+`single_position` is long-only) is disclosed wherever `direction` is chosen; naked-level admission is zone-level (documented) — is it labelled so in UI?; Setup library CRUD round-trip; signals table columns vs `ARCHITECTURE.md` row contract; OTF is stored-not-applied on Signals page (verify copy says so).
@@ -278,7 +278,7 @@ Legend for each slice: **Scope** (files owned) · **Why** · **Code-quality chec
 
 ### QI-4 — Execution engine: simulation, intrabar, exits, admission, metrics
 
-**Scope:** `thesistester/engine/backtest.py` (`simulate_trades` CC 133), `engine/sim_core.py`, `engine/intrabar.py`, exit management (BE/trailing), entry-window admission (`analytics/entry_window.py` for Admit only), direction-collision policy, `analytics/metrics.py`, `pages/7_Backtest.py` (5 defs, 1,858 lines), `tests/fixtures/golden/`.
+**Scope:** `thesistester/engine/backtest.py` (`simulate_trades` CC 133), `engine/sim_core.py`, `engine/intrabar.py`, `engine/exit_management.py` (BE/trailing), `entry_window_policy.py` + `analytics/entry_window.py` (Admit half), `execution_defaults.py`, direction-collision policy, `analytics/metrics.py`, `visualization/backtest_chart.py` (`build_backtest_candlestick_chart` CC 34), `visualization/trade_review_chart.py`, `trade_review_export.py`, `pages/7_Backtest.py` (5 defs, 1,858 lines), `tests/fixtures/golden/`.
 **Why:** highest-value code path; every audit Critical touched it; R22's "narrow the core surface" landed but the orchestrator remains F-grade; goldens gate *legacy* only.
 **Code-quality checks:** map `simulate_trades` into its phases (candidate admission → entry → exit walk → P&L → schema → diagnostics) and measure how much of CC 133 belongs to each; identify state carried across loop iterations (the C1 leak class); verify `sim_core` boundary (does any admission/P&L logic live in `sim_core`, violating R22's rule?); exit-reason vocabulary — enumerated or stringly-typed?; trade-schema additive-column discipline — is there a single schema definition?
 **Application-quality checks:** §3.2 for Backtest page incl. skip table, Focus overlay, Admit banner, combo attribution expander, trade-review chart (R20 bounded payload), worst-loser export; `allow_all` overlap disclosure at the widget (H5); cutoff-without-flatten UI vs API (H7); OTF timezone UI vs API (H15); `sl_first` × 3c after AH5 — is the AH5 probe a committed test?
@@ -355,7 +355,7 @@ Legend for each slice: **Scope** (files owned) · **Why** · **Code-quality chec
 
 ### QI-10 — Streamlit UI layer and `st.session_state` contract
 
-**Scope:** `app.py`, all `pages/*.py` **as a system** (individual page internals are owned by QI-1…QI-9; this slice owns cross-page behavior), `thesistester/app_state.py`, `classic_nav.py`, `.streamlit/config.toml`, `docs/ARCHITECTURE.md` §"`st.session_state` contract" as spec, `docs/USER_GUIDE.md` as spec.
+**Scope:** `app.py`, all `pages/*.py` **as a system** (individual page internals are owned by QI-1…QI-9; this slice owns cross-page behavior), `thesistester/app_state.py`, `classic_nav.py`, `timezone_display.py`, `.streamlit/config.toml`, `docs/ARCHITECTURE.md` §"`st.session_state` contract" as spec, `docs/USER_GUIDE.md` as spec.
 **Why:** 1,176 `st.session_state` references, one prose contract table, `AppTest` coverage for only two of fifteen pages (14 and 16); the audit's restore-leftover class (H1) is a UI-state-lifecycle problem.
 **Code-quality checks:** build the *actual* key graph (producer page → key → consumer page) with `rg` + AST and diff it against the `ARCHITECTURE.md` table (missing keys, orphan keys, undocumented consumers); inventory of invalidation helpers (`_set_active_dataset_state`, nonce bumps, `THESIS_SCOPED_STAGING_KEYS`, bundle apply clears) — one mechanism or several?; widget-key vs research-key naming convention adherence; per-page rerun cost (time to first render with a loaded session) — hand numbers to QI-14; `E402` per-file ignore for pages (`sys.path` bootstrap) — is `pip install -e .` making it unnecessary?
 **Application-quality checks:** cross-page stale-state matrix: for each mutation (load data, recompute levels, change setup, regenerate signals, re-backtest, import bundle, switch ingestion mode, switch dataset) × each downstream page → expected invalidation per `ARCHITECTURE.md` vs observed; error surfacing consistency (which pages show tracebacks?); copy consistency for shared concepts (Focus/Admit/cutoff/flatten/OTF; "diagnostic, not proof" caveat presence per page); first-run experience (`app.py` → Data → sample → full loop) timed; `MessageSizeError` path with a >400 MB 15s frame — documented, but is the failure legible?
@@ -654,15 +654,15 @@ pip install mypy; mypy --strict --ignore-missing-imports thesistester/engine the
 | Path | Slice |
 |---|---|
 | `thesistester/data/**`, `pages/1_Data.py`, `config.py`, `persistence/local_store.py` (datasets) | QI-1 |
-| `thesistester/levels/**`, `pages/2_Levels.py`, `persistence/local_store.py` (levels) | QI-2 |
-| `thesistester/setup.py`, `engine/signals*.py`, `engine/candidate_level.py`, `engine/otf.py`, `pages/3_Setup_Builder.py`, `pages/6_Signals.py` | QI-3 |
-| `thesistester/engine/backtest.py`, `engine/sim_core.py`, `engine/intrabar.py`, exit mgmt, `analytics/metrics.py`, `analytics/entry_window.py` (Admit), `pages/7_Backtest.py`, `visualization/backtest_chart.py`, `visualization/trade_review*` | QI-4 |
+| `thesistester/levels/**`, `visualization/levels_chart.py`, `pages/2_Levels.py`, `persistence/local_store.py` (levels) | QI-2 |
+| `thesistester/setup.py`, `engine/signals*.py`, `engine/confluence.py`, `engine/anchor_confluence.py`, `engine/naked.py`, `engine/candidate_level.py`, `engine/otf*.py`, `visualization/signals_chart.py`, `visualization/chart_window.py`, `pages/3_Setup_Builder.py`, `pages/6_Signals.py` | QI-3 |
+| `thesistester/engine/backtest.py`, `engine/sim_core.py`, `engine/intrabar.py`, `engine/exit_management.py`, `entry_window_policy.py`, `execution_defaults.py`, `analytics/metrics.py`, `analytics/entry_window.py` (Admit), `pages/7_Backtest.py`, `visualization/backtest_chart.py`, `visualization/trade_review*` | QI-4 |
 | remaining `thesistester/analytics/**`, `pages/8_*.py`, `9_*.py`, `10_*.py`, `13_*.py` | QI-5 |
 | `api.py`, `cli.py`, `__main__.py`, `research_identity.py`, `research_bundle.py`, `reporting.py`, `classic_*.py`, `app_state.py`, `persistence/execution_artifacts.py`, `pages/11_*.py`, `12_*.py` | QI-6 |
 | `thesistester/study/**`, `pages/15_*.py`, `16_*.py`, `examples/studies/**`, `tests/study/**` (as subject) | QI-7 |
 | `thesistester/journal/**`, `pages/17_Journal.py`, `examples/journal/**` | QI-8 |
 | `thesistester/assistant/**`, `pages/14_*.py`, `config/assistant.toml` | QI-9 |
-| `app.py`, cross-page behavior, `classic_nav.py`, `.streamlit/` | QI-10 |
+| `app.py`, cross-page behavior, `classic_nav.py`, `timezone_display.py`, `.streamlit/` | QI-10 |
 | `tests/**` (as subject), `pyproject [tool.pytest|coverage]` | QI-11 |
 | `pyproject.toml`, `requirements.txt`, `.github/**`, `.devcontainer/**`, `LICENSE`, `.env.example`, `scripts/**` | QI-12 |
 | `docs/**`, `README.md`, `.cursor/rules/**` | QI-13 |
@@ -680,10 +680,15 @@ Locked (never re-audit; premises): `AUDIT_FINAL` §5.1–5.4 and §7; `AUDIT_HON
 
 ### A.4 Full-suite run recorded during QI-0
 
+Measured by the plan author on the dev VM (Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0), `main@e82c2a9`. QI-0 re-records these into `docs/quality/QI-00_BASELINE.md` after the §4.6 hotfix.
+
 | Item | Value |
 |---|---|
-| Command | `pytest -q -x --no-header -p no:cacheprovider --cov=thesistester --cov-report=term --durations=25` |
-| Result | see `docs/quality/QI-00_BASELINE.md` once the harness PR lands; interim numbers recorded by the plan author are in the PR that introduced this document |
+| Command | `pytest -q --no-header -p no:cacheprovider --durations=25` |
+| Result | **1 failed, 3,965 passed, 5 skipped in 2:19** — identical to the CI py3.12 cell at the same commit (§4.3); the single failure is the Streamlit 1.63 `AppTest` drift |
+| With branch coverage (`--cov=thesistester`, `branch = true`) | ≈ 5× slower (962 tests in 2:20 before `-x` stopped it); coverage % recorded in `QI-00_BASELINE.md` (R9 baseline 88%; CI floor 85% informational) |
+| Slowest tests | `visualization/test_trade_review_chart.py::test_worst_loser_export_contains_bounded_pngs` 4.51 s (kaleido PNG export) · `test_api.py::test_validation_r16_noise_is_opt_in_and_seeded` 2.11 s · `test_assistant_workspace.py::test_orchestrator_facade_restores_failed_cancelled_and_bundle_handoff` 2.03 s · `test_assistant_execution_parity.py::test_api_cli_and_assistant_canonical_hashes_match` 1.92 s · `test_cli.py::test_parallel_batch_is_identical_to_serial` 1.79 s; only 5 tests exceed 1.5 s, none exceeds 5 s |
+| Reading | The suite is **fast** (≈ 35 ms/test) — feedback-loop cost is not the problem; signal integrity (§4.3) and assertion depth (QI-11 mutation sample) are |
 
 ### A.5 ISO/IEC 25010 mapping used in `findings.csv`
 
