@@ -7,11 +7,13 @@
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, PyYAML 6.0.3, radon 6.0.1, vulture 2.16, bandit 1.9.4
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi07-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data. No real keys.
 **Finding count:** 10 (C/H/M/L = 0/0/8/2)
-**Time spent:** one agent run on 2026-09-12.
+**Time spent:** one agent run on 2026-09-12; honesty/schema review the same day.
 
 `AUDIT_FINAL.md` §5 on `origin/cursor/audit-final-merge-3a8e` and `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1 are premises. RS-D2 / RS-D9 / SAF locks are premises: this slice does **not** propose in-process `run_study()` from pages, auto-refresh, kill/retry, or a ToD factor axis. `tests/study/` is QI-11-owned (read as evidence). `docs/STUDY_RUNNER.md` is QI-13-owned (read as spec).
 
-This report does **not** call any backtest, metric, or Study result correct or reliable. The 4-cell E2E used `sample_data/ES_sample_1m.csv` (12 bars) so cells could *complete*; ranked/promote counts after a surgical index edit are honesty-surface evidence only.
+This report does **not** call any backtest, metric, or Study result correct or reliable. The 4-cell E2E used `sample_data/ES_sample_1m.csv` (12 bars) so cells could *complete*; ranked/promote counts after a surgical index edit are honesty-surface evidence only. Vocabulary is plan §3.3.
+
+**Review corrections (schema / honesty only; no product files):** `prior_id` on QI-07-06 dropped `C2` (plan §A.3: C2 is closed-verified AH2 path-pin; this row is Replay-line disclosure only). `locked_by` on maintainability rows is `none` (plan §3.3 allows `AUDIT_FINAL §5.x` / `AH §2.n` / `none` only). Plan §3.1 private-import regex hits **6** lines (2 real private symbols: `expand._apply_stage_filter`, `report._bundle_path_within_study`; 4 alias false friends including page-15 `_study_preview` / `_study_viewer`). Function length >150 also includes `_render_inspect` **192** and `generate_packet` **231**. Page 15 uses **60** `WIDGET_KEY_*` names; builder defines **61** (unused `WIDGET_KEY_CONFLUENCE_MODE`). Churn last-400 for `pages/15_Studies.py` is **10**, not 11. Tick manifest is **8 studies / 253 cells**, not “ok” only; `program_b_run2/manifest.yaml` also validates 20/898. `vulture` ≥60 lists **11** candidates (all CLI-mount / dataclass / test-used / Program B Wave-7 — still no confirmed dead public API). Import chains were **not** re-run with `grimp`/`import-linter` (plan §5); table is AST + QI-12 §2.6. First-pass §10 pasted the StudySpec JSON and bash verbs, not the probe script. Design limitation / `confidence=n/a` / ≤Medium remains only QI-07-10 (H2 residual). §A.5 ISO tokens unchanged (no `operability`).
 
 ## Commands run (verbatim)
 
@@ -53,14 +55,30 @@ PYTHONPATH=/workspace python3 examples/studies/program_b/validate_program_b_yaml
 # ok 20 studies / 898 cells
 PYTHONPATH=/workspace python3 examples/studies/program_b/validate_program_b_yaml.py \
   examples/studies/program_b/manifest_tick.yaml
-# ok (tick packet)
+# ok 8 studies / 253 cells (first-pass recorded as "ok" only)
 
 export THESISTESTER_STORE_DIR=/tmp/qi07-store-after
 pytest -q --tb=no
 git status --porcelain
+
+# review-pass (2026-09-12; docs-only)
+radon cc thesistester/study pages/15_Studies.py pages/16_Study_Observatory.py \
+  examples/studies/program_b/*.py -s -n D --total-average
+# 548 blocks; Average B (7.06)
+vulture thesistester/study pages/15_Studies.py pages/16_Study_Observatory.py --min-confidence 60
+# 11 candidates
+PYTHONPATH=/workspace python3 /tmp/qi07-review/verify_review.py
+PYTHONPATH=/workspace python3 -m thesistester study expand \
+  /tmp/qi07-review/e2e/study.yaml --output-dir /tmp/qi07-review/e2e/out
+PYTHONPATH=/workspace python3 examples/studies/program_b/validate_program_b_yaml.py \
+  examples/studies/program_b/manifest_tick.yaml
+# ok 8 studies / 253 cells
+PYTHONPATH=/workspace python3 examples/studies/program_b/validate_program_b_yaml.py \
+  examples/studies/program_b_run2/manifest.yaml
+# ok 20 studies / 898 cells
 ```
 
-Probe script lived at `/tmp/qi07_probes.py` (pasted in §10). Transcripts are not committed.
+Probe script lived at `/tmp/qi07_probes.py` (first-pass; not retained). Review re-ran `/tmp/qi07-review/verify_review.py` (pasted in §10). Transcripts are not committed.
 
 ---
 
@@ -106,7 +124,11 @@ Read-as-evidence (QI-11): `tests/study/**` including `test_ah2_study_path_pin.py
 - In-process page `run_study`, auto-refresh, kill/retry, ToD factor axis — locked; not proposed.
 - Dual-venv Windows pid-alive against a real NT kernel — covered by committed mocks (`test_pid_is_alive_windows_*`); this VM is Linux.
 - Full Program A/B *execution* of 898 cells — validators expand-validate only (no `run_study`).
+- `examples/studies/program_b_run2/**` — same validator, 20/898; not a second packet family.
+- Root example YAMLs (`pRTH_open_ma.yaml`, `pdPOC_ma_confluence_battery.yaml`, `dopen_ma_3c_mnq.yaml`) and `examples/studies/agents/**` — read as samples, not re-executed.
+- `grimp` / `import-linter` mechanical graph — not re-run; chains cited from AST + QI-12 §2.6.
 - Mutation testing — QI-11.
+- §3.2 item 8 realistic-fixture wall/RSS — QI-14 (handoff).
 
 ---
 
@@ -118,21 +140,21 @@ Read-as-evidence (QI-11): `tests/study/**` including `test_ah2_study_path_pin.py
 |---|---|
 | `radon cc` D+ in scope | **F:** `pages/15_Studies._draft_from_builder_widgets` **73**, `_render_build` **59**; `builder.hydrate_study_draft` **62**; `execute.run_study` **60**; `schema._validate_factors` **46**; `program_b.validate_study_file` **110**. **E:** `_render_inspect` 40, `_compose_promoted_draft` 37, `_render_inspect_peek` 36, `schema.validate_study_spec` 32, `generate_packet` 31. **D:** `_narrow_factors_to_survivors` 30, `_sync_builder_widgets` 29, `peek_study_cell` 28, `_render_inspect_catalog` 28, `_build_setup_for_cell` 25, `rollup._compose_row` 24, `schema._validate_constants` 23, `build_otf_delta` 23, `select_admit_bucket` 22, `_render_launch_controls` 22, `_render_saved_desks` 22, `_validate_levels_map` / `closed_level_token_set` / `_validate_report` 21, `launch._pin_dataset_paths` 21. Average **B (7.06)** over 548 blocks |
 | MI = 0.00 | `pages/15_Studies.py`, `pages/16_Study_Observatory.py`, `observatory.py`, `builder.py`, `execute.py`, `viewer.py`, `schema.py`. Others: `report.py` 7.57, `briefing.py` 12.16, `promote.py` 16.79 |
-| Function length > 150 | `_render_build` 398 · `run_study` 264 · `validate_study_file` 222 · `hydrate_study_draft` 170 · `_draft_from_builder_widgets` 164 |
+| Function length > 150 | `_render_build` 398 · `run_study` 264 · `generate_packet` 231 · `validate_study_file` 222 · `_render_inspect` 192 · `hydrate_study_draft` 170 · `_draft_from_builder_widgets` 164 |
 | Broad `except Exception` | 17 in `thesistester/study/` (see §2.4). **0** on `pages/15_Studies.py` / `pages/16_Study_Observatory.py` |
 | `st.session_state` lines | Studies **235** · Observatory **70** (matches QI-0 Studies 235) |
 | Streamlit in `thesistester/study/` | **0** AST imports (comments/docstrings only) |
-| Private-import `rg` | `preview` → `expand._apply_stage_filter`; `rollup` → `report._bundle_path_within_study`; pages/builder `loader as _data_loader` (alias false friend) |
-| `vulture` ≥60 | TypedDict / CLI entry / Wave-7 constants used by Program B validator — **no confirmed dead public API**. `cli_study.add_study_subparser` is the CLI mount (false unused) |
+| Private-import `rg` | Plan §3.1 regex: **6** hits. Real private symbols: **2** (`preview` → `expand._apply_stage_filter`; `rollup` → `report._bundle_path_within_study`). Alias false friends: **4** (builder + page 15 `loader as _data_loader`; page 15 `preview as _study_preview` / `viewer as _study_viewer`) |
+| `vulture` ≥60 | **11** candidates. All classified: CLI mount (`add_study_subparser`, `dispatch_study`); alias `pid_is_alive`; dataclass fields (`draft_spec`, `in_flight`); test-used (`CLASSIC_RESEARCH_SESSION_KEYS`, `resolve_catalog_roots`, `WAVE7_HISTORICAL_PROVENANCE`, `read_apoc_provenance`); Program B Wave-7 (`WAVE7_TICK_PROVENANCE` / `is_wave7_study_file` used). **No confirmed dead public API** |
 | `bandit -ll` | **B324 High** `naming.factor_cell_fingerprint` SHA1 (identity suffix, not a secret) |
 | Coverage (QI-0 table, same product tree) | `execute.py` 76% (140 miss) · `observatory.py` 84% (142 miss) · `schema.py` 85% · `builder.py` 84% · `viewer.py` 87% · `launch.py` 83% · `cli_study.py` 91% · `ledger.py` 94% |
-| Churn (last 400 commits) | still Study-heavy: `observatory.py` 26 · `pages/16` 20 · `schema.py` 19 · `pages/15` 11 |
+| Churn (last 400 commits) | still Study-heavy: `observatory.py` 26 · `pages/16` 20 · `schema.py` 19 · `pages/15` **10** (not 11) |
 
 ### 2.2 Import-contract verification table (exit criterion)
 
-AST/direct imports on `539dd2e` (`/tmp/qi07/probe_results.json` §imports). Chain reading matches QI-12 §2.6 independently.
+AST/direct imports on `539dd2e`. **`grimp` / `import-linter` were not re-run in this slice** (plan §5 asked for them in `/tmp`). Chain column is AST plus QI-12 §2.6 (function-level `cli.py` → `cli_study`). Review re-checked the AST edges only.
 
-| Contract | Documented? | Direct hold? | Module-level chain | Runtime / grimp-style chain | Evidence |
+| Contract | Documented? | Direct hold? | Module-level chain | Static chain (QI-12 / function-import) | Evidence |
 |---|---|---|---|---|---|
 | `preview` ↛ `execute` | Yes (RS-D8 / AGENT_GUIDE) | **Yes** | Hold (`preview` → `expand` only) | **Broken:** `expand` → `thesistester.cli` (`EXPERIMENT_SCHEMA_VERSION`) → function-import `cli_study` → `execute`. Also `thesistester.study.__init__` eager-imports `run_study` | AST: no `execute` in `preview.py`. `tests/study/test_study_preview.py::test_preview_module_import_allow_list` |
 | `viewer` ↛ `cli_study` / `cli` / `execute` / `rollup` / Plotly / Streamlit / `observatory` | Yes (SV/SO) | **Yes** | **Hold** | **Hold** | AST empty banned set. `test_viewer_module_import_allow_list` |
@@ -169,7 +191,7 @@ AST/direct imports on `539dd2e` (`/tmp/qi07/probe_results.json` §imports). Chai
 | Namespace | Written on page 15 | Notes |
 |---|---|---|
 | `studies_*` | viewer dir/cache/catalog, preview YAML/cache, launch output/approval, admit notice/error, builder draft/pending_sync | Observatory **writes** `studies_viewer_*` on drill-through then `st.switch_page` |
-| `_study_builder_*` | 61 `WIDGET_KEY_*` + dynamic `partner_set_{i}` / `stage_include_{axis}` | Build widgets only |
+| `_study_builder_*` | **60** page-used `WIDGET_KEY_*` + dynamic `partner_set_{i}` / `stage_include_{axis}`. Builder defines **61** (`WIDGET_KEY_CONFLUENCE_MODE` unused on the page) | Build widgets only |
 | `observatory_*` | **not used** on page 15 | Page 16 only |
 | Classic research keys | **none** | Docstrings forbid `apply_research_bundle_to_session` / classic hydrate |
 
@@ -243,7 +265,7 @@ Cells completed. Ranked `expectancy_r=0.25` was **written into the index for the
 
 ### 3.5 Program B packets
 
-`validate_program_b_yaml.py examples/studies/program_b/manifest.yaml` → **ok 20 studies / 898 cells**. `manifest_tick.yaml` → ok. Generator is import-loaded by the validator; **neither imports `execute`**.
+`validate_program_b_yaml.py examples/studies/program_b/manifest.yaml` → **ok 20 studies / 898 cells**. `manifest_tick.yaml` → **ok 8 studies / 253 cells**. Same validator on `examples/studies/program_b_run2/manifest.yaml` → **ok 20/898**. Generator is import-loaded by the validator; **neither imports `execute`**.
 
 ### 3.6 H2 pin (status)
 
@@ -255,7 +277,7 @@ Cells completed. Ranked `expectancy_r=0.25` was **written into the index for the
 
 | Item | Status on `539dd2e` | Finding |
 |---|---|---|
-| **C2** Study replay path (AH2) | **Closed-verified.** Expand pins spec-parent absolute paths; `source_spec_parent` in `study.expansion.json`. Probe family `test_ah2_*` present. Math/identity of *bytes* not re-audited beyond pin target | none (positive) |
+| **C2** Study replay path (AH2) | **Closed-verified.** Expand pins spec-parent absolute paths; `source_spec_parent` in `study.expansion.json`. Probe family `test_ah2_*` present. Math/identity of *bytes* not re-audited beyond pin target. Replay disclosure on the CLI line is a **new** finding (QI-07-06), not a C2 reopen | none (positive) |
 | **H2** Promote / launch cwd-first pin | **Closed** for spec-parent-first search (AH2). Residual **parked:** coworker portable relative rewrite (AH2 §6.2 out-of-scope) | QI-07-10 |
 | **H16** Failed-cell MD/rollup + WFA-ignorant ranking | **MD/rollup still open** (no Failed section; rollup `cell_count=len(frame)`). **Ranking half** still locked in-sample (`AUDIT_FINAL` §5.1 item 34); QI-05-06 already filed the allowlist. Index *writes* `wfa_median_test_expectancy_r` via `execute.build_index_row_from_state` | QI-07-04 (MD/rollup only) |
 | **W11** Study/headless split | **Closed-verified** by R18/RS. Pages stay Composer A; study CLI/library call `run_experiment`. Do not collapse | none |
@@ -296,7 +318,7 @@ What was checked and is fine, so QI-15 / QR do not re-audit it:
 5. **Failed cells cannot be promoted.** Promote selected only `status=ok` ranked rows. Inspect/viewer already list unique failed errors (`failed_cells_frame` / “Failed cell errors”).
 6. **Observatory is read-only for `results/studies/`.** `load_observatory_frame(extra_dirs=["out"])` returned 4 cells / 1 study and wrote **zero** files into the study dir. Desks are store-scoped.
 7. **ToD is not a factor axis** (`StudySpecError` on `factors.time_of_day`). `_SUPPORTED_FACTOR_AXES` is the seven closed axes. SAF lineage groups stay post-hoc.
-8. **Builder batteries OFF emit explicit `enabled: false`.** New drafts default to 15s-primary + Quantower (SIA). Program B manifests validate clean (20/898 and tick packet).
+8. **Builder batteries OFF emit explicit `enabled: false`.** New drafts default to 15s-primary + Quantower (SIA). Program B manifests validate clean (20/898, tick 8/253, and `program_b_run2` 20/898).
 9. **Study CLI fail-closed without a traceback** on a missing report path (rc 2). `--help` lists all verbs.
 10. **`tests/study` 543 passed twice** (`-p no:cacheprovider` and `PYTHONHASHSEED=7`). Suite result, not a Study-correctness claim.
 
@@ -364,64 +386,59 @@ observatory  extra_dirs=["out"] → frame=4 studies=1 (3 ok + 1 failed)
 
 H2 twin-file pin (`/tmp/qi07/h2`): `expand_pin_is_parent=true`; roots `[spec, out, draft, cwd]`.
 
-Program B: `ok 20 studies / 898 cells` (15s manifest); tick manifest rc 0.
+Program B: `ok 20 studies / 898 cells` (15s manifest); tick `ok 8 studies / 253 cells`; `program_b_run2` 20/898.
 
 ---
 
 ## 10. Probe recipes (pasted; not committed)
 
-Full script: `/tmp/qi07_probes.py`. Essential recipes:
+The original `/tmp/qi07_probes.py` was **not retained**. First-pass §10 pasted the 4-cell StudySpec JSON and CLI verbs, not the script (plan §8.1 wants the script). Review re-ran `/tmp/qi07-review/verify_review.py` (schema/H16/private-import/widget keys) plus `python3 -m thesistester study expand` for the Replay line. First-draft 4-cell **run/resume/promote/observatory** numbers are **not re-executed** here; H16 MD/rollup presentation was re-checked via `render_overview_markdown` on a synthetic 4-row index.
+
+Review verification (not committed; `/tmp` only):
 
 ```python
-# Import-ban AST (direct only)
-# see /tmp/qi07_probes.py::study_module_imports
+# /tmp/qi07-review/verify_review.py
+# normalize+validate omit ingestion_mode + quantower_history_exporter
+# ToD factor reject; wfa_median_test_expectancy_r reject
+# default_study_draft emit batteries {enabled:false}; draft_warnings Quantower
+# split_ranked_and_low_n + render_overview_markdown H16 inject recipe
+# plan §3.1 private-import regex; page-15 vs builder WIDGET_KEY_* sets
+```
 
-# 4-cell StudySpec (batteries explicit false)
-{
-  "schema_version": 1,
-  "study": {
-    "name": "qi07_e2e",
-    "workers": 1,
-    "confirm_above_runs": 4,
-    "dataset": {"path": "data/es_1m.csv", "instrument": "ES",
-                "source_timezone": "America/New_York"},
-    "levels": {"sma_lengths": [50], "ema_lengths": [21],
-               "sma_timeframes": ["1min"], "ema_timeframes": ["5min"]},
-    "constants": {
-      "direction": "both", "tolerance_ticks": 0,
-      "min_confluences": 2, "max_confluences": 2, "min_valid_confluences": 1,
-      "naked_only": False, "naked_requirement": "any", "trigger_params": {},
-      "backtest": {"stop_loss_ticks": 8, "take_profit_ticks": 16,
-                   "exposure_policy": "single_position"},
-      "grid": {"enabled": False}, "validation": {"enabled": False},
-      "walk_forward": {"enabled": False},
-    },
-    "factors": {
-      "core_level": ["ONH", "ONL"],
-      "partner_levels": [["SMA_50_1min"]],
-      "confluence_mode": ["anchor_rules"],
-      "trigger": ["touch", "reject"],
-      "trigger_timeframe": ["base"],
-      "otf": [{"enabled": False}],
-    },
-    "mode_rules": {"anchor_rules": {
-      "selected_levels": [], "anchor_level": "${core_level}",
-      "confluence_rules": {"from_partners": "required"}}},
-    "report": {"primary_metric": "expectancy_r", "min_trades": 0,
-               "multiple_testing": "warn"},
-  },
-}
+Key review outputs (`/tmp/qi07-review/verify_results.json` + expand stdout):
+
+```text
+omit+quantower validate after normalize: accepted; dataset still has no ingestion_mode
+tod: StudySpecError Unsupported factor axes: ['time_of_day']
+wfa primary: rejected; allowlist expectancy_r / max_drawdown_r / profit_factor / total_r / trade_count
+default draft: ingestion_mode=15s_primary_derive_1m format_profile=quantower_history_exporter
+emit batteries: grid/validation/walk_forward {enabled: false}
+primary+Quantower draft_warnings: Quantower-primary sentence present; default 15s+QT: absent
+H16 synthetic index: honesty 'Cells in overview: **4**; ranked: **1**; low-N: **0**; unresolved primary: **2**'
+  ## Failed: false; failed-word count: 0; ranked=[c0000]; unresolved=[c0001,c0002]
+plan §3.1 private-import regex: 6 hits (2 real private / 4 alias)
+WIDGET_KEY_*: page 15 = 60; builder defs = 61; builder-only = WIDGET_KEY_CONFLUENCE_MODE
+expand 4-cell: rc=0 run_count=4; Replay: python -m thesistester run …/experiment.yaml
+  no 'not study run' in stdout or experiment.yaml; 4× pinned spec-parent path
+  source_spec_parent=/tmp/qi07-review/e2e
+study report missing path: rc 2; 'Study report error: …'; no Traceback
+```
+
+First-pass unpublished 4-cell **run/resume/promote/observatory** (status only; not re-measured):
+
+```text
+run     rc=0  ledger ok=4 failed=0
+resume  mark c0000 running + delete zip → executed 1 / 4; victim ok
+H16 inject + promote: selected=[c0000]; injected excluded; rollup cell_count=4
+observatory extra_dirs=["out"] → frame=4 studies=1; no writes under the study dir
 ```
 
 ```bash
-export THESISTESTER_STORE_DIR=/tmp/qi07-store-probes
+export THESISTESTER_STORE_DIR=/tmp/qi07-store-review
 unset OPENAI_API_KEY XAI_API_KEY
-python -m thesistester study expand /tmp/qi07/e2e/study.yaml --output-dir /tmp/qi07/e2e/out
-python -m thesistester study run /tmp/qi07/e2e/study.yaml --output-dir /tmp/qi07/e2e/out --confirm
-python -m thesistester study report /tmp/qi07/e2e/out
-python -m thesistester study rollup /tmp/qi07/e2e/out
-python -m thesistester study promote /tmp/qi07/e2e/out --output /tmp/qi07/e2e/draft.yaml --top-n 10
-# observatory: study dir must be extra_dirs or sit under results/studies/ or out/<name>
+python3 -m thesistester study expand /tmp/qi07-review/e2e/study.yaml --output-dir /tmp/qi07-review/e2e/out
+python3 -m thesistester study report /tmp/qi07-does-not-exist   # rc 2
+# first-pass also ran: study run --confirm; resume; report; rollup; promote --top-n 10
 ```
 
 ---
