@@ -49,6 +49,10 @@ pytest -q --tb=line \
 # 199 passed in 14.15s
 
 # collected: llm evals 41 · voice evals 26 · registry audit 3 · page render 16 · help coverage 55
+
+export THESISTESTER_STORE_DIR=/tmp/qi09-store-after
+pytest -q --tb=no
+# after: 3966 passed, 5 skipped in 149.51s (0:02:29) — identical result class
 ```
 
 Probe script lives at `/tmp/qi09_probes.py` (pasted in §10). Transcripts are not committed.
@@ -370,7 +374,7 @@ List only. **Not amended** in this slice.
 
 ## 9. Research-only sentence
 
-No tracked file outside `docs/quality/` changed; `pytest -q` unchanged (3966 passed, 5 skipped). Probe scripts stay under `/tmp`.
+No tracked file outside `docs/quality/` changed; `pytest -q` unchanged (3966 passed, 5 skipped before **and** after). Probe scripts stay under `/tmp`.
 
 ---
 
