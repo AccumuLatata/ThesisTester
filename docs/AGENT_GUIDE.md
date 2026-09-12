@@ -530,14 +530,25 @@ Every request must first parse as an `AssistantRequest`, then pass
   resolves pandas 2.3.x while py3.11/3.12 resolve pandas 3.x.
 
 ## Regression-safety gates in CI
-`.github/workflows/ci.yml` runs on every push to `main` and every pull request:
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request.
+These six job **display names** are the required status checks on `main`
+(QI-12-01 / QR G-1; restores `ENGINEERING_PROPOSAL.md` §4 rule 9). When the
+G-1 branch-protection setting is live, merges to `main` are blocked until all
+six pass. Names are frozen — renaming a job is a dedicated protection-settings
+PR, not a side effect of feature work. A red workflow cell does not block
+merge unless `gh api` lists that exact name under `required_status_checks`.
 
 | Job | Gate |
 |---|---|
-| `ruff (lint + format)` | `ruff check` + `ruff format --check`; blocking |
-| `pytest (py3.10/3.11/3.12)` | full suite per matrix cell; blocking. Coverage is reported and warns below an informational floor, never blocks |
-| `editable install (no dev extras)` | `pip install -e .` + import + `pip check` in a clean venv; blocking |
-| `golden-master regeneration guard` | blocks any PR that changes `tests/fixtures/golden/**` without the `GOLDEN_REGEN` label |
+| `ruff (lint + format)` | `ruff check` + `ruff format --check`; required on `main` |
+| `pytest (py3.10)` | full suite; required on `main`. Coverage is reported and warns below an informational floor, never blocks |
+| `pytest (py3.11)` | full suite; required on `main` |
+| `pytest (py3.12)` | full suite; required on `main` |
+| `editable install (no dev extras)` | `pip install -e .` + import + `pip check` in a clean venv; required on `main` |
+| `golden-master regeneration guard` | required on `main`; fails any PR that changes legacy golden artifacts without the `GOLDEN_REGEN` label |
+
+Verify the live gate: `gh api repos/AccumuLatata/ThesisTester/branches/main/protection`
+(expect those six contexts under `required_status_checks`).
 
 ## Golden-master policy (engine/analytics work)
 - Read `tests/fixtures/golden/README.md` before touching `simulate_trades`, level
