@@ -6,10 +6,12 @@
 **Commit date:** 2026-09-12
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, pytest 9.1.1, radon 6.0.1, vulture 2.16
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi1-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data.
-**Finding count:** 7 (C/H/M/L = 0/1/5/1)
-**Time spent:** one agent run on 2026-09-12.
+**Finding count:** 7 (C/H/M/L = 0/0/6/1)
+**Time spent:** one agent run on 2026-09-12; honesty/schema review the same day.
 
 Locked inputs treated as premises (not re-audited): `AUDIT_FINAL.md` §5 on `origin/cursor/audit-final-merge-3a8e`; `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1. `observed_aligned_15s_to_1m_v2` and OHLC-identical duplicate resolution were not re-derived (AUDIT S1 locked). `local_store.py` is exclusive to this slice (levels-namespace observations → QI-2 handoff).
+
+**Review corrections (schema / honesty only; no product files):** Plan §2 rule 5 — a finding that says the design should be otherwise is `Design limitation`, `confidence=n/a`, severity ≤ Medium. First draft classified parked H11 (AH §8 fail-closed) as High `Verified defect` and proposed UTC-normalize as `expected`; that is withdrawn. H9/H10 stay Design limitation. `pages/1_Data.py` has **46** top-level defs (QI-00 / plan), not 48 extracted helpers (AST also counts 2 exception `__init__` methods). `save_dataset` is **144** physical lines, not 145. H9 hash prefixes `a0c7cd93db940342` / `4509affeb4543fc2` / `ef4cf8f153909cff` do not reproduce from the published four-bar recipe and are withdrawn (equality / differ still holds). `iso25010` tokens stay inside plan §A.5. `prior_id` keeps `AUDIT_FINAL` H-ids only.
 
 ## Commands run (verbatim)
 
@@ -68,7 +70,7 @@ Probe script lives under `/tmp/qi01_probes.py` (not committed). Transcript: `/tm
 | `thesistester/persistence/local_store.py` | `compute_dataset_id`, dataset/levels/signals/setups namespaces, schema v1→v2 |
 | `thesistester/persistence/__init__.py` | Re-exports (incl. QI-6 `execution_artifacts` — not dual-owned) |
 | `thesistester/config.py` | `INSTRUMENTS`, `REQUIRED_COLUMNS`, `TIMEZONE_OPTIONS` |
-| `pages/1_Data.py` | Composer A ingest UI (46 top-level defs + module-level render) |
+| `pages/1_Data.py` | Composer A ingest UI (46 top-level defs + module-level render; 2 exception `__init__` methods) |
 | `sample_data/ES_sample_1m.csv` | Canonical happy-path fixture (12 bars) |
 
 Read-as-spec (QI-13 owns): `docs/ARCHITECTURE.md` session/store keys; `docs/USER_GUIDE.md` Data H2; `docs/ASSUMPTIONS_AND_LIMITATIONS.md` ingest / holiday; `docs/AGENT_GUIDE.md` R17.
@@ -97,7 +99,7 @@ Read-as-call-site only (not owned): `thesistester/api.py` `load_dataset` / `_loa
 | F-grade (CC ≥ 41) | none | no mandatory F-finding |
 | E-grade (31–40) | `save_dataset` **34** · `validate_roll_metadata` **31** | Read; `save_dataset` → QI-01-02 |
 | D-grade (21–30) | `load_ohlcv` 25 · `_render_subtimeframe_upload` 25 · `_read_explicit_profile` 24 · `_render_tick_attach` 22 | Read and classified below |
-| Physical lines > 150 | `_render_subtimeframe_upload` 186 · module-level page render ~410 (L1573–1983) · `save_dataset` 145 | Yes |
+| Physical lines > 150 | `_render_subtimeframe_upload` 186 · module-level page render ~411 (after last helper to EOF) · `save_dataset` **144** | Yes |
 | MI | `pages/1_Data.py` **0.00** · `local_store.py` **0.00** · `loader.py` **14.62** (< 20) · others A (24.9–100) | Yes — structural on two modules |
 | Broad `except Exception` | 3: `loader._profile_timestamp` · `loader.load_ohlcv` localize · `quantower_ticks._localize_utc` | Classified below |
 | `vulture` ≥60 | 10. False positives: `Instrument` dataclass fields; `parse_interval` (QI-4 `intrabar`); `_resolve_existing_tick_path` (tested). Real unused: `rolls.ROLL_RULES` (allow-list never consulted) | noted; not promoted |
@@ -109,7 +111,7 @@ Read-as-call-site only (not owned): `thesistester/api.py` `load_dataset` / `_loa
 
 ### 2.2 `pages/1_Data.py` functions CC ≥ 21 (exit criterion)
 
-Helpers are already extracted (48 defs/methods). MI 0.00 is the **module-level Streamlit script** plus two D-grade renderers, not a single F-grade orchestrator.
+Helpers are already extracted (**46** top-level defs; QI-00 / plan count). AST walk also sees 2 exception `__init__` methods. MI 0.00 is the **module-level Streamlit script** plus two D-grade renderers, not a single F-grade orchestrator.
 
 | Symbol | CC | Phys. lines | Classification |
 |---|---|---|---|
@@ -146,8 +148,8 @@ Other long helpers below the CC-21 trigger (classified so they are not re-read):
 
 ```
 pages/1_Data.py
-├── helpers (L160–1570) — already extracted; 2 remain D-grade
-└── module-level script (L1573–1983)  ~410 lines
+├── helpers (_default_source_timezone … _render_roll_assumptions) — already extracted; 2 remain D-grade
+└── module-level script (after last helper ~411 lines)
     ├── local saved datasets (load/delete/refresh)
     ├── instrument / source / format / ingestion-mode widgets
     ├── Sample vs Upload
@@ -180,7 +182,7 @@ Entry points: Data page (Composer A helpers), `api.load_dataset` / `_load_15s_pr
 
 ### 3.2 Parity matrix (input defect × composer × outcome)
 
-UI = `load_ohlcv` → `validate_ohlcv` → `tag_session` (legacy primary, page L1828–1855). API = `api.load_dataset`. CLI/Study/Assistant = API via `run_experiment`. 15s-primary UI = `_prepare_15s_primary_dataset`; API = `_load_15s_primary_experiment_data`.
+UI = `load_ohlcv` → `validate_ohlcv` → `tag_session` (legacy primary; always `_set_active_dataset_state`). API = `api.load_dataset`. CLI/Study/Assistant = API via `run_experiment`. 15s-primary UI = `_prepare_15s_primary_dataset`; API = `_load_15s_primary_experiment_data`.
 
 | Defect | UI primary | API / CLI / Study / Assistant | 15s-primary UI | 15s-primary API | Diverge? |
 |---|---|---|---|---|---|
@@ -214,9 +216,9 @@ H10 persist: UI-installed duplicate frame `save_dataset` → reload **5 rows, 1 
 
 | Item | Status this slice | Evidence |
 |---|---|---|
-| **H9** `dataset_id` omits ingest story | **Still open; locked current contract** (`AUDIT_FINAL` §5.1 item 9). Bindings already partition | Identical parent OHLC from 15s-derived vs native 1m → **same** `compute_dataset_id` / `DataIdentity.dataset_id` (`a0c7cd93db940342…`). `format_profile` excluded. `source_binding_key` **differs** (`4509affeb4543fc2` vs `ef4cf8f153909cff`). Finding QI-01-05 |
-| **H10** Data-page fatal OHLCV vs API | **Still present; parked composer fork** (AH §2.1 / AH8). 15s-primary parent path *does* fail-closed | Matrix §3.2. Page L1839–1855 always `tag_session` + `_set_active_dataset_state`. `FATAL_OHLCV_CODES` used on 15s parent and lower-TF, **not** on legacy primary. Store persists duplicates. Finding QI-01-03 |
-| **H11** Canonical mixed-offset DST | **Still present.** Fail-closed over-close; exception untyped. Naive local DST-crossing **works** | `01:59:00-05:00` then `03:00:00-04:00` → pandas 3 `ValueError: Mixed timezones detected. Pass utc=True…` on **canonical and QT-aware**. `utc=True` parses to `06:59Z` / `07:00Z`. Operator cannot pass that flag. Naive `01:59`/`03:00` local accepts on UI and API. No named test for the mixed-offset recipe. Findings QI-01-04, QI-01-07 |
+| **H9** `dataset_id` omits ingest story | **Still open; locked current contract** (`AUDIT_FINAL` §5.1 item 9). Bindings already partition | Identical parent OHLC from 15s-derived vs native 1m → **same** `compute_dataset_id` / `DataIdentity.dataset_id()`. `format_profile` excluded. `source_binding_key` **differs** (source-file hash + `ingestion_mode` / `derivation_policy`). First-draft hash prefixes withdrawn (not reproducible from the published four-bar recipe). Finding QI-01-05 |
+| **H10** Data-page fatal OHLCV vs API | **Still present; parked composer fork** (AH §2.1 / AH8). 15s-primary parent path *does* fail-closed | Matrix §3.2. Legacy primary always `tag_session` + `_set_active_dataset_state`. `FATAL_OHLCV_CODES` used on 15s parent and lower-TF, **not** on legacy primary. Store persists duplicates. Finding QI-01-03 |
+| **H11** Canonical mixed-offset DST | **Still present; parked fail-closed** (AH §8). Exception untyped. Naive local DST-crossing **works** | `01:59:00-05:00` then `03:00:00-04:00` → pandas 3 `ValueError: Mixed timezones detected. Pass utc=True…` on **canonical and QT-aware**. `utc=True` parses to `06:59Z` / `07:00Z`. Operator cannot pass that flag. Naive `01:59`/`03:00` local accepts on UI helper and `api.load_dataset`. No named test. Findings QI-01-04 (Design limitation), QI-01-07 |
 | **W13** micros / R17 | **Closed-verified** (status only) | Vendor happy-path 4/4 profiles load; `FORMAT_PROFILES` is the live catalog |
 
 Locked S1 (do not invert): 15s-primary = QT exporter + `observed_aligned_15s_to_1m_v2`; OHLC-identical 15s resolve lowest volume; native 1m never auto-deduped; omit `ingestion_mode` → `primary`.
@@ -229,15 +231,15 @@ Full records in `docs/quality/findings.csv`. Summary:
 
 | ID | Axis | Class | Sev | Conf | Title |
 |---|---|---|---|---|---|
-| QI-01-01 | code | Maintainability risk | Medium | Verified | `pages/1_Data.py` MI 0.00; D-grade subtf/tick renderers; ~410-line module-level script |
-| QI-01-02 | code | Maintainability risk | Medium | Verified | `local_store.py` MI 0.00; `save_dataset` E(34) sidecar/provenance branches |
+| QI-01-01 | code | Maintainability risk | Medium | Verified | `pages/1_Data.py` MI 0.00; D-grade subtf/tick renderers; ~411-line module-level script |
+| QI-01-02 | code | Maintainability risk | Medium | Verified | `local_store.py` MI 0.00; `save_dataset` E(34) / 144 lines sidecar/provenance branches |
 | QI-01-03 | app | Design limitation | Medium | n/a | H10: legacy primary UI installs fatal OHLCV; API/CLI/Study/Assistant reject |
-| QI-01-04 | app | Verified defect | High | Verified | H11: mixed-offset tz-aware DST CSV raises untyped pandas `ValueError` (`utc=True` hint) |
+| QI-01-04 | app | Design limitation | Medium | n/a | H11: parked fail-closed mixed-offset DST CSV (untyped pandas `ValueError`, `utc=True` hint) |
 | QI-01-05 | app | Design limitation | Medium | n/a | H9: `dataset_id` still omits `ingestion_mode` / `format_profile`; bindings do not |
 | QI-01-06 | code | Maintainability risk | Low | Verified | `format_profile` allow-list is runtime-equal but copied in 5 literals |
 | QI-01-07 | code | Test-quality gap | Medium | Verified | No committed H10/H11 cross-composer test (lock-the-fork / mixed-offset recipe) |
 
-No Critical. H9/H10 do not contradict locked §5 / AH §2 (they *are* those contracts). H11 is parked, not a §5 “must reject mixed offsets” lock.
+No Critical. No High. H9/H10/H11 are carry-over status only: H9 = locked `AUDIT_FINAL` §5.1 item 9; H10 = parked AH §2.1 composer fork; H11 = parked AH §8 fail-closed. None is classified above Medium / `n/a`. H11 is not a §5 “must reject mixed offsets” lock; UTC-normalize stays a parked design choice, not a QI High defect.
 
 ---
 
@@ -248,7 +250,7 @@ What was checked and is fine — do not re-audit:
 1. **Vendor R17 happy path** (NinjaTrader, Sierra, Quantower History Exporter 1m, Databento trades) loads on UI helper and `api.load_dataset` with session tags. Sample CSV 12 bars, clean.
 2. **15s-primary fail-closed on source fatals** and on `format_profile=canonical`. UI and API reject `high < low` with the same `15-second source validation failed` prefix. Misaligned minute is **dropped**, not synthesized (1 parent / 1 dropped) — locked S1 observed.
 3. **Naive DST-crossing local stamps** (`01:59` then `03:00` America/New_York) load on canonical and QT. Named tests already cover naive ambiguous/nonexistent Berlin stamps (`test_load_ohlcv_reports_*_dst_timestamps`).
-4. **`dataset_id` parity helper still matches** `DataIdentity.dataset_id` ↔ `compute_dataset_id` when content+instrument+interval+tz match (H9 probe). `source_binding_key` includes mode/policy.
+4. **`dataset_id` parity helper still matches** `DataIdentity.dataset_id()` ↔ `compute_dataset_id` when content+instrument+interval+tz match (H9 probe). `source_binding_key` includes mode/policy. Specific hex prefixes from the first draft are withdrawn.
 5. **Store round-trip** on throwaway store: sample hash-identical; 15s parent+`subtimeframe.parquet` hash-identical; schema v2 write / v1+v2 read; derive provenance persisted; derive-without-subtf refused; corrupt meta skipped.
 6. **`tag_session` is wall-clock only** (`09:30`–`16:00`). No holiday/early-close calendar — matches ASSUMPTIONS. `session` ≠ `trading_session_date` at ETH open (AH §2 item 3).
 7. **Rolls do not rewrite OHLC.** Segmented path emits the R7 discontinuity warning. AUDIT §7 “no silent continuous-contract synthesizer” still holds.
@@ -300,7 +302,7 @@ unset OPENAI_API_KEY XAI_API_KEY
 PYTHONPATH=/workspace python3 /tmp/qi01_probes.py
 ```
 
-UI primary helper used for the matrix (mirrors page L1839–1855):
+UI primary helper used for the matrix (mirrors the legacy primary install path):
 
 ```python
 raw = load_ohlcv(path, **loader_kw)
