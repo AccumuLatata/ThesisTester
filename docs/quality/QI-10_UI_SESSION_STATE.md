@@ -7,9 +7,11 @@
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, pytest 9.1.1, radon 6.0.1, vulture 2.16
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi10-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data. No 400 MB frame generated.
 **Finding count:** 8 (C/H/M/L = 0/0/5/3)
-**Time spent:** one agent run on 2026-09-12.
+**Time spent:** one agent run on 2026-09-12; honesty/schema review the same day.
 
 `AUDIT_FINAL.md` §5 and `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 are premises. This slice does **not** propose Research Assistant layout changes (RUX locked) or hydrating classic state from Studies / Observatory / Journal. No backtest, metric, or Study result is described as correct or reliable.
+
+**Review corrections (schema / honesty only; no product files):** `prior_id` on QI-10-05 dropped `plan §4.4 H-B` (plan §3.3 allows only `AUDIT_FINAL` `C*/H*/M*/L*` or `W*`). Invalidation inventory is **six** lists, not five; `dataset-clear ⊂ _MANAGED_RESEARCH_KEYS` is false (27 dataset-only keys, 39 managed-only including the AH4 leftover class). Key-graph **229** is unreproducible; review-pass is **162** `session_state` string-literal accesses vs **109** table names. Widget `backtest_*`/`grid_*` `key=` args are **58** (86 string literals with those prefixes), not ~80. Function lengths: `discuss_run` **62**, `render_discuss_this_run` **58**. First-pass claimed probe scripts were pasted in §10; they were not — review-pass essential snippets are pasted below. AppTest smoke re-verified (behavior identical; wall times vary).
 
 ## Commands run (verbatim)
 
@@ -39,9 +41,16 @@ python3 /tmp/qi10_apptest_spike.py
 
 export THESISTESTER_STORE_DIR=/tmp/qi10-store-after
 pytest -q --tb=no                                          # after: 3966 passed, 5 skipped in 131.21s
+
+# review-correction pass (same tree; docs/quality only)
+python3 /tmp/qi10_review_probe.py
+python3 /tmp/qi10_key_graph.py
+python3 /tmp/qi10_apptest_spike.py
+radon cc/mi + vulture --min-confidence 60 on owned files
+rg -c 'st\.session_state' pages | awk -F: '{s+=$2} END {print s}'   # 1176
 ```
 
-Probe scripts are pasted in §10. They were never committed.
+First-pass `/tmp/qi10_*.py` scripts were not retained and were not pasted. Review-pass scripts are in §10. They were never committed.
 
 ---
 
@@ -78,7 +87,7 @@ Probe scripts are pasted in §10. They were never committed.
 |---|---|---|
 | `radon cc` (24 blocks) | average **B 5.54**. Highest: `discuss_run` C(18), `open_exact_run_in_backtest` C(15), `render_discuss_this_run` C(15), `convert_dataframe_timestamps_for_display` C(11) | No D+ |
 | `radon mi` | `app.py` A **72.27** · `classic_nav.py` A **32.62** · `timezone_display.py` A **42.17** | None < 20 |
-| Function length | `discuss_run` 64 lines; `open_exact` 56; `render_discuss` 59. None > 150 | No |
+| Function length | `discuss_run` **62** lines; `open_exact` 56; `render_discuss` **58**. None > 150 | No |
 | Broad `except` | 4: TZ nonexistent/ambiguous (narrow-guard OK); `discuss_run` `get_run` (fallback); `render_discuss_this_run` identity badge `except Exception` `# noqa: BLE001` (caption, does not swallow fills) | Classified; none hides a fill |
 | `vulture` ≥60 | 7 symbols (`consume_classic_focus_run`, `open_exact_run_in_backtest`, `navigate_clarification_to_classic`, `render_*`, TZ converters) | **False positives** — page / Report callbacks |
 | `TODO/FIXME` | 0 | — |
@@ -121,7 +130,7 @@ Adherence is **mostly held**. Underscore prefix marks widget/nonce keys. The gap
 | Levels fingerprint | QI-2 | flags stale; does **not** pop `signals` / `trades` | QI-03-12 / QI-04 leftover class |
 | `init_classic_session_state` | QI-6 context | `setdefault` only | never clears leftovers |
 
-Finding QI-10-03. Dataset-clear vs AH4 disagreement is QI-10-01 (H1 residual on the UI lifecycle).
+**Six** invalidation/flag lists (not five). `init_classic_session_state` is `setdefault` only and is not an invalidation mechanism. Dataset-clear is **not** a subset of `_MANAGED_RESEARCH_KEYS` (27 keys in dataset-clear only; 39 managed keys not in dataset-clear, including the AH4 leftover class). Finding QI-10-03. Dataset-clear vs AH4 leftover-class disagreement is QI-10-01 (H1 residual on the UI lifecycle).
 
 ---
 
@@ -141,6 +150,8 @@ Entry points: `app.py` (home), classic ↔ Assistant nav (`classic_nav.py`), tim
 | Assistant control | AppTest 0.159 s: title `Research Assistant`; “Create or select a thesis”; no layout commentary | Smoke only |
 | TZ helpers | `ensure_display_timezone` does not overwrite a valid current TZ. Naive stamp localize → warning, then convert | Display/export helper only — not a fill claim |
 | Malformed bundle apply | Not re-run (QI-6). Typed `ValueError` on missing `session_values` reproduced when the first leftover probe passed raw zip bytes | QI-6 |
+| Composer parity (§3.2.5) | QI-10 owns no simulate/generate path. Clarification nav maps only the four allowlisted classic pages; Observatory wording → `None` | N/A for fills |
+| Persistence (§3.2.7) | QI-10 owns no store namespace. Open-exact restore is hash-gated CAI-8 (not re-audited) | N/A |
 
 ### 3.2 Stale-state matrix (mutation × downstream)
 
@@ -161,9 +172,9 @@ Full JSON: `/tmp/qi10-evidence/stale_matrix.json`.
 
 ### 3.3 Key graph vs `ARCHITECTURE.md` table
 
-AST + string literals on `app.py` + 15 pages + owned modules: **229** literal keys. Main contract table: **109** names. `st.session_state` matching lines: **1,176** (unchanged vs QI-0).
+`session_state["…"]` / `.get` / `.pop` / `.setdefault` / `"…" in session_state` string literals on `app.py` + 15 pages + owned modules: **162** unique keys (review-pass; first-pass **229** is unreproducible and withdrawn). Main contract table: **109** names. `st.session_state` matching **lines**: **1,176** (`rg -c`, unchanged vs QI-0).
 
-**Table keys that AST missed** (`in_table_not_code`): `tick_paths`, `_tick_*`, `tick_attach_warnings`, `bundle_import_omitted_data`, `derived_parent_diagnostics`, `direction_collision_diagnostic`, `portfolio_config` / `portfolio_trades` / `portfolio_drawdown_correlation`. These are **constant-aliased** (`TICK_PATHS_KEY`, `BUNDLE_IMPORT_OMITTED_DATA_KEY`) or written only from API/apply — not absent from the product.
+**Table keys absent as `session_state` string literals** (`in_table_not_code`, 16): `tick_paths`, `_tick_paths_text`, `_tick_upload_signature`, `_tick_uploader_nonce`, `tick_attach_warnings`, `tick_row_count`, `tick_session_count`, `bundle_import_omitted_data`, `derived_parent_diagnostics`, `direction_collision_diagnostic`, `portfolio_config`, `portfolio_trades`, `portfolio_drawdown_correlation`, `trade_review_buffer_rows`, `trade_review_trade_id`, `backtest_same_bar_opposite_direction`. Tick/bundle/portfolio names are **constant-aliased** (`TICK_PATHS_KEY`, `BUNDLE_IMPORT_OMITTED_DATA_KEY`) or written from API/apply. `backtest_same_bar_opposite_direction` is a widget `key=` token, not a `session_state["…"]` literal.
 
 **Research consumers missing from the table** (literal `session_state` reads):
 
@@ -174,9 +185,9 @@ AST + string literals on `app.py` + 15 pages + owned modules: **229** literal ke
 | `signals` | Backtest, Grid, Report, Bundles | **Validation** |
 | `trades` | Time, Validation, Report, Bundles | **Portfolio** (`pages/13_Portfolio.py`) |
 
-**QI-10 keys documented only in CAI-5/CAI-8, not the main table:** `classic_active_run_id`, `classic_focus_run_id`, `classic_focus_channel`, `classic_nav_prefill`, `classic_pending_navigation`, plus `data_identity` / `levels_identity` written by `open_exact_run_in_backtest`.
+**QI-10 chrome keys documented in the CAI-5 table, not the main consumer table:** `classic_active_run_id`, `classic_focus_run_id`, `classic_focus_channel`, `classic_nav_prefill`, `classic_pending_navigation`. `data_identity` / `levels_identity` (written by `open_exact_run_in_backtest` when restore omitted them) live in CAI-1 prose and `_MANAGED_RESEARCH_KEYS`, not the CAI-5 table and not the main consumer table.
 
-**~80 `backtest_*` / `grid_*` widget keys** are correctly *not* in the research table. That is convention, not drift.
+**58 `backtest_*` / `grid_*` widget `key=` args** (86 string literals with those prefixes in the same file set) are correctly *not* in the research table. That is convention, not drift. First-pass “~80” is withdrawn.
 
 Finding QI-10-02.
 
@@ -212,11 +223,11 @@ Finding QI-10-02.
 
 | Page | First render | Exception | Notes |
 |---|---|---|---|
-| `app.py` | 0.169 s | none | Empty-state info |
-| `pages/1_Data.py` | 0.506 s | none | Sample auto-load (12 bars). `sys.path` bootstrap works under AppTest |
-| `pages/7_Backtest.py` empty | 0.120 s | none | `st.stop()` before sidebar; 0 run widgets |
-| `pages/7_Backtest.py` + tiny `data` | 0.161 s | none | Still stopped (no `signals`) |
-| `pages/14_Research_Assistant.py` | 0.159 s | none | Control; existing harness |
+| `app.py` | 0.169 s first-pass / **0.167 s** review | none | Empty-state info |
+| `pages/1_Data.py` | 0.506 s / **0.596 s** | none | Sample auto-load (12 bars). `sys.path` bootstrap works under AppTest |
+| `pages/7_Backtest.py` empty | 0.120 s / **0.154 s** | none | `st.stop()` before sidebar; 0 run widgets |
+| `pages/7_Backtest.py` + tiny `data` | 0.161 s / **0.115 s** | none | Still stopped (no `signals`) |
+| `pages/14_Research_Assistant.py` | 0.159 s / **0.178 s** | none | Control; existing harness |
 
 **Blockers / harness rules (Streamlit 1.63, same class as plan §4.3):**
 
@@ -254,7 +265,7 @@ Full records in `docs/quality/findings.csv`. Summary:
 |---|---|---|---|
 | QI-10-01 | Medium | Verified defect | H1 residual: dataset-clear leaves Focus/OTF/setup/`signal_settings`; apply leaves `display_timezone` |
 | QI-10-02 | Medium | Documentation drift | Main session-key table missing Validation/Portfolio consumers; `classic_*` only in CAI-5 |
-| QI-10-03 | Medium | Maintainability risk | Five invalidation mechanisms; dataset-clear ⊂ AH4 managed set |
+| QI-10-03 | Medium | Maintainability risk | Six invalidation lists; dataset-clear and AH4 managed disagree in both directions |
 | QI-10-04 | Medium | UX/operability gap | Shared-concept copy uneven; `MessageSizeError` not on any page |
 | QI-10-05 | Medium | Test-quality gap | Classic AppTest smoke is feasible; 1.63 `session_state` iteration + Backtest `st.stop` are harness rules |
 | QI-10-06 | Low | Documentation drift | W15: page numbers still skip 4 and 5 |
@@ -327,31 +338,64 @@ List only. **Not amended** in this slice.
 
 ---
 
-## 10. Probe scripts (pasted; not committed)
+## 10. Probe scripts (review-pass; not committed)
 
-Key-graph / invalidation / copy / leftover / AppTest live under `/tmp/qi10_*.py`. Transcripts: `/tmp/qi10-evidence/`. Copies of JSON: `/opt/cursor/artifacts/qi10-*.json`.
+First-pass `/tmp/qi10_*.py` scripts were not retained. Review-pass scripts: `/tmp/qi10_review_probe.py`, `/tmp/qi10_key_graph.py`, `/tmp/qi10_apptest_spike.py`. Transcripts: `/tmp/qi10-review/`.
 
-Leftover apply + dataset-clear + nav (abridged result on `32ad34c`):
+Leftover apply + dataset-clear + nav (review-pass on `32ad34c` product files):
 
 ```text
 apply survive: display_timezone=true resampled_data=true otf_validation_*=true
-               skipped_signals=true setup_config=false focused_trades=false
+               skipped_signals=true direction_collision_diagnostic=true
+               setup_config=false focused_trades=false
                otf_filter_summary=false signal_settings=false
                bundle_import_omitted_data=true
 dataset_clear survive: focused_trades=true otf_filter_summary=true
                signal_settings=true setup_config=true
                signals=false trades=false levels=false
+dataset_clear ⊂ managed: FALSE (27 dataset-only; 39 managed-only)
 nav: consume(page_key="backtest") still popped a Data-targeted prefill
+session_state literals: 162; table names: 109; widget backtest_/grid_ key=: 58
 ```
 
-AppTest (Streamlit 1.63):
+AppTest (Streamlit 1.63; first-pass / review-pass):
 
 ```text
-app_py        ok t=0.169  info=No data loaded yet
-data_empty    ok t=0.506  success=Loaded 12 bars  (sample auto-load)
-backtest_empty ok t=0.120  0 buttons (st.stop before sidebar)
-assistant     ok t=0.159
+app_py         ok t=0.169 / 0.167  info=No data loaded yet
+data_empty     ok t=0.506 / 0.596  success=Loaded 12 bars  (sample auto-load)
+backtest_empty ok t=0.120 / 0.154  0 buttons (st.stop before sidebar)
+assistant      ok t=0.159 / 0.178
 list(session_state) → KeyError key "0"
+```
+
+Review-pass leftover + nav + clear-list diff (essential):
+
+```python
+from thesistester.research_bundle import (
+    _MANAGED_RESEARCH_KEYS,
+    apply_research_bundle_to_session,
+)
+from thesistester.classic_nav import (
+    consume_classic_nav_prefill,
+    set_classic_nav_prefill,
+)
+
+session = {
+    "display_timezone": "UTC",
+    "focused_trades": "FOCUS",
+    "setup_config": {"x": 1},
+    "signal_settings": {"y": 1},
+    "otf_filter_summary": {"z": 1},
+    "otf_validation_matrix": 1,
+    "skipped_signals": 1,
+}
+apply_research_bundle_to_session({"session_values": {"trade_summary": {"n": 1}}}, session)
+# display_timezone remains; AH4 leftovers cleared; bundle_import_omitted_data True
+
+state = {}
+set_classic_nav_prefill(state, target_page="pages/1_Data.py", note="check dataset")
+consume_classic_nav_prefill(state, page_key="backtest")  # pops anyway
+assert state.get("classic_nav_prefill") is None
 ```
 
 ---
