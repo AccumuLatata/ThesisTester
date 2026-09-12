@@ -530,10 +530,13 @@ Every request must first parse as an `AssistantRequest`, then pass
   the pandas major.
 - Regen the lock (do not hand-edit pins):
   `uv pip compile pyproject.toml --extra dev --universal --python-version 3.10 -o constraints.txt`
-- Version bumps arrive as Dependabot PRs (`.github/dependabot.yml`, weekly).
-  The merge gate is the G-1 required checks (full matrix). Do not land a bump
-  inside a product PR. `requirements.txt` stays the app-install path until G-3.
-
+- Version bumps arrive as Dependabot PRs (`.github/dependabot.yml`, weekly)
+  against `constraints.txt` pins. `versioning-strategy: increase-if-necessary`
+  widens a `pyproject.toml` cap only when the candidate sits outside it
+  (so a Streamlit 1.64 PR moves the pin *and* the `<1.64` cap together and
+  then hits the G-1 matrix). `requirements.txt` is `exclude-paths` until G-3
+  so a bump cannot go green by touching only the unused app-install file.
+  Do not land a bump inside a product PR.
 
 ## Regression-safety gates in CI
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request.

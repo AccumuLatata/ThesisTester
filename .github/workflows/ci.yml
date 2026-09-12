@@ -94,6 +94,7 @@ jobs:
           python - <<'PY'
           import os
           import pandas
+          import streamlit
 
           expected = int(os.environ["EXPECTED_PANDAS_MAJOR"])
           got = int(pandas.__version__.split(".", 1)[0])
@@ -102,6 +103,14 @@ jobs:
               "(QI-12-02 named axis)"
           )
           print(f"pandas {pandas.__version__} (major {got}) matches cell {expected}")
+
+          st_parts = streamlit.__version__.split(".")
+          st_major, st_minor = int(st_parts[0]), int(st_parts[1])
+          assert (st_major, st_minor) < (1, 64), (
+              f"streamlit {streamlit.__version__} is not <1.64 "
+              "(QI-12-02 / #478 cap)"
+          )
+          print(f"streamlit {streamlit.__version__} is inside <1.64 cap")
           PY
       - name: Record resolved dependency versions
         run: python -m pip list

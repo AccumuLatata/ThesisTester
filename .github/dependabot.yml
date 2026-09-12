@@ -8,5 +8,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # constraints.txt is the CI lock; pyproject.toml holds the ranges/caps.
-    # requirements.txt remains the app-install path until G-3.
+    # Dependabot fetches every requirements-looking *.txt, including
+    # constraints.txt (the CI lock). Bump PRs must move those pins so the
+    # G-1 matrix actually installs the new versions.
+    # requirements.txt stays the app-install path until G-3 — exclude it so
+    # a bump cannot go green by touching only the unused file.
+    exclude-paths:
+      - requirements.txt
+    # Move resolved pins when they sit inside a cap. Widen a pyproject.toml
+    # range only when the candidate is outside it (e.g. Streamlit 1.64 vs
+    # <1.64). That single PR then hits the full matrix; the cap cannot
+    # disappear without the pin also moving.
+    versioning-strategy: increase-if-necessary

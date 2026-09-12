@@ -25,11 +25,12 @@ dynamic = ["version"]
 # with conservative caps so a Streamlit minor or pandas major arrives as a
 # test-gated Dependabot PR (QI-12-02 / QR G-2; proposal §7).
 # pandas-major axis (named, not accidental): py3.10 is the pandas 2 cell
-# (pandas 3 requires Python >=3.11); py3.11/3.12 admit pandas 3.
+# (pandas 3 requires Python >=3.11); py3.11/3.12 require pandas 3 — same
+# contract as the CI matrix assert (not merely "admit").
 dependencies = [
     "streamlit>=1.56,<1.64",
     "pandas>=2.2,<3; python_version < '3.11'",
-    "pandas>=2.2,<4; python_version >= '3.11'",
+    "pandas>=3,<4; python_version >= '3.11'",
     "numpy>=1.26,<3",
     "plotly>=5.22,<7",
     "pyarrow>=16,<25",

@@ -1,6 +1,7 @@
 # QR G-2 / QI-12-02 — pinned install set for CI (`pip install -c constraints.txt`).
 # Equivalent of `pip-compile --extra dev` across the pytest matrix.
-# Named pandas-major axis: py3.10 = pandas 2; py3.11+ = pandas 3.
+# Named pandas-major axis: py3.10 = pandas 2; py3.11+ = pandas 3
+# (pyproject requires pandas>=3 on 3.11+; CI asserts the same).
 # Streamlit is capped at <1.64 in pyproject.toml (pinned 1.63.x here).
 # Regen: uv pip compile pyproject.toml --extra dev --universal --python-version 3.10 -o constraints.txt
 # Do not hand-edit pins. Version bumps arrive as Dependabot PRs gated by the G-1 required checks.
