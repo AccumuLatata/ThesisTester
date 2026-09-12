@@ -13,6 +13,8 @@ Locked inputs treated as premises (not re-audited): `AUDIT_FINAL.md` §5 on `ori
 
 **Review corrections (schema / honesty only; no product files):** Plan §2 rule 5 — a finding that says the design should be otherwise is `Design limitation`, `confidence=n/a`, severity ≤ Medium. First draft classified parked H11 (AH §8 fail-closed) as High `Verified defect` and proposed UTC-normalize as `expected`; that is withdrawn. H9/H10 stay Design limitation. `pages/1_Data.py` has **46** top-level defs (QI-00 / plan), not 48 extracted helpers (AST also counts 2 exception `__init__` methods). `save_dataset` is **144** physical lines, not 145. H9 hash prefixes `a0c7cd93db940342` / `4509affeb4543fc2` / `ef4cf8f153909cff` do not reproduce from the published four-bar recipe and are withdrawn (equality / differ still holds). `iso25010` tokens stay inside plan §A.5. `prior_id` keeps `AUDIT_FINAL` H-ids only.
 
+Review-pass `pytest -q` on this branch: **3966 passed, 5 skipped** (134.96 s) — identical pass/fail/skip to the slice before/after. Scoped ingest suite 243 passed. Porcelain: only the two `docs/quality/` files.
+
 ## Commands run (verbatim)
 
 ```bash
