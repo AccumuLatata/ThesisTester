@@ -7,7 +7,7 @@
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, pytest 9.1.1, radon 6.0.1, vulture 2.16, pdfplumber 0.11.10
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi08-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data. No real AMP PDFs or broker statements.
 **Finding count:** 5 (C/H/M/L = 0/0/5/0)
-**Before/after `pytest -q`:** **3966 passed, 5 skipped** (141.26 s / 151.17 s) — identical pass/fail/skip. Porcelain: only the two `docs/quality/` files.
+**Before/after `pytest -q`:** **3966 passed, 5 skipped** (141.26 s / 151.17 s) — identical pass/fail/skip. Review-after: **3966 passed, 5 skipped** (147.87 s). Porcelain: only the two `docs/quality/` files.
 **Time spent:** one agent run on 2026-09-12; honesty/schema review the same day.
 
 Locked inputs treated as premises (not re-audited): `AUDIT_FINAL.md` §5; `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1; TJ §3.0 clock/qty/PIT; TJ6 **tags ≠ triggers**; JS0 locks (do not implement JS3+, do not unpark Quantower Trades, do not add a 15s trigger lane). Plan §A.3 assigns **no** AUDIT H-items to this slice. No backtest, metric, or Study result is described as correct or reliable.
@@ -61,6 +61,10 @@ git status --porcelain
 # review-pass (docs-only honesty/schema)
 PYTHONPATH=/workspace python3 /tmp/qi08_review_verify.py
 # /tmp/qi08-review/verify.json
+
+export THESISTESTER_STORE_DIR=/tmp/qi08-store-review-after
+pytest -q --tb=no
+# review after: 3966 passed, 5 skipped in 147.87s — identical result class
 ```
 
 First-pass probe scripts under `/tmp/qi08_probes.py` and `/tmp/qi08_import_trace.py` were not retained. Review-pass script: `/tmp/qi08_review_verify.py`. Transcript: `/tmp/qi08-review/verify.json`.
@@ -285,7 +289,7 @@ What was checked and is fine, so QI-15 / QR do not re-audit it:
 7. **PII scan of committed journal fixtures/examples: 0 hits.**
 8. **Page 17 is read-only** (MI A 43.21; no Streamlit in the library; no `except Exception`; n<30 checkbox rebuilds from cache).
 9. **JS3+ and Quantower Trades loader are absent** (parked).
-10. **CLI typed ingest errors** (missing file) are rc 2 without traceback. Scoped journal suite 272 collected; hashseed 0/1 118/118 identical on the five-file subset (first-pass). Isolation: `/tmp` store; no API keys.
+10. **CLI typed ingest errors** (missing file) are rc 2 without traceback. Scoped journal suite 272 collected; hashseed 0/1 **118/118** (review-pass, same five-file subset). Isolation: `/tmp` store; no API keys.
 11. **Empty 0-trade `build_journal_report`** renders empty Q1/Q2 with `hidden_slice_count` 0 (review-pass).
 
 ---
