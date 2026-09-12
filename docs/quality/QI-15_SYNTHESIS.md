@@ -741,7 +741,7 @@ Every workstream section in the QR plan cites its finding IDs; every open row ap
 | Check | Result |
 |---|---|
 | `pytest -q --tb=no -p no:cacheprovider` **before** (branch at `0b2c451`, no file changed) | **3,966 passed, 5 skipped** in 133.22 s, exit 0 |
-| `pytest -q --tb=no -p no:cacheprovider` **after** (three files added/changed) | recorded in the PR body; identical pass/fail/skip required by plan §2 rule 2 |
+| `pytest -q --tb=no -p no:cacheprovider` **after** (three files added/changed) | **3,966 passed, 5 skipped** in 125.59 s, exit 0 — identical pass/fail/skip (plan §2 rule 2) |
 | `git status --porcelain` | `docs/quality/QI-15_SYNTHESIS.md` (new) · `docs/QUALITY_REMEDIATION_PLAN.md` (new) · `docs/quality/findings.csv` (modified, append-only) |
 | `findings.csv` parse | 134 rows × 23 columns; every row `disposition ∈ {open, closed-verified, locked, wont-fix, duplicate}`; every `open` row has a `score`; every non-`wont-fix` row except QI-07-10 has a `qr_workstream` |
 | Slice fields untouched | all 135 header+data lines of `HEAD:docs/quality/findings.csv` are a strict prefix of the new lines (textual append; no re-quoting) |
