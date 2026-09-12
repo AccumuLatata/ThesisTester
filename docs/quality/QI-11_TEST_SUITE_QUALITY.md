@@ -8,9 +8,11 @@
 **Key packages:** pandas 3.0.5 · numpy 2.4.4 · streamlit 1.63.0 · pytest 9.1.1 · pytest-cov 7.1.0 · mutmut 3.7.0 (CLI requires a committed `[tool.mutmut]` / `setup.cfg` — **not added**; sample used `/tmp` token mutants instead)
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi11-store-*`. `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data.
 **Finding count:** 6 (C/H/M/L = 0/0/4/2)
-**Time spent:** one agent run on 2026-09-12
+**Time spent:** one agent run on 2026-09-12; honesty/schema review the same day
 
 Coverage numbers below re-measure QI-0’s `/tmp/qi0-coverage` table on this commit. They match QI-0 (`TOTAL 82%`, same 14 modules < 70%). Mutation, smells, goldens, eval/benchmark classification, and dependency-sensitivity are new.
+
+**Review re-verification (docs-only):** AST smell walk, `dtype == object` / `iloc`+`is None` greps, `pytest --collect-only` (3,971), and findings.csv schema were re-run on this branch. Mutation `/tmp/qi11` transcripts were not retained; kill-rate integers are unchanged. Corrections below are count/schema honesty, not new slices.
 
 ## Commands run (verbatim)
 
@@ -91,7 +93,7 @@ Mutation = 12 comparison-operator sites per file, applied to a `/tmp` copy of `t
 | `analytics/metrics.py` | 154 | 8 | **93** | 10/12 = **83.3%** | 27 + 8 (`test_phase5_metrics.py`, `test_institutional_metrics.py`) |
 | `analytics/walk_forward.py` | 380 | 34 | **88** | 6/12 = **50%** (6/10 = **60%** after dropping two error-message string sites) | 17 (`test_walk_forward.py`) |
 
-**Trigger:** plan §3.1 “< 70% killed → coverage is shallow”. `walk_forward.py` is below even after equivalent-mutant exclusion. `backtest.py` is below on the raw sample; the three survivors that are real code are diagnostic `both_hit_pct`, BE-when-`allow_same_bar_exit=False` (asserted in `test_exit_management.py`, **not** in the backtest-owned files), and `path_open_proximity` exit-reason labeling (asserted in `test_intrabar.py`).
+**Trigger:** plan §3.1 “< 70% killed → coverage is shallow”. `walk_forward.py` is below even after equivalent-mutant exclusion. `backtest.py` is below on the raw sample; the three survivors that are real code are diagnostic `both_hit_pct`, BE-when-`allow_same_bar_exit=False` (asserted in `test_exit_management.py`, **not** in the backtest-owned files), and `path_open_proximity` exit-reason labeling (asserted in `test_intrabar.py`). Same own-file gap on WFA: `otf_history_policy == "fold_local"` is asserted in `test_otf_integration.py`, not in `test_walk_forward.py`. Overlap-`reject` *is* in `test_walk_forward.py` (shallow if that mutant survived).
 
 `intrabar.py` and `metrics.py` are above the trigger. A deliberate `/tmp` one-line change `win_rate = (len(wins) + 1) / n` is **killed** by `test_win_rate` and `test_expectancy` (2 failed / 33 passed). That is assertion depth on the win-rate formula, not a claim that every metric is correct.
 
@@ -110,9 +112,9 @@ Mutation = 12 comparison-operator sites per file, applied to a `/tmp` copy of `t
 | `assistant/voice/grounding.py` | 66 | 57 | **missing tests** (edge branches) | voice evals cover digit audit |
 | `classic_ledger.py` | 66 | 44 | **missing tests** | `test_classic_ledger.py` |
 | `classic_context.py` | 67 | 77 | **missing tests** | `test_classic_context.py` |
-| `classic_proposal.py` | 67 | 53 | **missing tests** | routed via CAI-9 helpers, not a dedicated file |
-| `journal/rules.py` | 68 | 89 | **missing tests** | `test_journal_counterfactual.py` only |
-| `journal/ledger.py` | 69 | 29 | **missing tests** | `test_journal_match.py` only |
+| `classic_proposal.py` | 67 | 53 | **missing tests** | no `test_classic_proposal.py`; exercised from `test_cai9_page_capabilities.py` and `test_classic_nav.py` |
+| `journal/rules.py` | 68 | 89 | **missing tests** | `test_journal_counterfactual.py` only (package import of `apply_journal_rules` / `parse_journal_rule`; no `journal.rules` path) |
+| `journal/ledger.py` | 69 | 29 | **missing tests** | `test_journal_match.py` only (package import of `build_forward_ledger`; no `journal.ledger` path) |
 
 Absolute-miss top 10 (unchanged vs QI-0): `sidecar.py` 262 · `results_overview.py` 226 · `api.py` 144 · `study/observatory.py` 142 · `orchestrator.py` 141 · `study/execute.py` 140 · `execution_artifacts.py` 128 · `journal/report.py` 114 · `handlers.py` 112 · `voice/session.py` 111. Engine/analytics remain ≥ 77%. **Coverage debt is not the simulation core.**
 
@@ -124,8 +126,8 @@ Seed list from plan §4.3 / #478, plus the requested greps.
 |---|---:|---|
 | `AppTest` / `.proto.` / `.set_value(` | 21 / 10 / 13 | **Framework-mechanic asserts remain.** Page 14 still reads `chat_input[0].proto.disabled` and calls `set_value()` on *enabled* inputs. Page 16 Observatory drives widgets via `set_value`. The disabled-`set_value` path was rewritten in #478 (no longer calls it) — residual risk is the next Streamlit minor that changes proto layout or enabled-widget APIs. |
 | `AppTestError` | 1 | Comment only (the #478 lesson). |
-| `dtype == object` | 2 (`test_journal_join.py`) | **Product contract** after #478 (TJ5 object/`None`), not an accidental pandas-3 assert. Still pandas-major sensitive if 4.x changes object dtypes. |
-| `iloc[… ] … is None` | 25 | Mostly journal join + helper returns. #478 made the join contract explicit (`None` not `nan`). |
+| `dtype == object` | **6** in 4 files | `test_journal_join.py` (2) plus `test_journal_match.py` (2), `test_journal_levels.py` (1), `test_journal_counterfactual.py` (1). Join pair is the #478 TJ5 object/`None` contract, not an accidental pandas-3 assert. The other four are the same object-dtype habit on journal frames — still pandas-major sensitive if 4.x changes object dtypes. |
+| `iloc[…]` + `is None` (same line) | **23** | Not join-heavy: counterfactual 5 · pair 4 · levels 3 · tradesviz 3 · join **2** · triggers 2 · zones 2 · reconcile 1 · Observatory 1. #478 made the *join* contract explicit (`None` not `nan`); the other 21 are journal/helper nulls of the same shape. |
 | `pd.__version__` / `pandas_major` | 20 | Golden recorders + `test_golden_master.py` skip hash when major ≠ recorded. **Designed** sensitivity. |
 | `streamlit.__version__` | 0 | Suite does not pin or branch on Streamlit version. |
 
@@ -136,10 +138,10 @@ AST walk of 3,715 `def test_` (`/tmp/qi11/smells.json`).
 | Smell | Count | Notes |
 |---|---:|---|
 | `assert True` | **0** | clean |
-| Assertion-free (no `Assert` / `pytest.raises` / `assert_frame_equal` in the function body) | 24 raw | **12 false positives** (helpers `_assert_historical_rows_equal`, `_check_valid_ohlcv_bar` contain the asserts). **12 real no-raise accepts:** Study/API `validate_*_accepted`, `clear_*_when_absent_is_safe`, `test_study_dir_lock_released_after_context` (second acquire is the assert). |
-| `str(exc)`-only | 8 | CLI/API/session-level fail-fasts (`"schema_version" in str(exc)`). Message-coupled; typed `pytest.raises(..., match=)` is used elsewhere in the same files. |
+| Assertion-free (no `Assert` / `pytest.raises` / `assert_frame_equal` in the function body) | 24 raw | **12 false positives** — asserts live in helpers: `_assert_historical_rows_equal` (5, `test_otf.py`), `_check_valid_ohlcv_bar` (2) + `_check_valid_state_vector` (1, `test_otf_contract.py`), `_assert_tick_oracle` (2) + `_assert_session_poc` (1, `test_apoc_tick_source.py`), `_assert_wave7_tick_provenance` (1, `test_program_b_yaml.py`). **12 real no-raise accepts** listed under QI-11-06 (Study/API `validate_*`, `clear_*_when_absent_is_safe`, dir-lock re-acquire, two `_fsync_file` swallow tests). |
+| `str(exc)` in source | 8 | CLI/API/session-level fail-fasts (CLI parametrize uses `"schema_version" in str(exc)`). Message-coupled; typed `pytest.raises(..., match=)` is used elsewhere in the same files. Not “all asserts are `str()`” (that looser walk is 17). |
 | Snapshot / golden-projection tests | 43 fns in 8 files | The four golden families + journal trigger/reconcile projections. Overspecified **by design** for identity gates. |
-| Duplicated builders (`_bar` / `_ohlcv` / `_signal` / `_df` / `_trades`) | 5 names × 8–16 files | Named suites still “police the contracts they encode”. `_make_streamlit_stub` copied across 6 page-helper files. |
+| Duplicated builders (`_bar` / `_ohlcv` / `_signal` / `_df` / `_trades`) | 5 names × 8–16 files | Named suites still “police the contracts they encode”. `_make_streamlit_stub` copied across **6** files (5 page-helpers + `test_assistant_workspace.py`). |
 
 ### 2.6 Determinism and wall time
 
@@ -224,11 +226,11 @@ Full records in `docs/quality/findings.csv`. Summary:
 | ID | Class | Sev | One line |
 |---|---|---|---|
 | QI-11-01 | Test-quality gap | Medium | 14 modules < 70%; debt is assistant/voice, classic, CLI, journal — not engine. `levels/common.py` has no direct tests. |
-| QI-11-02 | Design limitation | Medium | Four golden families do not cover every default-on *branch* (3c, BE/trail, opposite-direction `legacy`, flatten-on). Identity, not correctness (`AUDIT_FINAL` §7). |
+| QI-11-02 | Test-quality gap | Medium | Four golden families do not cover every default-on *branch* (3c, BE/trail, opposite-direction `legacy`, flatten-on). Identity contract restated, not re-litigated (`AUDIT_FINAL` §7). |
 | QI-11-03 | Test-quality gap | Medium | AppTest still asserts Streamlit proto / `set_value` mechanics (pages 14 and 16). Next minor can fail the suite without a product change. |
 | QI-11-04 | Test-quality gap | Medium | Mutation sample: `walk_forward.py` 50% (60% adj.) killed; `backtest.py` own-file tests miss BE / path-label / diagnostic branches. |
 | QI-11-05 | Test-quality gap | Low | No pytest markers; evals vs goldens vs benchmarks vs unit are indistinguishable to CI. Benchmarks assert `median_ms >= 0` only. |
-| QI-11-06 | Test-quality gap | Low | 12 no-raise “accept” tests; duplicated `_bar`/`_ohlcv`/`_signal` builders across 8–16 files. |
+| QI-11-06 | Test-quality gap | Low | 12 no-raise tests (10 validate/clear accepts + dir-lock re-acquire + 2 `_fsync_file` swallows); duplicated `_bar`/`_ohlcv`/`_signal` builders across 8–16 files. |
 
 ---
 
@@ -254,7 +256,7 @@ This is **suite** evidence. It is not a claim that any backtest, metric, or Stud
 | To | Observation (not a finding of theirs) |
 |---|---|
 | QI-4 | Golden default-on gaps for flatten / 3c / BE / `same_bar_opposite_direction`; backtest mutants that only die in `test_exit_management.py` / `test_intrabar.py`. |
-| QI-5 | `walk_forward.py` mutation 50%; `otf_history_policy == "fold_local"` and overlap-`reject` / retention-ratio sites survived `test_walk_forward.py`. |
+| QI-5 | `walk_forward.py` mutation 50%; `otf_history_policy == "fold_local"` is asserted in `test_otf_integration.py`, not `test_walk_forward.py`. Overlap-`reject` / retention-ratio sites are the own-file / shallow-assert residue. |
 | QI-6 | `cli.py` 59%; `__main__.py` 0% is the `__main__` guard. |
 | QI-7 | Study no-raise schema accepts; Observatory `AppTest` `set_value` (shared with QI-10). |
 | QI-8 | `journal/rules.py` 68%, `journal/ledger.py` 69%; join `None`/object contract is QI-8 product, tests owned here. |
@@ -310,6 +312,19 @@ subprocess.run(
 ```
 
 Smell / inventory / debt scanners: `/tmp/qi11/scan_smells.py`, `scan_inventory.py`, `scan_coverage_debt.py`, `scan_depsens.py`.
+
+Review re-verification (not committed; `/tmp` only):
+
+```bash
+# collected == 3,971
+THESISTESTER_STORE_DIR=/tmp/qi11-collect pytest --collect-only -q
+
+# dtype == object → 6 hits / 4 files (not 2)
+rg -n 'dtype\s*==\s*object' tests
+
+# same-line iloc + is None → 23 (not 25; join has 2)
+rg -n 'iloc.*is None' tests
+```
 
 ---
 
