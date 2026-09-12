@@ -1,7 +1,7 @@
 # Quality Remediation Plan — QR series (DRAFT)
 
 **Document type:** Remediation program derived from the Quality Investigation (QI) synthesis
-**Date:** 2026-09-12 (draft written by QI-15 on `main @ 0b2c451`)
+**Date:** 2026-09-12 (draft written by QI-15 on `main @ 0b2c451`; review-pass same day: QI-01-04 residual → QR-F, MG mis-tags on C-4/C-12/C-13, tracker 21/4 and 16/5)
 **Series code:** **QR** (Quality Remediation). Workstreams **QR-A … QR-G** as fixed by `docs/QUALITY_INVESTIGATION_PLAN.md` §9.1.
 **Status:** **DRAFT — nothing in this document is authorized work until the CTO review gate (`QUALITY_INVESTIGATION_PLAN.md` §7.5) is signed and this plan is approved.** Opening any QR PR before that is a process breach.
 **Inputs:** `docs/quality/QI-15_SYNTHESIS.md` (views, scores, CTO proposals), `docs/quality/findings.csv` (134 rows with `merge_group` / `score` / `qr_workstream` / `disposition`), `docs/quality/QI-01…QI-14` reports, `docs/quality/QI-00_BASELINE.md` (metrics baseline).
@@ -45,7 +45,7 @@ Each workstream lists: *fed by* · *open findings (exactly one owner each)* · *
 
 **Fed by:** `app` findings, High rows, carry-over H-items, `Verified defect` rows (synthesis §6, §6.1).
 **Open findings (21):** QI-03-06 (M) · QI-03-08 (M) · QI-04-02 (H) · QI-04-06 (M) · QI-04-10 (L) · QI-05-04 (H) · QI-05-05 (H) · QI-05-06 (M) · QI-05-07 (M) · QI-05-08 (M) · QI-05-09 (H) · QI-05-12 (M) · QI-06-03 (M) · QI-06-08 (M) · QI-06-09 (M) · QI-07-04 (M) · QI-07-05 (M) · QI-07-06 (M) · QI-08-03 (M) · QI-09-06 (L) · QI-10-01 (M).
-**Locked residuals (disclosure only, 5):** QI-01-03 (H10 fork sentence) · QI-01-04 (H11, typed error only after AH8 unpark) · QI-04-03 (H7 fork label on both composers) · QI-04-04 (H15 clock-fork label) · QI-09-08 (H8 omit=True sentence in Assistant).
+**Locked residuals (disclosure only, 4):** QI-01-03 (H10 fork sentence) · QI-04-03 (H7 fork label on both composers) · QI-04-04 (H15 clock-fork label) · QI-09-08 (H8 omit=True sentence in Assistant). H11 (QI-01-04) is a QR-F docs residual — typed error only after AH8 unpark (§7.2), not QR-A.
 
 **Proposed PR series (one PR per finding unless grouped by `MG`):**
 
@@ -114,7 +114,7 @@ Each workstream lists: *fed by* · *open findings (exactly one owner each)* · *
 | C-1 (pilot) | QI-03-03 (MG-17) | `validate_setup_config` → declarative rule table (no pydantic); error strings stable; `build_setup_config` unchanged. | AH §2 item 10 (`BASE_COLUMNS` rejected); omitted-key defaults |
 | C-2 | QI-06-01 (MG-17) | `validate_run_spec` → allow-list/validator table using the C-1 pattern; fail-closed outcomes byte-comparable across `test_api` / `test_cli` / parity tests. | two composers (AH §2 items 1–2); H8 default |
 | C-3 | QI-07-03, QI-07-08 (MG-17) | `study.schema` factor/report/ingest tables reused by `validate_study_spec`; Program B `validate_study_file` driven from `generate_packet`'s lock table. | AH §2 item 9; RS1 |
-| C-4 | QI-03-10, QI-01-06 (MG-17) | Classic Signals generate calls `build_setup_config` for the setup dict (still **not** `run_experiment`); delete page-6 `_normalize_3c_params`; import `FORMAT_PROFILES` / `DERIVE_15S_SUPPORTED_PROFILES` from `loader` in `api.py` and the Data page (builder `getattr` fallback kept per R17). | AH §2 items 1–2 |
+| C-4 | QI-03-10 (MG-17), QI-01-06 (singleton) | Classic Signals generate calls `build_setup_config` for the setup dict (still **not** `run_experiment`); delete page-6 `_normalize_3c_params`; import `FORMAT_PROFILES` / `DERIVE_15S_SUPPORTED_PROFILES` from `loader` in `api.py` and the Data page (builder `getattr` fallback kept per R17). | AH §2 items 1–2 |
 | C-5 | QI-06-02 | `build_markdown_report` → section builders / section table; emitted markdown byte-comparable on `tests/test_phase9_reporting.py` fixtures. | none (H13 banner from A-4 rides on the template) |
 | C-6 | QI-03-01, QI-14-05 (MG-19) | `generate_signals`: extract TF prep, zone-naked admission, trigger dispatch table; replace `iterrows` with column arrays / `itertuples` behind the existing trigger helpers. Requires B-2/B-3. | `_check_touch`, candidate sort key, 3c four-rule math (S3 / DA0); `VALID_TRIGGERS` public |
 | C-7 | QI-03-02 (MG-19) | One shared 3c signal-row mapper; detectors byte-identical. After C-6. | S3 |
@@ -122,8 +122,8 @@ Each workstream lists: *fed by* · *open findings (exactly one owner each)* · *
 | C-9 | QI-04-01, QI-04-09, QI-14-09 (MG-18) | `simulate_trades`: extract **P7** (SL/TP + flatten + exit walk) behind `sim_core`; then P4/P6 admission helpers; centralize skip/exit tokens next to `_SKIPPED_SIGNAL_COLUMNS` (values unchanged); `BarData` float64 arrays. Requires B-2 + B-3. | AH §2.1 defaults; C1/AH1 flatten clock; `sim_core` contains no admission/P&L (R22); 3c void = no skip (§5.3 item 22) |
 | C-10 | QI-06-04 (MG-01) | One bundle registry (section → files → session keys → managed? → hashed?) generating the 18 lists. Golden bundle hash unchanged. | hashed `session_keys` set |
 | C-11 | QI-06-05 (MG-16) | Split `app_state` into a Streamlit-free store helper + one-function page adapter; document remaining lazy chrome imports; enables B-7's C8 contract. | none |
-| C-12 | QI-08-02, QI-08-01 (MG-16) | Slim `journal/__init__.py`; call public `classify_zone_triggers` (or lazy import) so journal import does not load `engine.backtest`; one qty-scaled P&L helper shared by `pair` → `_cost_row`; one `_cost_ticks`. | TJ §3.0 qty scaling (do not copy 1-lot engine formulas) |
-| C-13 | QI-06-10, QI-06-11, QI-05-14 (MG-29) | `execution_artifacts` verify/publish/evict helpers behind existing path-containment guards; promote `_hash_dataframe`, `_directional_grid_metrics`, `_SIMULATION_KWARGS`, `_default_otf_filter_config` to public helpers. | cache-policy defaults |
+| C-12 | QI-08-02 (MG-16), QI-08-01 (singleton) | Slim `journal/__init__.py`; call public `classify_zone_triggers` (or lazy import) so journal import does not load `engine.backtest`; one qty-scaled P&L helper shared by `pair` → `_cost_row`; one `_cost_ticks`. | TJ §3.0 qty scaling (do not copy 1-lot engine formulas) |
+| C-13 | QI-06-11, QI-05-14 (MG-29), QI-06-10 (singleton) | `execution_artifacts` verify/publish/evict helpers behind existing path-containment guards; promote `_hash_dataframe`, `_directional_grid_metrics`, `_SIMULATION_KWARGS`, `_default_otf_filter_config` to public helpers. | cache-policy defaults |
 | C-14 | QI-01-02 | `save_dataset`: extract raw-sidecar / subtf-sidecar policy helpers; preserve/conflict and derive-without-subtf refusal unchanged. | S1 |
 | C-15 | QI-05-03 | `confluence_attribution`: split pair/trigger summarizers from display-facing assembly. | none |
 | C-16 | QI-09-01, QI-09-02 | `results_overview`: claim-format table + intent→builder table; `_derive_caveats` / `score_corpus_chunk` table-driven; `handle_results_turn` phases. Auditor-safe strings and DI/RI/DX/RQ/HC contracts unchanged. | assistant honesty contracts |
@@ -182,7 +182,7 @@ Each workstream lists: *fed by* · *open findings (exactly one owner each)* · *
 **Fed by:** QI-13, docs-drift rows from other slices, disclosure residuals of locked rows.
 **Open findings (16):** QI-02-06 (L) · QI-05-13 (L) · QI-09-05 (M) · QI-12-10 (M) · QI-13-01 (H) · QI-13-02 (M) · QI-13-03 (M) · QI-13-04 (M) · QI-13-05 (M) · QI-13-06 (M) · QI-13-07 (M) · QI-13-08 (M) · QI-13-09 (M) · QI-13-10 (L) · QI-14-02 (M) · QI-14-07 (L).
 **Duplicates listed under their primary (2):** QI-05-11 → QI-13-03 · QI-10-02 → QI-13-04.
-**Locked residuals (docs only, 4):** QI-01-05 (identity keys paragraph names the H9 lock) · QI-02-01 (label the three levels planes; omit ⇒ on) · QI-05-10 (Grid matches the Backtest UI gate) · QI-14-04 (DEFAULT merge on CAI recipes).
+**Locked residuals (docs only, 5):** QI-01-04 (document the parked mixed-offset `ValueError`; do not type/UTC-normalize until AH8) · QI-01-05 (identity keys paragraph names the H9 lock) · QI-02-01 (label the three levels planes; omit ⇒ on) · QI-05-10 (Grid matches the Backtest UI gate) · QI-14-04 (DEFAULT merge on CAI recipes).
 
 | PR | Findings | Content |
 |---|---|---|
@@ -190,7 +190,7 @@ Each workstream lists: *fed by* · *open findings (exactly one owner each)* · *
 | F-2 (wave 0) | QI-13-02, QI-13-05 | README Phase 4 → seven `VALID_TRIGGERS` tokens (in-place, Help-frozen path); `docs/README.md` indexes `CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md`, single shelf for DA/TJ/JS, lists `docs/quality/` reports. |
 | F-3 | QI-13-03, QI-05-13 | `METRICS_GLOSSARY.md` rows: probability_positive, Phase 8 permutation p-value, grid-overfit Best/Median/delta (diagnostic caveats); `AGENT_GUIDE.md` battery `schema_version` table notes the frozen Phase 8 dict. Pairs with A-4. |
 | F-4 | QI-13-04 (MG-01) | `ARCHITECTURE.md` session-key table: Validation consumers of `data`/`levels`/`signals`, Portfolio consumer of `trades`, CAI-5 pointer for `classic_*`; widget keys stay out. Pairs with D-1/B-13. |
-| F-5 | QI-13-07, QI-13-08, QI-13-09, QI-05-10 (locked), QI-01-05 (locked), QI-02-01 (locked), QI-14-04 (locked) | Help-surface disclosure of locked forks: Session close H2 (headless cutoff-without-flatten; Grid = Backtest UI gate), Setup Builder Direction pitfall (DA0), omit=True battery sentence (USER_GUIDE + ASSUMPTIONS), identity-keys paragraph (H9), three levels planes (H4), CAI DEFAULT merge. Pairs with A-8/A-10/A-19. |
+| F-5 | QI-13-07, QI-13-08, QI-13-09, QI-05-10 (locked), QI-01-04 (locked), QI-01-05 (locked), QI-02-01 (locked), QI-14-04 (locked) | Help-surface disclosure of locked forks: Session close H2 (headless cutoff-without-flatten; Grid = Backtest UI gate), Setup Builder Direction pitfall (DA0), omit=True battery sentence (USER_GUIDE + ASSUMPTIONS), identity-keys paragraph (H9), parked mixed-offset reject (H11), three levels planes (H4), CAI DEFAULT merge. Pairs with A-8/A-10/A-19. |
 | F-6 | QI-13-06, QI-09-05 (MG-16) | `AGENT_GUIDE.md` rule ledger → pointers to the import-linter contract (B-7); strip `file:line` cites; amend AIA-0 to name the lazy `st.secrets` fallback (or the extracted Streamlit-free reader if C-11 chooses that). |
 | F-7 | QI-14-02, QI-14-07 (MG-27) | Re-record `CAI_BASELINE.md` realistic and small tables on the tick-gated path (after B-12); keep CAI-10 "no second signal cache yet" until warm stage timers exist. |
 | F-8 | QI-02-06, QI-13-10 | USER_GUIDE §Levels compact token/family list (pointing at `catalog.py`); either HC-amend a small ASSUMPTIONS subset (TJ6/JS2/RS3) or state in USER_GUIDE Journal that Help caveats are the H2. HC allowlist rule 2 respected. |
@@ -304,12 +304,12 @@ All thirteen High rows are proposed **accepted** (QI-03-02 **deferred** behind Q
 
 | Workstream | Status | PRs | Findings owned (open / locked residual / dup) |
 |---|---|---|---|
-| QR-A Honesty and correctness | Not started (awaiting §7.5 gate) | — | 21 / 5 / 0 |
+| QR-A Honesty and correctness | Not started (awaiting §7.5 gate) | — | 21 / 4 / 0 |
 | QR-B Safety net | Not started | — | 19 / 0 / 0 |
 | QR-C Structural refactors | Not started | — | 32 / 0 / 0 |
 | QR-D UI decomposition / state | Not started | — | 10 / 0 / 0 |
 | QR-E Application functions | Not started | — | 15 / 2 / 0 |
-| QR-F Documentation | Not started | — | 16 / 4 / 2 |
+| QR-F Documentation | Not started | — | 16 / 5 / 2 |
 | QR-G Dependency / supply chain | Not started | — | 6 / 0 / 0 |
 | **Total** | | | **119 / 11 / 2** (+ QI-07-10 locked with no residual, QI-10-06 wont-fix = 134) |
 

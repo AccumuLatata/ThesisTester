@@ -2,6 +2,7 @@
 
 **Slice:** QI-15 (research-only; §1.2 file exceptions: this report, `docs/QUALITY_REMEDIATION_PLAN.md` draft, four additive columns on `docs/quality/findings.csv`)
 **Status:** Draft for CTO review gate (plan §7.5). CTO dispositions in §6 are **proposals**; Accumu signs.
+**Review correction (same PR, research-only):** merge-group census was 25/76/58 against a 26-group CSV (MG-04 was a singleton). MG-04 dissolved; QI-01-04 residual moved QR-A→QR-F (document parked H11, do not unpark); §4.1 now lists all four score=5.0 rows; `n/a` weight and 1-decimal rounding stated. Slice evidence fields untouched.
 **Synthesised commit:** `0b2c451` (`main` after [#493](https://github.com/AccumuLatata/ThesisTester/pull/493), QI-14). Slice reports were audited on `e30cc48` / `32ad34c` / `539dd2e`; this synthesis re-verified only status and metrics on `0b2c451`.
 **Environment:** Ubuntu 24.04 (`Linux 6.12.94+ x86_64`), Python 3.12.3, pandas 3.0.5, streamlit 1.63.0, pytest 9.1.1, radon 6.0.1 (installed for re-measurement; not a repo dependency).
 **Inputs:** `docs/QUALITY_INVESTIGATION_PLAN.md` §2, §3.3, §7, §8.1, §9; `docs/quality/QI-00_BASELINE.md`; `docs/quality/QI-01…QI-14`; `docs/quality/findings.csv` (134 rows). Locked premises: `AUDIT_FINAL.md` §5 (`origin/cursor/audit-final-merge-3a8e`), `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1.
@@ -97,12 +98,12 @@ Reading: the investigation produced **evidence-grade rows** (111 Verified + 10 S
 
 | Slice | rows | | Workstream | rows (open + locked residual + dup) |
 |---|---:|---|---|---|
-| QI-05 | 15 | | QR-A Honesty and correctness | 26 (21 open · 5 locked residual) |
+| QI-05 | 15 | | QR-A Honesty and correctness | 25 (21 open · 4 locked residual) |
 | QI-03 · QI-06 | 12 · 12 | | QR-B Safety net | 19 (19 open) |
 | QI-09 | 11 | | QR-C Structural refactors | 32 (32 open) |
 | QI-04 · QI-07 · QI-12 · QI-13 · QI-14 | 10 each | | QR-D UI decomposition / state | 10 (10 open) |
 | QI-02 · QI-10 | 8 · 8 | | QR-E Application functions | 17 (15 open · 2 locked residual) |
-| QI-01 | 7 | | QR-F Documentation | 22 (16 open · 4 locked residual · 2 duplicate) |
+| QI-01 | 7 | | QR-F Documentation | 23 (16 open · 5 locked residual · 2 duplicate) |
 | QI-11 | 6 | | QR-G Dependency / supply chain | 6 (6 open) |
 | QI-08 | 5 | | no workstream | 2 (QI-07-10 locked, no residual; QI-10-06 wont-fix) |
 
@@ -114,19 +115,18 @@ Reading: the investigation produced **evidence-grade rows** (111 Verified + 10 S
 
 | Column | Rule |
 |---|---|
-| `merge_group` | `MG-nn-<slug>`. Two kinds, stated per group below: **root-cause** (same `files_symbols` cause; §7.2 rule 1 — highest severity and union blast radius are those of the group) and **class** (same fix pattern across files; one PR series). Singletons have an empty `merge_group`. |
+| `merge_group` | `MG-nn-<slug>`. Two kinds, stated per group below: **root-cause** (same `files_symbols` cause; §7.2 rule 1 — highest severity and union blast radius are those of the group) and **class** (same fix pattern across files; one PR series). Singletons have an empty `merge_group` (a 1-member group is not a group). |
 | `disposition` | `open` = actionable in QR · `locked` = classification *Design limitation*, `confidence=n/a`, and `locked_by` names an `AUDIT_FINAL` §5 / AH §2 premise — the behavior is not to be changed; the row's *disclosure/test residual* (if any) is owned by the named `qr_workstream` and flagged "disclosure only" in the QR plan · `duplicate` = identical fix in the same file as another row (primary named in §3.3) · `wont-fix` = explicit CTO-proposed no-action · `closed-verified` = unused (§2.1). |
-| `score` | §7.3 formula, **open rows only** (blank for locked/duplicate/wont-fix). |
-| `qr_workstream` | exactly one of QR-A…QR-G; blank only for `wont-fix` and for the one locked row with no residual (QI-07-10). |
+| `score` | §7.3 formula, **open rows only** (blank for locked/duplicate/wont-fix), rounded to 1 decimal. |
+| `qr_workstream` | exactly one of QR-A…QR-G; blank only for `wont-fix` and for the one locked row with no residual (QI-07-10). A locked row's workstream is the *disclosure/test* residual, never an unpark/invert. |
 
-### 3.2 Merge groups (25 groups, 76 rows; 58 singletons)
+### 3.2 Merge groups (25 groups, 88 rows; 46 singletons)
 
 | Group | Kind | Root cause / class | Members (primary first) | Kept severity | Union blast radius |
 |---|---|---|---|---|---|
 | MG-01-h1-leftover-lifecycle | root-cause (H1 class) | Independent research-key lists (dataset-clear · exec-clear · AH4 managed · thesis staging · fingerprint) disagree; docs SoT incomplete | **QI-10-01**, QI-06-03, QI-10-03, QI-06-04, QI-03-12, QI-13-04, QI-10-02 (dup) | Medium (Verified defect ×2) | Data · Levels · Setup · Signals · Backtest · Time · Report · Bundles · Validation · Portfolio · Assistant apply |
 | MG-02-allow-all-disclosure-h5 | root-cause (H5) | `allow_all` overlap inflates N with no page-level disclosure; DA1 diagnostic discarded on Composer A | **QI-04-02**, QI-05-09, QI-04-06 | High | Backtest · Grid · Time · combo N · API/Study (diagnostic parity) |
 | MG-03-cutoff-fork-h7 | root-cause (H7, locked) | Cutoff-without-flatten: UI forces `None`, headless applies | QI-04-03 (locked), QI-05-10 (locked), **QI-13-07**, QI-04-07 | Medium | Backtest · Grid · API · CLI · Study · Help |
-| MG-04-otf-tz-fork-h15 | root-cause (H15, locked) | OTF/Admit clock: UI `exchange_timezone`, headless `inst.exchange_tz` | QI-04-04 (locked) (+ QI-04-07 test) | Medium | Backtest · API · Study · CLI · Assistant |
 | MG-05-omit-means-on-disclosure-h8 | root-cause (H8, locked behavior) | Omitted battery `enabled` ⇒ on for api/CLI/assistant; undisclosed | **QI-06-08**, QI-13-09, QI-09-08 (locked) | Medium | API · CLI · Assistant · hand YAML · Help |
 | MG-06-confirmatory-copy-h13 | root-cause (H13) | Phase 8 `st.success` / confirmatory labels; missing glossary rows | **QI-05-05**, QI-13-03, QI-05-11 (dup) | High | Validation · Report export · Help |
 | MG-08-study-ranking-h16 | root-cause (H16) | Ranking ignores WFA OOS; failed cells unlabeled in MD/rollup | **QI-05-06**, QI-07-04 | Medium | Study report · rollup · promote · index |
@@ -150,7 +150,7 @@ Reading: the investigation produced **evidence-grade rows** (111 Verified + 10 S
 | MG-30-dead-non-product-paths | class | `_rolling_poc` typical body; `confirm_3bar` helpers | **QI-02-07**, QI-03-07 | Low | library callers · WFA/backtest fill |
 | MG-31-security-scan-gaps | root-cause | No bandit/pip-audit/Action pins; SHA1 flagged without `usedforsecurity` | **QI-12-06**, QI-07-09 | Medium | CI · study naming · assistant HTTP |
 
-Group numbers are stable identifiers; gaps (MG-07, MG-21, MG-23, MG-25, MG-28) were candidate groups dissolved into singletons during review because their members had different root causes (e.g. the seven MI-0.00 *library* modules — `local_store`, `confluence_attribution`, `execution_artifacts`, study viewer/observatory/builder, journal, assistant — are separate refactors and stay singletons).
+Group numbers are stable identifiers; gaps (MG-04, MG-07, MG-21, MG-23, MG-25, MG-28) were candidate groups dissolved into singletons. MG-04 (H15) was a 1-member group (QI-04-04 only): §3.1 forbids that. QI-04-07 is the lock-the-fork *test* for both H7 and H15 — linked to QI-04-04 per §7.2 rule 2, not merged (one `merge_group` column; H7 is the shared `files_symbols` pair with QI-04-03). Other dissolved candidates had different root causes (e.g. the seven MI-0.00 *library* modules — `local_store`, `confluence_attribution`, `execution_artifacts`, study viewer/observatory/builder, journal, assistant — stay singletons).
 
 ### 3.3 Duplicates (2) and wont-fix (1)
 
@@ -193,11 +193,11 @@ These pairs are the most valuable output: the `code` row explains *why* the `app
 | H8 battery omit-means-on | QI-06-08, QI-09-08, QI-13-09 | open (disclosure) / locked behavior (MG-05) |
 | H9 `dataset_id` ingest story | QI-01-05 | locked (MG-10) |
 | H10 Data-page fatal OHLCV | QI-01-03 (+ QI-01-07 test) | locked (MG-10) |
-| H11 DST-crossing canonical CSV | QI-01-04 (+ QI-01-07 test) | locked (MG-10) |
+| H11 DST-crossing canonical CSV | QI-01-04 (+ QI-01-07 test) | locked (MG-10) — docs residual QR-F; do not unpark |
 | H12 Focus over-statement | QI-05-04 | **open High** QR-A |
 | H13 confirmatory copy | QI-05-05, QI-05-11, QI-13-03 | **open High** (MG-06) QR-A |
 | H14 HTF stale developing levels | QI-03-06 | open (product decision + disclosure) QR-A |
-| H15 OTF TZ UI vs API | QI-04-04 (+ QI-04-07) | locked (MG-04) |
+| H15 OTF TZ UI vs API | QI-04-04 (+ QI-04-07 test, linked) | locked (singleton; test lives in MG-03) |
 | H16 failed-cell / WFA-ignorant ranking | QI-05-06, QI-07-04 | open (MG-08) QR-A |
 | M2 / M5 / M7 / M8 / M9 / M10 / M14 / M20 | QI-02-02 · QI-03-09 · QI-04-08 · QI-04-10 · QI-05-07 · QI-05-08 · QI-06-06 + QI-09-10 · QI-04-07 | as per rows (M7, M14 partly locked) |
 | L3 / L9 / L10 | QI-03-07 · QI-09-09 · QI-09-06 | open Low |
@@ -209,6 +209,8 @@ These pairs are the most valuable output: the `code` row explains *why* the `app
 
 `AUDIT_FINAL` §4 Medium/Low items **not** re-verified by any slice were not imported as rows: the plan's §A.3 sentence ("QI-15 imports … verbatim with `disposition=carry-over`") conflicts with §7.5's closed disposition vocabulary and with §7.1 ("QI-15 never edits slice rows"). Resolution proposed here: they stay in `AUDIT_FINAL` as the SoT; QR-A's checklist (plan §3.4) requires each QR-A PR to cite the AUDIT M/L id it closes. No new rows were invented.
 
+Slice `prior_id` values that are **not** `C*/H*/M*/L*` / `W*` (§3.3 vocabulary) are left as written (QI-15 does not edit slice fields): `plan §4.4 H-0` (QI-11-03, QI-12-02), `plan §4.4 H-0b` (QI-11-01, QI-12-04), `plan §4.4 H-C` (QI-12-07), `AUDIT_FINAL §7 last row` (QI-11-02). They are plan-hypothesis / goldens-identity cross-refs, not AUDIT finding IDs. Six rows use the literal `none`; empty `prior_id` means "no carry-over".
+
 ### 3.6 Full disposition index (all 134 rows)
 
 Machine-readable SoT is `findings.csv`; this index is for review. Score blank = not scored (locked / duplicate / wont-fix).
@@ -218,7 +220,7 @@ Machine-readable SoT is `findings.csv`; this index is for review. Score blank = 
 | QI-01-01 | M | Maint | open | QR-D | MG-22-page-monoliths | 2.0 |
 | QI-01-02 | M | Maint | open | QR-C | — | 5.0 |
 | QI-01-03 | M | Design | locked | QR-A | MG-10-ingest-forks-h9-h10-h11 | — |
-| QI-01-04 | M | Design | locked | QR-A | MG-10-ingest-forks-h9-h10-h11 | — |
+| QI-01-04 | M | Design | locked | QR-F | MG-10-ingest-forks-h9-h10-h11 | — |
 | QI-01-05 | M | Design | locked | QR-F | MG-10-ingest-forks-h9-h10-h11 | — |
 | QI-01-06 | L | Maint | open | QR-C | — | 1.5 |
 | QI-01-07 | M | Test | open | QR-B | MG-10-ingest-forks-h9-h10-h11 | 2.0 |
@@ -245,7 +247,7 @@ Machine-readable SoT is `findings.csv`; this index is for review. Score blank = 
 | QI-04-01 | H | Maint | open | QR-C | MG-18-simulate-trades | 9.6 |
 | QI-04-02 | H | UX | open | QR-A | MG-02-allow-all-disclosure-h5 | 12.0 |
 | QI-04-03 | M | Design | locked | QR-A | MG-03-cutoff-fork-h7 | — |
-| QI-04-04 | M | Design | locked | QR-A | MG-04-otf-tz-fork-h15 | — |
+| QI-04-04 | M | Design | locked | QR-A | — | — |
 | QI-04-05 | M | Maint | open | QR-D | MG-22-page-monoliths | 0.8 |
 | QI-04-06 | M | UX | open | QR-A | MG-02-allow-all-disclosure-h5 | 6.0 |
 | QI-04-07 | M | Test | open | QR-B | MG-03-cutoff-fork-h7 | 6.0 |
@@ -354,9 +356,9 @@ Machine-readable SoT is `findings.csv`; this index is for review. Score blank = 
 
 ## 4. Scoring (§7.3)
 
-`score = severity_weight × confidence_weight × blast_radius_count × (1 / fix_cost_class)`; Critical 8 / High 4 / Medium 2 / Low 1; Verified 1.0 / Strong 0.8 (no Moderate/Speculative rows). `blast_radius_count` is the hand-counted number of distinct composers, pages, or CLI verbs named in the row's `blast_radius` (min 1; the table in `/tmp/qi15/assign.py` is restated in the CSV `score` column). Fix-cost class: **1** isolated/additive (copy, `help=`, docs, tests, settings, tooling config) · **2** one module, golden-gated (single-function extraction; page split; additive managed keys) · **3** cross-module or contract amendment (registries, `app_state` split, Signals → `build_setup_config`) · **4** architecture (none assigned — no open row proposes an architecture change; composer collapse is locked). Scores order the backlog; they do **not** override §9.2 sequencing.
+`score = severity_weight × confidence_weight × blast_radius_count × (1 / fix_cost_class)`; Critical 8 / High 4 / Medium 2 / Low 1; Verified 1.0 / Strong 0.8 / Moderate 0.5 / Speculative 0.2. Plan §7.3 has no `n/a` weight: the one **open** `confidence=n/a` row (QI-12-09, Design limitation, `locked_by=none`) uses **0.5** (same as Moderate — `n/a` is a classification marker, not Verified evidence). Locked `n/a` rows are not scored. No Moderate/Speculative rows exist. `blast_radius_count` is the hand-counted number of distinct composers, pages, or CLI verbs named in the row's `blast_radius` (min 1). Fix-cost class: **1** isolated/additive (copy, `help=`, docs, tests, settings, tooling config) · **2** one module, golden-gated (single-function extraction; page split; additive managed keys) · **3** cross-module or contract amendment (registries, `app_state` split, Signals → `build_setup_config`) · **4** architecture (none assigned — no open row proposes an architecture change; composer collapse is locked). Scores are stored at **1 decimal** (`2/3 → 0.7`, `10/3 → 3.3`, `14/3 → 4.7`, `1/3 → 0.3`). Some integer `(blast, cost)` pairs collide; the §4.1 factor column is the disambiguation for every row with score ≥ 5.0. Scores order the backlog; they do **not** override §9.2 sequencing.
 
-### 4.1 Top 30 open rows by score
+### 4.1 Top open rows by score (all 33 with score ≥ 5.0)
 
 | Rank | Score | Row | Sev · Conf · BR · Cost | WS | Group | One line |
 |---:|---:|---|---|---|---|---|
@@ -389,9 +391,12 @@ Machine-readable SoT is `findings.csv`; this index is for review. Score blank = 
 | 23 | 6.0 | QI-06-08 | M · V · 3 · 1 | QR-A | MG-05 | H8 CLI/API disclosure |
 | 23 | 6.0 | QI-04-07 | M · V · 3 · 1 | QR-B | MG-03 | H7/H15 lock-the-fork tests absent |
 | 23 | 6.0 | QI-04-06 | M · V · 3 · 1 | QR-A | MG-02 | DA1 diagnostic discarded on Composer A |
-| 30 | 5.0 | QI-14-05 · QI-11-02 · QI-01-02 | M · V · 5 · 2 | QR-C · QR-B · QR-C | MG-19 · MG-18 · — | `generate_signals` row loops · no flatten-on/3c/BE golden family · `local_store.save_dataset` E-grade |
+| 30 | 5.0 | QI-10-01 | M · V · 5 · 2 | QR-A | MG-01 | H1 dataset-switch clear list narrower than AH4 |
+| 30 | 5.0 | QI-14-05 | M · V · 5 · 2 | QR-C | MG-19 | `generate_signals` row-wise pandas limiter |
+| 30 | 5.0 | QI-11-02 | M · V · 5 · 2 | QR-B | MG-18 | no flatten-on / 3c / BE golden family |
+| 30 | 5.0 | QI-01-02 | M · V · 5 · 2 | QR-C | — | `local_store.save_dataset` E-grade |
 
-Full ordering: sort `findings.csv` by `score` descending (119 scored rows).
+29 rows score > 5.0; four-way tie at 5.0 (first-pass table omitted QI-10-01). Full ordering: sort `findings.csv` by `score` descending (119 scored rows).
 
 ### 4.2 Score mass per workstream (open rows)
 
@@ -520,7 +525,7 @@ Prose rules (from `AGENT_GUIDE.md` / `ARCHITECTURE.md`, QI-13 §9 and QI-12 §2.
 | C7 | Journal never calls `simulate_trades` / `compute_all_levels` (TJ) | import-linter `forbidden` on `engine.backtest`, `levels.all`, `engine.sim_core`; **not** on `engine.signals` (JS2 wrapper is legitimate) | call-ban 0; **package-init loads `engine.backtest`** via `journal/__init__` + private `engine.signals._classify_zone_triggers_detail` import | QI-08-02 | QR-C (slim init) + QR-B (contract) |
 | C8 | Library is Streamlit-free except documented chrome (R18 / H-C) | import-linter layers: `thesistester` (minus allow-list) ↛ `streamlit` | **8 direct importers**: `app_state` (eager) + lazy `assistant.llm`, `assistant.voice.xai_realtime`, `classic_context`, `classic_ledger`, `classic_nav`, `classic_proposal`, `classic_record` | QI-06-05, QI-09-05, QI-12-07 | QR-C (split `app_state`) · QR-F (amend AIA-0/R18 wording) · QR-B (contract with explicit allow-list) |
 | C9 | `sim_core` contains no admission / P&L (R22) | import-linter (`sim_core` ↛ `entry_window_policy`, `analytics.*`) + existing benches | 0 | QI-4 §6.3, QI-14 §6.2 | QR-B (cheap to encode) |
-| C10 | Studies page ↛ `FORMAT_PROFILE_LABELS` from `builder` (R17 getattr rule) | import-linter | not re-run by QI-13; runtime labels are one object | QI-01-06 | QR-B |
+| C10 | Studies page ↛ `FORMAT_PROFILE_LABELS` from `builder` (R17 getattr rule) | import-linter | not re-run by QI-13; runtime labels are one object | QI-01-06 | QR-C (SoT extract) · QR-B (contract) |
 | C11 | `ARCHITECTURE.md` session-key table = producer/consumer graph | test asserting table ⊇ literal `session_state["…"]` research keys and consumer columns | **16 table-not-code** (constant-aliased / API-written) · **4 consumers missing** (Validation ×3, Portfolio) · chrome keys only in CAI-5 | QI-13-04, QI-10-02, QI-10-03 | QR-D (registry) + QR-B (test) |
 | C12 | `validation_summary()` shape frozen `{bootstrap, permutation, trade_count, grid_overfit}` | test on key set | 0 (held) | QI-05-13 | QR-B (one assert) |
 | C13 | Four golden families cover default-on execution paths | golden family per default-on path (flatten-on, 3c filled/void, BE/trail, `same_bar_opposite_direction=legacy`) | **4 default-on paths without a family** | QI-11-02 | QR-B |
@@ -569,7 +574,7 @@ Remaining ~70 "do not" sentences in `AGENT_GUIDE.md` (do not reopen series, do n
 | R9 packaging / lint / CI | `pip install -e .`; ruff clean; CI gates merges | ruff/format clean (368 files); editable-install job green; **no required checks**; `requirements.txt` ≠ `pyproject` resolve; pages `sys.path` bootstrap + blanket `E402` ignore | **Breached on the gate**, eroding on install SoT | QI-12-01, QI-12-03, QI-10-08 |
 | R18 headless library (Streamlit-free; `api.py` thin facade) | library never imports Streamlit; `api.py` = typed facade | 1 eager + 7 lazy Streamlit importers; `api.py` is ~8 % facade / 36 % validation / 44 % composition; `validate_run_spec` CC 104 | **Breached** (Streamlit) · **eroding** (facade) | QI-06-05, QI-09-05, QI-12-07, QI-06-01 |
 | R22 `sim_core` boundary | `sim_core` = BarData + bracket resolution only; acceleration must equal serial goldens | no admission / P&L in `sim_core` (QI-4, QI-14); orchestrator not shrunk (P7 alone F 45); R22 serial ruler reproduces | **Holds**; orchestrator debt is the QR-C item | QI-04-01, QI-14-09 |
-| Two-composer contract (AH §2 items 1–2) | Composer A (pages) and Composer B (`run_experiment`) stay distinct; forks are locked, not hidden | forks present as locked (H7/H15/H10/H11/H4/H8/H9); disclosure uneven; Signals bypasses BSC | **Holds by lock**; disclosure eroding | MG-02/03/04/05/09/10, QI-03-10 |
+| Two-composer contract (AH §2 items 1–2) | Composer A (pages) and Composer B (`run_experiment`) stay distinct; forks are locked, not hidden | forks present as locked (H7/H15/H10/H11/H4/H8/H9); disclosure uneven; Signals bypasses BSC | **Holds by lock**; disclosure eroding | MG-02/03/05/09/10, QI-04-04, QI-03-10 |
 | AH4 restore lifecycle (managed keys clear; no page-12 hash) | managed set cleared on apply; three integrity bars distinct | managed set clears; **residual leftovers** (`otf_validation_*`, `skipped_signals`, `direction_collision_diagnostic`, `display_timezone`); dataset-switch clear list narrower than AH4 | **Eroding** (residual H1 class) | QI-06-03, QI-10-01, QI-10-03, QI-06-04 |
 | RS Study import bans (preview/viewer/observatory/launch/admit_followup) | listed modules never import `execute` / Streamlit / Plotly | direct bans hold and are AST-tested; **chains** `expand → cli → cli_study` reach `execute`; package-init eager `run_study` | **Holds directly; eroding via chains** | QI-12-07, QI-13-06, QI-07 §2.2 |
 | RS-D9 pages ↛ in-process `run_study()` | pages spawn detached CLI only | 0 calls; `spawn_launch` only; no auto-refresh/kill/retry | **Holds** | QI-7 §6.2 |
@@ -681,7 +686,7 @@ H7 composer SoT · H15 TZ SoT · H10 Data-page abort · H11 typed reject · H9 `
 | Row | Prior | Locked by | What stays | Residual carried (workstream) |
 |---|---|---|---|---|
 | QI-01-03 | H10 | AH §2.1 parked forks; S1 | UI legacy-primary admits fatals; headless rejects | Disclosure sentence + lock-the-fork test via QI-01-07 (QR-A / QR-B) |
-| QI-01-04 | H11 | AH §8 | Raw `ValueError` on mixed offsets | Test recipe via QI-01-07 (QR-B); typed error only after unparking (QR-A) |
+| QI-01-04 | H11 | AH §8 | Raw `ValueError` on mixed offsets | Document the parked reject (QR-F). Lock-the-fork test via QI-01-07 (QR-B). Typed error / UTC-normalize only after AH8 unpark (§6.2) — not a QR-A fix |
 | QI-01-05 | H9 | `AUDIT_FINAL` §5.1 item 9; AH §2 item 9 | `dataset_id` omits mode | ARCHITECTURE identity-keys paragraph (QR-F) |
 | QI-02-01 | H4 | AH §2 item 9 | Three planes; omit ⇒ on | Label the planes in living docs (QR-F) |
 | QI-04-03 | H7 | `AUDIT_FINAL` §5.1 item 6; AH §8 | UI forces cutoff `None` without flatten | Label the fork on both composers (QR-A); Help via QI-13-07 (QR-F); test via QI-04-07 (QR-B) |
@@ -712,7 +717,7 @@ H7 composer SoT · H15 TZ SoT · H10 Data-page abort · H11 typed reject · H9 `
 | Coverage gate | informational 85 %; measured **82 %**; 14 modules < 70 % | blocking at 82 % (warn-first one release), ratchet +1 pt per release; no `engine/`, `analytics/`, `data/`, `levels/` module < 85 % (`levels/common.py` 59 → ≥ 85) | `--cov-fail-under` | QI-12-04, QI-11-01 |
 | Security / dependency scans in CI | none | `bandit -ll` + `pip-audit` warn-first → blocking on High; Actions pinned to SHAs | CI jobs | QI-12-06, QI-07-09 |
 | Broad `except` | 83 | each classified in-repo (comment or allow-list); *hides defect* class = 0 (today: QI-03-05, QI-05-12, QI-08-03) | `rg` + ruff `BLE001` | MG-24 |
-| Composer-parity divergences (ledger §5.3) | 24 entries: 8 locked (one, P13, without a row), 16 open | 0 open outside `locked`; every locked fork has a lock-the-fork test and a disclosure on both composers | ledger re-run | MG-02/03/04/05/10, QI-04-07, QI-01-07 |
+| Composer-parity divergences (ledger §5.3) | 24 entries: 8 locked (one, P13, without a row), 16 open | 0 open outside `locked`; every locked fork has a lock-the-fork test and a disclosure on both composers | ledger re-run | MG-02/03/05/10, QI-04-04, QI-04-07, QI-01-07 |
 | `ARCHITECTURE.md` session-key table vs measured graph | 109 table names vs 162 literals; 4 consumers missing | asserted by a test (table ⊇ research keys and consumers); one key registry generates the pop lists | new test | QI-13-04, QI-10-03 |
 | PIT append-FS test coverage | R3 named set only (59/59 columns pass a probe) | generated test over every emitted column on the R3 fixtures | `tests/test_r3_point_in_time.py` | QI-02-02 |
 | Full-suite wall time / structure | 2:09–2:26 uninstrumented; one unmarked pile of 3,966 | tracked per release; `unit` marker subset < 5 min; AppTest files `serial`-marked before any xdist | `--durations`, markers | QI-11-05 |
@@ -725,14 +730,14 @@ H7 composer SoT · H15 TZ SoT · H10 Data-page abort · H11 typed reject · H9 `
 
 `docs/QUALITY_REMEDIATION_PLAN.md` (draft, §9 template) orders the work as:
 
-- **Wave 0 — gate and truth (QR-G + QR-F, settings/docs only):** required status checks (QI-12-01) · constraints + Dependabot + named matrix axis (QI-12-02, QI-12-03, QI-12-08) · ROADMAP/AGENT_GUIDE/PROPOSAL truth (QI-13-01, QI-12-10) · README triggers (QI-13-02).
+- **Wave 0 — gate and truth (QR-G + QR-F, settings/docs only):** required status checks (QI-12-01) · constraints + named matrix axis (QI-12-02, QI-12-03) · ROADMAP/AGENT_GUIDE/PROPOSAL truth (QI-13-01, QI-12-10) · README triggers (QI-13-02). Dependabot (G-3), scanners (G-4), and devcontainer (QI-12-08 / G-5) wait for wave 2.
 - **Wave 1 — honesty first (QR-A), copy/disclosure only, one PR per finding:** H5 (MG-02) · H12 (QI-05-04) · H13 (MG-06) · H1 residual leftovers (QI-06-03, QI-10-01) · H8 disclosure (MG-05) · H16 (MG-08) · DA0 (MG-11) · Study CLI honesty (QI-07-05, QI-07-06) · fail-closed gaps (QI-08-03, QI-05-12, QI-06-09, QI-09-06) · H14 disclosure (QI-03-06; snap decision to CTO).
-- **Wave 2 — safety net (QR-B), tooling/tests only:** lock-the-fork tests (QI-04-07, QI-01-07) · PIT generated FS (QI-02-02) · golden families for default-on paths (QI-11-02) · mutation baseline (QI-11-04) · coverage floor blocking at 82 % (QI-12-04, QI-11-01, QI-09-04, QI-06-12) · import-linter warn-first (QI-12-07) · mypy warn-first (QI-12-05) · markers (QI-11-05) · AppTest harness rules (MG-26) · bandit/pip-audit/pins (QI-12-06, QI-07-09) · CAI harness fix (QI-14-01). Then the QR-C pilot: `validate_setup_config` (QI-03-03).
+- **Wave 2 — safety net (QR-B + QR-G G-3…G-5), tooling/tests only:** lock-the-fork tests (QI-04-07, QI-01-07) · PIT generated FS (QI-02-02) · golden families for default-on paths (QI-11-02) · mutation baseline (QI-11-04) · coverage floor blocking at 82 % (QI-12-04, QI-11-01, QI-09-04, QI-06-12) · import-linter warn-first (QI-12-07) · mypy warn-first (QI-12-05) · markers (QI-11-05) · AppTest harness rules (MG-26) · CAI harness fix (QI-14-01) · QR-G Dependabot / `bandit`+`pip-audit`+pins / devcontainer (QI-12-02 residual, QI-12-06, QI-07-09, QI-12-08). Then the QR-C pilot: `validate_setup_config` (QI-03-03).
 - **Wave 3 — structure (QR-C), golden-gated, one hot spot per PR:** `validate_run_spec` → `study.schema` (MG-17) · `build_markdown_report` (QI-06-02) · `generate_signals` (QI-03-01, then QI-14-05) · `run_walk_forward_sl_tp` (QI-05-01) · bundle registry (QI-06-04) · `app_state` split (QI-06-05) · journal init (QI-08-02).
 - **Wave 4 — engine core and UI (QR-C/QR-D):** `simulate_trades` P7 (QI-04-01, QI-14-09) · 3c row-mapper (QI-03-02) · page splits (MG-22) · session-key registry (QI-10-03) · assistant tables (QI-09-01, QI-09-02) · Study/journal/store modules.
 - **Wave 5 — application functions (QR-E) and docs consolidation (QR-F):** operability/copy (QI-02-03, QI-06-07, QI-08-05, QI-09-11, QI-10-04, …) · W12 acceleration inside R22 (QI-14-03, QI-14-06) · glossary/Help/CAI docs · AGENT_GUIDE ledger → contracts (QI-13-06).
 
-Every workstream section in the QR plan cites its finding IDs; every open row appears in exactly one workstream; locked rows appear only as "disclosure/test residual" items; `duplicate` rows are listed under their primary; the single `wont-fix` is recorded in the QR plan §7.
+Every workstream section in the QR plan cites its finding IDs; every open row appears in exactly one workstream; locked rows appear only as disclosure/test residuals (never as "unpark/invert the lock"); `duplicate` rows are listed under their primary; the single `wont-fix` is recorded in the QR plan §7.
 
 ---
 
