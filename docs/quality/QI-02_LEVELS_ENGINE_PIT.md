@@ -7,8 +7,10 @@
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, pytest 9.1.1, radon 6.0.1, vulture 2.16
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi02-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data.
 **Finding count:** 8 (C/H/M/L = 0/0/5/3)
-**Time spent:** one agent run on 2026-09-12.
+**Time spent:** one agent run on 2026-09-12; honesty/schema review the same day.
 **After-edit `pytest -q`:** 3,966 passed, 5 skipped in 127.38 s — same pass/fail/skip as before (133.81 s). Wall-time delta is noise. `git status --porcelain` after the run: clean (only the two `docs/quality/` files were ever staged).
+
+**Review corrections (evidence re-measured on the same `32ad34c` product files):** `_sync_levels_widget_state` is **87** physical lines (278–364), not 88; H4 probe flags are plane-equal (OR / Stage-6 gates / `poc_windows` / agg ticks 4/8/10), not full-dict equal — `normalize_levels_config` sorts `sma_timeframes` / `ema_timeframes` / `pivot_timeframes`; fingerprint inner keys are the page helper’s dict, not an `ARCHITECTURE.md` contract-table row; profile identity stamps are `attach_tick_identity` **and** `attach_rolling_poc_identity`; PIT §9 OR is M2 / §7 item 12 named (not “no”); DST `ONH` finite is **120** (same gate as `RTH_Open`), not 80; close-as-tick `POC_rolling_30min` finite is **0** (same unreadable path that leaves `APOC` vacuous), not 3. `iso25010` tokens were already §A.5-legal; H4 stays Design limitation / `confidence=n/a` / Medium. `trading_session_date` arithmetic, tick bins 4/8/10, and QT-parity were not re-audited.
 
 Locked inputs treated as premises (not re-audited): `AUDIT_FINAL.md` §5 on `origin/cursor/audit-final-merge-3a8e`; `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1 (omitted levels keys = product `DEFAULT_LEVELS_SETTINGS`). `trading_session_date` arithmetic, tick bin sizes 4/8/10, and QT-parity (AP/RP) were not re-audited.
 
@@ -109,7 +111,7 @@ Read-as-call-site only (not owned): `thesistester/research_identity.py` `normali
 | Metric | Value | Trigger hit? |
 |---|---|---|
 | F-grade (CC ≥ 41) | none | no |
-| E-grade (21–40, CC 39) | `pages/2_Levels.py` `_sync_levels_widget_state` **E (39)** · 88 physical lines | Yes — QI-02-04 |
+| E-grade (21–40, CC 39) | `pages/2_Levels.py` `_sync_levels_widget_state` **E (39)** · 87 physical lines | Yes — QI-02-04 |
 | D-grade | `compute_prev30m_vwap_levels` **D (23)** · 157 lines | Read; not promoted (single-purpose, dedicated suite) |
 | C-grade (read) | `_compute_hit_columns` 20 · `compute_apoc_levels` 19 · `_compute_single_prints` 16 · `_session_window_high_low` 14 · `_two_pointer_poc` 12 · `_compute_profile` 12 · `_saved_levels_label` 12 | no finding |
 | Physical lines > 150 | `compute_prev30m_vwap_levels` 157 · page 2 is 919 / 9 defs | page trigger |
@@ -130,7 +132,7 @@ There is **no** common ABC, `enabled=` convention, or identity-stamping hook on 
 |---|---|---|---|---|
 | `compute_session_levels` | always-on | yes | no | none |
 | `compute_indicator_levels` | empty-list omit | **no** | no | none |
-| `compute_profile_levels` | empty `rolling_windows` skip POC; VA only if table | yes | yes | via `attach_tick_identity` (caller) |
+| `compute_profile_levels` | empty `rolling_windows` skip POC; VA only if table | yes | yes | `attach_tick_identity` + `attach_rolling_poc_identity` (caller) |
 | `compute_pivot_levels` | `enabled=False` | yes | no | none |
 | `compute_session_vwap_levels` | `enabled=False` | yes | no | none |
 | `compute_tpo_levels` | `single_prints_enabled=False`; `apoc_enabled=True` **raises** | yes | no | none |
@@ -180,7 +182,7 @@ Entry points: Levels page (`pages/2_Levels.py`), `api.compute_levels`, library `
 | 1 | Happy path | First-visit widgets = product ON. Calculate calls library **without** `tick_paths` → refuse (disclosed in `USER_GUIDE` §Levels). Untick APOC + empty POC windows is the no-tick path | Product fill then refuse if APOC or POC windows in play and no ticks | Keyword defaults: OR 30, gates False; POC windows default-on inside `compute_profile_levels` still refuse without ticks |
 | 2 | Empty / minimal | Page `st.stop` if no `data`. Empty tz-aware frame: `compute_session_levels` returns all structural columns (probe) | Not separately driven | One-bar tagged ES: structural columns present, no exception |
 | 3 | Malformed | `_parse_lengths` → `st.error` + stop (typed). Naive timestamps: `ValueError: Input 'timestamp' must be timezone-aware` | Same engine raise | Same |
-| 4 | Stale-state | Fingerprint keys match `ARCHITECTURE.md` (`instrument/rows/timestamp_min/max/columns/base_interval/source_timezone/exchange_timezone`). Data drift → warning + `st.stop`. Settings drift → info, no stop. Failed calc retains prior levels | Cache miss ≠ stale UI | n/a |
+| 4 | Stale-state | Page helper `_levels_data_fingerprint` keys: `instrument/rows/timestamp_min/max/columns` plus copies of session `base_interval/source_timezone/exchange_timezone`. `ARCHITECTURE.md` names the `levels_data_fingerprint` dict and `.rows`, not an inner-key contract table. Data drift → warning + `st.stop`. Settings drift → info, no stop. Failed calc retains prior levels | Cache miss ≠ stale UI | n/a |
 | 5 | Composer parity | Tags `session` before compute. Does **not** call `normalize_levels_config` (two-composer lock) | `normalize_levels_config` product fill; **does not** tag missing `session` (untagged `RTH_Open` finite=0 vs tagged 2) | Fourth plane: keyword defaults |
 | 6 | Honesty | Advanced expander caption: defaults enable families. USER_GUIDE lists families, not catalog tokens (QI-02-06). No confirmatory “proven” copy on this page | API errors are typed `ValueError` | Library refuse strings |
 | 7 | Persistence | Save/load via QI-1 `local_store`. Snapshot helper setdefaults **OFF / ticks 1** (H4 plane 3) | Artifact identity uses stamped settings | n/a |
@@ -211,7 +213,7 @@ Study refuses at **validate** (named tokens only). Product-default APOC/POC with
 | **P2 Library** | bare `compute_all_levels(df)` keyword defaults | **30** | all **False** | kwargs 1 / 1 / 1 | optional; missing → session levels NaN |
 | **P3 Snapshot helper** | `pages/2_Levels.py` `_normalize_levels_settings({})` on old snapshots | unset | all **False** | **1 / 1 / 1** | n/a (compare-only) |
 
-Probe flags: `product_eq_normalize_empty=true`, `study_off_eq_product=true`, `advanced_off_same_as_sparse=true`, `snapshot_empty_gates_off=true`.
+Probe flags (plane columns only): `product_eq_normalize_empty_plane=true`, `study_off_eq_norm_plane=true`, `advanced_off_same_as_sparse=true`, `snapshot_empty_gates_off=true`. Full-dict `DEFAULT_LEVELS_SETTINGS == normalize({})` is **false**: normalize sorts `sma_timeframes` / `ema_timeframes` / `pivot_timeframes` (`['1min','5min','30min']` → `['1min','30min','5min']`; pivot `4h` before `5min`). That sort is not a fourth settings plane.
 
 AH §2 item 9 locks P1 omit-means-product-on. P2/P3 are the residual dual normalizers named in `AUDIT_FINAL` H4. QI-02-01.
 
@@ -237,7 +239,7 @@ Full records in `docs/quality/findings.csv`. Summary:
 | QI-02-01 | both | Design limitation | Medium | n/a | H4: three settings planes; omit/Advanced-OFF still product-on |
 | QI-02-02 | both | Test-quality gap | Medium | Verified | §5.5 / M2 columns lack committed append-FS; generated probe prefix-identical |
 | QI-02-03 | app | UX/operability gap | Medium | Verified | Tick refuse strings + timing differ UI vs API vs Study |
-| QI-02-04 | code | Maintainability risk | Medium | Verified | `_sync_levels_widget_state` E(39); snapshot helper is a third default table |
+| QI-02-04 | code | Maintainability risk | Medium | Verified | `_sync_levels_widget_state` E(39), 87 lines; snapshot helper is a third default table |
 | QI-02-05 | app | UX/operability gap | Medium | Verified | Calculate `except Exception` renders raw traceback |
 | QI-02-06 | app | Documentation drift | Low | Verified | USER_GUIDE §Levels omits most catalog tokens / Asia / London / ONH |
 | QI-02-07 | code | Maintainability risk | Low | Verified | `_rolling_poc` dead; `typical_mvp_v1` still a live else-branch |
@@ -257,7 +259,7 @@ What was checked and is fine, so later slices do not re-do this work:
 4. **`LEVEL_ENGINE_VERSION` stays 11**; identity stamps change the settings hash (documented AP/RP/TV3 rule; tests assert the constant).
 5. **`typical_mvp_v1` cannot be selected** via `normalize_levels_config` / product keys. No silent typical fallback on the product path.
 6. **`_rolling_poc` is not the product path.** Missing ticks refuse; no typical POC.
-7. **Fingerprint keys** on page 2 match the `ARCHITECTURE.md` contract table. Failed Calculate retains prior `levels` / identity (atomic transaction).
+7. **Fingerprint helper keys** on page 2 are `instrument/rows/timestamp_min/max/columns` plus the three session TZ/interval keys the contract table already lists as fingerprint consumers. Failed Calculate retains prior `levels` / identity (atomic transaction).
 8. **Catalog `STATIC_STUDY_LEVEL_NAMES` (49)** ⊆ `closed_level_token_set(DEFAULT_LEVELS_SETTINGS)`.
 9. **Empty tz-aware + one-bar + naive-ts** paths: empty/one-bar emit structural columns; naive fails closed with a typed message.
 10. **Isolation:** throwaway `/tmp` store; no API keys; no desk PII.
@@ -302,24 +304,24 @@ List only. **Not amended** in this slice.
 
 Golden-style fixture: May 29 + June 2–3 2026, ETH+RTH, synthetic Quantower ticks from bar close, product-like gates, `prev30m` N=2, `pivot_timeframes=["1min"]`. DST fixture: 2026-03-06 / 03-09 / 03-10 (US spring-forward week).
 
-| Column | has committed append-FS? | probe golden (finite) | probe DST (finite) | §5.5 / M2 named? |
+| Column | has committed append-FS? | probe golden (finite) | probe DST (finite) | §5.5 open-Q / M2 named? |
 |---|---|---|---|---|
 | `pdHigh` `pdLow` `pdOpen` `pdEQ` | yes (`test_prior_session_levels_future_shock`) | pass (92) | pass | no |
-| `pwHigh` `pwLow` `pwOpen` `pwEQ` | **no** (value tests only) | pass (92) | pass (82) | **yes** |
-| `pmHigh` `pmLow` `pmOpen` `pmEQ` | **no** | pass (92) | vacuous (0) | **yes** |
-| `dOpen` `wOpen` `mOpen` | **no** (`—` in PIT table) | pass (138) | pass (123) | **yes** |
-| `prevSettlement` | **no** (`—`) | pass (92) | pass (82) | **yes** |
+| `pwHigh` `pwLow` `pwOpen` `pwEQ` | **no** (value tests only; PIT Tests column says “Same” as `pd*` — over-read) | pass (92) | pass (82) | **yes** (§5.5 + M2) |
+| `pmHigh` `pmLow` `pmOpen` `pmEQ` | **no** | pass (92) | vacuous (0) | **yes** (§5.5 + M2) |
+| `dOpen` `wOpen` `mOpen` | **no** (`—` in PIT table) | pass (138) | pass (123) | **yes** (§5.5) |
+| `prevSettlement` | **no** (`—`) | pass (92) | pass (82) | **yes** (§5.5) |
 | `pRTH_High` `pRTH_Low` `pRTH_Open` | yes | pass (92) | pass | no |
 | `pONH` `pONL` | no (previous-session suite, not append-FS) | pass (92) | pass | no |
-| `ONH` `ONL` | gating only | pass (135) | pass (80) | no |
-| `RTH_Open` | gating only | pass (135) | pass (120) | no |
-| `OR_High` `OR_Low` | gating only | pass (90) | pass (75) | no (M2 also named OR) |
+| `ONH` `ONL` | gating only | pass (135) | pass (120) | **yes** (M2 weaker-than-Causal; not §5.5 add-FS list) |
+| `RTH_Open` | gating only | pass (135) | pass (120) | **yes** (M2 weaker-than-Causal; not §5.5 add-FS list) |
+| `OR_High` `OR_Low` | gating only | pass (90) | pass (75) | **yes** (M2 + §7 item 12 add-FS; omitted from the §5.5 sentence) |
 | `AsiaHigh` `AsiaLow` | yes | vacuous (0) | vacuous | no |
 | `LondonHigh` `LondonLow` | yes | vacuous (0) | vacuous | no |
 | `pdVAH` `pdVAL` `pdPOC` | yes | pass (92) | pass | no |
 | `pwVAH` `pwVAL` `pwPOC` | yes | pass (92) | pass | no |
-| `pmVAH` `pmVAL` `pmPOC` | **no** | pass (92) | vacuous (0) | **yes** |
-| `POC_rolling_30min` | yes (1h named in R3; 30min via rolling-POC suite) | pass (3) | pass | no |
+| `pmVAH` `pmVAL` `pmPOC` | **no** | pass (92) | vacuous (0) | **yes** (§5.5 `pm` profile) |
+| `POC_rolling_30min` | yes (1h named in R3; 30min via rolling-POC suite) | pass (0) | pass (0) | no |
 | `SMA_5_1min` `EMA_5_1min` `VWAP_rolling_30min` | yes (family) | pass | pass | no |
 | `Pivot_1m_*` | yes | vacuous (0) on this short right-window | vacuous | no |
 | `dVWAP_RTH` `dVWAP` `wVWAP` `mVWAP` | yes | pass | pass | no |
@@ -327,7 +329,7 @@ Golden-style fixture: May 29 + June 2–3 2026, ETH+RTH, synthetic Quantower tic
 | `APOC` `pAPOC` | yes | vacuous (0) on close-as-tick synthetic | vacuous | no |
 | `prev30mVWAP` `_2` `hit_m1` `hit_m5` | yes | pass (47 / 2 / 42 / 30) | pass | no |
 
-**Reading:** no prefix mismatch was observed. Vacuous cells are fixture limits, not leaks. The honesty gap is the **committed Tests column** (`AUDIT_FINAL` M2 / §5.5), not a reproduced look-ahead on this tree.
+**Reading:** no prefix mismatch was observed. Vacuous cells are fixture limits, not leaks. Close-as-tick synthetic files that are not Quantower Last×Volume leave `APOC` / `pAPOC` / `POC_rolling_30min` all-NaN (0 finite) while still prefix-identical; a Quantower-shaped close CSV makes those families finite (review check only — not the committed gate). The honesty gap is the **committed Tests column** (`AUDIT_FINAL` M2 / §5.5 / §7 item 12), not a reproduced look-ahead on this tree.
 
 ---
 
