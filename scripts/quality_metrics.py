@@ -120,13 +120,20 @@ def _run(
     cwd: Path,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        args,
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=check,
-    )
+    try:
+        return subprocess.run(
+            args,
+            cwd=cwd,
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            check=check,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"required tool {args[0]!r} is not on PATH "
+            "(need git, rg, radon, and vulture for a full run)"
+        ) from exc
 
 
 def _physical_loc(paths: list[Path]) -> int:
@@ -187,6 +194,7 @@ def _size(root: Path) -> dict[str, Any]:
         "pages_loc": _physical_loc(pages),
         "app_py_loc": _physical_loc([root / "app.py"]) if (root / "app.py").exists() else 0,
         "test_files": len(tests),
+        "test_loc": _physical_loc(tests),
         "test_def_test_": test_fn,
         "docs_md_all": len(docs),
         "docs_md_top_level": len(docs_top),
@@ -379,9 +387,11 @@ def _smells(root: Path) -> dict[str, Any]:
 def _annotations(root: Path) -> dict[str, Any]:
     """AST return-annotation counts plus the same-line ``def … ->`` proxy.
 
-    Plan §4.2 quoted 1,588 vs 6 using a same-line ``->`` heuristic on the
-    ``e82c2a9`` tree. QI-0 records both that heuristic and a full AST walk
-    so later slices do not treat the two as interchangeable.
+    Plan §4.2 quoted 1,588 vs 6 — that pair is a different (unreproduced)
+    heuristic. This function records (1) a same-line ``def … ->`` count
+    (1,597 on ``e82c2a9``; 1,598 after #478) and (2) a full AST walk so
+    later slices do not treat the plan pair, the same-line leftover, and
+    the AST unannotated list as interchangeable.
     """
     same_line_ann = 0
     same_line_no = 0

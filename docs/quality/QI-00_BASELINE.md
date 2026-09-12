@@ -80,7 +80,7 @@ Harness reproduction of the §A.1 counters lives in `scripts/quality_metrics.py`
 
 **Covered**
 
-- Repo-wide read of `thesistester/`, `pages/`, `scripts/`, `examples/` for the exclusive ownership map (172 `.py` files + root `app.py`).
+- Repo-wide read of `thesistester/`, `pages/`, `scripts/`, `examples/` for the exclusive ownership map (171 `.py` files under those trees + root `app.py` = **172**).
 - §A.1 static counters on `6786713`.
 - Full-suite `pytest` before the harness files (green).
 - CLI `--help` for `python -m thesistester`, `study`, `journal`.
@@ -112,7 +112,7 @@ Headline sizes use the §A.1 `find | xargs cat | wc -l` / `rg` commands. JSON tw
 |---|---|---|---|
 | Library LOC / modules (`thesistester/`) | 81,829 / **153** | **81,848** / **153** | +19 LOC; module count unchanged. +19 is `thesistester/journal/join.py` (575 → 594) from #478 |
 | Streamlit pages LOC / files (`pages/` only) | **18,172** / 15 | **18,172** / 15 | none. `app.py` is 51 lines (QI-10), excluded from this count |
-| Test LOC-proxy / files / `def test_` | 92,644 / **196** / **3,715** | files **196** / `def test_` **3,715** | file and `def test_` unchanged |
+| Test LOC-proxy / files / `def test_` | 92,644 / **196** / **3,715** | LOC **92,661** / files **196** / `def test_` **3,715** | files and `def test_` unchanged; **+17** LOC from #478 test edits (`test_journal_join.py`, `test_assistant_page_render.py`) |
 | Collected tests | **3,966** collected (3,965 pass + 1 fail; 5–6 skipped) | **3,966 passed + 5 skipped** | fail cleared by #478; collection size matches passed+failed of the plan run |
 | Docs (`docs/**/*.md`) | 66 files, 34,883 top-level `cat docs/*.md` lines | **67** files before this PR; top-level `cat docs/*.md` **35,599** | +1 file (`QUALITY_INVESTIGATION_PLAN.md` via #477); +716 top-level lines. This PR adds `docs/quality/*.md` (QI-13 inventory) |
 | `AGENT_GUIDE` / `ASSUMPTIONS` / `ARCHITECTURE` | ~750 / ~1,520 / ~1,760 | 757 / 1,524 / 1,748 | small; #478 added 8 lines to `AGENT_GUIDE.md` |
@@ -145,7 +145,7 @@ Recent churn (top, last 400 commits) — still Study-heavy; journal has entered 
 | Broad `except Exception` / bare `except` | 83 | **83** | none |
 | `TODO/FIXME/XXX/HACK` (no `-i`) | 0 real | **0**. `-i` still hits 8 `todo` locals in `study/execute.py` | none |
 | `# noqa` / `# type: ignore` | 36 | **36** | none |
-| Return annotations | 1,588 vs 6 (plan heuristic) | same-line `def … ->` **1,598**; AST walk **2,416** annotated / **32** unannotated | +10 same-line arrows. The plan’s “6 unannotated” is a different (narrower) count than a full AST walk. Both recorded; not a finding |
+| Return annotations | 1,588 vs 6 (plan’s unreproduced heuristic) | same-line `def … ->` **1,598** / **850** without arrow; AST walk **2,416** annotated / **32** unannotated | Same-line heuristic on `e82c2a9` is **1,597** / 850 — drift is **+1** (`journal/join.py` `_as_object_cell` from #478), not +10 vs the plan’s 1,588. The plan’s “6 unannotated” is a different count than either the same-line leftover (850) or the AST walk (32). Both recorded; not a finding |
 | Library Streamlit imports | 1 (`app_state.py`) | **1** (`thesistester/app_state.py`) | none |
 | Cross-module private-import `rg` | 10 | **10** | none. Several hits are `import public as _alias` (regex false friends). QI-6/QI-7 classify |
 | `vulture` ≥60 / ≥80 | 110 / 2 (`sidecar.py` `fp`, `newurl`) | **110** / **2** (same two at 100%) | none |
