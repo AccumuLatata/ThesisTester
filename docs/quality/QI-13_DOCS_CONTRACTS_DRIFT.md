@@ -38,7 +38,7 @@ pytest -q --tb=no                                          # after: identical pa
 python3 /tmp/qi13_review_probe.py
 export THESISTESTER_STORE_DIR=/tmp/qi13-store-review-after
 pytest -q --tb=no
-# review after: recorded in the review-pass commit
+# review after: 3966 passed, 5 skipped in 133.57s (0:02:13) — identical result class
 ```
 
 First-pass `/tmp/qi13_probes.py` was not retained. Review-pass script: `/tmp/qi13_review_probe.py` (pasted in §10). Transcripts stay under `/tmp/qi13-evidence/`. Nothing from `/tmp` is committed.
