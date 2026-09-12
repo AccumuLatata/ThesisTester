@@ -38,7 +38,7 @@ python3 /tmp/qi10_leftover_and_nav.py
 python3 /tmp/qi10_apptest_spike.py
 
 export THESISTESTER_STORE_DIR=/tmp/qi10-store-after
-pytest -q --tb=no                                          # after: see §A.1
+pytest -q --tb=no                                          # after: 3966 passed, 5 skipped in 131.21s
 ```
 
 Probe scripts are pasted in §10. They were never committed.
@@ -361,7 +361,7 @@ list(session_state) → KeyError key "0"
 | Run | Command | Result |
 |---|---|---|
 | Before | `THESISTESTER_STORE_DIR=/tmp/qi10-store-before pytest -q --tb=no` | **3966 passed, 5 skipped in 138.46 s**, exit 0 |
-| After | `THESISTESTER_STORE_DIR=/tmp/qi10-store-after pytest -q --tb=no` | recorded after this file is the only product of the slice |
+| After | `THESISTESTER_STORE_DIR=/tmp/qi10-store-after pytest -q --tb=no` | **3966 passed, 5 skipped in 131.21 s**, exit 0 |
 
 `git status --porcelain` must show only `docs/quality/QI-10_UI_SESSION_STATE.md` and `docs/quality/findings.csv`.
 
