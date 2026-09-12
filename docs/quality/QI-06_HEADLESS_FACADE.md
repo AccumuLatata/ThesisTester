@@ -6,10 +6,12 @@
 **Commit date:** 2026-09-12
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, PyYAML 6.0.3, pyarrow 25.0.1
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi6-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data. Adversarial zips only under `/tmp`.
-**Finding count:** 12 (C/H/M/L = 0/2/8/2)
-**Time spent:** one agent run on 2026-09-12.
+**Finding count:** 12 (C/H/M/L = 0/1/9/2)
+**Time spent:** one agent run on 2026-09-12; review-correction pass the same day.
 
-`AUDIT_FINAL.md` §5 and `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 are premises. This slice does **not** propose collapsing composers or the three integrity bars (AH §2 items 1, 2, 8). No backtest, metric, or Study result is described as correct or reliable.
+`AUDIT_FINAL.md` §5 and `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 are premises. This slice does **not** propose collapsing composers or the three integrity bars (AH §2 items 1, 2, 8). H8 and page-12 hash stay parked (disclosure only). No backtest, metric, or Study result is described as correct or reliable.
+
+**Review corrections (schema / honesty only; no product files):** QI-06-02 severity Medium per plan §3.3 (reporting is not an engine/analytics path); QI-06-03 residual leftover set completed (`otf_validation_config` / `otf_validation_summary` / `skipped_signals` also survive apply and are read by `build_research_artifact`); H8 nested-battery defaults are not uniform (OTF matrix omit=`False`); QI-06-07 `iso25010` dropped the non-§A.5 token `operability`.
 
 ## Commands run (verbatim)
 
@@ -42,6 +44,17 @@ pytest -q tests/test_golden_master.py::test_canonical_bundle_hash_matches_record
 
 export THESISTESTER_STORE_DIR=/tmp/qi6-store-after
 pytest -q --tb=no                                          # after: 3966 passed, 5 skipped in 140.61s
+
+# review-correction pass (same tree; docs only)
+python3 leftover apply + H8 .get('enabled') inventory + CLI traceback
+pytest -q tests/test_research_bundle.py tests/test_cli.py \
+  tests/test_app_state.py tests/test_golden_master.py \
+  tests/test_assistant_execution_parity.py tests/test_research_identity.py \
+  -k 'ah4 or canonical_bundle_hash or module_cli_bundle or api_cli_and_assistant or hash_matches_recorded'
+  # 11 passed, 63 deselected
+pytest -q tests/test_golden_master.py::test_canonical_bundle_hash_matches_recorded_pandas_major \
+  tests/test_golden_master.py::test_bundle_projection_ignores_manifest_and_zip_timestamps
+  # 2 passed
 ```
 
 Probe scripts are pasted in §10. They were never committed.
@@ -114,12 +127,12 @@ AST spans on `e30cc48` (3,204 physical lines). Imports / blanks / comments are t
 | `run_experiment` | 1 | 348 | 10.9% | Full composer (validate → load → levels → signals → backtest → optional batteries) |
 | **Module total** | | **3,204** | **100%** | |
 
-**Reading.** R18 (`ENGINEERING_PROPOSAL.md`) scoped `api.py` as a thin typed facade. Measured: **~8% wrapper facade**, **~36% validation** (`validate_run_spec` + helpers + tables), **~44% composition/orchestration**, rest types. `validate_run_spec` is a hand-rolled schema (allow-lists + per-key `isinstance` / range / enum branches). A `TypedDict` + validator table could shrink CC without changing fail-closed behavior; that is a QR-C direction, not a behavior claim. `run_experiment` still applies `.get("enabled", True)` for `grid` / `walk_forward` / `validation` (H8; parked).
+**Reading.** R18 (`ENGINEERING_PROPOSAL.md`) scoped `api.py` as a thin typed facade. Measured: **~8% wrapper facade**, **~36% validation** (`validate_run_spec` + helpers + tables), **~44% composition/orchestration**, rest types. `validate_run_spec` is a hand-rolled schema (allow-lists + per-key `isinstance` / range / enum branches). A `TypedDict` + validator table could shrink CC without changing fail-closed behavior; that is a QR-C direction, not a behavior claim. `run_experiment` still applies `.get("enabled", True)` for `grid` / `walk_forward` / `validation` (H8; parked). Nested `run_validation` batteries are **not** uniform: MC / noise / sensitivity / excursion / overfitting omit=`True`; OTF validation matrix omit=`False`; `entry_window` omit is off.
 
 ### 2.3 Hot-spot notes
 
 - **`build_markdown_report` (CC 152, 287 lines).** Highest CC in the repo (QI-0). It is a linear template: extract artifact dicts, append fixed section strings, then conditional excursion/MC/noise/overfit/sensitivity/portfolio/OTF-validation blocks. Complexity is branch-per-section, not trading logic. QR-C: data → template, not more `if` chains.
-- **`load_research_bundle` / `build_research_bundle` (CC 75 / 63).** Section-by-section zip I/O with parallel `_MANAGED_RESEARCH_KEYS`, `_*_META_KEYS`, `_KNOWN_FILES`, `_SECTION_REQUIRED_FILES`, hashed `session_keys`. Adding a session key requires touching several lists (H1 class).
+- **`load_research_bundle` / `build_research_bundle` (CC 75 / 63).** Section-by-section zip I/O with **18 named key tables** in five categories (`_MANAGED_RESEARCH_KEYS`, `_*_META_KEYS`, `_KNOWN_FILES`, `_SECTION_REQUIRED_FILES`, hash exclusions) plus hashed `session_keys` special-cases. Adding a session key requires touching several lists (H1 class). `ARCHITECTURE.md` already lists `otf_validation_matrix` / `otf_validation_config` as Bundles consumers; `research_bundle.py` has zero `otf_validation_*` symbols.
 - **`execution_artifacts.py` (1,519 LOC, MI 0.00).** Cache verify/publish/evict. Broad excepts on publish re-raise after temp cleanup (OK). Coverage debt 128 misses (QI-11).
 - **Classic bridge.** `classic_export._backtest_section` E 31 is the H7 cutoff-without-flatten fork locus (QI-4). Not re-audited.
 
@@ -135,7 +148,7 @@ AST spans on `e30cc48` (3,204 physical lines). Imports / blanks / comments are t
 | Empty / minimal | Existing suite covers empty-ish fixtures; `validate_run_spec` fails closed on missing `dataset.path` / unknown keys |
 | Malformed | Typed `ValueError` from `validate_run_spec` (no Streamlit traceback on this entry) |
 | Composer parity | API hash = CLI hash on the pRTH-shaped spec (`062106ac…bda3`). Existing `test_module_cli_bundle_matches_headless_ui_equivalent_pipeline` and `test_api_cli_and_assistant_canonical_hashes_match` passed in the scoped run (11 tests) |
-| Honesty | Omitted battery `enabled` still means **on** (H8 probe: `grid:` without `enabled` produced 4 grid rows; `enabled: false` produced none) |
+| Honesty | Omitted battery `enabled` still means **on** for `grid` / `walk_forward` / `validation` (H8; parked). Nested batteries are not the same default: OTF validation matrix omit=`False`; Admit `entry_window` omit is off |
 | Persistence | Cache policy default `off`; CLI uses `read_write`. Cold/warm hash equality is already suite-gated (not re-claimed here) |
 | Operability | Returned state carries `dataset_id`, `data_identity`, `levels_identity`, `experiment_identity`, `cache_provenance` |
 | Performance | `run_experiment` wall 0.169 s on the golden-small CSV; CLI process 0.913 s (spawn + index write). Informational; not compared to `SIMULATE_PERF.md` |
@@ -159,7 +172,7 @@ Threat-model outcomes (exit criterion). All zips built under `/tmp`.
 | Not a zip | `ValueError` | **FAIL_CLOSED** — `Invalid research bundle zip file.` |
 | Path-traversal members (`../evil.txt`, `../../tmp/qi6-evil`) | No disk write | **LOADED_IN_MEMORY**; `session_values={}`; no new `/tmp/qi6-evil*`. Members are never extracted to disk; only known filenames are read |
 | Oversized unknown member (2 MiB zeros, DEFLATE) | Size cap or reject | **ACCEPTED_IGNORED**. Compressed size 2,426 bytes. `load_research_bundle` has **no** max uncompressed / total-member cap. Unknown names are ignored after `ZipFile` open |
-| Foreign parquet schema as `trades.parquet` | Schema-only import (AH §2.8) | **ACCEPTED_SCHEMA_ONLY** — columns `unexpected_col`, `not_a_trade` restored |
+| Foreign parquet schema as `trades.parquet` | Schema-only import (AH §2 item 8) | **ACCEPTED_SCHEMA_ONLY** — columns `unexpected_col`, `not_a_trade` restored |
 | Tampered `trades.parquet` (r_multiple += 50) | Page 12 does not hash-gate (parked) | **ACCEPTED_SCHEMA_ONLY**. `canonical_bundle_hash` changed `2d9ec45b6f83` → `548db969179e`; imported `r_multiple=51.0`. `pages/12_Research_Bundles.py` contains **zero** `canonical_bundle_hash` / “schema-only” / “tamper” strings (`test_ah4_p5_page_12_stays_schema_only` still asserts the hash symbol is absent) |
 
 **Three integrity bars (AH §2 item 8 — verify labels, do not collapse)**
@@ -172,14 +185,17 @@ Threat-model outcomes (exit criterion). All zips built under `/tmp`.
 
 Bars remain **mechanically distinct**. They are **not** labelled distinctly on page 12 itself.
 
-**H1 residual (after AH4).** AH4 probe tests P1–P5 exist and passed (`test_ah4_*`). `_MANAGED_RESEARCH_KEYS` now includes the AH4 leftovers (`otf_filter_summary`, `setup_config`, `focused_trades`, …). Residual keys **not** in that set still survive apply:
+**H1 residual (after AH4).** AH4 probe tests P1–P5 exist and passed (`test_ah4_*`). `_MANAGED_RESEARCH_KEYS` now includes the AH4 leftovers (`otf_filter_summary`, `setup_config`, `focused_trades`, …). Residual keys **not** in that set still survive apply (review probe confirmed the OTF-validation siblings and `skipped_signals` in addition to the first-pass four):
 
 | Key | After dataset-less/backtest-only import | Honesty surface |
 |---|---|---|
 | `otf_validation_matrix` | **present** (`train_expectancy_r=9.9` leftover) | Page 11 checklist + CSV export + `build_research_artifact` tables |
-| `direction_collision_diagnostic` | **present** | Classic / report collision copy |
-| `display_timezone` | **present** | Export TZ (not fills) |
-| `resampled_data` | **present** | Resample cache |
+| `otf_validation_config` | **present** | `build_research_artifact` (ARCHITECTURE: Report / Bundles; **not** exported) |
+| `otf_validation_summary` | **present** | `build_research_artifact` / assistant evidence |
+| `skipped_signals` | **present** | Report skip-count / CSV (`build_research_artifact`) |
+| `direction_collision_diagnostic` | **present** | Classic / report collision copy (ARCHITECTURE: in-memory only; not hashed) |
+| `display_timezone` | **present** | Export TZ (not fills) — QI-10 |
+| `resampled_data` | **present** | Resample cache — QI-1 |
 | `otf_filter_summary` (AH4) | **cleared** | Report metadata no longer shows leftover 12-rejected |
 
 Dataset-less bootstrap skip (`BUNDLE_IMPORT_OMITTED_DATA_KEY` / `should_skip_dataset_bootstrap`) still holds (AH4-P3).
@@ -206,8 +222,8 @@ Seven page importers: `1_Data`, `2_Levels`, `6_Signals`, `7_Backtest`, `8_Grid_S
 
 | Item | Assigned | Status on `e30cc48` | Notes |
 |---|---|---|---|
-| **H1** leftovers + dataset-less bootstrap (AH4, residual) | QI-6 / QI-10 | **Partial closed.** AH4-P1–P5 tests present and green. AH4 keys clear. **Residual leftovers** `otf_validation_matrix`, `direction_collision_diagnostic`, `display_timezone`, `resampled_data` still survive apply (QI-06-03). Bootstrap skip flag holds | Do not reopen AH4 math; residual is additive |
-| **H8** battery omit-means-on | QI-6 | **Parked, still true.** `run_experiment` `.get("enabled", True)` for grid/WFA/validation (and nested batteries in `run_validation`). Probe: omitted `grid.enabled` ran a 4-cell grid; `enabled: false` did not. Disclosure: `STUDY_RUNNER.md` names the “R18 default-on trap”; Study emit is explicit `false`. CLI `--help` and `USER_GUIDE.md` have **no** `thesistester run` omit=on sentence. `AGENT_GUIDE.md` example sets `enabled: false` but does not state omit=True | Locked AH §2.9 / §2.1. Disclosure-only; do not flip default |
+| **H1** leftovers + dataset-less bootstrap (AH4, residual) | QI-6 / QI-10 | **Partial closed.** AH4-P1–P5 tests present and green. AH4 keys clear. **Residual leftovers** `otf_validation_matrix` / `otf_validation_config` / `otf_validation_summary`, `skipped_signals`, `direction_collision_diagnostic` still survive apply (QI-06-03); weaker UI/cache leftovers `display_timezone`, `resampled_data` also survive. Bootstrap skip flag holds | Do not reopen AH4 math; residual is additive |
+| **H8** battery omit-means-on | QI-6 | **Parked, still true.** `run_experiment` `.get("enabled", True)` for grid/WFA/validation. Nested `run_validation` batteries default **on** except OTF matrix (omit=`False`) and Admit `entry_window` (omit=off). Disclosure: `STUDY_RUNNER.md` names the “R18 default-on trap”; Study emit is explicit `false`. CLI `--help` and `USER_GUIDE.md` have **no** `thesistester run` omit=on sentence. `AGENT_GUIDE.md` example sets `enabled: false` but does not state omit=True | Locked AH §2 item 9 / §2.1. Disclosure-only; do not flip default |
 | **§5.5 page-12 hash** | QI-6 | **Still parked.** Page 12 does not call `canonical_bundle_hash`. Tampered parquet imports. `test_ah4_p5_page_12_stays_schema_only` encodes the lock | AH §2 item 8 — do not collapse bars |
 | AH4 probe tests exist | (verify only) | **Yes** — `tests/test_research_bundle.py` `test_ah4_p1`…`p5` | Not a re-audit of leftover-key math |
 
@@ -221,9 +237,9 @@ Full records in `docs/quality/findings.csv`. Summary:
 
 | ID | Sev | Class | Title |
 |---|---|---|---|
-| QI-06-01 | High | Maintainability risk | `api.py` is not a thin facade; `validate_run_spec` is 880 lines / CC 104 |
-| QI-06-02 | High | Maintainability risk | `build_markdown_report` CC 152 (repo max); template-in-code |
-| QI-06-03 | Medium | Verified defect | H1 residual: unmanaged leftovers (`otf_validation_matrix`, …) survive bundle apply |
+| QI-06-01 | High | Maintainability risk | `api.py` is not a thin facade; `validate_run_spec` is 880 lines / CC 104 (shared headless engine/analytics gate) |
+| QI-06-02 | Medium | Maintainability risk | `build_markdown_report` CC 152 (repo max); template-in-code |
+| QI-06-03 | Medium | Verified defect | H1 residual: unmanaged leftovers (`otf_validation_*`, `skipped_signals`, …) survive bundle apply |
 | QI-06-04 | Medium | Maintainability risk | Bundle key lists are parallel SoTs; load/build are F-grade |
 | QI-06-05 | Medium | Maintainability risk | Streamlit-in-library: `app_state` + undocumented lazy `classic_*` renders |
 | QI-06-06 | Medium | Design limitation | Page 12 schema-only / hash parked; three bars not labelled on the page |
@@ -241,13 +257,13 @@ Full records in `docs/quality/findings.csv`. Summary:
 What was checked and is fine, so QI-15 / QR do not re-audit it:
 
 1. **AH4 leftover *managed* keys still clear** — P1–P5 committed; leftover `otf_filter_summary` / `setup_config` / `focused_trades` do not survive a zip without those sections. Dataset-less import sets `bundle_import_omitted_data` and skips bootstrap.
-2. **Page 12 stays schema-only** (AH §2.8 lock) — hash symbol absent from the page; tampered parquet imports. Assistant / `complete_run` hash-fail-closed path is a separate bar (`ARCHITECTURE.md`; not collapsed).
+2. **Page 12 stays schema-only** (AH §2 item 8 lock) — hash symbol absent from the page; tampered parquet imports. Assistant / `complete_run` hash-fail-closed path is a separate bar (`ARCHITECTURE.md`; not collapsed).
 3. **API ↔ CLI `canonical_bundle_hash` identity** on a pRTH-shaped RunSpec over the golden NQ 1m fixture: both `062106ac38001f92706f71c0a4b77beb41ad662f0bf27a412934fa0af0c0bda3`. Existing UI-equivalent and assistant-parity hash tests passed (scoped 11 tests). This is **hash identity**, not fill correctness.
 4. **`results_index.csv` CLI schema** equals `R18_INDEX_METRIC_KEYS + [bundle_path]`; no `status` column (locked fail-fast / origin=cli).
 5. **Malformed / missing-manifest / non-zip bundles fail closed** with typed `ValueError`. Path-traversal members are not written to disk.
 6. **Report markdown scalars match `trade_summary`** for trade_count / avg_r / total_r on the synthetic session (same `_fmt_pct` convention as page 11).
 7. **Golden bundle hash** matches the pandas-3 record on this VM; timestamp-neutrality of `canonical_bundle_hash` holds.
-8. **`validate_run_spec` fail-closed on unknown keys** (suite + H8 specs). `ruff` not re-run repo-wide (QI-0 clean; this slice added no product code).
+8. **`validate_run_spec` fail-closed on unknown keys** (existing suite). `ruff` not re-run repo-wide (QI-0 clean; this slice added no product code).
 9. **AH4-managed OTF read order** — `build_otf_filter_metadata` prefers `backtest_otf_filter` over leftover `otf_filter_summary`.
 10. **Isolation** — throwaway `/tmp` stores; no API keys; no desk PII; adversarial zips not committed.
 
@@ -261,7 +277,7 @@ What was checked and is fine, so QI-15 / QR do not re-audit it:
 | QI-10 | Residual `display_timezone` leftover; `classic_nav.py` lazy Streamlit; session-key graph vs `ARCHITECTURE.md` table (unmanaged keys) |
 | QI-11 | Coverage: `__main__.py` 0, `cli.py` 59, classic_* 61–67, `api.py` 144 misses, `execution_artifacts.py` 128 misses. vulture TypedDict false friends |
 | QI-12 | Streamlit-in-library is prose-only; no import-linter. pandas-major hash skip on py3.10 cell. `bandit` clean on this slice’s zip/cli/artifacts |
-| QI-13 | `USER_GUIDE.md` names the hash/schema split; page 12 UI does not. CLI run battery-omit undocumented. `AGENT_GUIDE.md` example omits the omit=True sentence |
+| QI-13 | `USER_GUIDE.md` names the hash/schema split; page 12 UI does not. CLI run battery-omit undocumented. `AGENT_GUIDE.md` example omits the omit=True sentence. `ARCHITECTURE.md` lists `otf_validation_matrix` / `otf_validation_config` as Bundles consumers with no export path |
 | QI-1 | `research_bundle` imports `local_store._hash_dataframe`. H9 `dataset_id` omits ingest story (identity module read only) |
 | QI-4 | `classic_export._backtest_section` E 31 — H7 cutoff-without-flatten fork. Do not re-audit |
 | QI-7 | Study `results_index` extras (`status`, DA keys) vs CLI prefix. H8 Study emit already explicit `enabled: false` |
@@ -295,7 +311,7 @@ Do **not** amend these in QI.
 | Zip bomb / huge member | **None** (no max size) | Unknown member ignored; a *named* huge parquet/json is decompressed into RAM then parsed | QI-06-09 |
 | Foreign parquet schema | Schema-only (locked) | Imports | QI-06-06 (disclosure) |
 | Tampered hashed content | Page 12: none. Assistant: hash-fail-closed | Page 12 imports | QI-06-06 (parked) |
-| Leftover session keys | `_MANAGED_RESEARCH_KEYS` clear-then-restore | AH4 set cleared; residual set survives | QI-06-03 |
+| Leftover session keys | `_MANAGED_RESEARCH_KEYS` clear-then-restore | AH4 set cleared; residual set survives (`otf_validation_*`, `skipped_signals`, collision diagnostic, plus weaker UI/cache keys) | QI-06-03 |
 | Dataset-less + saved dataset A | `bundle_import_omitted_data` | Bootstrap skipped | none (AH4 holds) |
 
 ---
