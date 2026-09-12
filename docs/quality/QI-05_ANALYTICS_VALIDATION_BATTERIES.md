@@ -32,6 +32,11 @@ export THESISTESTER_STORE_DIR=/tmp/qi5-store-after
 pytest -q --tb=no
 # after: 3966 passed, 5 skipped in 134.32s (0:02:14) — identical result class
 
+# review-pass (docs-only honesty/schema)
+export THESISTESTER_STORE_DIR=/tmp/qi5-store-review-after
+pytest -q --tb=no
+# review after: 3966 passed, 5 skipped in 133.99s (0:02:13) — identical result class
+
 radon cc -s -a <QI-5 files> -n D
 radon mi -s <QI-5 files>
 vulture <QI-5 files> --min-confidence 60
@@ -44,6 +49,8 @@ PYTHONPATH=/workspace python3 /tmp/qi5/probe_qi05.py
 # /tmp/qi5/probe_results.json
 PYTHONPATH=/workspace python3 /tmp/qi5/verify_qi05.py
 # /tmp/qi5/verify_results.json (seed CI / WFA overlap / Policy AST / radon spot)
+PYTHONPATH=/workspace python3 /tmp/qi5-review/verify_review.py
+# /tmp/qi5-review/verify_results.json (review recount / schema / named 12-R seed)
 
 export THESISTESTER_STORE_DIR=/tmp/qi5-store-scope
 pytest -q --tb=line \
