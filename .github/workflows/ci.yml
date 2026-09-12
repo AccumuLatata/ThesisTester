@@ -31,7 +31,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
       # Ruff comes from the `dev` extra so its pinned version is the single source of
       # truth for local runs and CI alike (installing the extra itself would pull the
       # whole app dependency tree for a lint-only job).
@@ -49,7 +51,7 @@ jobs:
       - name: Install ruff
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "${{ steps.ruff.outputs.spec }}"
+          python -m pip install "${{ steps.ruff.outputs.spec }}" -c constraints.txt
       - name: ruff check
         run: ruff check --output-format=github .
       - name: ruff format --check
@@ -61,19 +63,55 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # QI-12-02 / G-2: pandas-major axis is named (not accidental).
+      # Display names stay `pytest (py3.10|3.11|3.12)` — G-1 freeze.
+      # py3.10 = pandas 2 cell; py3.11 / py3.12 = pandas 3 cells.
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        include:
+          - python-version: "3.10"
+            pandas-major: "2"
+          - python-version: "3.11"
+            pandas-major: "3"
+          - python-version: "3.12"
+            pandas-major: "3"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
       - name: Install package + dev extras
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev]" -c constraints.txt
+      - name: Assert pandas major for this matrix cell
+        env:
+          EXPECTED_PANDAS_MAJOR: ${{ matrix.pandas-major }}
+        run: |
+          python - <<'PY'
+          import os
+          import pandas
+          import streamlit
+
+          expected = int(os.environ["EXPECTED_PANDAS_MAJOR"])
+          got = int(pandas.__version__.split(".", 1)[0])
+          assert got == expected, (
+              f"pandas {pandas.__version__} major {got} != {expected} "
+              "(QI-12-02 named axis)"
+          )
+          print(f"pandas {pandas.__version__} (major {got}) matches cell {expected}")
+
+          st_parts = streamlit.__version__.split(".")
+          st_major, st_minor = int(st_parts[0]), int(st_parts[1])
+          assert (st_major, st_minor) < (1, 64), (
+              f"streamlit {streamlit.__version__} is not <1.64 "
+              "(QI-12-02 / #478 cap)"
+          )
+          print(f"streamlit {streamlit.__version__} is inside <1.64 cap")
+          PY
       - name: Record resolved dependency versions
         run: python -m pip list
       - name: pytest with coverage
@@ -103,12 +141,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
       - name: pip install -e . in a clean environment
         run: |
           python -m venv /tmp/venv
           /tmp/venv/bin/python -m pip install --upgrade pip
-          /tmp/venv/bin/python -m pip install -e .
+          /tmp/venv/bin/python -m pip install -e . -c constraints.txt
           /tmp/venv/bin/python -c "import thesistester; print(thesistester.__version__)"
           /tmp/venv/bin/python -m pip check
 

@@ -508,8 +508,9 @@ Every request must first parse as an `AssistantRequest`, then pass
   Keep RQ-5 / DI / DX / RI banks green.
 
 ## Development environment (R9)
-- Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
-  tool config live in `pyproject.toml`).
+- Editable install with tooling: `pip install -e ".[dev]" -c constraints.txt`
+  (packaging metadata and caps live in `pyproject.toml`; `constraints.txt` is
+  the CI lock — QI-12-02 / QR G-2).
 - Before pushing, run exactly what CI runs:
   1. `ruff check .`
   2. `ruff format --check .`
@@ -519,15 +520,23 @@ Every request must first parse as an `AssistantRequest`, then pass
   formatter. Widening the rule set is a separate, reviewable PR — never a side effect of
   feature work.
 - `ruff` is version-capped in the `dev` extra so formatting decisions cannot change under CI
-  without an explicit bump.
-- CI has no lockfile: the `pytest` matrix (`py3.10` / `py3.11` / `py3.12`) runs
-  `pip install -e ".[dev]"` and therefore resolves the *latest* Streamlit and pandas
-  that satisfy `pyproject.toml` caps (`streamlit>=1.56,<2`, `pandas>=2.2,<4`). A
-  Streamlit minor or pandas major inside those caps can change AppTest or
-  null-cell semantics without a repo bump. Pinning/capping those minors, or adding
-  an explicit pandas-major matrix axis, is QI-12 → QR-G — not a local hotfix.
-- The py3.10 cell is the pandas-2 cell: pandas 3 requires Python ≥3.11, so py3.10
-  resolves pandas 2.3.x while py3.11/3.12 resolve pandas 3.x.
+  without an explicit bump. CI installs that spec with `-c constraints.txt`.
+- **Lock + caps (G-2).** CI installs with `-c constraints.txt`. Streamlit is
+  capped `>=1.56,<1.64` so a 1.64 AppTest/proto change cannot silent-resolve
+  (#478 was 1.63). Pandas majors are a **named** matrix axis, not an accident:
+  `pytest (py3.10)` is the pandas **2** cell; `pytest (py3.11)` and
+  `pytest (py3.12)` are pandas **3** cells (pandas 3 requires Python ≥3.11).
+  Those six G-1 job display names are frozen — do not rename them to advertise
+  the pandas major.
+- Regen the lock (do not hand-edit pins):
+  `uv pip compile pyproject.toml --extra dev --universal --python-version 3.10 -o constraints.txt`
+- Version bumps arrive as Dependabot PRs (`.github/dependabot.yml`, weekly)
+  against `constraints.txt` pins. `versioning-strategy: increase-if-necessary`
+  widens a `pyproject.toml` cap only when the candidate sits outside it
+  (so a Streamlit 1.64 PR moves the pin *and* the `<1.64` cap together and
+  then hits the G-1 matrix). `requirements.txt` is `exclude-paths` until G-3
+  so a bump cannot go green by touching only the unused app-install file.
+  Do not land a bump inside a product PR.
 
 ## Regression-safety gates in CI
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request.
