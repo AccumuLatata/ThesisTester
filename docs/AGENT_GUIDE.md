@@ -530,14 +530,35 @@ Every request must first parse as an `AssistantRequest`, then pass
   resolves pandas 2.3.x while py3.11/3.12 resolve pandas 3.x.
 
 ## Regression-safety gates in CI
-`.github/workflows/ci.yml` runs on every push to `main` and every pull request:
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request.
+These six job **display names** are the required status checks on `main`
+(QI-12-01 / QR G-1; restores `ENGINEERING_PROPOSAL.md` §4 rule 9). The
+branch-protection setting **is live** (admin-applied; **strict** up-to-date
+requirement + **enforce admins** / `enforcement_level: everyone`). A red cell
+among these six **blocks** merge to `main`. Names are frozen — renaming a job
+is a dedicated protection-settings PR, not a side effect of feature work.
+Required-check matching is exact-string on the display name; other workflow
+cells do not block merge.
 
 | Job | Gate |
 |---|---|
-| `ruff (lint + format)` | `ruff check` + `ruff format --check`; blocking |
-| `pytest (py3.10/3.11/3.12)` | full suite per matrix cell; blocking. Coverage is reported and warns below an informational floor, never blocks |
-| `editable install (no dev extras)` | `pip install -e .` + import + `pip check` in a clean venv; blocking |
-| `golden-master regeneration guard` | blocks any PR that changes `tests/fixtures/golden/**` without the `GOLDEN_REGEN` label |
+| `ruff (lint + format)` | `ruff check` + `ruff format --check`; required on `main` |
+| `pytest (py3.10)` | full suite; required on `main`. Coverage is reported and warns below an informational floor, never blocks |
+| `pytest (py3.11)` | full suite; required on `main` |
+| `pytest (py3.12)` | full suite; required on `main` |
+| `editable install (no dev extras)` | `pip install -e .` + import + `pip check` in a clean venv; required on `main` |
+| `golden-master regeneration guard` | required on `main`; fails any PR that changes legacy golden artifacts without the `GOLDEN_REGEN` label. Job is `pull_request`-only (`ci.yml`); that is the merge path |
+
+Verify the live gate from a non-admin token. `GET …/branches/main/protection`
+is admin-only and returns **403** for integration tokens — do not treat that
+403 as “protection is off”. Use the readable branch payload:
+
+`gh api repos/AccumuLatata/ThesisTester/branches/main --jq '.protection.required_status_checks.contexts'`
+
+Expect exactly these six strings, with `protected: true` and
+`enforcement_level: everyone`: `ruff (lint + format)`, `pytest (py3.10)`,
+`pytest (py3.11)`, `pytest (py3.12)`, `editable install (no dev extras)`,
+`golden-master regeneration guard`.
 
 ## Golden-master policy (engine/analytics work)
 - Read `tests/fixtures/golden/README.md` before touching `simulate_trades`, level
