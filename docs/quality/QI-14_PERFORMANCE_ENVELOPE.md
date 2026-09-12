@@ -54,6 +54,10 @@ THESISTESTER_STORE_DIR=/tmp/qi14-store-review python3 /tmp/qi14-review/verify_ru
 # realistic compute_levels → ValueError rolling POC requires ticks
 # poc_windows=[] → levels 780×50 / 0.315 MB; signals 1568×52 / 32 object / 1.592 MB
 # normalize(cai_*) prev30m_vwap_enabled=True; disable_unneeded_tick_families poc=[]
+
+# review-pass pytest (docs-only; identical result class)
+THESISTESTER_STORE_DIR=/tmp/qi14-store-review-after pytest -q --tb=no
+# 3966 passed, 5 skipped in 148.73s
 ```
 
 Probe transcripts stay under `/tmp/qi14/`. Nothing from `/tmp` is committed.
@@ -188,7 +192,7 @@ Do not re-audit these unless the owning file or the fixture recipe changes.
 8. **MC-200 and Phase-8 `validation_summary` are cheap** on 26 trades (13 ms / 59 ms). They are not the W12 multiplier; WFA/grid are.
 9. **Official `tests/benchmarks` pytest is green** (4 passed). Those tests still only assert structure + `median_ms >= 0`.
 10. **Isolation held:** throwaway `/tmp` store; no API keys; no desk PII.
-11. **Before/after `pytest -q` identical:** 3,966 passed, 5 skipped (134.21 s before / 131.30 s after). Porcelain: only `docs/quality/QI-14_PERFORMANCE_ENVELOPE.md` and `docs/quality/findings.csv`.
+11. **Before/after `pytest -q` identical:** 3,966 passed, 5 skipped (134.21 s before / 131.30 s after). Review-pass after honesty/schema edits: 3,966 passed, 5 skipped in 148.73 s. Porcelain: only `docs/quality/QI-14_PERFORMANCE_ENVELOPE.md` and `docs/quality/findings.csv`.
 
 ---
 
