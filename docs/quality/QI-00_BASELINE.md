@@ -222,7 +222,7 @@ Page shape (top-level `def` only; classes excluded so the count matches plan §4
 These remain **hypotheses** for later slices. QI-0 does not promote them to findings.
 
 - **H-0 (status update, still not a QI-0 finding).** The plan verified `main` red and 37 merges over red cells. This checkout is locally green after #478. Whether required status checks now block merges is **unverified** (QI-12). The Streamlit-minor / pandas-major split described in §4.3 is still the QI-12 dependency-drift story.
-- **H-0b.** Coverage vs the 85% informational floor / 88% R9 baseline — see §2.5 once the coverage XML is parsed. Classification of *where* misses matter is QI-11.
+- **H-0b.** Coverage **82%** (35,598 stmts / 5,132 missed; 14,994 branches / 3,117 partial) vs the 85% informational floor / 88% R9 baseline. Same 14 modules < 70% as the plan’s `e82c2a9` list (assistant/voice, classic bridge, CLI, journal). Classification of *where* misses matter is QI-11.
 - **H-A…H-F.** Unchanged triggers: F-grade still sits on `simulate_trades` / `generate_signals` / `validate_run_spec` / `build_markdown_report`; eight pages still MI 0.00; `api.py` still 3,204 LOC; assistant volume still leads; docs still ~35k top-level lines. Ownership below assigns the files.
 
 ### 2.5 Full-suite run (plan §4.5 / §A.4)
@@ -290,7 +290,7 @@ Locked: `AUDIT_FINAL` §5.1–5.4 and §7; AH §2 / §2.1. Never re-audit.
 
 What was checked and is fine, so later slices do not re-do this baseline:
 
-1. **Local full suite on this `main` is green** after #478: 3,966 passed, 5 skipped (`pytest -q`, Python 3.12.3, pandas 3.0.5, streamlit 1.63.0). This is a *suite* result, not a claim that goldens prove flatten / restore / composer admissions (`AUDIT_FINAL` §5.1 item 10).
+1. **Local full suite on this `main` is green** after #478: 3,966 passed, 5 skipped (`pytest -q` before **and** after the harness files; Python 3.12.3, pandas 3.0.5, streamlit 1.63.0). This is a *suite* result, not a claim that goldens prove flatten / restore / composer admissions (`AUDIT_FINAL` §5.1 item 10).
 2. **`ruff check` and `ruff format --check` are clean** on the audited tree (367 files).
 3. **§A.1 static counters reproduce** through `scripts/quality_metrics.py` (CC histogram, F-grade set, vulture 110/2, except 83, TODO 0, noqa 36, session_state 1,176, Streamlit-in-library 1, private-import `rg` 10, LOC 81,848 / 18,172).
 4. **Ownership map is exclusive and complete** for every `.py` under `thesistester/`, `pages/`, `scripts/`, `examples/`, plus root `app.py` (172 files; 0 unassigned; 0 double-owned).
@@ -569,18 +569,182 @@ Synthetic fixture recipes for later slices: `docs/quality/README.md`.
 
 ## A.4 Full-suite run recorded during QI-0
 
-Measured on this VM (Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0), `main@6786713`, throwaway store.
+Measured on this VM (Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, pytest-cov 7.1.0), `main@6786713`, throwaway `THESISTESTER_STORE_DIR` under `/tmp`. Coverage XML: `/tmp/qi0-coverage/coverage.xml` (not committed).
 
 | Item | Value |
 |---|---|
-| Before-harness command | `pytest -q --tb=no` (`THESISTESTER_STORE_DIR=/tmp/qi0-store-before`) |
-| Before-harness result | **3,966 passed, 5 skipped in 136.73 s (2:16)** — exit 0. Plan `e82c2a9` A.4 was 1 fail / 3,965 pass in 2:19; the fail was the #478 Streamlit 1.63 `AppTest` mechanism. Identical collection, green |
-| Coverage + durations | `pytest -q -p no:cacheprovider --cov=thesistester --cov-report=term-missing --cov-report=xml:/tmp/qi0-coverage/coverage.xml --durations=25` — XML kept under `/tmp` (not committed). Filled after that run completes in this agent session |
-| Second determinism pass | `pytest -q -p no:cacheprovider --durations=25` — filled after that run |
-| After-harness `pytest -q` | must match the before-harness line (guardrail 2) |
-| Reading | Suite is fast (~35 ms/test without coverage). Feedback-loop cost is not the problem. Signal integrity of CI required checks is QI-12. Assertion depth is QI-11 |
+| Before-harness | `pytest -q --tb=no` → **3,966 passed, 5 skipped in 136.73 s (2:16)**, exit 0 |
+| After-harness | `pytest -q --tb=no` → **3,966 passed, 5 skipped in 129.57 s (2:09)**, exit 0. Same pass/fail/skip as before (guardrail 2). Wall-time delta is noise |
+| Coverage + durations | `pytest -q -p no:cacheprovider --cov=thesistester --cov-report=term-missing --cov-report=xml:/tmp/qi0-coverage/coverage.xml --durations=25` → **3,966 passed, 5 skipped in 294.95 s (4:54)**, exit 0 |
+| Second determinism pass | `pytest -q -p no:cacheprovider --durations=25` → **3,966 passed, 5 skipped in 131.77 s (2:11)**, exit 0. Same pass/fail/skip as the other two uninstrumented runs |
+| Branch coverage (`branch = true`) | **TOTAL 82%** (35,598 statements / 5,132 missed; 14,994 branches / 3,117 partial) across **153** measured modules. Plan `e82c2a9`: 35,592 / 5,133 missed; 14,990 / 3,118 partial — **same 82%**, +6 statements (journal `#478`). Still **below** the CI informational floor of 85% and six points below the R9 baseline of 88% |
+| Modules < 70% | `__main__.py` 0 · `assistant/handlers.py` 46 · `assistant/voice/sidecar.py` 48 · `classic_nav.py` 59 · `cli.py` 59 · `levels/common.py` 59 · `classic_record.py` 61 · `assistant/voice/xai_realtime.py` 63 · `assistant/voice/grounding.py` 66 · `classic_ledger.py` 66 · `classic_context.py` 67 · `classic_proposal.py` 67 · `journal/rules.py` 68 · `journal/ledger.py` 69 — **same 14 modules as the plan** |
+| Most missed statements (absolute) | `assistant/voice/sidecar.py` 262 · `assistant/results_overview.py` 226 · `api.py` 144 · `study/observatory.py` 142 · `assistant/orchestrator.py` 141 · `study/execute.py` 140 · `persistence/execution_artifacts.py` 128 · `journal/report.py` 114 · `assistant/handlers.py` 112 · `assistant/voice/session.py` 111 — **same top 10 as the plan** |
+| Engine/analytics coverage | all `engine/*` and `analytics/*` ≥ 77% (`engine/signals.py` 84%, `analytics/noise.py` 77%, `analytics/confluence_attribution.py` 81%). Coverage debt remains assistant/voice, classic bridge, CLI, journal — not the simulation core |
+| Slowest tests (uninstrumented determinism pass) | `test_worst_loser_export_contains_bounded_pngs` 2.65 s · `test_api_cli_and_assistant_canonical_hashes_match` 2.09 s · `test_validation_r16_noise_is_opt_in_and_seeded` 1.91 s · `test_orchestrator_facade_restores_failed_cancelled_and_bundle_handoff` 1.84 s · `test_parallel_batch_is_identical_to_serial` 1.70 s. **None exceeds 5 s**; only 5 tests exceed 1.5 s (same shape as the plan; this VM is faster than the plan author’s 4.51 s kaleido row) |
+| Slowest (coverage-instrumented) | R22 benchmark `test_r22_benchmark_scenarios_are_deterministic_and_complete` 26.38 s is the only test > 5 s under `--cov`; ignore that row for feedback-loop cost |
+| Reading | Uninstrumented suite is **fast** (≈ 33–35 ms/test). Feedback-loop cost is not the problem; CI required-check reality (QI-12) and assertion depth (QI-11 mutation sample) are |
 
-Per-module coverage table, modules < 70%, and the slowest 25 tests are appended once the coverage XML exists. Until then this paragraph is a placeholder owned by the same QI-0 commit cycle.
+`git status --porcelain` after this slice: only `scripts/quality_metrics.py`, `docs/quality/README.md`, `docs/quality/findings.csv`, `docs/quality/QI-00_BASELINE.md`.
+
+### Per-module coverage (term-missing, branch=true)
+
+| Module | stmts | miss | branch | partial | % |
+|---|---:|---:|---:|---:|---:|
+| `thesistester/__init__.py` | 1 | 0 | 0 | 0 | 100 |
+| `thesistester/__main__.py` | 4 | 4 | 2 | 0 | 0 |
+| `thesistester/analytics/__init__.py` | 15 | 0 | 0 | 0 | 100 |
+| `thesistester/analytics/confluence_attribution.py` | 644 | 98 | 346 | 86 | 81 |
+| `thesistester/analytics/entry_window.py` | 138 | 12 | 56 | 15 | 86 |
+| `thesistester/analytics/excursions.py` | 185 | 11 | 72 | 9 | 91 |
+| `thesistester/analytics/grid.py` | 97 | 9 | 52 | 7 | 89 |
+| `thesistester/analytics/metrics.py` | 154 | 8 | 48 | 7 | 93 |
+| `thesistester/analytics/monte_carlo.py` | 151 | 8 | 54 | 14 | 89 |
+| `thesistester/analytics/noise.py` | 99 | 16 | 34 | 13 | 77 |
+| `thesistester/analytics/otf_validation.py` | 165 | 14 | 40 | 5 | 91 |
+| `thesistester/analytics/overfitting.py` | 180 | 17 | 50 | 14 | 87 |
+| `thesistester/analytics/portfolio.py` | 123 | 18 | 54 | 17 | 80 |
+| `thesistester/analytics/prev30m_vwap_hit.py` | 148 | 20 | 64 | 19 | 82 |
+| `thesistester/analytics/sensitivity.py` | 56 | 7 | 22 | 8 | 81 |
+| `thesistester/analytics/time_analysis.py` | 153 | 19 | 60 | 15 | 83 |
+| `thesistester/analytics/validation.py` | 95 | 12 | 32 | 4 | 86 |
+| `thesistester/analytics/walk_forward.py` | 380 | 34 | 132 | 24 | 88 |
+| `thesistester/api.py` | 965 | 144 | 372 | 74 | 81 |
+| `thesistester/app_state.py` | 78 | 2 | 18 | 2 | 96 |
+| `thesistester/assistant/__init__.py` | 16 | 0 | 0 | 0 | 100 |
+| `thesistester/assistant/comparison.py` | 68 | 4 | 20 | 4 | 91 |
+| `thesistester/assistant/contracts.py` | 118 | 12 | 46 | 12 | 85 |
+| `thesistester/assistant/explainer.py` | 598 | 40 | 236 | 35 | 91 |
+| `thesistester/assistant/handlers.py` | 239 | 112 | 86 | 11 | 46 |
+| `thesistester/assistant/help_corpus.py` | 319 | 47 | 190 | 22 | 83 |
+| `thesistester/assistant/llm.py` | 308 | 48 | 134 | 31 | 80 |
+| `thesistester/assistant/llm_explainer.py` | 225 | 16 | 110 | 11 | 92 |
+| `thesistester/assistant/llm_intent.py` | 32 | 0 | 10 | 0 | 100 |
+| `thesistester/assistant/orchestrator.py` | 622 | 141 | 226 | 59 | 71 |
+| `thesistester/assistant/page_summaries.py` | 200 | 19 | 92 | 16 | 87 |
+| `thesistester/assistant/product_help.py` | 153 | 13 | 72 | 16 | 87 |
+| `thesistester/assistant/registry.py` | 28 | 2 | 6 | 2 | 88 |
+| `thesistester/assistant/registry_audit.py` | 45 | 1 | 10 | 1 | 96 |
+| `thesistester/assistant/repository.py` | 594 | 93 | 196 | 60 | 80 |
+| `thesistester/assistant/results_overview.py` | 1869 | 226 | 1088 | 208 | 84 |
+| `thesistester/assistant/results_projections.py` | 586 | 84 | 266 | 44 | 84 |
+| `thesistester/assistant/results_qa.py` | 234 | 23 | 138 | 20 | 87 |
+| `thesistester/assistant/thesis_compiler.py` | 222 | 20 | 120 | 17 | 89 |
+| `thesistester/assistant/tools.py` | 365 | 94 | 134 | 32 | 71 |
+| `thesistester/assistant/ux.py` | 104 | 5 | 50 | 6 | 93 |
+| `thesistester/assistant/voice/__init__.py` | 8 | 0 | 0 | 0 | 100 |
+| `thesistester/assistant/voice/contracts.py` | 267 | 45 | 126 | 39 | 78 |
+| `thesistester/assistant/voice/grounding.py` | 199 | 57 | 118 | 22 | 66 |
+| `thesistester/assistant/voice/intent.py` | 46 | 2 | 22 | 2 | 94 |
+| `thesistester/assistant/voice/session.py` | 446 | 111 | 160 | 45 | 72 |
+| `thesistester/assistant/voice/settings.py` | 152 | 23 | 54 | 14 | 81 |
+| `thesistester/assistant/voice/sidecar.py` | 514 | 262 | 166 | 24 | 48 |
+| `thesistester/assistant/voice/tools.py` | 281 | 50 | 116 | 28 | 79 |
+| `thesistester/assistant/voice/xai_realtime.py` | 233 | 79 | 76 | 20 | 63 |
+| `thesistester/assistant/workspace.py` | 473 | 62 | 212 | 48 | 83 |
+| `thesistester/classic_context.py` | 251 | 77 | 94 | 15 | 67 |
+| `thesistester/classic_export.py` | 290 | 36 | 154 | 32 | 83 |
+| `thesistester/classic_ledger.py` | 144 | 44 | 36 | 8 | 66 |
+| `thesistester/classic_nav.py` | 229 | 81 | 96 | 26 | 59 |
+| `thesistester/classic_proposal.py` | 182 | 53 | 104 | 24 | 67 |
+| `thesistester/classic_record.py` | 196 | 72 | 58 | 8 | 61 |
+| `thesistester/cli.py` | 166 | 59 | 64 | 13 | 59 |
+| `thesistester/config.py` | 19 | 0 | 0 | 0 | 100 |
+| `thesistester/data/__init__.py` | 3 | 0 | 0 | 0 | 100 |
+| `thesistester/data/derive.py` | 159 | 22 | 62 | 15 | 82 |
+| `thesistester/data/loader.py` | 354 | 33 | 146 | 29 | 87 |
+| `thesistester/data/quantower_ticks.py` | 233 | 13 | 64 | 16 | 90 |
+| `thesistester/data/resample.py` | 19 | 2 | 6 | 2 | 84 |
+| `thesistester/data/rolls.py` | 125 | 33 | 64 | 11 | 72 |
+| `thesistester/data/sessions.py` | 13 | 0 | 0 | 0 | 100 |
+| `thesistester/engine/__init__.py` | 13 | 0 | 0 | 0 | 100 |
+| `thesistester/engine/anchor_confluence.py` | 92 | 7 | 42 | 3 | 93 |
+| `thesistester/engine/backtest.py` | 455 | 21 | 218 | 10 | 95 |
+| `thesistester/engine/candidate_level.py` | 57 | 4 | 14 | 2 | 92 |
+| `thesistester/engine/confluence.py` | 49 | 2 | 20 | 0 | 97 |
+| `thesistester/engine/exit_management.py` | 91 | 3 | 38 | 9 | 91 |
+| `thesistester/engine/intrabar.py` | 335 | 36 | 162 | 34 | 86 |
+| `thesistester/engine/naked.py` | 34 | 1 | 14 | 1 | 96 |
+| `thesistester/engine/otf.py` | 202 | 3 | 70 | 3 | 98 |
+| `thesistester/engine/otf_filter.py` | 138 | 10 | 52 | 4 | 92 |
+| `thesistester/engine/otf_integration.py` | 56 | 0 | 14 | 0 | 100 |
+| `thesistester/engine/signals.py` | 557 | 75 | 236 | 42 | 84 |
+| `thesistester/engine/signals_3c.py` | 287 | 31 | 126 | 19 | 86 |
+| `thesistester/engine/sim_core.py` | 39 | 1 | 10 | 1 | 96 |
+| `thesistester/entry_window_policy.py` | 135 | 20 | 62 | 16 | 82 |
+| `thesistester/execution_defaults.py` | 171 | 24 | 88 | 14 | 84 |
+| `thesistester/journal/__init__.py` | 17 | 0 | 0 | 0 | 100 |
+| `thesistester/journal/amp_statement.py` | 272 | 31 | 118 | 31 | 84 |
+| `thesistester/journal/cli.py` | 131 | 1 | 14 | 1 | 99 |
+| `thesistester/journal/counterfactual.py` | 519 | 99 | 248 | 62 | 76 |
+| `thesistester/journal/join.py` | 364 | 65 | 186 | 42 | 78 |
+| `thesistester/journal/ledger.py` | 113 | 29 | 58 | 18 | 69 |
+| `thesistester/journal/levels.py` | 374 | 74 | 178 | 51 | 76 |
+| `thesistester/journal/match.py` | 486 | 79 | 222 | 62 | 79 |
+| `thesistester/journal/pair.py` | 294 | 23 | 122 | 18 | 90 |
+| `thesistester/journal/reconcile.py` | 247 | 38 | 102 | 32 | 78 |
+| `thesistester/journal/report.py` | 643 | 114 | 304 | 82 | 77 |
+| `thesistester/journal/rules.py` | 348 | 89 | 188 | 63 | 68 |
+| `thesistester/journal/schema.py` | 249 | 2 | 6 | 2 | 98 |
+| `thesistester/journal/tags.py` | 76 | 9 | 34 | 8 | 85 |
+| `thesistester/journal/tradesviz.py` | 216 | 27 | 80 | 14 | 85 |
+| `thesistester/journal/triggers.py` | 208 | 32 | 100 | 30 | 79 |
+| `thesistester/journal/zones.py` | 354 | 71 | 148 | 53 | 74 |
+| `thesistester/levels/__init__.py` | 11 | 0 | 0 | 0 | 100 |
+| `thesistester/levels/all.py` | 31 | 0 | 4 | 0 | 100 |
+| `thesistester/levels/apoc.py` | 80 | 0 | 24 | 0 | 100 |
+| `thesistester/levels/apoc_candidates.py` | 157 | 15 | 64 | 15 | 86 |
+| `thesistester/levels/apoc_tick.py` | 123 | 11 | 34 | 6 | 89 |
+| `thesistester/levels/catalog.py` | 52 | 1 | 18 | 1 | 97 |
+| `thesistester/levels/common.py` | 14 | 5 | 8 | 2 | 59 |
+| `thesistester/levels/defaults.py` | 4 | 0 | 0 | 0 | 100 |
+| `thesistester/levels/indicators.py` | 78 | 0 | 26 | 0 | 100 |
+| `thesistester/levels/pivots.py` | 67 | 0 | 20 | 0 | 100 |
+| `thesistester/levels/prev30m_vwap.py` | 230 | 14 | 96 | 11 | 92 |
+| `thesistester/levels/profile.py` | 102 | 8 | 30 | 5 | 89 |
+| `thesistester/levels/rolling_poc_candidates.py` | 90 | 14 | 22 | 8 | 80 |
+| `thesistester/levels/rolling_poc_tick.py` | 160 | 14 | 48 | 11 | 88 |
+| `thesistester/levels/session_date.py` | 19 | 0 | 6 | 0 | 100 |
+| `thesistester/levels/session_vwap.py` | 58 | 0 | 16 | 0 | 100 |
+| `thesistester/levels/sessions.py` | 196 | 5 | 56 | 5 | 96 |
+| `thesistester/levels/tick_requirements.py` | 59 | 5 | 22 | 8 | 84 |
+| `thesistester/levels/tick_vap.py` | 255 | 30 | 82 | 18 | 83 |
+| `thesistester/levels/tpo.py` | 113 | 0 | 34 | 0 | 100 |
+| `thesistester/persistence/__init__.py` | 3 | 0 | 0 | 0 | 100 |
+| `thesistester/persistence/execution_artifacts.py` | 804 | 128 | 284 | 92 | 79 |
+| `thesistester/persistence/local_store.py` | 722 | 61 | 260 | 57 | 88 |
+| `thesistester/reporting.py` | 554 | 63 | 224 | 42 | 86 |
+| `thesistester/research_bundle.py` | 521 | 51 | 294 | 51 | 87 |
+| `thesistester/research_identity.py` | 276 | 47 | 102 | 20 | 76 |
+| `thesistester/setup.py` | 313 | 28 | 172 | 25 | 89 |
+| `thesistester/study/__init__.py` | 13 | 0 | 0 | 0 | 100 |
+| `thesistester/study/admit_followup.py` | 142 | 23 | 52 | 20 | 78 |
+| `thesistester/study/apoc_provenance.py` | 75 | 7 | 34 | 7 | 87 |
+| `thesistester/study/briefing.py` | 339 | 42 | 150 | 42 | 82 |
+| `thesistester/study/builder.py` | 682 | 81 | 268 | 40 | 84 |
+| `thesistester/study/cli_study.py` | 154 | 13 | 30 | 4 | 91 |
+| `thesistester/study/execute.py` | 669 | 140 | 272 | 54 | 76 |
+| `thesistester/study/expand.py` | 286 | 37 | 118 | 21 | 84 |
+| `thesistester/study/launch.py` | 358 | 49 | 108 | 28 | 83 |
+| `thesistester/study/ledger.py` | 71 | 3 | 26 | 3 | 94 |
+| `thesistester/study/naming.py` | 52 | 10 | 18 | 4 | 80 |
+| `thesistester/study/observatory.py` | 1159 | 142 | 542 | 108 | 84 |
+| `thesistester/study/preview.py` | 103 | 4 | 22 | 5 | 93 |
+| `thesistester/study/promote.py` | 301 | 39 | 164 | 36 | 84 |
+| `thesistester/study/report.py` | 489 | 74 | 194 | 41 | 81 |
+| `thesistester/study/rollup.py` | 208 | 29 | 86 | 22 | 81 |
+| `thesistester/study/schema.py` | 573 | 72 | 374 | 69 | 85 |
+| `thesistester/study/tools.py` | 281 | 57 | 106 | 27 | 76 |
+| `thesistester/study/viewer.py` | 673 | 76 | 250 | 42 | 87 |
+| `thesistester/timezone_display.py` | 51 | 5 | 16 | 3 | 88 |
+| `thesistester/visualization/__init__.py` | 7 | 0 | 0 | 0 | 100 |
+| `thesistester/visualization/backtest_chart.py` | 122 | 8 | 66 | 16 | 87 |
+| `thesistester/visualization/chart_window.py` | 108 | 19 | 62 | 21 | 76 |
+| `thesistester/visualization/levels_chart.py` | 21 | 1 | 8 | 1 | 93 |
+| `thesistester/visualization/signals_chart.py` | 72 | 4 | 40 | 8 | 89 |
+| `thesistester/visualization/trade_review_chart.py` | 39 | 3 | 16 | 5 | 85 |
+| `thesistester/visualization/trade_review_export.py` | 58 | 4 | 16 | 5 | 88 |
+| **TOTAL** | 35598 | 5132 | 14994 | 3117 | **82** |
 
 ---
 
