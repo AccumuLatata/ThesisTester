@@ -176,7 +176,7 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Goal:** Make regression safety automatic instead of aspirational.
 - **Benchmark:** N/A — internal. (Addresses analysis weaknesses W1–W3, W14.)
 - **Scope:**
-  - `pyproject.toml` (setuptools or hatchling): package metadata, `thesistester` importable after `pip install -e .`, Python `>=3.10`, dependency ranges mirroring `requirements.txt` (which stays for the app), and a `dev` extras group (`pytest`, `pytest-cov`, `ruff`).
+  - `pyproject.toml` (setuptools or hatchling): package metadata, `thesistester` importable after `pip install -e .`, Python `>=3.10`, dependency ranges with conservative next-major caps (`pyproject.toml` is the only range SoT; `constraints.txt` is the lock; QI-12-03 / QR G-3 deleted `requirements.txt`), and a `dev` extras group (`pytest`, `pytest-cov`, `ruff`).
   - GitHub Actions `.github/workflows/ci.yml`: matrix `pytest -q --cov=thesistester` on Python 3.10/3.11/3.12; `ruff check` + `ruff format --check`; coverage reported (informational threshold, e.g. warn below current level — monitor, don't block initially).
   - Minimal `ruff` config (line length consistent with current style); one-time `ruff format` pass isolated in its own commit.
   - Add a LICENSE file (owner decision: MIT suggested for adoption).
@@ -368,7 +368,7 @@ Rationale: R9 makes every later change verifiably regression-free; R10/R11 deliv
 | Golden-master brittleness blocks legitimate engine improvements | R9→R12/13, R22 | Golden files scoped to *legacy-mode* outputs on a minimal fixture; §4.1 documented regeneration procedure with `GOLDEN_REGEN` label + approval |
 | Performance refactor drifts numeric outputs | R22 | Golden-masters must stay byte-identical through the refactor; accelerated paths asserted equal to the serial reference in CI |
 | Scope creep toward non-goals (replay, live trading) | All | §2.2 anti-roadmap is the standing decision record; revisit only via an explicit proposal amendment |
-| pandas/numpy major-version drift | R9 | Named CI pandas-major axis (`pytest (py3.10)` = pandas 2; py3.11/3.12 = pandas 3) + `constraints.txt` + `pyproject.toml` markers (`<3` on py3.10, `>=3,<4` on 3.11+); Dependabot updates the lock (`increase-if-necessary`; `requirements.txt` excluded until G-3) gated by the G-1 required checks (QI-12-02 / QR G-2) |
+| pandas/numpy major-version drift | R9 | Named CI pandas-major axis (`pytest (py3.10)` = pandas 2; py3.11/3.12 = pandas 3) + `constraints.txt` + `pyproject.toml` markers (`<3` on py3.10, `>=3,<4` on 3.11+); Dependabot updates the lock (`increase-if-necessary`) gated by the G-1 required checks (QI-12-02 / QR G-2). App install is `pip install -e .` (QI-12-03 / QR G-3; no `requirements.txt`) |
 | Streamlit minor-version drift (AppTest / widget proto) | R9 | `streamlit>=1.56,<1.64` in `pyproject.toml` (pinned 1.63.x in `constraints.txt`); next minor is a Dependabot PR that must move the pin (and the cap if needed) so the full matrix installs it (#478 / QI-12-02) |
 
 ---
