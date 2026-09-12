@@ -48,6 +48,9 @@ python3 /tmp/qi10_key_graph.py
 python3 /tmp/qi10_apptest_spike.py
 radon cc/mi + vulture --min-confidence 60 on owned files
 rg -c 'st\.session_state' pages | awk -F: '{s+=$2} END {print s}'   # 1176
+
+export THESISTESTER_STORE_DIR=/tmp/qi10-store-review-after
+pytest -q --tb=no                                          # review-after: 3966 passed, 5 skipped in 133.41s
 ```
 
 First-pass `/tmp/qi10_*.py` scripts were not retained and were not pasted. Review-pass scripts are in §10. They were never committed.
@@ -406,6 +409,7 @@ assert state.get("classic_nav_prefill") is None
 |---|---|---|
 | Before | `THESISTESTER_STORE_DIR=/tmp/qi10-store-before pytest -q --tb=no` | **3966 passed, 5 skipped in 138.46 s**, exit 0 |
 | After | `THESISTESTER_STORE_DIR=/tmp/qi10-store-after pytest -q --tb=no` | **3966 passed, 5 skipped in 131.21 s**, exit 0 |
+| Review-after | `THESISTESTER_STORE_DIR=/tmp/qi10-store-review-after pytest -q --tb=no` | **3966 passed, 5 skipped in 133.41 s**, exit 0 |
 
 `git status --porcelain` must show only `docs/quality/QI-10_UI_SESSION_STATE.md` and `docs/quality/findings.csv`.
 
