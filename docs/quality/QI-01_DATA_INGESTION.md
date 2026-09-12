@@ -254,7 +254,7 @@ What was checked and is fine — do not re-audit:
 7. **Rolls do not rewrite OHLC.** Segmented path emits the R7 discontinuity warning. AUDIT §7 “no silent continuous-contract synthesizer” still holds.
 8. **`FATAL_OHLCV_CODES` is a single frozenset on the page** and matches `api.load_dataset` fatal set. 15s parent uses it. Legacy primary does not (H10).
 9. **Gaps are not fatal** on either composer (missing-bar and CAI overnight). `significant_gaps` is diagnostic.
-10. **Scoped ingest suite 243 passed ×2** (`PYTHONHASHSEED=0` and default). Full `pytest -q` before this slice: 3966 passed, 5 skipped. No Streamlit / private-import leaks in QI-1 library modules.
+10. **Scoped ingest suite 243 passed ×2** (`PYTHONHASHSEED=0` and default). Full `pytest -q` before **and** after this slice: 3966 passed, 5 skipped (135.26 s / 128.26 s). Porcelain: only the two `docs/quality/` files. No Streamlit / private-import leaks in QI-1 library modules.
 11. Nothing in this slice was verified as a correct backtest, metric, or Study result.
 
 ---
