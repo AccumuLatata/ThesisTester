@@ -546,9 +546,11 @@ Every request must first parse as an `AssistantRequest`, then pass
 These six job **display names** are the required status checks on `main`
 (QI-12-01 / QR G-1; restores `ENGINEERING_PROPOSAL.md` §4 rule 9). The
 branch-protection setting **is live** (admin-applied; **strict** up-to-date
-requirement + **enforce admins** / `enforcement_level: everyone`). A red cell
-among these six **blocks** merge to `main`. Names are frozen — renaming a job
-is a dedicated protection-settings PR, not a side effect of feature work.
+requirement + **enforce admins** / `enforcement_level: everyone`). CI is
+**blocking on red**: a red cell among these six **blocks** merge to `main`
+(QI-12-10 / QI-13-01 — this wording is true only because the checks are
+required). Names are frozen — renaming a job is a dedicated
+protection-settings PR, not a side effect of feature work.
 Required-check matching is exact-string on the display name; other workflow
 cells do not block merge.
 

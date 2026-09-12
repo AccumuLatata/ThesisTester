@@ -3,7 +3,7 @@
 **Document type:** Investigation roadmap + synthesis protocol + remediation-program template
 **Date:** 2026-09-12 (rev 2 — review locks vs measured counts on `e82c2a9`)
 **Series code:** **QI** (Quality Investigation). Remediation follow-on series: **QR** (Quality Remediation), defined in §9 but *not* opened by this document.
-**Status:** **Planned.** Sixteen slices **QI-0…QI-15**. QI-0 baseline numbers in §4 were measured on `main` at `e82c2a9` (2026-09-08) while writing this plan; every other slice is `Not started`. **Blocking precondition:** `main` CI has been red since 2026-09-05 (§4.3); the §4.6 hotfix is a **separate PR** and must land before QI-1…QI-14 start — it is not part of this plan PR.
+**Status:** **Completed** (investigation). Sixteen slices **QI-0…QI-15** landed as reports under `docs/quality/` (plan [#477](https://github.com/AccumuLatata/ThesisTester/pull/477); slices [#479](https://github.com/AccumuLatata/ThesisTester/pull/479)–[#494](https://github.com/AccumuLatata/ThesisTester/pull/494); fix-vs-close re-baseline [#495](https://github.com/AccumuLatata/ThesisTester/pull/495)). QI-0 baseline numbers in §4 were measured on `main` at `e82c2a9` (2026-09-08). The 2026-09-05 `main` CI-red precondition in the draft of this plan is **not live**: #478 restored green cells; QR G-1 ([#497](https://github.com/AccumuLatata/ThesisTester/pull/497)) put the six required checks on `main`. Remediation is the QR series (`docs/QUALITY_REMEDIATION_PLAN.md`). §8.3 is the slice tracker.
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4 (incl. §4.1 golden-master spec and §4.2 PR checklist). The investigation phase (QI-0…QI-15) is **research-only** except the two file exceptions in §1.2; the remediation phase (QR) is where product code changes happen.
 **Inputs (read first, do not redo):**
 
@@ -515,22 +515,22 @@ Deliver: the report following plan §3.4, the CSV rows, and a 10-line summary (f
 
 | Slice | Status | Owner | PR | Findings (C/H/M/L) |
 |---|---|---|---|---|
-| QI-0 Baseline | **Measured (§4); harness PR not started** | — | — | — |
-| QI-1 Data | Not started | — | — | — |
-| QI-2 Levels | Not started | — | — | — |
-| QI-3 Setup/Signals | Not started | — | — | — |
-| QI-4 Execution | Not started | — | — | — |
-| QI-5 Analytics | Not started | — | — | — |
-| QI-6 API/Bundles | Not started | — | — | — |
-| QI-7 Study | Not started | — | — | — |
-| QI-8 Journal | Not started | — | — | — |
-| QI-9 Assistant/Voice | Not started | — | — | — |
-| QI-10 UI/session_state | Not started | — | — | — |
-| QI-11 Tests | Not started | — | — | — |
-| QI-12 Tooling/CI/Security | Not started | — | — | — |
-| QI-13 Docs | Not started | — | — | — |
-| QI-14 Performance | Not started | — | — | — |
-| QI-15 Synthesis | Not started | — | — | — |
+| QI-0 Baseline | Completed | — | [#479](https://github.com/AccumuLatata/ThesisTester/pull/479) | — (measured; no `findings.csv` rows) |
+| QI-1 Data | Completed | — | [#484](https://github.com/AccumuLatata/ThesisTester/pull/484) | 0/0/6/1 |
+| QI-2 Levels | Completed | — | [#485](https://github.com/AccumuLatata/ThesisTester/pull/485) | 0/0/5/3 |
+| QI-3 Setup/Signals | Completed | — | [#481](https://github.com/AccumuLatata/ThesisTester/pull/481) | 0/3/6/3 |
+| QI-4 Execution | Completed | — | [#480](https://github.com/AccumuLatata/ThesisTester/pull/480) | 0/2/6/2 |
+| QI-5 Analytics | Completed | — | [#488](https://github.com/AccumuLatata/ThesisTester/pull/488) | 0/4/8/3 |
+| QI-6 API/Bundles | Completed | — | [#482](https://github.com/AccumuLatata/ThesisTester/pull/482) | 0/1/9/2 |
+| QI-7 Study | Completed | — | [#492](https://github.com/AccumuLatata/ThesisTester/pull/492) | 0/0/8/2 |
+| QI-8 Journal | Completed | — | [#491](https://github.com/AccumuLatata/ThesisTester/pull/491) | 0/0/5/0 |
+| QI-9 Assistant/Voice | Completed | — | [#490](https://github.com/AccumuLatata/ThesisTester/pull/490) | 0/0/7/4 |
+| QI-10 UI/session_state | Completed | — | [#487](https://github.com/AccumuLatata/ThesisTester/pull/487) | 0/0/5/3 |
+| QI-11 Tests | Completed | — | [#483](https://github.com/AccumuLatata/ThesisTester/pull/483) | 0/0/4/2 |
+| QI-12 Tooling/CI/Security | Completed | — | [#486](https://github.com/AccumuLatata/ThesisTester/pull/486) | 0/2/7/1 |
+| QI-13 Docs | Completed | — | [#489](https://github.com/AccumuLatata/ThesisTester/pull/489) | 0/1/8/1 |
+| QI-14 Performance | Completed | — | [#493](https://github.com/AccumuLatata/ThesisTester/pull/493) | 0/0/6/4 |
+| QI-15 Synthesis | Completed | — | [#494](https://github.com/AccumuLatata/ThesisTester/pull/494) | (census; 134 rows in `findings.csv`) |
 
 Status vocabulary (from the archived WS plan): `Not started` · `In progress` · `Blocked` · `Completed` · `Needs follow-up`.
 
