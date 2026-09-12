@@ -520,6 +520,14 @@ Every request must first parse as an `AssistantRequest`, then pass
   feature work.
 - `ruff` is version-capped in the `dev` extra so formatting decisions cannot change under CI
   without an explicit bump.
+- CI has no lockfile: the `pytest` matrix (`py3.10` / `py3.11` / `py3.12`) runs
+  `pip install -e ".[dev]"` and therefore resolves the *latest* Streamlit and pandas
+  that satisfy `pyproject.toml` caps (`streamlit>=1.56,<2`, `pandas>=2.2,<4`). A
+  Streamlit minor or pandas major inside those caps can change AppTest or
+  null-cell semantics without a repo bump. Pinning/capping those minors, or adding
+  an explicit pandas-major matrix axis, is QI-12 → QR-G — not a local hotfix.
+- The py3.10 cell is the pandas-2 cell: pandas 3 requires Python ≥3.11, so py3.10
+  resolves pandas 2.3.x while py3.11/3.12 resolve pandas 3.x.
 
 ## Regression-safety gates in CI
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request:

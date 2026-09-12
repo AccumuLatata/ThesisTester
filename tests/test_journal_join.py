@@ -462,6 +462,11 @@ def test_exit_before_entry_fails_closed(tmp_path: Path) -> None:
 
 
 def test_nullable_join_columns_stay_object_none(tmp_path: Path) -> None:
+    """TJ5: nullable join/cost cells stay object-None, not float64 NaN.
+
+    pandas 2.3 ``concat`` of mixed None/float cost columns can feed ``nan``
+    into ``to_dict``; ``_rows_to_frame`` must still emit Python ``None``.
+    """
     same_dir = tmp_path / "same"
     held_dir = tmp_path / "held"
     same_dir.mkdir()
@@ -471,6 +476,10 @@ def test_nullable_join_columns_stay_object_none(tmp_path: Path) -> None:
     held = held.copy()
     held["commission_cost"] = 1.24
     trades = pd.concat([same, held], ignore_index=True)
+    # pandas 2.3 concat of mixed None/float often stores ``nan`` here; force
+    # that shape on pandas 3 too so ``_rows_to_frame`` is what the contract
+    # tests, not concat's major-specific null sentinel.
+    trades.loc[0, "commission_cost"] = float("nan")
     joined = join_journal_bars(trades, data=_parent_14(), subtimeframe_data=_minute_14())
     same_row = joined.iloc[0]
     held_row = joined.iloc[1]
@@ -481,6 +490,8 @@ def test_nullable_join_columns_stay_object_none(tmp_path: Path) -> None:
     assert held_row["commission_cost"] == pytest.approx(1.24)
     assert joined["mae_points"].dtype == object
     assert joined["commission_cost"].dtype == object
+    assert joined["mae_points"].dtype != "float64"
+    assert joined["commission_cost"].dtype != "float64"
 
 
 def test_entry_and_exit_outside_do_not_duplicate_flag(tmp_path: Path) -> None:

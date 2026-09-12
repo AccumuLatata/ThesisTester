@@ -511,7 +511,14 @@ def test_draft_chat_input_routes_to_handle_chat_turn(workspace, monkeypatch):
 
 
 def test_disabled_discuss_chat_input_does_not_call_handle_results_turn(workspace, monkeypatch):
-    """Empty Discuss state: chat_input disabled; handler must not run."""
+    """Empty Discuss state: chat_input disabled; handler must not run.
+
+    Streamlit 1.63+ ``AppTest`` raises ``AppTestError`` on ``set_value()`` for a
+    disabled ``chat_input`` (a browser user cannot submit it). Assert the
+    rendered disabled state and that ``handle_results_turn`` is not invoked
+    without calling ``set_value()`` — RUX rendered-structure baseline rewrites
+    assertions, never deletes them.
+    """
     from thesistester.assistant import AssistantOrchestrator
     import thesistester.assistant.llm as llm_mod
 
@@ -527,9 +534,8 @@ def test_disabled_discuss_chat_input_does_not_call_handle_results_turn(workspace
 
     app = _render(thesis.thesis_id)
     assert not app.exception
+    assert len(app.chat_input) == 1
     assert app.chat_input[0].proto.disabled is True
-    _run_app(app.chat_input[0].set_value("Should not submit"))
-    assert not app.exception, app.exception
     assert calls == []
 
 
