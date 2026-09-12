@@ -55,6 +55,10 @@ pytest -q tests/test_research_bundle.py tests/test_cli.py \
 pytest -q tests/test_golden_master.py::test_canonical_bundle_hash_matches_recorded_pandas_major \
   tests/test_golden_master.py::test_bundle_projection_ignores_manifest_and_zip_timestamps
   # 2 passed
+
+# after review-correction edits (docs/quality only)
+export THESISTESTER_STORE_DIR=/tmp/qi6-pytest-after
+pytest -q --tb=no                                          # 3966 passed, 5 skipped in 163.04s
 ```
 
 Probe scripts are pasted in §10. They were never committed.
