@@ -67,6 +67,10 @@ rg -c 'except Exception|except:' thesistester/assistant pages/14_Research_Assist
 # assistant 33 · page 14 = 9
 PYTHONPATH=/workspace python3 /tmp/qi09_review_probe.py
 # /tmp/qi09-review-probe.json
+
+export THESISTESTER_STORE_DIR=/tmp/qi09-store-review-after
+pytest -q --tb=no
+# review after: 3966 passed, 5 skipped in 131.85s (0:02:11) — identical result class
 ```
 
 First-pass `/tmp/qi09_probes.py` was not retained. Review-pass `/tmp/qi09_review_probe.py` is pasted in §10. Transcripts are not committed.
@@ -390,7 +394,7 @@ List only. **Not amended** in this slice.
 
 ## 9. Research-only sentence
 
-No tracked file outside `docs/quality/` changed; `pytest -q` unchanged (3966 passed, 5 skipped before **and** after). Probe scripts stay under `/tmp`.
+No tracked file outside `docs/quality/` changed; `pytest -q` unchanged (3966 passed, 5 skipped before, after, **and** review-after). Probe scripts stay under `/tmp`.
 
 ---
 
