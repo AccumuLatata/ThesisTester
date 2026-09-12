@@ -141,7 +141,7 @@ Commit · environment · commands run (verbatim) · time spent
 
 ## 4. QI-0 baseline — measured on `main @ e82c2a9` (2026-09-08), Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0
 
-These numbers are the **starting line**. QR success is measured against them (§9.4).
+These numbers are the **starting line** (snapshot at `e82c2a9`, 2026-09-08). QR success is measured against them (§9.4). The §4.3 `main` CI-red row and §4.6 hotfix are **not live** (#478 restored green cells; QR G-1 [#497](https://github.com/AccumuLatata/ThesisTester/pull/497) put the six required checks on `main` — living status is the banner / `ENGINEERING_ROADMAP.md`).
 
 ### 4.1 Size and shape
 
