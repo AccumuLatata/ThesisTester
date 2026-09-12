@@ -6,10 +6,12 @@
 **Commit date:** 2026-09-12
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0, radon 6.0.1, vulture 2.16, bandit 1.9.4, pytest 9.1.1
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi09-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. Stub providers only. No desk data.
-**Finding count:** 11 (C/H/M/L = 0/1/6/4)
-**Time spent:** one agent run on 2026-09-12.
+**Finding count:** 11 (C/H/M/L = **0/0/7/4**)
+**Time spent:** one agent run on 2026-09-12; honesty/schema review the same day.
 
 `AUDIT_FINAL.md` §5 and `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 are premises. Completed assistant series (AIA/C2/CAI/RQ/HC/DI/RI/DX/VA/RUX) stay locked — this slice does **not** propose provider swaps, RUX layout changes, or reopening those contracts. No backtest, metric, or Study result is described as correct or reliable.
+
+**Review corrections (schema / honesty only; no product files):** QI-09-01 severity Medium per plan §3.3 (assistant Discuss is not an engine/analytics path; same rule as QI-06-02 reporting F 152). `prior_id` dropped `plan §4.4 H-E`, `QI-11-01`, `QI-12-07`, and `AO1` (plan §3.3 allows only `AUDIT_FINAL` `C*/H*/M*/L*` or `W*`; H-E stays as the measurement hypothesis in prose). Broad-except count is **33** in `thesistester/assistant/` (plan regex), not 42. Remaining assistant modules are **22** (LOC 8,639 unchanged). `_answer_results_ptt` is D (30), not E. MI 0.00 library modules besides `results_overview` are **five**, not four. `_bounded_spec` nested defaults are not uniform (`walk_forward.matrix` omit=`False`). AUDIT home for caller-controlled audit payloads is L10 + §7 residual (plan §5 QI-9 names it as §5.5 carry-over; AUDIT §5.5 body does not list it). Plan §3.1 private-import regex hits 1 (`tools.py` aliases public `run_experiment`). §A.5 ISO tokens unchanged (no `operability`). Only parked lock that stays `Design limitation` / `confidence=n/a` / ≤Medium is H8 (QI-09-08).
 
 ## Commands run (verbatim)
 
@@ -53,15 +55,27 @@ pytest -q --tb=line \
 export THESISTESTER_STORE_DIR=/tmp/qi09-store-after
 pytest -q --tb=no
 # after: 3966 passed, 5 skipped in 149.51s (0:02:29) — identical result class
+
+# review-pass (docs-only honesty/schema)
+export THESISTESTER_STORE_DIR=/tmp/qi09-review-store
+unset OPENAI_API_KEY XAI_API_KEY
+radon cc thesistester/assistant pages/14_Research_Assistant.py -s -n D --total-average
+radon mi thesistester/assistant pages/14_Research_Assistant.py -s
+vulture thesistester/assistant pages/14_Research_Assistant.py --min-confidence 80
+bandit -r thesistester/assistant -ll -q
+rg -c 'except Exception|except:' thesistester/assistant pages/14_Research_Assistant.py
+# assistant 33 · page 14 = 9
+PYTHONPATH=/workspace python3 /tmp/qi09_review_probe.py
+# /tmp/qi09-review-probe.json
 ```
 
-Probe script lives at `/tmp/qi09_probes.py` (pasted in §10). Transcripts are not committed.
+First-pass `/tmp/qi09_probes.py` was not retained. Review-pass `/tmp/qi09_review_probe.py` is pasted in §10. Transcripts are not committed.
 
 ---
 
 ## 1. Scope actually covered (files) and anything skipped (why)
 
-**Covered** (QI-0 exclusive ownership; 32 paths)
+**Covered** (QI-0 exclusive ownership; 33 tracked files = 31 assistant `.py` + page 14 + `config/assistant.toml`)
 
 | Path | LOC | Role |
 |---|---:|---|
@@ -75,7 +89,7 @@ Probe script lives at `/tmp/qi09_probes.py` (pasted in §10). Transcripts are no
 | `thesistester/assistant/results_projections.py` | 1,115 | Grid/time/deep-trade hydration |
 | `thesistester/assistant/voice/session.py` | 1,087 | PTT lifecycle / honesty |
 | `thesistester/assistant/tools.py` | 903 | Headless adapters + `_bounded_spec` |
-| remaining `thesistester/assistant/**` (21 modules) | 8,639 | Registry, handlers, LLM, Help, voice transport, UX |
+| remaining `thesistester/assistant/**` (22 modules, incl. 2 `__init__.py`) | 8,639 | Registry, handlers, LLM, Help, voice transport, UX |
 | `config/assistant.toml` | — | Tracked non-secret settings; `study_tools` / `voice` default-off |
 | `docs/VOICE_SIDECAR_OPS.md` | — | Read as spec (QI-13 owns the file) |
 | **QI-9 `.py` total** | **25,662** | |
@@ -88,6 +102,7 @@ Probe script lives at `/tmp/qi09_probes.py` (pasted in §10). Transcripts are no
 - RUX layout / provider-swap proposals — locked; not opened.
 - Living-doc amendments — named only (§8).
 - `classic_*` chrome and page-12 import — QI-6. Assistant open-exact labels verified here only.
+- §3.2 item 8 CAI realistic performance envelope — QI-14. Not timed here.
 
 ---
 
@@ -97,12 +112,13 @@ Probe script lives at `/tmp/qi09_probes.py` (pasted in §10). Transcripts are no
 
 | Metric | Value |
 |---|---|
-| `radon cc` D+ in scope | **F:** `_format_scalar_for_claim` **120**, `compose_deterministic_replies` **73**, `explainer._derive_caveats` **52**, `help_corpus.score_corpus_chunk` **51**. **E:** `handle_results_turn` 40, `_recover_results_reply` 36, `propose_results_reply` 35, `format_speakable_tool_result` 35, `VoiceSessionRecord.__post_init__` 34, `propose_help_reply` 33, `_decode_results_payload` 32, `_evaluate_discuss_match` 32, `_pump_upstream_to_browser` 32, `build_evidence_packet` 31, `_answer_results_ptt` 30. Average **B (6.00)** over 797 blocks |
-| MI = 0.00 | `results_overview.py` · `orchestrator.py` · `workspace.py` · `repository.py` · `explainer.py` · `results_projections.py` · `pages/14_Research_Assistant.py`. `voice/session.py` 6.12 · `sidecar.py` 8.12 · `tools.py` 9.21 |
+| `radon cc` D+ in scope | **32** D+ blocks. **F (4):** `_format_scalar_for_claim` **120**, `compose_deterministic_replies` **73**, `explainer._derive_caveats` **52**, `help_corpus.score_corpus_chunk` **51**. **E (10):** `handle_results_turn` 40, `_recover_results_reply` 36, `propose_results_reply` 35, `format_speakable_tool_result` 35, `VoiceSessionRecord.__post_init__` 34, `propose_help_reply` 33, `_decode_results_payload` 32, `_evaluate_discuss_match` 32, `_pump_upstream_to_browser` 32, `build_evidence_packet` 31. **D (18)** includes `_answer_results_ptt` **30** (not E), `_bounded_spec` 29, `build_deterministic_discuss_reply` / `project_grid_rankings` 27, `compile_canonical_run_spec` / `summarize_backtest_state` / `OpenAIStructuredClient` / `build_expert_overlay` 24, `complete_structured` / `_token_levels_settings` / `register_external_bundle_run` 23, `EvidencePacket.from_dict` / `build_ephemeral_results_context` 22, `match_discuss_intent` / `load_corpus_chunks` / `assert_llm_explanation_grounded` / `_assert_bundle_compatible_with_run_spec` / `_all_wins_profit_factor_inf` 21. Average **B (6.00)** over 797 blocks |
+| MI = 0.00 | `results_overview.py` · `orchestrator.py` · `workspace.py` · `repository.py` · `explainer.py` · `results_projections.py` · `pages/14_Research_Assistant.py` (**six** library+page; **five** assistant modules besides `results_overview`). `voice/session.py` 6.12 · `sidecar.py` 8.12 · `tools.py` 9.21 |
 | Function length > 150 | `compose_deterministic_replies` 242 · `_format_scalar_for_claim` 239 · `build_prompt_path_catalog` 150 |
-| Broad `except Exception` / bare `except` | **42** in `thesistester/assistant/` + **9** on page 14. Classified in §2.4 |
+| Broad `except Exception` / bare `except` | **33** in `thesistester/assistant/` + **9** on page 14 (plan regex `except Exception\|except:`). Classified in §2.4 |
+| Encapsulation leaks (plan §3.1) | **1** regex hit: `tools.py` `from thesistester.api import run_experiment as _run_experiment` — public symbol, private alias; **false positive** |
 | `vulture` ≥80 | **4** unused params on `sidecar._NoRedirectHandler.redirect_request` (`fp`, `headers`, `msg`, `newurl`) — stdlib override signature; **false positive** (QI-0 named `fp`/`newurl`) |
-| `vulture` ≥60 notable | `VoiceSettings.require_tool_for_numbers` unused outside `settings.py` (QI-09-09); several public aliases (`build_meaning_overlay`, `match_overview_intent`) used by tests/pages |
+| `vulture` ≥60 notable | `VoiceSettings.require_tool_for_numbers` unused outside `settings.py` (QI-09-09); sibling unused field `store_audio`; several public aliases (`build_meaning_overlay`, `match_overview_intent`) used by tests/pages |
 | Streamlit in assistant package | **2** lazy `import streamlit` (`llm._read_streamlit_openai_api_key`, `voice.xai_realtime._read_streamlit_xai_api_key`) + `st.secrets` only. No widgets. AST probe: 4 hits, all secrets |
 | Coverage (QI-0 table, same product tree) | `handlers.py` 46% · `sidecar.py` 48% · `xai_realtime.py` 63% · `grounding.py` 66% · `orchestrator.py` 71% · `session.py` 72% · `results_overview.py` 84% (226 miss, top-10 absolute). Classification already QI-11-01 — not re-filed |
 | `bandit -ll` | 4× B310 `urlopen` (`llm.py` ×1, `xai_realtime.py` ×3). URLs are hardcoded `https://api.openai.com/v1/responses` / `https://api.x.ai/v1` via `urllib.request.Request`. CI gap is **QI-12-06**; not re-filed |
@@ -206,7 +222,7 @@ OpenAI Responses (`llm.OpenAIStructuredClient`, endpoint `https://api.openai.com
 |---|---|
 | Confirmation | `PIPELINE.run_experiment` without `confirmed` → `approval_required` (orchestrator tests) |
 | `study_tools` | Tracked TOML `enabled = false`. `load_study_tools_settings().enabled is False` |
-| H8 `_bounded_spec` | `grid.get("enabled", True)` (and walk_forward / validation / nested MC). Omitted `enabled` still runs the cap check (parked; QI-09-08) |
+| H8 `_bounded_spec` | `grid` / `walk_forward` / `validation` / nested `monte_carlo` `.get("enabled", True)`; `walk_forward.matrix` omit=`False`. Omitted `grid.enabled` still runs the cap check (parked; QI-09-08). `thesis_compiler` also omit=True on grid/walk_forward |
 | Bundle import | Hash-fail-closed on assistant open-exact (AH §2 item 8). Zip size cap is QI-06-09 (handoff; not re-tested here) |
 | Composer parity | `test_api_cli_and_assistant_canonical_hashes_match` in the 199-test scoped run — **hash identity**, not fill correctness |
 
@@ -220,7 +236,7 @@ OpenAI Responses (`llm.OpenAIStructuredClient`, endpoint `https://api.openai.com
 
 | Item | Assigned | Status on `539dd2e` | Finding |
 |---|---|---|---|
-| `AUDIT_FINAL` §5.5 / §7 residual **“caller-controlled audit payloads”** (L10) | QI-9 | **Still open.** `AssistantRequest.to_dict` returns unfiltered `payload`. `_record_audit` persists `request` into `tool_transcript`. Probe wrote `api_key=sk-injected-should-not-persist` into conversation JSON under `/tmp`. Default UI path does not inject keys | QI-09-06 |
+| `AUDIT_FINAL` L10 + §7 residual **“caller-controlled audit payloads”** (plan §5 QI-9 labels this §5.5 carry-over; AUDIT §5.5 body does not list it) | QI-9 | **Still open.** `AssistantRequest.to_dict` returns unfiltered `payload`. `_record_audit` persists `request` into `tool_transcript`. Review probe wrote `api_key=sk-injected-should-not-persist` into conversation JSON under `/tmp`. Default UI path does not inject keys | QI-09-06 |
 | `AUDIT_FINAL` L9 `require_tool_for_numbers` dead | voice-adjacent (not in plan §A.3 list; in-scope) | **Still unused** outside `voice/settings.py`. vulture 60%. Voice default-off. Persisted-transcript grounding still holds | QI-09-09 |
 | H8 battery omit=on | QI-6 filed QI-06-08; handoff assistant `_bounded_spec` | **Still parked.** `_bounded_spec` uses `.get("enabled", True)` | QI-09-08 |
 | Page-12 vs assistant integrity bars | QI-06-06 handoff | Assistant shows hash prefix + “Open exact”; does **not** name the three bars | QI-09-10 |
@@ -236,14 +252,14 @@ Full records in `docs/quality/findings.csv` (`QI-09-*` only).
 
 | ID | Axis | Class | Sev | Conf | One-line |
 |---|---|---|---|---|---|
-| QI-09-01 | code | Maintainability risk | High | Verified | `results_overview.py` 4,373 LOC / MI 0.00; `_format_scalar_for_claim` F 120; `compose_deterministic_replies` F 73 |
-| QI-09-02 | code | Maintainability risk | Medium | Verified | Remaining F-grade: `_derive_caveats` 52, `score_corpus_chunk` 51; E-grade Discuss/Help/PTT cluster; four other MI 0.00 library modules |
+| QI-09-01 | code | Maintainability risk | Medium | Verified | `results_overview.py` 4,373 LOC / MI 0.00; `_format_scalar_for_claim` F 120; `compose_deterministic_replies` F 73 (not engine/analytics — Medium) |
+| QI-09-02 | code | Maintainability risk | Medium | Verified | Remaining F-grade: `_derive_caveats` 52, `score_corpus_chunk` 51; E-grade Discuss/Help/PTT cluster; five other MI 0.00 library modules |
 | QI-09-03 | code | Maintainability risk | Medium | Verified | `pages/14_Research_Assistant.py` MI 0.00, 2,581 LOC, 13 defs, 138 session lines, 9 broad excepts |
 | QI-09-04 | code | Test-quality gap | Medium | Verified | 9 routed capabilities have zero test-file mentions of the ID; registry audit is structural only |
 | QI-09-05 | both | Documentation drift | Medium | Verified | `ARCHITECTURE.md` AIA-0 still says the package “does not execute research, import Streamlit”; two lazy `st.secrets` imports + `dispatch` execution exist |
 | QI-09-06 | app | Security risk | Low | Verified | L10 / §5.5: caller-controlled `api_key` in `payload` is persisted unscrubbed |
 | QI-09-07 | app | UX/operability gap | Low | Verified | xAI key path does not strip BOM/wrapping quotes (OpenAI does); quoted key is treated as usable |
-| QI-09-08 | app | Design limitation | Medium | n/a | `_bounded_spec` still omit=`enabled` True (H8 parked; assistant locus) |
+| QI-09-08 | app | Design limitation | Medium | n/a | `_bounded_spec` still omit=`enabled` True for grid/WFA/validation/MC; nested WFA matrix omit=`False` (H8 parked) |
 | QI-09-09 | code | Design limitation | Low | Verified | `require_tool_for_numbers` still unused at runtime (AUDIT L9) |
 | QI-09-10 | app | UX/operability gap | Low | Verified | Page 14 Open-exact shows a hash prefix but does not label the three integrity bars |
 | QI-09-11 | app | UX/operability gap | Medium | Verified | Draft form `min_valid_confluences` `min_value=1` cannot author AO1 `0` |
@@ -314,7 +330,7 @@ Isolation: `unset OPENAI_API_KEY XAI_API_KEY`; stub strings `sk-qi09-stub-not-a-
 | xAI placeholders / `replace_with*` prefix | Reject | `None` | Pass |
 | OpenAI BOM + wrapping `'…'`/`"…"` | Strip → usable | stripped | Pass |
 | xAI BOM | Strip or reject | **BOM kept** (`bom_stripped=false`) | QI-09-07 |
-| xAI wrapping `"…"` | Strip or reject | **quotes kept**; nested secrets returned `"xai-qi09-stub-…"` | QI-09-07 |
+| xAI wrapping `"…"` | Strip or reject | **quotes kept**; nested `[xai].api_key` returned `"xai-qi09-stub-…"` | QI-09-07 |
 | Tracked `config/assistant.toml` key assignment | Absent | no `api_key` / `OPENAI_API_KEY` / `XAI_API_KEY` assignment | Pass |
 | `study_tools` / `voice` tracked flags | Default-off | both `enabled is False` via loaders | Pass |
 | OpenAI sanitizer: exact key + `sk-*` + `Bearer` | Redacted | `***` / `sk-***` / `Bearer ***`; full key absent | Pass |
@@ -347,7 +363,7 @@ What was checked and is fine — do not re-audit:
 
 | To | Observation (not a finding here) |
 |---|---|
-| QI-6 | H8 parked default remains in `_bounded_spec` (QI-09-08). Zip size cap on assistant `BUNDLE.import` is QI-06-09. Three integrity bars: page 12 vs assistant labels (QI-06-06 / QI-09-10) |
+| QI-6 | H8 parked default remains in `_bounded_spec` (QI-09-08); nested `walk_forward.matrix` omit=`False`. Zip size cap on assistant `BUNDLE.import` is QI-06-09. Three integrity bars: page 12 vs assistant labels (QI-06-06 / QI-09-10) |
 | QI-7 | `STUDY.*` handlers exist; tools stay default-off. `load_study_tools_settings` lives in `thesistester/study/tools.py` (QI-7-owned) |
 | QI-10 | Page 14’s 138 session-state lines and `THESIS_SCOPED_STAGING_KEYS` already in QI-10 graph. 9 page-level `except Exception` classified here |
 | QI-11 | handlers 46% / sidecar 48% / xai 63% / grounding 66% already QI-11-01. QI-09-04 is the capability-ID behavioral gap. AppTest proto/`set_value` sensitivity is QI-11-03 |
@@ -380,18 +396,39 @@ No tracked file outside `docs/quality/` changed; `pytest -q` unchanged (3966 pas
 
 ## 10. Probe script (pasted; not committed)
 
-Full script: `/tmp/qi09_probes.py`. It (1) AST-walks `thesistester/assistant` for Streamlit imports / `st.*`, (2) diffs `HELP_CORPUS_MANIFEST` vs `docs/README.md` rule 2, (3) audits registry × `HANDLER_REGISTRY` × test-file ID mentions, (4) runs secret negatives on `_usable_openai_api_key` / `_usable_xai_api_key` / sanitizer / missing-key, (5) persists a malicious `payload.api_key` through `_record_audit` into a throwaway `LocalThesisRepository`, (6) probes `_bounded_spec` H8 omit, (7) AST-maps `results_overview.py`, (8) loads default-off flags.
+First-pass `/tmp/qi09_probes.py` was not retained. Review-pass script: `/tmp/qi09_review_probe.py` (not committed). It (1) AST-walks `thesistester/assistant` for Streamlit imports / `st.*`, (2) diffs `HELP_CORPUS_MANIFEST` vs `docs/README.md` rule 2, (3) audits registry × `HANDLER_REGISTRY` × test-file ID mentions, (4) runs secret negatives on `_usable_openai_api_key` / `_usable_xai_api_key` / sanitizer / missing-key / nested quoted mappings, (5) persists a malicious `payload.api_key` through `_record_audit` into a throwaway `LocalThesisRepository`, (6) probes `_bounded_spec` H8 omit including nested `walk_forward.matrix`, (7) AST-maps `results_overview.py`, (8) loads default-off flags, (9) inventories LOC / except counts / page-14 labels.
+
+Review-pass essentials (full script stays under `/tmp`):
 
 ```python
-# excerpt — audit-payload + xAI quote/BOM (see /tmp/qi09_probes.py)
+# /tmp/qi09_review_probe.py — audit payload, xAI quote/BOM, H8, registry
+FAKE_OPENAI = "sk-qi09-stub-not-a-real-key-XXXX"
+FAKE_XAI = "xai-qi09-stub-not-a-real-key-YYYY"
+
+assert _usable_openai_api_key(f'"{FAKE_OPENAI}"') == FAKE_OPENAI
+assert _usable_xai_api_key(f'"{FAKE_XAI}"') != FAKE_XAI  # quotes kept
+assert _usable_xai_api_key("\ufeff" + FAKE_XAI) != FAKE_XAI  # BOM kept
+
 req = AssistantRequest(
     capability_id="HOME.workflow_guide",
     payload={"action": "inspect", "api_key": "sk-injected-should-not-persist"},
 )
-orch._record_audit(result, request=req, thesis_id=thesis.thesis_id,
-                   conversation_id=conv.conversation_id)
-# → secret_in_transcript True; secret on disk under /tmp/qi09-audit-*/theses/.../conversations/*.json
+orch._record_audit(
+    OrchestrationResult(capability_id="HOME.workflow_guide", status="completed", payload={"ok": True}),
+    request=req, thesis_id=thesis.thesis_id, conversation_id=conv.conversation_id,
+)
+# → secret_in_transcript True; secret on disk under /tmp/qi09-review-audit/theses/.../conversations/*.json
 
-assert _usable_openai_api_key('"sk-qi09-stub-not-a-real-key-XXXX"') == FAKE_OPENAI
-assert _usable_xai_api_key('"xai-qi09-stub-not-a-real-key-YYYY"') != FAKE_XAI  # quotes kept
+# H8: omit grid.enabled still hits the cell cap; enabled=false skips it.
+# tools.py defaults: grid/walk_forward/validation/monte_carlo True; walk_forward.matrix False.
+
+rows = audit_capability_registry()
+summary = capability_audit_summary(rows)  # total 55, routed 30, unsupported 25, invalid 0
+routed_zero = [r.capability_id for r in rows if r.status == "routed" and mentions[r.capability_id] == 0]
+# HOME.workflow_guide, DATA.inspect_dataset, DATA.preview_resampled_timeframes,
+# DATA.manage_saved_datasets, DATA.configure_roll_assumptions,
+# BACKTEST.manage_execution_defaults, GRID.manage_execution_defaults,
+# VALIDATION.run_otf_matrix, CLASSIC.propose_page_change
 ```
+
+Review-pass JSON: `/tmp/qi09-review-probe.json`.
