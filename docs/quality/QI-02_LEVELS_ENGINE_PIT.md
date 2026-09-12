@@ -9,6 +9,7 @@
 **Finding count:** 8 (C/H/M/L = 0/0/5/3)
 **Time spent:** one agent run on 2026-09-12; honesty/schema review the same day.
 **After-edit `pytest -q`:** 3,966 passed, 5 skipped in 127.38 s — same pass/fail/skip as before (133.81 s). Wall-time delta is noise. `git status --porcelain` after the run: clean (only the two `docs/quality/` files were ever staged).
+**Review-pass `pytest -q`:** 3,966 passed, 5 skipped in 133.12 s — identical pass/fail/skip. Porcelain: only the two `docs/quality/` files.
 
 **Review corrections (evidence re-measured on the same `32ad34c` product files):** `_sync_levels_widget_state` is **87** physical lines (278–364), not 88; H4 probe flags are plane-equal (OR / Stage-6 gates / `poc_windows` / agg ticks 4/8/10), not full-dict equal — `normalize_levels_config` sorts `sma_timeframes` / `ema_timeframes` / `pivot_timeframes`; fingerprint inner keys are the page helper’s dict, not an `ARCHITECTURE.md` contract-table row; profile identity stamps are `attach_tick_identity` **and** `attach_rolling_poc_identity`; PIT §9 OR is M2 / §7 item 12 named (not “no”); DST `ONH` finite is **120** (same gate as `RTH_Open`), not 80; close-as-tick `POC_rolling_30min` finite is **0** (same unreadable path that leaves `APOC` vacuous), not 3. `iso25010` tokens were already §A.5-legal; H4 stays Design limitation / `confidence=n/a` / Medium. `trading_session_date` arithmetic, tick bins 4/8/10, and QT-parity were not re-audited.
 
@@ -254,7 +255,7 @@ No Critical / High. Locked-contract rows are Design limitation ≤ Medium with `
 What was checked and is fine, so later slices do not re-do this work:
 
 1. **Before `pytest -q`:** 3,966 passed, 5 skipped in 133.81 s (`32ad34c`, py3.12 / pandas 3.0.5). **After** the two `docs/quality/` files: **3,966 passed, 5 skipped** in 127.38 s (identical pass/fail/skip).
-2. **Scoped levels suites twice** (`-p no:cacheprovider` and `PYTHONHASHSEED=0`): **453 passed, 1 skipped** both times (11.79 s / 11.76 s).
+2. **Scoped levels suites twice** (`-p no:cacheprovider` and `PYTHONHASHSEED=0`): **453 passed, 1 skipped** both times (11.79 s / 11.76 s). Review re-run: **453 passed, 1 skipped** in 11.38 s.
 3. **Generated future-shock** (append 8 extreme bars + rebuilt tick table): **all 59 emitted columns prefix-identical** on the golden-style May/June fixture (138 rows; §5.5 columns finite). Same on the DST-week fixture (123 rows; `pm*` vacuous). Structural-only (no ticks) also prefix-identical; `pmVA*` absent without a table — documented TV3 omit.
 4. **`LEVEL_ENGINE_VERSION` stays 11**; identity stamps change the settings hash (documented AP/RP/TV3 rule; tests assert the constant).
 5. **`typical_mvp_v1` cannot be selected** via `normalize_levels_config` / product keys. No silent typical fallback on the product path.
