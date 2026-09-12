@@ -6,11 +6,13 @@
 **Commit date:** 2026-09-12
 **Environment:** Ubuntu 24.04.4 LTS, Python 3.12.3, pandas 3.0.5, numpy 2.4.4, streamlit 1.63.0
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi5-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data.
-**Finding count:** 14 (C/H/M/L = 0/4/8/2)
-**Time spent:** one agent run on 2026-09-12
+**Finding count:** 15 (C/H/M/L = 0/4/8/3)
+**Time spent:** one agent run on 2026-09-12; honesty/schema review the same day
 **Inputs (premises, not re-audited):** `AUDIT_FINAL.md` §5 on `origin/cursor/audit-final-merge-3a8e`; `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1. Fold construction and `causal_prefix` are locked (AUDIT S5 / AH §2 item 6). `validation_summary()` shape is not altered.
 
 This report does **not** call any backtest, metric, or Study result correct or reliable. Vocabulary is plan §3.3.
+
+**Review corrections (schema / honesty only; no product files):** QI-05-01 dropped radon line numbers (plan §3.3); page 10’s fourth helper is `_parse_thresholds` (not “the module docstring”); plan §3.1 private-import regex hits 1, full QI-5 private-symbol inventory is 4 (QI-05-14); unused R19 seed split out of the `validation_summary` row (QI-05-13 is Maintainability / Verified — not an AUDIT/AH lock; QI-05-15); mechanical glossary miss also covers grid-overfit Best/Median/delta (QI-05-11); M10 contest chrome includes the OTF 🏆 train-selected caption (QI-05-08). Only lock that stays `Design limitation` / `confidence=n/a` / ≤Medium is H7 (QI-05-10). §A.5 ISO tokens unchanged (no `operability`).
 
 ## Commands run (verbatim)
 
@@ -114,7 +116,7 @@ Probe script lives at `/tmp/qi5/probe_qi05.py` (pasted in §10). Transcripts are
 | Broad `except` | 2, both in `otf_validation.py` | One **hides defect** (QI-05-12); one re-raises `ValueError` (**narrow-guard OK**) |
 | `vulture` ≥60 | 20 candidates | All public combo helpers / dataclass fields — **false positives** (page/API/tests import them) |
 | Streamlit in library | 0 in `thesistester/analytics/` | R18 holds |
-| Cross-module private imports | 1: `overfitting.py` → `grid._directional_grid_metrics` | QI-05-14 |
+| Cross-module private imports | Plan §3.1 regex (lowercase `_` + `from thesistester.`): **1** (`overfitting` → `grid._directional_grid_metrics`). Full private-symbol inventory in this slice: **4** (plus `sensitivity` → `overfitting._SIMULATION_KWARGS`; `otf_validation` → `setup._default_otf_filter_config`; `otf_validation` → `backtest._empty_trades_df`) | QI-05-14 |
 | `# noqa` / `# type: ignore` | 1: `otf_validation._simulate` imports `backtest._empty_trades_df` | QI-4 private helper |
 | `st.session_state` matching lines | page 10 **140** · page 8 **49** · page 9 **25** · page 13 **10** | Key graph → QI-10 |
 | TODO/FIXME | 0 | — |
@@ -127,7 +129,7 @@ Scope CC: 177 blocks, average **B 6.28**.
 
 **`run_sl_tp_grid` (E 33, 243 lines).** Mostly parameter-forwarding into `simulate_trades` plus directional columns. Complexity is cartesian BE/trail expansion, not hidden state. Classified: maintainability cost is real but not a separate finding (no F-grade / no MI=0).
 
-**`pages/10_Validation.py` (MI 0.00, 1,949 LOC, 4 defs).** Least-decomposed page in the product. Four helpers (`_fmt_value`, `_parse_positive_int_values`, `_fmt`, plus the module docstring claim). Everything else is inline sidebar + WFA + R15/R16/R19 + MAE + MC + Phase 8 + OTF matrix. `st.session_state` 140 lines.
+**`pages/10_Validation.py` (MI 0.00, 1,949 LOC, 4 defs).** Least-decomposed page in the product. Four helpers: `_fmt_value`, `_parse_positive_int_values`, `_parse_thresholds`, `_fmt`. Everything else is inline sidebar + WFA + R15/R16/R19 + MAE + MC + Phase 8 + OTF matrix. `st.session_state` 140 lines.
 
 **`confluence_attribution.py` (MI 0.00, 1,240 LOC).** Many small helpers; MI 0 is the radon “too many blocks / too long” collapse, not one F-grade function. Highest CC is `summarize_by_pair_and_trigger_variant` D 23.
 
@@ -148,11 +150,11 @@ Scope CC: 177 blocks, average **B 6.28**.
 | `noise.perturb_ohlc` / `noise_summary` | `default_rng` | **required int** | Yes | Replica seeds from a parent stream |
 | `overfitting.random_entry_signals` | `default_rng` | required int | Yes | |
 | `overfitting.vs_random_benchmark` | `SeedSequence` | int = 42 | Yes | Child seeds spawned |
-| `sensitivity_summary` | **none** | int = 42, stored in `config` | Stored only | OAT is deterministic; seed is theater (QI-05-13) |
+| `sensitivity_summary` | **none** | int = 42, stored in `config` | Stored only | OAT is deterministic; seed is theater (QI-05-15) |
 | `grid` / `walk_forward` / `time_analysis` / `excursions` / `portfolio` / `prev30m` / `confluence` | none | n/a | n/a | Deterministic given inputs |
 | `otf_validation` | none | n/a | n/a | |
 
-No `np.random.default_rng()` call in this scope lacks a `random_state` argument. Probe (`/tmp/qi5/verify_qi05.py`, 12 synthetic R values, n_bootstrap=200 / n_permutations=200 / n_simulations=80): seed 42 vs 42 identical for `validation_summary` and `monte_carlo_summary`; seed 42 vs 7 moves bootstrap CI (`ci_lower` −0.542 vs −0.492) and MC reshuffle `max_drawdown_r` p50 (3.0 vs 2.8). Reshuffle `final_r` p50 is seed-invariant (0.1 = 0.1; multiset preserved — by design, not a defect). `sensitivity_summary` OAT metrics are identical after stripping stored `config.random_state`.
+No `np.random.default_rng()` call in this scope lacks a `random_state` argument. First-draft probe (`/tmp/qi5/verify_qi05.py`, unpublished 12-R series) reported seed 42 vs 7 moving bootstrap CI (`ci_lower` −0.542 vs −0.492) and MC reshuffle `max_drawdown_r` p50 (3.0 vs 2.8) with `final_r` p50 invariant. Those floats were **not recovered**. Review `/tmp/qi5-review/verify_review.py` on a named 12-R series (`[1.2, -0.8, 0.4, -1.1, 2.0, 0.3, -0.5, 0.1, 1.5, -0.2, 0.6, -0.9]`, n=200 / 80): seed 42==42; seed 7 moves `ci_lower` and MC DD p50; reshuffle `final_r` p50 stays 2.6 (multiset preserved — by design). `sensitivity.py` has no RNG; stored `random_state` is theater (QI-05-15).
 
 ### 2.4 Result-dict `schema_version`
 
@@ -206,6 +208,7 @@ Mechanical scan of labels/keys shown on pages 8/9/10/13 vs `docs/METRICS_GLOSSAR
 | `min_direction_expectancy_r` | 8 | yes | yes (recommended weaker-side) | |
 | `probability_positive` / **P(mean R > 0)** | 10 | **no** | page caption diagnostic; label reads confirmatory | QI-05-11 |
 | `p_value_positive` / **p-value (positive)** | 10 | no dedicated Phase 8 row (vs-random / DA5 p-values exist) | success-path caveat present | QI-05-05 / QI-05-11 |
+| Grid-overfit Best / Median / Best − Median | 10 | **no** | risk emoji + medium/high warning | QI-05-11 |
 | `outlier_dependency_ratio` | 10 | yes | yes (descriptive) | |
 | `tail_ratio` | 10 | yes | yes | |
 | `max_consecutive_losses` | 10 | yes | yes | |
@@ -226,6 +229,7 @@ Mechanical scan of labels/keys shown on pages 8/9/10/13 vs `docs/METRICS_GLOSSAR
 
 - WFA matrix heatmap uses `RdYlGn` on `median_test_expectancy_r`. No adjacent “do not pick the greenest cell” line (QI-05-08).
 - Grid ranking help: `"Metric used to find the best SL/TP pair."` — contest language (M10).
+- OTF matrix highlights the train-selected row with a 🏆 prefix (same M10 class; caption still says diagnostic).
 - Overlap widget help: `"Reject avoids double-counting by withholding stitched equity."` — does not name `aggregate_test_total_r` as a fold-sum (QI-05-07).
 - Cost warnings **present** for R15 / R16 / R19 opt-in toggles. WFA / OTF matrix / Monte Carlo have no numeric replica-cost line (WFA cost is implicit in SL×TP×folds).
 
@@ -259,19 +263,20 @@ Full records in `docs/quality/findings.csv`. Summary:
 | ID | Sev | Class | Title |
 |---|---|---|---|
 | QI-05-01 | High | Maintainability risk | `run_walk_forward_sl_tp` F(50) / 526 lines — mandatory F-grade |
-| QI-05-02 | Medium | Maintainability risk | `pages/10_Validation.py` MI 0.00 / 1,949 LOC / 4 defs |
+| QI-05-02 | Medium | Maintainability risk | `pages/10_Validation.py` MI 0.00 / 1,949 LOC / 4 defs (`_parse_thresholds` is the fourth) |
 | QI-05-03 | Medium | Maintainability risk | `confluence_attribution.py` MI 0.00 / 1,240 LOC |
 | QI-05-04 | High | UX/operability gap | H12 still open: Focus fill set ≠ Admit under `single_position`; banner silent |
 | QI-05-05 | High | UX/operability gap | H13 still open: `st.success` on p≤0.05 + `P(mean R > 0)`; export banner still missing |
 | QI-05-06 | Medium | UX/operability gap | H16 QI-5 half: Study `primary_metric` cannot be WFA OOS |
 | QI-05-07 | Medium | UX/operability gap | M9: `aggregate_test_total_r` is a fold-sum; UI overlap help names stitched equity only |
-| QI-05-08 | Medium | UX/operability gap | M10: Grid/WFA ranking surfaces invite the greenest cell |
+| QI-05-08 | Medium | UX/operability gap | M10: Grid/WFA ranking surfaces (and OTF 🏆) invite the greenest cell |
 | QI-05-09 | High | UX/operability gap | H5 Grid sibling: Policy widget has no `allow_all` inflation help |
 | QI-05-10 | Medium | Design limitation | H7 Grid: cutoff still gated on flatten (locked composer fork) |
-| QI-05-11 | Medium | Documentation drift | `P(mean R > 0)` / Phase 8 p-value have no glossary entries |
+| QI-05-11 | Medium | Documentation drift | `P(mean R > 0)` / Phase 8 p-value / grid-overfit Best−Median have no glossary entries |
 | QI-05-12 | Medium | Maintainability risk | `otf_validation._simulate` swallows `Exception` into empty trades |
-| QI-05-13 | Low | Design limitation | `validation_summary` has no `schema_version` (shape locked); `sensitivity` stores unused seed |
-| QI-05-14 | Low | Maintainability risk | `overfitting` imports `grid._directional_grid_metrics` |
+| QI-05-13 | Low | Maintainability risk | `validation_summary` has no `schema_version` (four-key freeze; not an AUDIT/AH lock) |
+| QI-05-14 | Low | Maintainability risk | Four private-symbol imports in this slice (regex hit 1) |
+| QI-05-15 | Low | Maintainability risk | `sensitivity_summary` stores unused `random_state` (seed theater) |
 
 ---
 
@@ -310,11 +315,11 @@ What was checked and is fine, so QI-15 / QR do not re-audit it:
 
 | Doc | Why QR might amend |
 |---|---|
-| `docs/METRICS_GLOSSARY.md` | Add `probability_positive` / Phase 8 permutation p-value; add overlap double-count caveat on Aggregate test total R (the sum itself is already named) |
+| `docs/METRICS_GLOSSARY.md` | Add `probability_positive` / Phase 8 permutation p-value / grid-overfit Best−Median; add overlap double-count caveat on Aggregate test total R (the sum itself is already named) |
 | `docs/USER_GUIDE.md` | Grid Policy `allow_all` inflation; Focus N may diverge from Admit; WFA “do not pick the greenest cell”; cutoff-without-flatten Grid fork |
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | H12/H13/M9/M10 operator sentences if QR keeps the math |
 | `docs/ARCHITECTURE.md` | Page 10 session keys (validation / WFA / OTF / portfolio); Focus vs Admit identity footnote |
-| `docs/AGENT_GUIDE.md` | Battery `schema_version` table; `validation_summary` shape freeze |
+| `docs/AGENT_GUIDE.md` | Battery `schema_version` table; `validation_summary` shape freeze; R19 unused `random_state` |
 | `docs/STUDY_RUNNER.md` | `primary_metric` cannot be `wfa_median_test_expectancy_r` (H16) |
 
 Do **not** amend these in QI.
@@ -337,35 +342,46 @@ Do **not** amend these in QI.
 
 ## 10. Probe scripts (pasted; not committed)
 
-`/tmp/qi5/probe_qi05.py` (full file under `/tmp`; not committed):
+The original `/tmp/qi5/probe_qi05.py` was **not retained** on this workspace. First-draft §10 pasted only a comment stub (plan §8.1 wants the script). Review re-ran `/tmp/qi5-review/verify_review.py` (below). The unpublished 180-bar H12 series and the unpublished 12-R seed series were **not recovered**; qualitative seed-discipline and H12 banner/C7 static were re-checked. First-draft H12 set IDs and seed CI floats are therefore **not re-asserted** as review-measured numbers.
+
+Review verification (not committed; `/tmp` only):
 
 ```python
-# seed_inventory: AST walk of analytics/*.py for default_rng / SeedSequence /
-# schema_version / random_state-without-RNG
-# glossary_coverage: page label × METRICS_GLOSSARY.md
-# confirmatory_scan: st.success / P(mean R > 0) / reporting banner
-# h12_probe: 180-bar 1m fixture; signals at 09:05 / 10:05 / 10:30 / 10:55;
-#   single_position max_holding_bars=80; Focus clock 10:00–11:30 vs Admit
-# battery_seeds: golden trades_legacy.csv → validation_summary / monte_carlo /
-#   excursions / time; 3-day synthetic → grid / WFA / sensitivity / overfitting /
-#   portfolio; malformed ValueError; study _INDEX_PRIMARY_METRICS
+# /tmp/qi5-review/verify_review.py — Policy AST; confirmatory/H13 scan;
+# glossary needles; official vs full private-import inventory; validation_summary
+# keys; empty-trade insufficient; seed 42==42 / 42≠7 on a 12-R series;
+# fake-fold 3+4=7; study _INDEX_PRIMARY_METRICS; AH3 count=5; train prefix.
 ```
 
-Key probe outputs (`/tmp/qi5/probe_results.json`):
+Key review outputs (`/tmp/qi5-review/verify_results.json`):
+
+```text
+Policy selectbox kwargs: options, index, key (has_help=false)
+FOCUS_HONESTY_BANNER: "Post-hoc subset — not re-simulated. Exposure/cooldown still reflect the all-day run."
+h13_st_success_p=true  reporting_validation_has_diagnostic_banner=false
+page10 defs: _fmt_value, _parse_positive_int_values, _parse_thresholds, _fmt
+glossary: probability_positive / P(mean R / p-value (positive) / grid_overfit = false
+official private-import regex: 1 (overfitting → _directional_grid_metrics)
+full private-symbol imports: 4 (+ _SIMULATION_KWARGS, _default_otf_filter_config, _empty_trades_df)
+validation_summary keys: bootstrap, permutation, trade_count, grid_overfit
+empty trades: insufficient
+12-R series (review, not the unpublished first-draft series): seed 42==42;
+  ci_lower and MC DD p50 move for seed 7; reshuffle final_r p50 invariant
+fake fold-sum: 3+4=7
+study primary_metrics: expectancy_r, max_drawdown_r, profit_factor, total_r, trade_count
+ah3_test_count: 5
+train_price_df = source_df.iloc[:split_bar]
+otf_trophy: true
+```
+
+First-draft unpublished outputs (not re-measured; status only):
 
 ```text
 H12 single_position: all_day={1,3} focus={3} admit={2} sets_equal=false
 H12 allow_all C7: focus={2,3,4} admit={2,3,4}
-FOCUS_HONESTY_BANNER: "Post-hoc subset — not re-simulated. Exposure/cooldown still reflect the all-day run."
-Policy selectbox kwargs: options, index, key (has_help=false)
-validation_summary keys: bootstrap, permutation, trade_count, grid_overfit
-seed 42 vs 7 (12 synthetic R, n=200): ci_lower -0.542 vs -0.492; MC DD p50 3.0 vs 2.8; final_r p50 invariant
-WFA overlap (8 sessions, test=3, step=1, reject): 5 folds
-  warning=OOS windows overlap; stitched equity is unavailable
-  aggregate_test_total_r=0.733  stitched_oos_total_r=None
-  stitched_oos_status=overlapping_oos_windows
-study primary_metrics: expectancy_r, max_drawdown_r, profit_factor, total_r, trade_count
-ah3_test_exists: 5
+seed 42 vs 7 (unpublished 12-R series, n=200): ci_lower -0.542 vs -0.492; MC DD p50 3.0 vs 2.8
+WFA overlap (8 sessions, test=3, step=1, reject): 5 folds; aggregate_test_total_r=0.733;
+  stitched_oos_total_r=None; stitched_oos_status=overlapping_oos_windows
 ```
 
 ---
