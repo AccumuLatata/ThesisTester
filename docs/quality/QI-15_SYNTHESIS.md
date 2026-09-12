@@ -2,7 +2,7 @@
 
 **Slice:** QI-15 (research-only; §1.2 file exceptions: this report, `docs/QUALITY_REMEDIATION_PLAN.md` draft, four additive columns on `docs/quality/findings.csv`)
 **Status:** Draft for CTO review gate (plan §7.5). CTO dispositions in §6 are **proposals**; Accumu signs.
-**Census note (post-#494):** the disposition counts in §2–§4 and §3.6 are the QI-15 snapshot (119 open / 12 locked / 2 duplicate / 1 wont-fix). The fix-vs-close re-baseline in `docs/QUALITY_REMEDIATION_PLAN.md` §2 moved 13 rows to `wont-fix`/`duplicate` (now 106 open); `docs/quality/findings.csv` is the SoT.
+**Census note (post-#494, updated with QR Rev 2 review-pass):** the disposition counts in §2–§4 and §3.6 are the QI-15 snapshot (119 open / 12 locked / 2 duplicate / 1 wont-fix). The fix-vs-close re-baseline in `docs/QUALITY_REMEDIATION_PLAN.md` §2 moved 13 rows to `wont-fix`/`duplicate` (now 106 open); `docs/quality/findings.csv` is the SoT. The §6 "WS · wave" column and the §9 sequence summary below are superseded by QR plan Rev 2 (§3–§4) wherever they disagree (notably: B-1/B-2 moved to wave 1; QI-10-04 is QR-A A-21 not QR-E; Dependabot rides G-2 in wave 0; engine extracts C-14…C-20 are wave 4; 13 `wont-fix` / 3 `duplicate`).
 **Review correction (same PR, research-only):** merge-group census was 25/76/58 against a 26-group CSV (MG-04 was a singleton). MG-04 dissolved; QI-01-04 residual moved QR-A→QR-F (document parked H11, do not unpark); §4.1 now lists all four score=5.0 rows; `n/a` weight and 1-decimal rounding stated. Slice evidence fields untouched.
 **Synthesised commit:** `0b2c451` (`main` after [#493](https://github.com/AccumuLatata/ThesisTester/pull/493), QI-14). Slice reports were audited on `e30cc48` / `32ad34c` / `539dd2e`; this synthesis re-verified only status and metrics on `0b2c451`.
 **Environment:** Ubuntu 24.04 (`Linux 6.12.94+ x86_64`), Python 3.12.3, pandas 3.0.5, streamlit 1.63.0, pytest 9.1.1, radon 6.0.1 (installed for re-measurement; not a repo dependency).
@@ -729,16 +729,16 @@ H7 composer SoT · H15 TZ SoT · H10 Data-page abort · H11 typed reject · H9 `
 
 ## 9. Handoff to the QR plan (sequence summary)
 
-`docs/QUALITY_REMEDIATION_PLAN.md` (draft, §9 template) orders the work as:
+`docs/QUALITY_REMEDIATION_PLAN.md` **Rev 2** is SoT for waves, PR ids, and dispositions. The QI-15 snapshot below is kept for provenance; do not implement from it.
 
-- **Wave 0 — gate and truth (QR-G + QR-F, settings/docs only):** required status checks (QI-12-01) · constraints + named matrix axis (QI-12-02, QI-12-03) · ROADMAP/AGENT_GUIDE/PROPOSAL truth (QI-13-01, QI-12-10) · README triggers (QI-13-02). Dependabot (G-3), scanners (G-4), and devcontainer (QI-12-08 / G-5) wait for wave 2.
-- **Wave 1 — honesty first (QR-A), copy/disclosure only, one PR per finding:** H5 (MG-02) · H12 (QI-05-04) · H13 (MG-06) · H1 residual leftovers (QI-06-03, QI-10-01) · H8 disclosure (MG-05) · H16 (MG-08) · DA0 (MG-11) · Study CLI honesty (QI-07-05, QI-07-06) · fail-closed gaps (QI-08-03, QI-05-12, QI-06-09, QI-09-06) · H14 disclosure (QI-03-06; snap decision to CTO).
-- **Wave 2 — safety net (QR-B + QR-G G-3…G-5), tooling/tests only:** lock-the-fork tests (QI-04-07, QI-01-07) · PIT generated FS (QI-02-02) · golden families for default-on paths (QI-11-02) · mutation baseline (QI-11-04) · coverage floor blocking at 82 % (QI-12-04, QI-11-01, QI-09-04, QI-06-12) · import-linter warn-first (QI-12-07) · mypy warn-first (QI-12-05) · markers (QI-11-05) · AppTest harness rules (MG-26) · CAI harness fix (QI-14-01) · QR-G Dependabot / `bandit`+`pip-audit`+pins / devcontainer (QI-12-02 residual, QI-12-06, QI-07-09, QI-12-08). Then the QR-C pilot: `validate_setup_config` (QI-03-03).
-- **Wave 3 — structure (QR-C), golden-gated, one hot spot per PR:** `validate_run_spec` → `study.schema` (MG-17) · `build_markdown_report` (QI-06-02) · `generate_signals` (QI-03-01, then QI-14-05) · `run_walk_forward_sl_tp` (QI-05-01) · bundle registry (QI-06-04) · `app_state` split (QI-06-05) · journal init (QI-08-02).
-- **Wave 4 — engine core and UI (QR-C/QR-D):** `simulate_trades` P7 (QI-04-01, QI-14-09) · 3c row-mapper (QI-03-02) · page splits (MG-22) · session-key registry (QI-10-03) · assistant tables (QI-09-01, QI-09-02) · Study/journal/store modules.
-- **Wave 5 — application functions (QR-E) and docs consolidation (QR-F):** operability/copy (QI-02-03, QI-06-07, QI-08-05, QI-09-11, QI-10-04, …) · W12 acceleration inside R22 (QI-14-03, QI-14-06) · glossary/Help/CAI docs · AGENT_GUIDE ledger → contracts (QI-13-06).
+- **Wave 0 — gate and truth (settings/docs only):** G-1 required checks (QI-12-01) · G-2 constraints + named matrix + Dependabot (QI-12-02) · G-3 one install SoT (QI-12-03) · F-1 ROADMAP/plan/"blocking" truth (QI-13-01, QI-12-10) · F-2 README `VALID_TRIGGERS` (QI-13-02) · F-3 docs index (QI-13-05).
+- **Wave 1 — honesty first (QR-A + lock-the-fork tests):** A-1…A-22 (High `app` disclosure, H1 leftovers, fail-closed, QI-10-04 caveat) · F-4/F-7/F-8 delivered inside A-4/A-12/A-9 · F-6 with A-22 · B-1 / B-2 lock-the-fork tests. H14 snap stays parked (A-13 discloses only).
+- **Wave 2 — safety net (QR-B + QR-G scanners):** B-3…B-19 · G-4 / G-5 · C-1 pilot after B-16 (validator only; B-3+B-4 still gate engine/WFA extracts).
+- **Wave 3 — structure, non-engine first:** C-2…C-13 · D-1 / D-2 · F-5 / F-9 / F-10.
+- **Wave 4 — engine core and UI:** C-14…C-25 (after B-3+B-4) · D-3…D-10.
+- **Wave 5 — application and acceleration:** E-1…E-11 (E-11 only on CTO request). W12 stays inside `sim_core` / C-19 P7.
 
-Every workstream section in the QR plan cites its finding IDs; every open row appears in exactly one workstream; locked rows appear only as disclosure/test residuals (never as "unpark/invert the lock"); `duplicate` rows are listed under their primary; the single `wont-fix` is recorded in the QR plan §7.
+Every workstream section in the QR plan cites its finding IDs; every `open` row appears in exactly one workstream and one owning PR id; locked rows appear only as disclosure/test residuals (never as "unpark/invert the lock"); `duplicate` rows are listed under their primary; `wont-fix` rows are in QR plan §2.3 (12 new + pre-existing QI-10-06) and §7.1.
 
 ---
 
