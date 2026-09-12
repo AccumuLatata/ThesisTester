@@ -62,7 +62,9 @@ PYTHONHASHSEED=7 pytest -q --tb=no -p no:cacheprovider \
 # after tracked edits (report + findings.csv only):
 export THESISTESTER_STORE_DIR=/tmp/qi4-store-after
 pytest -q --tb=no
+# 3966 passed, 5 skipped in 135.02s (0:02:15) — identical to before
 git status --porcelain
+# clean after the report+CSV commit (only those two tracked files exist on the branch)
 ```
 
 Probe transcripts live under `/tmp/qi4/` (`probe_qi04.py`, `probe_results.json`, `radon_*.txt`, `pytest-*.txt`). Not committed.
