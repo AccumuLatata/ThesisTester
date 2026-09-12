@@ -7,7 +7,7 @@ Simple Streamlit app for intraday strategy research on futures data.
 ## Run locally
 
 ```bash
-pip install -r requirements.txt
+pip install -e . -c constraints.txt
 streamlit run app.py
 ```
 
@@ -37,6 +37,7 @@ the absolute path would exceed `MAX_PATH` (common under deep OneDrive/Documents 
 ## Run tests
 
 ```bash
+pip install -e ".[dev]" -c constraints.txt
 pytest -q
 ```
 
@@ -46,15 +47,16 @@ The library is packaged with `pyproject.toml`, so `thesistester` is importable o
 Streamlit app (headless scripts, notebooks, future CLI use):
 
 ```bash
-pip install -e ".[dev]"     # library + pytest, pytest-cov, ruff
-pytest -q                   # full suite
-ruff check .                # lint
-ruff format .               # format (line length 100)
+pip install -e ".[dev]" -c constraints.txt   # library + pytest, pytest-cov, ruff
+pytest -q                                    # full suite
+ruff check .                                 # lint
+ruff format .                                # format (line length 100)
 pytest -q --cov=thesistester --cov-report=term-missing
 ```
 
-`requirements.txt` remains the app-install path; `pyproject.toml` mirrors those ranges with
-conservative next-major caps so dependency majors arrive as explicit, test-gated bumps.
+`pyproject.toml` is the only range SoT (QI-12-03 / QR G-3). `constraints.txt` is
+the CI lock (G-2). App install is `pip install -e .`; tooling (`pytest`,
+`pytest-cov`, `ruff`) is the `dev` extra only. There is no `requirements.txt`.
 
 ## Headless API and batch CLI
 

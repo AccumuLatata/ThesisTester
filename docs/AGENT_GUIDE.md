@@ -4,9 +4,12 @@
 Regression-safe onboarding guide for contributors/agents working in ThesisTester.
 
 ## Fast start
-1. Install deps: `pip install -r requirements.txt` (`README.md:7-10`).
-2. Run tests: `pytest -q` (`README.md:12-16`).
-3. Optional app run: `streamlit run app.py` (`README.md:7-10`). Repo
+1. App install: `pip install -e . -c constraints.txt` (`README.md` Run locally).
+   `pyproject.toml` is the only range SoT; `constraints.txt` is the lock
+   (QI-12-03 / QR G-3). There is no `requirements.txt`.
+2. Tests (needs the `dev` extra — `pytest` is not on the app path):
+   `pip install -e ".[dev]" -c constraints.txt` then `pytest -q`.
+3. Optional app run: `streamlit run app.py`. Repo
    `.streamlit/config.toml` sets `server.maxMessageSize = 400` (MB websocket
    payload; Streamlit default is 200) and `server.maxUploadSize = 350`.
    `MessageSizeError` is that transport cap, not host RAM. Restart Streamlit
@@ -534,9 +537,9 @@ Every request must first parse as an `AssistantRequest`, then pass
   against `constraints.txt` pins. `versioning-strategy: increase-if-necessary`
   widens a `pyproject.toml` cap only when the candidate sits outside it
   (so a Streamlit 1.64 PR moves the pin *and* the `<1.64` cap together and
-  then hits the G-1 matrix). `requirements.txt` is `exclude-paths` until G-3
-  so a bump cannot go green by touching only the unused app-install file.
-  Do not land a bump inside a product PR.
+  then hits the G-1 matrix). Do not land a bump inside a product PR.
+  App/dev install is `pip install -e .` / `pip install -e ".[dev]"` against
+  that lock (G-3); `pytest` lives in the `dev` extra only.
 
 ## Regression-safety gates in CI
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request.

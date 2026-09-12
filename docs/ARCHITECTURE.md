@@ -15,9 +15,10 @@ Consequence that matters for later milestones: `thesistester/app_state.py` is cu
 only library module that imports `streamlit` at module scope — data, levels, engine,
 analytics, persistence, reporting, and visualization modules are Streamlit-free. That is what
 makes the R18 headless facade a pure addition rather than a refactor. `streamlit`
-nevertheless remains a hard dependency in `pyproject.toml` (mirroring `requirements.txt`);
-R18 keeps it there to avoid changing the established install contract. Dependency ranges carry next-major
-caps, and `requirements.txt` stays the app-install path.
+nevertheless remains a hard dependency in `pyproject.toml` (the range SoT;
+QI-12-03 / QR G-3). R18 keeps it there to avoid changing the established
+install contract. Dependency ranges carry next-major caps; app install is
+`pip install -e .` (`constraints.txt` is the lock).
 
 Tool configuration is centralized in `pyproject.toml` (`ruff`, `pytest`, `coverage`).
 CI jobs and the golden-master regeneration guard are defined in `.github/workflows/ci.yml`;

@@ -21,9 +21,10 @@ classifiers = [
 ]
 dynamic = ["version"]
 
-# Ranges mirror `requirements.txt` (app-install path; G-3 will reconcile that SoT)
-# with conservative caps so a Streamlit minor or pandas major arrives as a
-# test-gated Dependabot PR (QI-12-02 / QR G-2; proposal §7).
+# Range SoT (QI-12-03 / QR G-3). App install is `pip install -e .`;
+# `constraints.txt` is the CI lock. `pytest` is the `dev` extra only.
+# Caps so a Streamlit minor or pandas major arrives as a test-gated
+# Dependabot PR (QI-12-02 / QR G-2; proposal §7).
 # pandas-major axis (named, not accidental): py3.10 is the pandas 2 cell
 # (pandas 3 requires Python >=3.11); py3.11/3.12 require pandas 3 — same
 # contract as the CI matrix assert (not merely "admit").
