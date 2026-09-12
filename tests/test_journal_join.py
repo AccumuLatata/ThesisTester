@@ -461,6 +461,16 @@ def test_exit_before_entry_fails_closed(tmp_path: Path) -> None:
         join_journal_bars(trades, data=_parent_14(), subtimeframe_data=_minute_14())
 
 
+def _is_nullish(value: object) -> bool:
+    """True for Python ``None`` or pandas/numpy NA in an object-dtype cell.
+
+    TJ5 keeps nullable join/cost columns as object (not float64). pandas 3.0
+    stores Python ``None`` in those cells; pandas 2.3 may store ``nan`` in the
+    same object series. Both are NA-equivalent; neither is a float64 NaN column.
+    """
+    return value is None or pd.isna(value)
+
+
 def test_nullable_join_columns_stay_object_none(tmp_path: Path) -> None:
     same_dir = tmp_path / "same"
     held_dir = tmp_path / "held"
@@ -474,13 +484,15 @@ def test_nullable_join_columns_stay_object_none(tmp_path: Path) -> None:
     joined = join_journal_bars(trades, data=_parent_14(), subtimeframe_data=_minute_14())
     same_row = joined.iloc[0]
     held_row = joined.iloc[1]
-    assert same_row["mae_points"] is None
-    assert same_row["mfe_points"] is None
-    assert same_row["commission_cost"] is None
+    assert _is_nullish(same_row["mae_points"])
+    assert _is_nullish(same_row["mfe_points"])
+    assert _is_nullish(same_row["commission_cost"])
     assert held_row["mae_points"] == pytest.approx(1.5)
     assert held_row["commission_cost"] == pytest.approx(1.24)
     assert joined["mae_points"].dtype == object
     assert joined["commission_cost"].dtype == object
+    assert joined["mae_points"].dtype != "float64"
+    assert joined["commission_cost"].dtype != "float64"
 
 
 def test_entry_and_exit_outside_do_not_duplicate_flag(tmp_path: Path) -> None:
