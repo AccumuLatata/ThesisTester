@@ -8,9 +8,11 @@
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi08-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data. No real AMP PDFs or broker statements.
 **Finding count:** 5 (C/H/M/L = 0/0/5/0)
 **Before/after `pytest -q`:** **3966 passed, 5 skipped** (141.26 s / 151.17 s) — identical pass/fail/skip. Porcelain: only the two `docs/quality/` files.
-**Time spent:** one agent run on 2026-09-12.
+**Time spent:** one agent run on 2026-09-12; honesty/schema review the same day.
 
 Locked inputs treated as premises (not re-audited): `AUDIT_FINAL.md` §5; `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1; TJ §3.0 clock/qty/PIT; TJ6 **tags ≠ triggers**; JS0 locks (do not implement JS3+, do not unpark Quantower Trades, do not add a 15s trigger lane). Plan §A.3 assigns **no** AUDIT H-items to this slice. No backtest, metric, or Study result is described as correct or reliable.
+
+**Review corrections (schema / honesty only; no product files):** `locked_by` on QI-08-01 / QI-08-02 is `none` (plan §3.3 allows `AUDIT_FINAL §5.x` / `AH §2.n` / `none`; TJ §3.0 and JS2 are completed-series constraints, not AUDIT/AH lock IDs). `# type: ignore` is **4** in `pair.py` + **1** in `report.py`, not 5+1. The two `_cost_ticks` helpers are similarly named, not byte-identical. First-pass `/tmp/qi08_probes.py` was not pasted (§9 stubs only) and is not retained; review-pass essential snippets are in §9. First-pass `hidden_slice_count` `off=5 on=5` on an unspecified 5-trade book is withdrawn; 2-trade E2E hidden **6** reproduces; review-pass reconstructed 5-trade book hidden **4**. Q3 zones/triggers 0→1 and Q3 levels/tags ungated reproduce. `iso25010` tokens were already §A.5-legal (no `operability`). `prior_id` stays empty (no §A.3 carry-over). E2E / formula-home / PII / Sunday / TJ6 / import graph re-verified on the same `539dd2e` product tree.
 
 ## Commands run (verbatim)
 
@@ -55,9 +57,13 @@ PYTHONHASHSEED=1 pytest -q -p no:cacheprovider <same files>
 export THESISTESTER_STORE_DIR=/tmp/qi08-store-after
 pytest -q --tb=no
 git status --porcelain
+
+# review-pass (docs-only honesty/schema)
+PYTHONPATH=/workspace python3 /tmp/qi08_review_verify.py
+# /tmp/qi08-review/verify.json
 ```
 
-Probe scripts live under `/tmp/qi08_probes.py` and `/tmp/qi08_import_trace.py` (not committed). Transcripts: `/tmp/qi08-evidence/probes.json`, `/tmp/qi08-evidence/import_trace.json`.
+First-pass probe scripts under `/tmp/qi08_probes.py` and `/tmp/qi08_import_trace.py` were not retained. Review-pass script: `/tmp/qi08_review_verify.py`. Transcript: `/tmp/qi08-review/verify.json`.
 
 ---
 
@@ -111,7 +117,7 @@ Probe scripts live under `/tmp/qi08_probes.py` and `/tmp/qi08_import_trace.py` (
 | MI = 0.00 | `match.py`, `report.py`, `counterfactual.py` (matches QI-00). `join.py` 7.27 · `rules.py` 8.88 · `levels.py` 9.71 — all < 20 trigger |
 | Page 17 | MI **A 43.21**, 4 defs, 209 lines, 8 `st.session_state` lines |
 | Broad `except` | **0** in journal + page 17 |
-| `# type: ignore` | 5 (pair Literal casts) + 1 in report |
+| `# type: ignore` | **4** in `pair.py` (Literal casts) + **1** in `report.py` |
 | Streamlit in library | **0** |
 | `pdfplumber` | `amp_statement.py` only (lazy import) |
 | `bandit -ll` | clean |
@@ -145,7 +151,7 @@ TJ §3.0 / glossary formulas are implemented in **more than one write site**:
 |---|---|
 | `pair._closed_trade` | `gross_pnl_points` (not × qty); `gross_pnl_currency = points × pv × qty`; pre-cost `net = gross`; `r_multiple`; `net_ticks` |
 | `reconcile._cost_row` | AMP `commission = per_side × 2 × qty`; rewrites `net_pnl_currency`, `fee_ticks`, `net_ticks`, `r_multiple`, `r_multiple_declared` |
-| `counterfactual` + `rules` | Duplicate `_cost_ticks` (fee_ticks + day extra / tick_value); CF `gross = points × qty / tick` |
+| `counterfactual` + `rules` | Two similarly named `_cost_ticks` helpers (fee_ticks + day extra / tick_value); **not** byte-identical (NA handling differs). CF `gross = points × qty / tick` |
 | `report._currency_to_ticks` | Read-side `currency / (tick × pv)` |
 
 Probe 2-lot MNQ long 100→101: points **1.0** (not qty-scaled), currency **4.0**, net_ticks **8.0**, r **0.4** — matches §3.0. After AMP costs on the E2E 2-lot 1.25-pt trade: gross **$5.00**, commission **$2.48**, fee_ticks **4.96**, net_ticks **5.04**. Finding QI-08-01 (structure). The numbers are **not** a claim that a desk book is correct.
@@ -188,6 +194,7 @@ This is **ingest/report plumbing**, not a verified P&L of a real desk.
 | Same junk `.pdf` via CLI `reconcile` | Full traceback through `__main__` → `dispatch_journal` → `pdfplumber.open`; process exit **1** |
 | AMP text missing `DAILY STATEMENT` | typed `JournalIngestError` |
 | Write under `results/studies/` | typed refuse (reconcile and report) |
+| Empty closed-trade book (`build_journal_report` 0 rows) | Q1/Q2 empty, `hidden_slice_count` 0, no exception |
 
 Finding QI-08-03. Text extracts and missing files fail closed; **malformed PDF does not**.
 
@@ -197,7 +204,7 @@ UTC `2026-05-17T22:05:00+00:00` = Sunday 18:05 America/New_York → `session_dat
 
 ### 3.4 n < 30 toggle
 
-`include_small_n` default **False**. On the 2-trade book: Q2 hidden **6**, shown **0**; toggle on → 6 Q2 rows. On a 5-trade JS1/JS2 fixture: Q3 zones/triggers hidden unless toggled. **`hidden_slice_count` counts Q2 only** (and still counts when the toggle shows them). CLI `--include-small-n` help: “Include **Q2** slices…”. Page checkbox help names Q2 + Q3 Zones + Q3 Inferred trigger (matches `USER_GUIDE.md`). Finding QI-08-05.
+`include_small_n` default **False**. On the 2-trade E2E book: Q2 hidden **6**, shown **0**; toggle on → 6 Q2 rows; `hidden_slice_count` stays **6**. On a reconstructed 5-trade JS1/JS2-shaped book: Q3 zones/triggers 0→1 when toggled; Q3 levels/tags stay 1 either way; `hidden_slice_count` **4** (not the first-pass unreproducible 5). **`hidden_slice_count` counts Q2 only** (and still counts when the toggle shows them). CLI `--include-small-n` help: “Include **Q2** slices with n < 30 (default: hide them)”. Page checkbox help names Q2 + Q3 Zones + Q3 Inferred trigger (matches `USER_GUIDE.md`). Finding QI-08-05.
 
 Q3 **levels/tags** (TJ6) have no n-gate — TJ9 as written. Not a finding.
 
@@ -255,7 +262,7 @@ Full records in `docs/quality/findings.csv`. Summary:
 
 | ID | Sev | Class | Title |
 |---|---|---|---|
-| QI-08-01 | Medium | Maintainability risk | Qty-scaled P&L has two write homes (`pair._closed_trade` + `reconcile._cost_row`) plus duplicated `_cost_ticks` |
+| QI-08-01 | Medium | Maintainability risk | Qty-scaled P&L has two write homes (`pair._closed_trade` + `reconcile._cost_row`) plus two non-identical `_cost_ticks` helpers |
 | QI-08-02 | Medium | Maintainability risk | `journal/__init__` barrel + JS2 private `_classify_zone_triggers_detail` loads `engine.backtest` without calling it |
 | QI-08-03 | Medium | Verified defect | Malformed AMP PDF raises `PdfminerException`; CLI traceback, exit 1 |
 | QI-08-04 | Medium | Maintainability risk | `match` / `report` / `counterfactual` MI 0.00; three E-grade functions (33–36) |
@@ -278,7 +285,8 @@ What was checked and is fine, so QI-15 / QR do not re-audit it:
 7. **PII scan of committed journal fixtures/examples: 0 hits.**
 8. **Page 17 is read-only** (MI A 43.21; no Streamlit in the library; no `except Exception`; n<30 checkbox rebuilds from cache).
 9. **JS3+ and Quantower Trades loader are absent** (parked).
-10. **CLI typed ingest errors** (missing file) are rc 2 without traceback. Scoped journal suite 272 passed; hashseed 0/1 118/118 identical on the five-file subset. Isolation: `/tmp` store; no API keys.
+10. **CLI typed ingest errors** (missing file) are rc 2 without traceback. Scoped journal suite 272 collected; hashseed 0/1 118/118 identical on the five-file subset (first-pass). Isolation: `/tmp` store; no API keys.
+11. **Empty 0-trade `build_journal_report`** renders empty Q1/Q2 with `hidden_slice_count` 0 (review-pass).
 
 ---
 
@@ -313,17 +321,32 @@ List only. **Not amended** in this slice.
 
 ---
 
-## 9. Probe scripts (pasted; not committed)
+## 9. Probe scripts (review-pass; not committed)
 
-E2E TV + AMP text (synthetic; no desk PII):
+First-pass `/tmp/qi08_probes.py` / `/tmp/qi08_import_trace.py` were not retained (plan §8.1 requires pasting). Review-pass: `/tmp/qi08_review_verify.py`. Transcript: `/tmp/qi08-review/verify.json`.
+
+Formula-home 2-lot + Sunday + E2E (essential):
 
 ```python
-# Sunday 18:05 ET = 2026-05-17T22:05:00+00:00 → session_date 2026-05-18
-# 2-lot MNQ 29584.00 / 29585.25 → gross $5.00 vs AMP P&S $5.00 CR
-# See /tmp/qi08_probes.py _tiny_tv / _tiny_amp
+from datetime import date
+import pandas as pd
+from thesistester.journal.tradesviz import load_tradesviz_executions
+from thesistester.journal.pair import pair_journal_trades
+from thesistester.journal.reconcile import reconcile_journal
+from thesistester.journal.amp_statement import parse_amp_statement_text
+from thesistester.levels.session_date import trading_session_date
+
+# pair 2-lot MNQ 100→101
+# qty=2, points=1.0, currency=4.0, net_ticks=8.0, r_multiple=0.4, costs null
+# E2E 2-lot 29584.00/29585.25 + Sunday 18:05 ET 1-lot; AMP text on 14-May only
+# May-14 reconciled gross $5.00 commission $2.48 fee_ticks 4.96 net_ticks 5.04
+# May-18 amp_missing costs null; session_date 2026-05-18
+utc = pd.Timestamp("2026-05-17T22:05:00+00:00")
+ny = utc.tz_convert("America/New_York")
+assert trading_session_date(pd.Series([ny]), eth_start="18:00").iloc[0] == date(2026, 5, 18)
 ```
 
-Malformed PDF:
+Malformed PDF + typed missing file:
 
 ```bash
 printf '%%PDF-1.4\nnot a real pdf\n%%%%EOF\n' > /tmp/qi08-pdf/junk.pdf
@@ -332,13 +355,27 @@ python3 -m thesistester journal reconcile \
   --statements /tmp/qi08-pdf/junk.pdf \
   --output-dir /tmp/qi08-cli-bad
 # PdfminerException traceback; exit 1
+# missing executions file: rc 2, no traceback
 ```
 
 Import isolation:
 
 ```python
-import thesistester  # backtest not loaded
-import thesistester.journal.schema  # backtest + signals + levels.all loaded; simulate_trades not on journal
+import thesistester  # engine.backtest not loaded
+import thesistester.journal.schema
+# engine.backtest + engine.signals + levels.all loaded
+# hasattr(thesistester.journal, "simulate_trades") is False
+```
+
+PII / tag_map / n<30 (review-pass counts):
+
+```text
+PII scan tests/fixtures/journal + examples/journal + tag_map.yaml: 0 hits
+tag_map exact 102; classes {confirm, level, unmapped}; mapped tokens 101
+closed_level_token_set 73; confirm not in closed 28
+3c/touch class context; resolve_tag(class=trigger) → JournalIngestError
+2-trade E2E hidden_slice_count=6; reconstructed 5-trade hidden=4
+q3_zones_relation/q3_triggers 0→1; q3_levels/tags ungated
 ```
 
 ---
