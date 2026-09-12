@@ -88,6 +88,11 @@ PYTHONHASHSEED=7 pytest -q --tb=no -p no:cacheprovider <hashseed subset>
 export THESISTESTER_STORE_DIR=/tmp/qi4-store-review-full
 pytest -q --tb=no
 # 3966 passed, 5 skipped in 135.57s (0:02:15)  — before this review's doc edits
+
+export THESISTESTER_STORE_DIR=/tmp/qi4-store-review-after
+pytest -q --tb=no
+# 3966 passed, 5 skipped in 139.30s (0:02:19)  — after this review's doc edits
+# Result class identical (3966 passed, 5 skipped). Wall-clock is not identical.
 ```
 
 Probe script is pasted in Appendix A (plan §8.1). Transcripts under `/tmp/qi4/` are not committed.
