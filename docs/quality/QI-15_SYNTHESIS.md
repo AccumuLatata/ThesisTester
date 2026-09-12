@@ -2,6 +2,7 @@
 
 **Slice:** QI-15 (research-only; §1.2 file exceptions: this report, `docs/QUALITY_REMEDIATION_PLAN.md` draft, four additive columns on `docs/quality/findings.csv`)
 **Status:** Draft for CTO review gate (plan §7.5). CTO dispositions in §6 are **proposals**; Accumu signs.
+**Census note (post-#494):** the disposition counts in §2–§4 and §3.6 are the QI-15 snapshot (119 open / 12 locked / 2 duplicate / 1 wont-fix). The fix-vs-close re-baseline in `docs/QUALITY_REMEDIATION_PLAN.md` §2 moved 13 rows to `wont-fix`/`duplicate` (now 106 open); `docs/quality/findings.csv` is the SoT.
 **Review correction (same PR, research-only):** merge-group census was 25/76/58 against a 26-group CSV (MG-04 was a singleton). MG-04 dissolved; QI-01-04 residual moved QR-A→QR-F (document parked H11, do not unpark); §4.1 now lists all four score=5.0 rows; `n/a` weight and 1-decimal rounding stated. Slice evidence fields untouched.
 **Synthesised commit:** `0b2c451` (`main` after [#493](https://github.com/AccumuLatata/ThesisTester/pull/493), QI-14). Slice reports were audited on `e30cc48` / `32ad34c` / `539dd2e`; this synthesis re-verified only status and metrics on `0b2c451`.
 **Environment:** Ubuntu 24.04 (`Linux 6.12.94+ x86_64`), Python 3.12.3, pandas 3.0.5, streamlit 1.63.0, pytest 9.1.1, radon 6.0.1 (installed for re-measurement; not a repo dependency).
