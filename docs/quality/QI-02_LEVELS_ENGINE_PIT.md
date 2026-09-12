@@ -8,6 +8,7 @@
 **Store:** `THESISTESTER_STORE_DIR=/tmp/qi02-store-*` (throwaway). `OPENAI_API_KEY` / `XAI_API_KEY` unset. No desk data.
 **Finding count:** 8 (C/H/M/L = 0/0/5/3)
 **Time spent:** one agent run on 2026-09-12.
+**After-edit `pytest -q`:** 3,966 passed, 5 skipped in 127.38 s — same pass/fail/skip as before (133.81 s). Wall-time delta is noise. `git status --porcelain` after the run: clean (only the two `docs/quality/` files were ever staged).
 
 Locked inputs treated as premises (not re-audited): `AUDIT_FINAL.md` §5 on `origin/cursor/audit-final-merge-3a8e`; `docs/AUDIT_HONESTY_IMPLEMENTATION_PLAN.md` §2 / §2.1 (omitted levels keys = product `DEFAULT_LEVELS_SETTINGS`). `trading_session_date` arithmetic, tick bin sizes 4/8/10, and QT-parity (AP/RP) were not re-audited.
 
@@ -250,7 +251,7 @@ No Critical / High. Locked-contract rows are Design limitation ≤ Medium with `
 
 What was checked and is fine, so later slices do not re-do this work:
 
-1. **Before `pytest -q`:** 3,966 passed, 5 skipped in 133.81 s (`32ad34c`, py3.12 / pandas 3.0.5).
+1. **Before `pytest -q`:** 3,966 passed, 5 skipped in 133.81 s (`32ad34c`, py3.12 / pandas 3.0.5). **After** the two `docs/quality/` files: **3,966 passed, 5 skipped** in 127.38 s (identical pass/fail/skip).
 2. **Scoped levels suites twice** (`-p no:cacheprovider` and `PYTHONHASHSEED=0`): **453 passed, 1 skipped** both times (11.79 s / 11.76 s).
 3. **Generated future-shock** (append 8 extreme bars + rebuilt tick table): **all 59 emitted columns prefix-identical** on the golden-style May/June fixture (138 rows; §5.5 columns finite). Same on the DST-week fixture (123 rows; `pm*` vacuous). Structural-only (no ticks) also prefix-identical; `pmVA*` absent without a table — documented TV3 omit.
 4. **`LEVEL_ENGINE_VERSION` stays 11**; identity stamps change the settings hash (documented AP/RP/TV3 rule; tests assert the constant).
