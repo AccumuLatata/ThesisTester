@@ -26,6 +26,10 @@ unset OPENAI_API_KEY XAI_API_KEY
 pytest -q --tb=no
 # 3966 passed, 5 skipped in 146.22s (0:02:26)
 
+export THESISTESTER_STORE_DIR=/tmp/qi5-store-after
+pytest -q --tb=no
+# after: 3966 passed, 5 skipped in 134.32s (0:02:14) — identical result class
+
 radon cc -s -a <QI-5 files> -n D
 radon mi -s <QI-5 files>
 vulture <QI-5 files> --min-confidence 60
