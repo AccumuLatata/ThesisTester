@@ -1,0 +1,12 @@
+# QR G-2 / QI-12-02 — version bumps arrive as PRs, not a silent resolve.
+# Merge gate is the G-1 required checks (full pytest matrix + ruff +
+# editable install + golden-guard). Do not combine a bump with product code.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # constraints.txt is the CI lock; pyproject.toml holds the ranges/caps.
+    # requirements.txt remains the app-install path until G-3.

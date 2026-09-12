@@ -368,7 +368,8 @@ Rationale: R9 makes every later change verifiably regression-free; R10/R11 deliv
 | Golden-master brittleness blocks legitimate engine improvements | R9→R12/13, R22 | Golden files scoped to *legacy-mode* outputs on a minimal fixture; §4.1 documented regeneration procedure with `GOLDEN_REGEN` label + approval |
 | Performance refactor drifts numeric outputs | R22 | Golden-masters must stay byte-identical through the refactor; accelerated paths asserted equal to the serial reference in CI |
 | Scope creep toward non-goals (replay, live trading) | All | §2.2 anti-roadmap is the standing decision record; revisit only via an explicit proposal amendment |
-| pandas/numpy major-version drift | R9 | CI matrix + conservative version caps in `pyproject.toml`; dependabot/renovate PRs gated by full suite |
+| pandas/numpy major-version drift | R9 | Named CI pandas-major axis (`pytest (py3.10)` = pandas 2; py3.11/3.12 = pandas 3) + `constraints.txt` + caps in `pyproject.toml`; Dependabot PRs gated by the G-1 required checks (QI-12-02 / QR G-2) |
+| Streamlit minor-version drift (AppTest / widget proto) | R9 | `streamlit>=1.56,<1.64` in `pyproject.toml` (pinned 1.63.x in `constraints.txt`); next minor is a Dependabot PR on the full matrix (#478 / QI-12-02) |
 
 ---
 
