@@ -544,8 +544,9 @@ Tooling, CI, and documentation only. Engine, analytics, levels, persistence, and
 ### Features
 
 - **Packaging** — `pyproject.toml` (setuptools) makes `thesistester` importable after
-  `pip install -e .`, with `requires-python = ">=3.10"`, dependency ranges mirroring
-  `requirements.txt` plus conservative next-major caps, and a `dev` extra
+  `pip install -e .`, with `requires-python = ">=3.10"`, conservative next-major
+  caps (`pyproject.toml` is the only range SoT after QI-12-03 / QR G-3 deleted
+  `requirements.txt`; `constraints.txt` is the lock), and a `dev` extra
   (`pytest`, `pytest-cov`, `ruff`). Version is read from `thesistester.__version__`, so it
   cannot drift from the package.
 - **CI** (`.github/workflows/ci.yml`), blocking on red:

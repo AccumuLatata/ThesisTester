@@ -176,7 +176,7 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Goal:** Make regression safety automatic instead of aspirational.
 - **Benchmark:** N/A — internal. (Addresses analysis weaknesses W1–W3, W14.)
 - **Scope:**
-  - `pyproject.toml` (setuptools or hatchling): package metadata, `thesistester` importable after `pip install -e .`, Python `>=3.10`, dependency ranges mirroring `requirements.txt` (which stays for the app), and a `dev` extras group (`pytest`, `pytest-cov`, `ruff`).
+  - `pyproject.toml` (setuptools or hatchling): package metadata, `thesistester` importable after `pip install -e .`, Python `>=3.10`, dependency ranges with conservative next-major caps (`pyproject.toml` is the only range SoT; `constraints.txt` is the lock; QI-12-03 / QR G-3 deleted `requirements.txt`), and a `dev` extras group (`pytest`, `pytest-cov`, `ruff`).
   - GitHub Actions `.github/workflows/ci.yml`: matrix `pytest -q --cov=thesistester` on Python 3.10/3.11/3.12; `ruff check` + `ruff format --check`; coverage reported (informational threshold, e.g. warn below current level — monitor, don't block initially).
   - Minimal `ruff` config (line length consistent with current style); one-time `ruff format` pass isolated in its own commit.
   - Add a LICENSE file (owner decision: MIT suggested for adoption).
