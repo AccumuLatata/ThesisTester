@@ -76,6 +76,11 @@ PYTHONPATH=/workspace python3 examples/studies/program_b/validate_program_b_yaml
 PYTHONPATH=/workspace python3 examples/studies/program_b/validate_program_b_yaml.py \
   examples/studies/program_b_run2/manifest.yaml
 # ok 20 studies / 898 cells
+
+export THESISTESTER_STORE_DIR=/tmp/qi07-store-review-suite
+pytest -q --tb=no
+# review-pass: 3966 passed, 5 skipped in 145.81s (identical to first-pass 3966/5)
+git status --porcelain
 ```
 
 Probe script lived at `/tmp/qi07_probes.py` (first-pass; not retained). Review re-ran `/tmp/qi07-review/verify_review.py` (pasted in §10). Transcripts are not committed.
@@ -445,4 +450,4 @@ python3 -m thesistester study report /tmp/qi07-does-not-exist   # rc 2
 
 ## Research-only sentence
 
-No tracked file outside `docs/quality/` changed; `pytest -q` unchanged.
+No tracked file outside `docs/quality/` changed; `pytest -q` unchanged (3966 passed, 5 skipped).
