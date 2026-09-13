@@ -266,10 +266,19 @@ def test_overlapping_oos_windows_require_explicit_ownership_policy():
     assert rejected.stitched_equity.empty
     assert not rejected.oos_trades.empty
     assert not rejected.oos_trades["trade_id"].duplicated().any()
+    assert (
+        "OOS windows overlap; stitched equity is unavailable under overlap_policy='reject'."
+        in rejected.warnings
+    )
+    # S5 identity: reject withholds the stitch; the fold-sum is still computed.
+    assert rejected.summary["aggregate_test_total_r"] is not None
+    assert rejected.summary["stitched_oos_total_r"] is None
     first = run_walk_forward_sl_tp(**common, overlap_policy="first")
     assert first.summary["stitched_oos_status"] == "ok"
     assert not first.oos_trades.duplicated(["global_entry_bar_index", "signal_id"]).any()
     assert not first.oos_trades["trade_id"].duplicated().any()
+    # overlap_policy does not change the fold-sum (reject ≠ first stitch).
+    assert first.summary["aggregate_test_total_r"] == rejected.summary["aggregate_test_total_r"]
 
 
 def test_session_future_shock_does_not_change_existing_folds():

@@ -666,7 +666,7 @@ OTF validation matrix, diagnostic only
 | Control / battery | Meaning | Common pitfall |
 |---|---|---|
 | **Run Validation** | Bootstrap CI, sign-flip permutation, trade-count, grid-overfit checks | CI including zero ≠ “confirmed edge” |
-| Walk-forward / OOS (+ optional WFA matrix) | Folded train/test diagnostics | “Diagnostic only — walk-forward can still overfit” |
+| Walk-forward / OOS (+ optional WFA matrix) | Folded train/test diagnostics | Walk-forward can still overfit. `aggregate_test_total_r` is a fold-sum (can double-count overlapping OOS); `reject` withholds stitch only (M9) |
 | Overfitting-detection battery | CSCV/PBO, deflated Sharpe, vs-random | Quantifies selection risk, not future profit |
 | Price-series noise test | Local input sensitivity | Not a live-edge certificate |
 | Parameter sensitivity | One-at-a-time local flatness | Flat ≠ durable |

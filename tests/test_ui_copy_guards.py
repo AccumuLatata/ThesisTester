@@ -403,6 +403,182 @@ _PHASE8_GLOSSARY_NEEDLES = (
 )
 
 
+_WFA_OVERLAP_HELP_NEEDLES = (
+    "aggregate_test_total_r",
+    "fold-sum",
+    "stitched equity",
+)
+_WFA_AGGREGATE_CAPTION_NEEDLES = (
+    "aggregate_test_total_r",
+    "fold-sum",
+    "double-count",
+    "stitched equity",
+    "does not deduplicate",
+)
+_WFA_AGGREGATE_METRIC_LABEL = "Aggregate test total R"
+_WFA_HELP_OVERCLAIM = "avoids double-counting"
+_WFA_USER_GUIDE_H2 = "Validation and robustness"
+_WFA_GLOSSARY_H2 = "Walk-forward / OOS diagnostics metrics"
+
+
+def _assert_wfa_m9_copy(source: str) -> None:
+    """QI-05-07 / M9: overlap help + caption name fold-sum; reject withholds stitch.
+
+    Caption is AST-bound to ``st.caption`` *after* the Aggregate test total R
+    metric (``st.metric`` or column ``.metric``). File-level / ``help=`` needles
+    false-green — same class as QI-05-09 Policy and A-3 H12. Help must not
+    restore the pre-A-5 overclaim that reject avoids double-counting.
+    """
+    call = _selectbox_call(source, "Overlapping OOS ownership")
+    help_text = _kw_str(call, "help")
+    assert help_text, "Overlapping OOS ownership selectbox must have help="
+    missing_help = [n for n in _WFA_OVERLAP_HELP_NEEDLES if n not in help_text]
+    assert missing_help == [], f"overlap help missing {missing_help}: {help_text!r}"
+    assert _WFA_HELP_OVERCLAIM not in help_text.lower(), (
+        "overlap help must not claim reject avoids double-counting "
+        f"(reject withholds stitch only): {help_text!r}"
+    )
+
+    tree = ast.parse(source)
+    metric_lines = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _metric_label(node) == _WFA_AGGREGATE_METRIC_LABEL
+    ]
+    assert metric_lines, f"missing metric({_WFA_AGGREGATE_METRIC_LABEL!r})"
+
+    caption_lines: list[int] = []
+    matching: list[str] = []
+    for node in ast.walk(tree):
+        if not _is_st_attr_call(node, "caption") or not node.args:
+            continue
+        text = _literal_str(node.args[0])
+        if text is None:
+            continue
+        if all(n in text for n in _WFA_AGGREGATE_CAPTION_NEEDLES):
+            caption_lines.append(node.lineno)
+            matching.append(text)
+    assert matching, (
+        f"WFA st.caption missing aggregate fold-sum needles {list(_WFA_AGGREGATE_CAPTION_NEEDLES)}"
+    )
+    assert min(caption_lines) > min(metric_lines), (
+        "WFA st.caption must follow Aggregate test total R metric"
+    )
+
+
+def test_wfa_overlap_help_and_aggregate_caption_name_fold_sum():
+    """QI-05-07 / M9: overlap help + caption name fold-sum, not stitch-only."""
+    _assert_wfa_m9_copy(_read(PAGES / "10_Validation.py"))
+
+
+def test_wfa_aggregate_caption_guard_requires_st_caption_not_help_text():
+    """Caption needles inside overlap help= must not satisfy the caption assert."""
+    fake = (
+        "import streamlit as st\n"
+        "st.selectbox(\n"
+        '    "Overlapping OOS ownership",\n'
+        '    options=["reject", "first", "last"],\n'
+        '    help="Reject withholds stitched equity. `aggregate_test_total_r` is a '
+        'fold-sum and can double-count overlapping OOS trades.",\n'
+        ")\n"
+        'a1.metric("Aggregate test total R", "1.0")\n'
+    )
+    try:
+        _assert_wfa_m9_copy(fake)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc)
+    else:
+        raise AssertionError("help= caption needles must not false-green st.caption")
+
+
+def test_wfa_aggregate_caption_guard_requires_metric_before_caption():
+    """Caption without the Aggregate metric, or before it, must fail closed."""
+    caption = (
+        "st.caption(\n"
+        '    "`aggregate_test_total_r` is a fold-sum of per-fold `test_total_r`. "\n'
+        '    "Overlapping OOS windows can double-count the same trade R. "\n'
+        '    "`reject` withholds stitched equity; it does not deduplicate this sum (M9)."\n'
+        ")\n"
+    )
+    select = (
+        "import streamlit as st\n"
+        "st.selectbox(\n"
+        '    "Overlapping OOS ownership",\n'
+        '    options=["reject", "first", "last"],\n'
+        '    help="Reject withholds stitched equity. `aggregate_test_total_r` is a '
+        'fold-sum of `test_total_r`.",\n'
+        ")\n"
+    )
+    try:
+        _assert_wfa_m9_copy(select + caption)
+    except AssertionError as exc:
+        assert "metric" in str(exc)
+    else:
+        raise AssertionError("caption without Aggregate metric must not pass")
+
+    reversed_order = select + caption + 'a1.metric("Aggregate test total R", "1.0")\n'
+    try:
+        _assert_wfa_m9_copy(reversed_order)
+    except AssertionError as exc:
+        assert "must follow" in str(exc)
+    else:
+        raise AssertionError("caption before Aggregate metric must not pass")
+
+
+def test_wfa_overlap_help_guard_rejects_avoids_double_counting_overclaim():
+    """Pre-A-5 'Reject avoids double-counting' must not pass with fold-sum needles."""
+    fake = (
+        "import streamlit as st\n"
+        "st.selectbox(\n"
+        '    "Overlapping OOS ownership",\n'
+        '    options=["reject", "first", "last"],\n'
+        '    help="Reject avoids double-counting by withholding stitched equity. '
+        '`aggregate_test_total_r` is a fold-sum of `test_total_r`.",\n'
+        ")\n"
+        'a1.metric("Aggregate test total R", "1.0")\n'
+        "st.caption(\n"
+        '    "`aggregate_test_total_r` is a fold-sum of per-fold `test_total_r`. "\n'
+        '    "Overlapping OOS windows can double-count the same trade R. "\n'
+        '    "`reject` withholds stitched equity; it does not deduplicate this sum (M9)."\n'
+        ")\n"
+    )
+    try:
+        _assert_wfa_m9_copy(fake)
+    except AssertionError as exc:
+        assert "avoids double-counting" in str(exc)
+    else:
+        raise AssertionError("reject-avoids-double-counting help must fail closed")
+
+
+def test_user_guide_validation_h2_names_m9_fold_sum():
+    """USER_GUIDE Validation H2 (Help-allowlisted) names fold-sum + reject stitch-only."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _WFA_USER_GUIDE_H2)
+    missing = [
+        n for n in ("aggregate_test_total_r", "fold-sum", "reject", "stitch only") if n not in body
+    ]
+    assert missing == [], f"Validation H2 missing M9 needles {missing}"
+    assert len(body) <= 4500, f"Validation H2 exceeds USER_GUIDE soft budget: {len(body)}"
+
+
+def test_metrics_glossary_wfa_h2_names_m9_fold_sum():
+    """Glossary Walk-forward H2 names fold-sum; Notes-only needles must not bind."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "METRICS_GLOSSARY.md"), _WFA_GLOSSARY_H2)
+    missing = [n for n in ("aggregate_test_total_r", "fold-sum", "double-count") if n not in body]
+    assert missing == [], f"Walk-forward H2 missing M9 needles {missing}"
+    fake = (
+        "## Notes\n"
+        "aggregate_test_total_r fold-sum double-count does not deduplicate\n"
+        "## Grid Search directional metrics\n"
+        "unrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _WFA_GLOSSARY_H2)
+    except AssertionError as exc:
+        assert "Walk-forward" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Walk-forward H2")
+
+
 def test_phase8_permutation_copy_is_diagnostic_not_confirmatory():
     """QI-05-05 / H13: no success chrome on permutation p; no confirmatory P(mean R > 0)."""
     _assert_phase8_permutation_copy(_read(PAGES / "10_Validation.py"))

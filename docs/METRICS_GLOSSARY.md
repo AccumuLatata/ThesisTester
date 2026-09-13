@@ -348,7 +348,10 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
 - **Test expectancy (R)**: expectancy on the out-of-sample test window using the train-selected SL/TP.
 - **Degradation expectancy (R)**: `test_expectancy_r - train_expectancy_r` per fold.
 - **OOS profitable fold rate**: fraction of valid folds with `test_expectancy_r > 0`.
-- **Aggregate test total R**: sum of `test_total_r` across valid walk-forward folds.
+- **Aggregate test total R** (`aggregate_test_total_r`): sum of `test_total_r`
+  across valid walk-forward folds. This is a **fold-sum**, not a single OOS
+  book. Overlapping test windows can double-count the same trade R; `reject`
+  withholds stitched equity and does not deduplicate this sum (M9).
 - **Expectancy retention ratio**: `test_expectancy_r / train_expectancy_r`
   when train expectancy is positive; otherwise unavailable.
 - **Expectancy degradation percentage**: `retention_ratio - 1`.
