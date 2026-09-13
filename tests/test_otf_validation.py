@@ -394,10 +394,15 @@ def test_zero_trade_metrics_are_none_or_zero():
         assert row["oos_expectancy_r"] is None
 
 
-def test_simulate_empty_accepted_stays_empty_frame():
+def test_simulate_empty_accepted_stays_empty_frame(monkeypatch):
     """QI-05-12: empty-input → empty trades frame (honest 0 trades)."""
+    from thesistester.analytics import otf_validation as ov
     from thesistester.engine.backtest import _empty_trades_df
 
+    def boom(*_args, **_kwargs):
+        raise ValueError("engine boom")
+
+    monkeypatch.setattr(ov, "simulate_trades", boom)
     source = _source_bars(count=30)
     out = _simulate(source, pd.DataFrame(), TICK, PV, SL_TICKS, TP_TICKS, {})
     assert out.empty
@@ -415,16 +420,22 @@ def test_simulate_engine_error_does_not_look_like_zero_trades(monkeypatch):
     source_text = Path("thesistester/analytics/otf_validation.py").read_text(encoding="utf-8")
     tree = ast.parse(source_text)
     simulate_fn = next(
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "_simulate"
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_simulate"
     )
     body = ast.get_source_segment(source_text, simulate_fn)
     assert body is not None
     assert "pragma: no cover" not in body
-    assert "except Exception" not in body
+    assert not any(isinstance(node, ast.ExceptHandler) for node in ast.walk(simulate_fn))
 
     source, sigs = _source_and_signals_for_validation()
+    matrix_kwargs = dict(
+        source_df=source,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+        session_timezone=TZ,
+    )
 
     def boom(*_args, **_kwargs):
         raise ValueError("engine boom")
@@ -432,16 +443,20 @@ def test_simulate_engine_error_does_not_look_like_zero_trades(monkeypatch):
     monkeypatch.setattr(ov, "simulate_trades", boom)
 
     with pytest.raises(ValueError, match="engine boom"):
-        run_otf_validation_matrix(
-            source_df=source,
-            candidate_signals=sigs,
-            tick_size=TICK,
-            point_value=PV,
-            stop_loss_ticks=SL_TICKS,
-            take_profit_ticks=TP_TICKS,
-            session_timezone=TZ,
-        )
+        run_otf_validation_matrix(candidate_signals=sigs, **matrix_kwargs)
+    # 1 signal + default 0.7 → n_train=0; only the OOS cell calls simulate.
     with pytest.raises(ValueError, match="engine boom"):
+        run_otf_validation_matrix(candidate_signals=_signals(n=1), **matrix_kwargs)
+    with pytest.raises(ValueError, match="engine boom"):
+        _simulate(source, sigs, TICK, PV, SL_TICKS, TP_TICKS, {})
+
+    def type_boom(*_args, **_kwargs):
+        raise TypeError("engine type boom")
+
+    monkeypatch.setattr(ov, "simulate_trades", type_boom)
+    with pytest.raises(ValueError, match="engine type boom"):
+        run_otf_validation_matrix(candidate_signals=sigs, **matrix_kwargs)
+    with pytest.raises(TypeError, match="engine type boom"):
         _simulate(source, sigs, TICK, PV, SL_TICKS, TP_TICKS, {})
 
 

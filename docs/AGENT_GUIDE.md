@@ -638,8 +638,11 @@ Expect exactly these six strings, with `protected: true` and
 `run_otf_validation_matrix` / `_simulate` (QI-05-12): empty accepted
 signals stay an empty trades frame (honest 0 trades). A `simulate_trades`
 engine error **propagates** (typed); it must not look like a 0-trade
-matrix row. AH3 train-price prefix slicing is unchanged. Validation page
-already surfaces `ValueError` as `st.error`. Do not restore
+matrix row. `_simulate` has no `except`. The matrix loop re-raises
+`ValueError` unchanged and wraps other exceptions as `ValueError`
+(same narrow-guard as `apply_otf_filter`). AH3 train-price prefix
+slicing is unchanged. Validation page already surfaces `ValueError`
+as `st.error`. Do not restore
 `except Exception: return _empty_trades_df()`.
 
 ## WFO OTF history policy

@@ -349,9 +349,12 @@ def run_otf_validation_matrix(
     ValueError
         If ``train_fraction`` is not in ``(0.0, 1.0)``, if any matrix
         config fails normalization (should not occur for fixed configs),
-        or if ``simulate_trades`` raises a typed engine error (QI-05-12).
-        Empty accepted signals stay an empty trades frame; they are not
-        an error.
+        or if a cell's ``simulate_trades`` fails (QI-05-12). Typed engine
+        ``ValueError`` propagates unchanged; other ``simulate_trades``
+        exceptions are wrapped as ``ValueError`` so they stay typed at
+        the Validation-page ``st.error`` boundary and cannot look like
+        0 trades. Empty accepted signals stay an empty trades frame;
+        they are not an error.
 
     Notes
     -----
@@ -424,24 +427,32 @@ def run_otf_validation_matrix(
 
         # Simulate trades. Train prices are the prefix before the first OOS
         # signal bar; OOS evaluation keeps the full frame.
-        train_trades = _simulate(
-            train_price_df,
-            accepted_train,
-            tick_size,
-            point_value,
-            stop_loss_ticks,
-            take_profit_ticks,
-            exec_kw,
-        )
-        oos_trades = _simulate(
-            source_df,
-            accepted_oos,
-            tick_size,
-            point_value,
-            stop_loss_ticks,
-            take_profit_ticks,
-            exec_kw,
-        )
+        # QI-05-12 / MG-24: ValueError propagates; any other simulate
+        # failure is wrapped (narrow-guard, same as apply_otf_filter).
+        # Do not return an empty trades frame here.
+        try:
+            train_trades = _simulate(
+                train_price_df,
+                accepted_train,
+                tick_size,
+                point_value,
+                stop_loss_ticks,
+                take_profit_ticks,
+                exec_kw,
+            )
+            oos_trades = _simulate(
+                source_df,
+                accepted_oos,
+                tick_size,
+                point_value,
+                stop_loss_ticks,
+                take_profit_ticks,
+                exec_kw,
+            )
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError(f"OTF simulation failed for configuration '{label}': {exc}") from exc
 
         # Compute metrics.
         tm = _period_metrics(train_trades)
