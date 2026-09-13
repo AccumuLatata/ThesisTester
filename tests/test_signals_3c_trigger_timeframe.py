@@ -14,7 +14,6 @@ Covers:
 
 from __future__ import annotations
 
-
 import numpy as np
 import pandas as pd
 
@@ -1338,6 +1337,58 @@ def test_project_zones_empty_input():
     trigger_df = pd.DataFrame()
     result = _project_zones_to_trigger_df(zones, trigger_df)
     assert result.empty
+
+
+# ===========================================================================
+# QI-03-06 / A-13: H14 status lock (disclosure only; copy probes in copy_guards)
+# ===========================================================================
+
+_H14_EARLY_WINDOW_DVWAP = 5200.125
+_H14_BASE_END_DVWAP = 5200.500
+
+
+def test_h14_projection_keeps_early_window_developing_price():
+    """QI-3 Drift-VWAP HTF recipe: projection remaps T; prices stay early-window.
+
+    Locks current H14 status. Does not demand snap-to-``base_end``.
+    Caption/help AST probes live in ``tests/test_ui_copy_guards.py``.
+    """
+    base_rows = [
+        {"open": 5200.00, "high": 5200.25, "low": 5199.75, "close": 5200.00},
+        {"open": 5200.00, "high": 5200.50, "low": 5200.00, "close": 5200.25},
+        {"open": 5200.25, "high": 5200.75, "low": 5200.25, "close": 5200.50},
+        {"open": 5200.50, "high": 5201.00, "low": 5200.50, "close": 5200.75},
+        {"open": 5200.75, "high": 5201.25, "low": 5200.75, "close": 5201.00},
+    ]
+    base_df = _base_df(base_rows, freq="1min").reset_index(drop=True)
+    trigger_df = _prepare_trigger_dataframe(base_df, "5min")
+    assert len(trigger_df) == 1
+    early_ts = base_df.iloc[1]["timestamp"]
+    htf_end = trigger_df.iloc[0]["trigger_bar_end_timestamp"]
+    zones = pd.DataFrame(
+        [
+            {
+                "bar_index": 1,
+                "timestamp": early_ts,
+                "zone_low": _H14_EARLY_WINDOW_DVWAP - TICK,
+                "zone_high": _H14_EARLY_WINDOW_DVWAP + TICK,
+                "zone_mid": _H14_EARLY_WINDOW_DVWAP,
+                "tested_level_price": _H14_EARLY_WINDOW_DVWAP,
+                "level_count": 1,
+                "level_names": "dVWAP",
+                "level_prices": str(_H14_EARLY_WINDOW_DVWAP),
+            }
+        ]
+    )
+    projected = _project_zones_to_trigger_df(zones, trigger_df)
+    assert len(projected) == 1
+    row = projected.iloc[0]
+    assert int(row["bar_index"]) == 0
+    assert row["timestamp"] == htf_end
+    assert float(row["zone_mid"]) == _H14_EARLY_WINDOW_DVWAP
+    assert float(row["tested_level_price"]) == _H14_EARLY_WINDOW_DVWAP
+    assert float(row["zone_mid"]) != _H14_BASE_END_DVWAP
+    assert early_ts != htf_end
 
 
 # ===========================================================================
