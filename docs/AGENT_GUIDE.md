@@ -359,7 +359,13 @@ Every request must first parse as an `AssistantRequest`, then pass
   `cancel_run()`, validate/confirm/explain/compare/export/portfolio/handoff).
   The Research Assistant page must remain presentation-only. Every
   non-unsupported registry capability must have a `HANDLER_REGISTRY` entry;
-  otherwise mark it `unsupported` with a limitation. Structured errors must
+  otherwise mark it `unsupported` with a limitation. The QI-09-04 / B-8
+  zero-mention routed IDs (DATA.* defaults, HOME.workflow_guide,
+  VALIDATION.run_otf_matrix, BACKTEST/GRID.manage_execution_defaults,
+  CLASSIC.propose_page_change) must have a dispatch or payload test in
+  `tests/test_assistant_handlers.py`; `get_handler` is unit-tested there.
+  Other routed IDs keep a dispatch/payload test (any test file) or an
+  explicit untestable tag. Structured errors must
   include `category`, `retryable`, and `remediation`. Apply/Draft/Validate/
   Cancel/Compare/Portfolio outcomes must flash via `assistant_flash` (Advanced
   defaults closed on the chat-first hub). Confirm lives under Plan review after
