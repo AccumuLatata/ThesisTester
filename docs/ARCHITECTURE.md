@@ -938,7 +938,12 @@ after admission from `ordered_candidates` + accepted trades +
 rows). It is **not** a `_BACKTEST_META_KEYS` / `trade_summary.json`
 member and is not hashed.
 `api.run_backtest` / `run_experiment` copy it onto the in-memory result/state
-under `direction_collision_diagnostic`. DA3 reports the active
+under `direction_collision_diagnostic`. Classic Backtest persists the same
+dict after a `return_result` run (`thesistester/backtest_page_helpers.py`)
+and captions it next to the skip table. The key is additive and **not**
+hashed (AH §2 item 8). AH4 decision: **clear-only** when it joins
+`_MANAGED_RESEARCH_KEYS` (QR A-7 / QI-06-03); sticky on bundle apply until
+then. DA3 reports the active
 `same_bar_opposite_direction` token in `policy`. `skip_both` collisions
 appear as `resolved_none` without a second pass; conflicted candidates stay
 in `ordered_candidates`. The policy is a no-op under `allow_all` and
@@ -1493,7 +1498,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `backtest_intrabar_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R12 schema-versioned both-hit/ambiguity diagnostic |
 | `backtest_exit_management_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R13 schema-versioned BE/trailing parameter snapshot |
 | `backtest_exit_management_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R13 schema-versioned BE/TRAIL counts and adjustment diagnostics |
-| `direction_collision_diagnostic` | `run_backtest` / `run_experiment` (DA1) | in-memory only | Same-bar opposite-direction pair counts. **Not** in `_BACKTEST_META_KEYS` / hashed `session_keys`. DA3 `policy` reports `legacy` / `skip_both` / `raise`. |
+| `direction_collision_diagnostic` | Backtest persist after `return_result` (`pages/7_Backtest.py`); also `run_backtest` / `run_experiment` (DA1) | Backtest caption next to skip table | Same-bar opposite-direction pair counts. Additive unhashed session key — **not** in `_BACKTEST_META_KEYS` / hashed `session_keys` (AH §2 item 8). AH4: **clear-only** when it joins `_MANAGED_RESEARCH_KEYS` (A-7); sticky until then. DA3 `policy` reports `legacy` / `skip_both` / `raise`. |
 | `backtest_same_bar_opposite_direction` | Backtest (`pages/7_Backtest.py`) advanced expander | Backtest `simulate_trades`; save/reset via `execution_defaults` | Widget token `legacy` (default) / `skip_both` / `raise`. Not a hashed bundle key. |
 | DA2 study-index keys (`long_trade_count`, `short_trade_count`, `long_expectancy_r`, `short_expectancy_r`, `long_share`, `directional_integrity`, `collision_pairs`, `collision_resolved_long`) | `execute_study_cell` / `_index_row_from_existing_bundle` / `study report --rebuild-direction` | `results_index.csv` (`STUDY_INDEX_KEYS` only; not R18 / not hashed) | Long/short n and E plus integrity class. Collision copies are live-cell only. |
 | `grid_results` | Grid (`pages/8_Grid_Search.py`) | Validation/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` one row per SL/TP cell |

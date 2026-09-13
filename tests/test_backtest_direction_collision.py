@@ -11,6 +11,11 @@ import pandas as pd
 import pytest
 
 from thesistester.api import run_backtest
+from thesistester.backtest_page_helpers import (
+    DIRECTION_COLLISION_SESSION_KEY,
+    format_direction_collision_caption,
+    persist_direction_collision_diagnostic,
+)
 from thesistester.engine.backtest import (
     _SKIPPED_SIGNAL_COLUMNS,
     _TRADE_COLUMNS,
@@ -172,6 +177,21 @@ def test_legacy_return_shapes_do_not_expose_diagnostic():
     detailed = simulate_trades(**kwargs, return_result=True)
     assert isinstance(detailed, SimulationResult)
     assert "candidate_pairs" in detailed.direction_collision_diagnostic
+
+
+def test_page_helper_persists_candidate_pairs_after_return_result_run():
+    """QI-04-06 / A-2: classic persist stores DA1 after return_result=True."""
+    result = _simulate("allow_all")
+    assert isinstance(result, SimulationResult)
+    session: dict[str, object] = {}
+    stored = persist_direction_collision_diagnostic(session, result)
+    assert stored["candidate_pairs"] == 3
+    assert session[DIRECTION_COLLISION_SESSION_KEY]["candidate_pairs"] == 3
+    assert session[DIRECTION_COLLISION_SESSION_KEY] is stored
+    caption = format_direction_collision_caption(stored)
+    assert "3 candidate pair" in caption
+    assert "skip table is empty" in caption
+    assert "not a hashed bundle member" in caption
 
 
 def test_empty_signals_return_zero_diagnostic():

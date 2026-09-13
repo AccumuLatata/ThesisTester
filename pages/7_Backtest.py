@@ -13,6 +13,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
+from thesistester.backtest_page_helpers import (
+    DIRECTION_COLLISION_SESSION_KEY,
+    format_direction_collision_caption,
+    persist_direction_collision_diagnostic,
+)
 from thesistester.assistant import AssistantOrchestrator
 from thesistester.classic_context import get_active_thesis_id, render_classic_thesis_chrome
 from thesistester.classic_ledger import (
@@ -679,6 +684,7 @@ if run_btn:
             st.session_state["backtest_exit_management_diagnostic"] = (
                 simulation.exit_management_diagnostic
             )
+            persist_direction_collision_diagnostic(st.session_state, simulation)
 
             if _ledger_handle is not None:
                 _ledger_phase = "complete"
@@ -815,6 +821,9 @@ st.caption(
     f"outside entry window: {_skip_counts['outside_entry_window']} · "
     f"after entry cutoff: {_skip_counts['after_entry_cutoff']} · "
     f"exposure / other: {_skip_counts['other']}"
+)
+st.caption(
+    format_direction_collision_caption(st.session_state.get(DIRECTION_COLLISION_SESSION_KEY))
 )
 if isinstance(skipped_signals, pd.DataFrame) and not skipped_signals.empty:
     st.subheader("Skipped signals")

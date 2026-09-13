@@ -382,7 +382,7 @@ Medium `Verified defect` rows proposed accepted in the same signature: QI-06-03 
 
 | Workstream | Status | PRs planned | Findings owned (open / locked residual / dup) |
 |---|---|---:|---|
-| QR-A Honesty and correctness | In progress (A-1) | 22 | 22 / 4 / 0 |
+| QR-A Honesty and correctness | In progress (A-1 · A-2) | 22 | 22 / 4 / 0 |
 | QR-B Safety net | Not started | 19 | 19 / 0 / 0 |
 | QR-C Structural refactors | Not started | 25 | 27 / 0 / 0 |
 | QR-D UI decomposition / state | Not started | 10 | 10 / 0 / 0 |
