@@ -214,8 +214,10 @@ Golden outputs are **never** silently re-recorded.
 4. Regeneration commands:
    - Legacy: `python -m tests.fixtures.golden.record_golden --confirm-regenerate`
    - Enabled OTF: `python -m tests.fixtures.golden.record_otf_enabled_golden --confirm-regenerate`
+   - Default-on branches (B-3): `python -m tests.fixtures.golden.record_default_on_golden --confirm-regenerate`
 
-   Both refuse to write any files without the flag.
+   Each recorder refuses to write any files without the flag. The default-on
+   recorder never rewrites the legacy artifact set.
 
 ## 5. Repository plumbing
 
