@@ -33,6 +33,10 @@ DATA_PAGE_INVALIDATE_SOURCE_KEY = "_data_page_invalidate_source"
 # so leftover active dataset A (or the Data-page sample) cannot refill
 # ``data`` beside restored trades B. Cleared on Data-page successful load.
 BUNDLE_IMPORT_OMITTED_DATA_KEY = "bundle_import_omitted_data"
+# QI-06-09 / QR A-18: untrusted zip bound. Reject named members before
+# ``ZipFile.read``. Not a hash gate (AH §2 item 8 — page 12 stays schema-only).
+MAX_BUNDLE_UPLOAD_BYTES = 256 * 1024 * 1024
+MAX_BUNDLE_MEMBER_BYTES = 256 * 1024 * 1024
 
 _DATASET_META_KEYS = (
     "dataset_id",
@@ -790,22 +794,35 @@ def peek_research_identity(bundle: Any) -> dict[str, Any] | None:
 
 def _read_uploaded_bytes(uploaded_file: Any) -> bytes:
     if isinstance(uploaded_file, bytes):
-        return uploaded_file
-    if hasattr(uploaded_file, "getvalue"):
-        return uploaded_file.getvalue()
-    if hasattr(uploaded_file, "read"):
+        data = uploaded_file
+    elif hasattr(uploaded_file, "getvalue"):
+        data = uploaded_file.getvalue()
+    elif hasattr(uploaded_file, "read"):
         data = uploaded_file.read()
         if not isinstance(data, bytes):
             raise ValueError("Uploaded bundle content must be bytes.")
-        return data
-    raise ValueError("Unsupported uploaded bundle object.")
+    else:
+        raise ValueError("Unsupported uploaded bundle object.")
+    if len(data) > MAX_BUNDLE_UPLOAD_BYTES:
+        raise ValueError(f"Research bundle exceeds the {MAX_BUNDLE_UPLOAD_BYTES} byte upload cap.")
+    return data
+
+
+def _read_zip_member_bytes(zf: zipfile.ZipFile, filename: str) -> bytes:
+    """Read a named zip member after rejecting oversize ``ZipInfo.file_size``."""
+    try:
+        info = zf.getinfo(filename)
+    except KeyError as exc:
+        raise ValueError(f"Bundle is missing required file '{filename}'.") from exc
+    if info.file_size > MAX_BUNDLE_MEMBER_BYTES:
+        raise ValueError(
+            f"Bundle member '{filename}' exceeds the {MAX_BUNDLE_MEMBER_BYTES} byte size cap."
+        )
+    return zf.read(filename)
 
 
 def _read_json_from_zip(zf: zipfile.ZipFile, filename: str) -> dict[str, Any]:
-    try:
-        raw = zf.read(filename)
-    except KeyError as exc:
-        raise ValueError(f"Bundle is missing required file '{filename}'.") from exc
+    raw = _read_zip_member_bytes(zf, filename)
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -816,10 +833,7 @@ def _read_json_from_zip(zf: zipfile.ZipFile, filename: str) -> dict[str, Any]:
 
 
 def _read_parquet_from_zip(zf: zipfile.ZipFile, filename: str) -> pd.DataFrame:
-    try:
-        raw = zf.read(filename)
-    except KeyError as exc:
-        raise ValueError(f"Bundle is missing required file '{filename}'.") from exc
+    raw = _read_zip_member_bytes(zf, filename)
     try:
         return pd.read_parquet(io.BytesIO(raw))
     except Exception as exc:  # pragma: no cover - pandas/pyarrow exception types vary

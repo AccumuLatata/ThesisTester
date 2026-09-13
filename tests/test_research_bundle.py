@@ -759,6 +759,61 @@ def test_unknown_zip_files_are_ignored():
     assert "data" in loaded["session_values"]
 
 
+def test_path_traversal_member_is_ignored():
+    """QI-06-09 / QI-6 §9: traversal members are not extracted; known names load."""
+    bundle_bytes = build_research_bundle({"data": _dataset_df()})
+    output = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as src, zipfile.ZipFile(output, "w") as dst:
+        for name in src.namelist():
+            dst.writestr(name, src.read(name))
+        dst.writestr("../outside.parquet", b"PWN")
+        dst.writestr("padding.bin", b"\x00" * 2048)
+
+    loaded = load_research_bundle(output.getvalue())
+    assert "data" in loaded["session_values"]
+    restored: dict = {}
+    apply_research_bundle_to_session(loaded, restored)
+    assert "../outside.parquet" not in restored
+    assert "padding.bin" not in restored
+    assert "data" in restored
+
+
+def test_oversized_named_member_rejected_before_read(monkeypatch):
+    """QI-06-09: ZipInfo.file_size over cap → ValueError before ZipFile.read."""
+    bundle_bytes = build_research_bundle({"data": _dataset_df()})
+    with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as zf:
+        manifest_size = zf.getinfo("manifest.json").file_size
+        parquet_size = zf.getinfo("dataset.parquet").file_size
+    assert parquet_size > manifest_size
+
+    monkeypatch.setattr(research_bundle, "MAX_BUNDLE_MEMBER_BYTES", manifest_size)
+    read_names: list[str] = []
+    real_read = zipfile.ZipFile.read
+
+    def _tracked_read(self, name, *args, **kwargs):
+        read_names.append(str(name))
+        return real_read(self, name, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", _tracked_read)
+    with pytest.raises(ValueError, match="size cap"):
+        load_research_bundle(bundle_bytes)
+    assert "dataset.parquet" not in read_names
+
+
+def test_oversized_upload_rejected_before_zip_open(monkeypatch):
+    monkeypatch.setattr(research_bundle, "MAX_BUNDLE_UPLOAD_BYTES", 16)
+    with pytest.raises(ValueError, match="upload cap"):
+        load_research_bundle(b"PK\x03\x04" + b"x" * 32)
+
+
+def test_honest_bundle_fixture_still_loads():
+    """QI-06-09: honest export/import stays under the default caps."""
+    bundle_bytes = build_research_bundle({"data": _dataset_df()})
+    loaded = load_research_bundle(bundle_bytes)
+    assert "data" in loaded["session_values"]
+    assert len(loaded["session_values"]["data"]) == 3
+
+
 def test_missing_manifest_raises_clear_error():
     raw = io.BytesIO()
     with zipfile.ZipFile(raw, "w") as zf:
