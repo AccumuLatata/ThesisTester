@@ -117,9 +117,7 @@ def test_quality_reports_are_listed() -> None:
     )
 
     on_disk = tuple(sorted(p.name for p in (DOCS / "quality").glob("QI-*.md")))
-    assert on_disk == EXPECTED_QI_REPORTS, (
-        f"docs/quality/ QI-*.md set drifted: {on_disk}"
-    )
+    assert on_disk == EXPECTED_QI_REPORTS, f"docs/quality/ QI-*.md set drifted: {on_disk}"
 
     quality_index = QUALITY_README.read_text(encoding="utf-8")
     reports = _section(
@@ -237,9 +235,7 @@ def test_dual_list_detector_flags_da_in_both_shelves() -> None:
         f"- [{CONTRACT_ONLY[0]}]({CONTRACT_ONLY[0]})\n"
         "## Research\n"
     )
-    primary = _resolved_files(
-        _section(fake, "## Primary", "## Normative", source_name="x"), INDEX
-    )
+    primary = _resolved_files(_section(fake, "## Primary", "## Normative", source_name="x"), INDEX)
     contracts = _resolved_files(
         _section(fake, "## Normative", "## Research", source_name="x"), INDEX
     )
