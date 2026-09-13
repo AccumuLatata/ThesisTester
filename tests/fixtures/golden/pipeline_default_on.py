@@ -19,6 +19,7 @@ from .generate_default_on import (
     generate_three_c_sl_first_dataset,
     generate_three_c_sl_first_signals,
     generate_trail_dataset,
+    generate_trail_signal,
 )
 
 _BASE = {
@@ -130,6 +131,7 @@ def run_three_c_sl_first_pipeline() -> dict[str, Any]:
     result = simulate_trades(data, signals, return_result=True, **THREE_C_SL_FIRST_CONFIG)
     filled = signals[signals["status"] == "filled"]
     void = signals[signals["status"] == "void"]
+    skipped = result.skipped_signals
     projection = {
         "family": "three_c_sl_first",
         "intrabar_model": "sl_first",
@@ -140,6 +142,13 @@ def run_three_c_sl_first_pipeline() -> dict[str, Any]:
         "theoretical_exit_prices": [
             float(v) for v in result.trades["theoretical_exit_price"].tolist()
         ],
+        # 3c-void-no-skip (§5.3 item 22): void is silent — no skip row.
+        "skip_signal_ids": [int(v) for v in skipped["signal_id"].tolist()]
+        if skipped is not None and not skipped.empty
+        else [],
+        "skip_reasons": [str(v) for v in skipped["skip_reason"].tolist()]
+        if skipped is not None and not skipped.empty
+        else [],
     }
     return {
         "data": data,
@@ -172,9 +181,7 @@ def run_be_pipeline() -> dict[str, Any]:
 
 def run_trail_pipeline() -> dict[str, Any]:
     data = generate_trail_dataset()
-    signals = generate_be_trail_signal().assign(
-        timestamp=pd.Timestamp("2026-01-05 10:30", tz=TIMEZONE)
-    )
+    signals = generate_trail_signal()
     result = simulate_trades(data, signals, return_result=True, **TRAIL_CONFIG)
     projection = {
         "family": "be_trail",

@@ -116,6 +116,7 @@ def generate_three_c_sl_first_signals() -> pd.DataFrame:
     void = {
         **filled,
         "signal_id": 2,
+        "timestamp": pd.Timestamp("2026-01-05 09:30", tz=TIMEZONE),
         "bar_index": 0,
         "entry_bar_index": 0,
         "status": "void",
@@ -144,6 +145,10 @@ def generate_trail_dataset() -> pd.DataFrame:
 
 def generate_be_trail_signal() -> pd.DataFrame:
     return pd.DataFrame([_touch_signal(0, signal_id=1, timestamp="2026-01-05 09:30")])
+
+
+def generate_trail_signal() -> pd.DataFrame:
+    return pd.DataFrame([_touch_signal(0, signal_id=1, timestamp="2026-01-05 10:30")])
 
 
 def generate_opposite_direction_legacy_dataset() -> pd.DataFrame:

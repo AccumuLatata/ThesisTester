@@ -155,6 +155,8 @@ def record() -> None:
         raise RuntimeError("three_c_sl_first must record the void candidate.")
     if 2 in three_c["projection"]["accepted_signal_ids"]:
         raise RuntimeError("void 3c must not fill.")
+    if three_c["projection"]["skip_signal_ids"] or three_c["projection"]["skip_reasons"]:
+        raise RuntimeError("void 3c must not emit a skip row.")
     _write_family(
         family="three_c_sl_first",
         data=three_c["data"],

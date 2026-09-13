@@ -10,6 +10,8 @@
     1
   ],
   "intrabar_model": "sl_first",
+  "skip_reasons": [],
+  "skip_signal_ids": [],
   "theoretical_exit_prices": [
     101.0
   ],
