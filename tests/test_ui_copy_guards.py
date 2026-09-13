@@ -162,12 +162,6 @@ def _subheader_lineno(tree: ast.AST, title: str) -> int | None:
     return None
 
 
-def _title_lineno(tree: ast.AST) -> int | None:
-    for call in _st_calls(tree, "title"):
-        return call.lineno
-    return None
-
-
 def _md_h2_body(markdown: str, title: str) -> str:
     """Body of an ATX H2 through the next H2 (A-3 / QI-13-03 section bind)."""
     marker = f"## {title}\n"
@@ -1313,48 +1307,84 @@ _DATA_WEBSOCKET_CAP_NEEDLES = (
 )
 
 
-def _assert_title_caption_contains(source: str, *, needle: str) -> None:
-    """AST-bind ``needle`` to ``st.caption`` after ``st.title``.
+def _is_direct_st_attr_call(node: ast.AST, attr: str) -> bool:
+    """True for ``st.attr(...)`` only — not ``st.sidebar.attr``."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == attr
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "st"
+    )
 
-    File-level / ``help=`` / comments false-green (A-1 / A-20 class).
+
+def _module_title_chrome_captions(source: str) -> list[ast.Call]:
+    """Module-level ``st.caption`` calls immediately after ``st.title``.
+
+    Stops at the first non-caption statement so helper / later captions cannot
+    bind (A-20 window class). ``st.sidebar.caption`` is ignored.
     """
     tree = ast.parse(source)
-    title_at = _title_lineno(tree)
-    if title_at is None:
-        raise AssertionError("missing st.title")
+    chrome: list[ast.Call] = []
+    collecting = False
+    saw_title = False
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.Expr) or not isinstance(stmt.value, ast.Call):
+            if collecting:
+                break
+            continue
+        call = stmt.value
+        if _is_direct_st_attr_call(call, "title"):
+            saw_title = True
+            chrome = []
+            collecting = True
+            continue
+        if collecting and _is_direct_st_attr_call(call, "caption"):
+            chrome.append(call)
+            continue
+        if collecting:
+            break
+    if not saw_title:
+        raise AssertionError("missing module-level st.title")
+    return chrome
+
+
+def _assert_title_caption_contains(source: str, *, needle: str) -> None:
+    """AST-bind ``needle`` to a title-chrome ``st.caption``.
+
+    File-level / ``help=`` / comments / later helper captions false-green
+    (A-1 / A-20 class).
+    """
     matching = [
-        call.lineno
-        for call in _st_calls(tree, "caption")
+        call
+        for call in _module_title_chrome_captions(source)
         if (text := _first_arg_text(call)) is not None and needle in text
     ]
     if not matching:
         raise AssertionError(f"st.caption missing {needle!r}")
-    if min(matching) <= title_at:
-        raise AssertionError("st.caption must follow st.title")
 
 
 def _assert_data_websocket_cap_caption(source: str) -> None:
-    tree = ast.parse(source)
-    title_at = _title_lineno(tree)
-    if title_at is None:
-        raise AssertionError("missing st.title")
     matching = []
-    for call in _st_calls(tree, "caption"):
+    for call in _module_title_chrome_captions(source):
         text = _first_arg_text(call)
         if text is None:
             continue
         if all(needle in text for needle in _DATA_WEBSOCKET_CAP_NEEDLES):
-            matching.append(call.lineno)
+            matching.append(call)
     if not matching:
         raise AssertionError(f"Data st.caption missing {_DATA_WEBSOCKET_CAP_NEEDLES}")
-    if min(matching) <= title_at:
-        raise AssertionError("Data websocket-cap st.caption must follow st.title")
 
 
 def test_kpi_pages_reuse_validation_diagnostic_not_proof():
     """QI-10-04 / A-21: Backtest / Grid / Time / Bundles reuse Validation one-liner."""
     for name in _A21_KPI_PAGES:
-        _assert_title_caption_contains(_read(PAGES / name), needle=_DIAGNOSTIC_NOT_PROOF)
+        source = _read(PAGES / name)
+        _assert_title_caption_contains(source, needle=_DIAGNOSTIC_NOT_PROOF)
+        chrome = _module_title_chrome_captions(source)
+        assert chrome, f"{name} missing title-chrome st.caption"
+        first = _first_arg_text(chrome[0])
+        assert first == _DIAGNOSTIC_NOT_PROOF, f"{name} first chrome caption {first!r}"
     _assert_title_caption_contains(_read(PAGES / "10_Validation.py"), needle=_DIAGNOSTIC_NOT_PROOF)
 
 
@@ -1376,6 +1406,34 @@ def test_diagnostic_not_proof_guard_requires_st_caption_not_help():
         assert "st.caption" in str(exc)
     else:
         raise AssertionError("help=/comment diagnostic needles must not false-green st.caption")
+
+
+def test_diagnostic_not_proof_guard_requires_title_chrome_caption():
+    """Caption before title, after an intervening call, or only in a helper must fail."""
+    before = (
+        f'import streamlit as st\nst.caption("{_DIAGNOSTIC_NOT_PROOF}")\nst.title("Backtest")\n'
+    )
+    after = (
+        "import streamlit as st\n"
+        'st.title("Backtest")\n'
+        "bootstrap()\n"
+        f'st.caption("{_DIAGNOSTIC_NOT_PROOF}")\n'
+    )
+    helper = (
+        "import streamlit as st\n"
+        'st.title("Backtest")\n'
+        "def _later():\n"
+        f'    st.caption("{_DIAGNOSTIC_NOT_PROOF}")\n'
+    )
+    for fake in (before, after, helper):
+        try:
+            _assert_title_caption_contains(fake, needle=_DIAGNOSTIC_NOT_PROOF)
+        except AssertionError as exc:
+            assert "st.caption" in str(exc)
+        else:
+            raise AssertionError(
+                "non-chrome diagnostic caption must not false-green title-chrome bind"
+            )
 
 
 def test_data_page_captions_400mb_websocket_cap():
@@ -1401,6 +1459,31 @@ def test_data_websocket_cap_guard_requires_st_caption_not_help():
         assert "st.caption" in str(exc)
     else:
         raise AssertionError("help=/comment websocket-cap needles must not false-green st.caption")
+
+
+def test_data_websocket_cap_guard_requires_title_chrome_caption():
+    """A late / helper MessageSizeError caption must not bind as Data chrome."""
+    late = (
+        "import streamlit as st\n"
+        'st.title("Data")\n'
+        "bootstrap()\n"
+        'st.caption("MessageSizeError is the 400 MB websocket maxMessageSize cap")\n'
+    )
+    helper = (
+        "import streamlit as st\n"
+        'st.title("Data")\n'
+        "def _later():\n"
+        '    st.caption("MessageSizeError is the 400 MB websocket maxMessageSize cap")\n'
+    )
+    for fake in (late, helper):
+        try:
+            _assert_data_websocket_cap_caption(fake)
+        except AssertionError as exc:
+            assert "st.caption" in str(exc)
+        else:
+            raise AssertionError(
+                "non-chrome Data cap caption must not false-green title-chrome bind"
+            )
 
 
 def test_user_guide_honesty_names_diagnostic_not_proof_and_data_cap():
@@ -1430,6 +1513,13 @@ def test_user_guide_honesty_names_diagnostic_not_proof_and_data_cap():
         assert "Purpose and honesty" in str(exc)
     else:
         raise AssertionError("Notes-only needles must not bind as Purpose and honesty H2")
+    fake_data = "## Notes\nMessageSizeError 400 MB websocket\n## Levels\nunrelated\n"
+    try:
+        _md_h2_body(fake_data, "Data")
+    except AssertionError as exc:
+        assert "Data" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Data H2")
 
 
 def test_grid_policy_help_discloses_allow_all_overlap():

@@ -24,9 +24,9 @@ runs treat an omitted battery `enabled` key as **on** for grid / walk-forward /
 validation. Study expand still emits explicit `enabled: false`. Nested OTF
 validation matrix is default-off. Bare `{}` in R18 YAML arms batteries. The
 default is unchanged (AH §2 item 9 / H8). Backtest, Grid Search, Time Analysis,
-and Research Bundles reuse the Validation one-liner
-`Diagnostic only — not proof of edge.` The Data page captions the 400 MB
-Streamlit websocket cap (`server.maxMessageSize`) in-app; the cap is unchanged.
+and Research Bundles caption
+`Diagnostic only — not proof of edge.` The Data page names the 400 MB
+Streamlit websocket cap (`server.maxMessageSize`) in-app, not host RAM.
 
 ## Classic workflow overview
 
