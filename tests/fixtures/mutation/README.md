@@ -33,4 +33,4 @@ Timeouts count as killed. Comparison sites inside `raise` lines are excluded
 from the adjusted rate (QI-11 equivalent-mutant / ValueError-string sites).
 
 Baseline: `baseline.json`. B-4 recorded adjusted kill rates: `backtest.py`
-91.7 % and `walk_forward.py` 91.7 % (11/12). Gate is not a required CI cell.
+100 % and `walk_forward.py` 100 % (12/12). Gate is not a required CI cell.

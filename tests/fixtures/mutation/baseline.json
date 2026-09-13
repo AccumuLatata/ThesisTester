@@ -1,15 +1,15 @@
 {
   "gate": {
-    "backtest_adjusted_pct": 91.7,
+    "backtest_adjusted_pct": 100.0,
     "minimum_pct": 70.0,
     "target_pct": 80.0,
-    "walk_forward_adjusted_pct": 91.7
+    "walk_forward_adjusted_pct": 100.0
   },
   "modules": {
     "thesistester/analytics/walk_forward.py": {
-      "adjusted_pct": 91.7,
-      "killed": 11,
-      "raw_pct": 91.7,
+      "adjusted_pct": 100.0,
+      "killed": 12,
+      "raw_pct": 100.0,
       "sites": [
         {
           "excluded": false,
@@ -68,11 +68,11 @@
         {
           "excluded": false,
           "index": 6,
-          "killed": false,
+          "killed": true,
           "line": "if not (overlap_exists and overlap_policy == \"reject\"):",
           "lineno": 920,
           "op": "==->!=",
-          "reason": "survived"
+          "reason": "failed"
         },
         {
           "excluded": false,
@@ -123,16 +123,16 @@
       "sites_excluded": 0,
       "sites_raw": 12,
       "sites_scored": 12,
-      "survived": 1,
+      "survived": 0,
       "tests": [
         "tests/test_walk_forward.py",
         "tests/test_otf_integration.py"
       ]
     },
     "thesistester/engine/backtest.py": {
-      "adjusted_pct": 91.7,
-      "killed": 11,
-      "raw_pct": 91.7,
+      "adjusted_pct": 100.0,
+      "killed": 12,
+      "raw_pct": 100.0,
       "sites": [
         {
           "excluded": false,
@@ -173,11 +173,11 @@
         {
           "excluded": false,
           "index": 4,
-          "killed": false,
+          "killed": true,
           "line": "entry_model == \"next_bar_open\" and b >= entry_bar_index",
           "lineno": 1155,
           "op": ">=-><=",
-          "reason": "survived"
+          "reason": "failed"
         },
         {
           "excluded": false,
@@ -246,7 +246,7 @@
       "sites_excluded": 0,
       "sites_raw": 12,
       "sites_scored": 12,
-      "survived": 1,
+      "survived": 0,
       "tests": [
         "tests/test_phase5_backtest.py",
         "tests/test_ah1_session_flatten.py",
@@ -255,7 +255,7 @@
     }
   },
   "recipe": "QI-11 \u00a72.2 comparison-swap sample (B-4 / QI-11-04)",
-  "recorded_at_utc": "2026-09-13T20:06:22.793614+00:00",
+  "recorded_at_utc": "2026-09-13T20:15:57.325180+00:00",
   "site_limit": 12,
   "timeout_seconds": 180
 }

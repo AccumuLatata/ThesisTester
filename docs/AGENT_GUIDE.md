@@ -567,8 +567,8 @@ Every request must first parse as an `AssistantRequest`, then pass
   package + `--import-mode=importlib` from a neutral cwd. The walk-forward
   sample **keeps** `tests/test_otf_integration.py` (`fold_local` already
   lives there). Gate for C-14 / C-17 / C-19: ≥ 70 % own-file killed
-  (target 80 %). B-4 recorded adjusted rates: `backtest.py` 91.7 % and
-  `walk_forward.py` 91.7 %. Timeouts count as killed. This is **not** a
+  (target 80 %). B-4 recorded adjusted rates: `backtest.py` 100 % and
+  `walk_forward.py` 100 % (12/12). Timeouts count as killed. This is **not** a
   required CI cell. Do not add `[tool.mutmut]` here — QI-12 owns packaging.
 
 ## Regression-safety gates in CI
