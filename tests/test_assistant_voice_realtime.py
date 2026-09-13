@@ -254,6 +254,9 @@ def test_ttl_enforcement():
 
 
 def test_redact_for_logs_strips_secrets():
+    from thesistester.assistant.redact import redact_for_logs as core_redact
+
+    assert redact_for_logs is core_redact
     redacted = redact_for_logs(
         {"Authorization": "Bearer secret", "api_key": "x", "ok": True, "nested": {"token": "t"}}
     )

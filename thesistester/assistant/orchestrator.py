@@ -67,6 +67,7 @@ from thesistester.assistant.results_qa import (
     format_results_qa_reply_content,
     propose_results_reply,
 )
+from thesistester.assistant.redact import redact_for_logs
 from thesistester.assistant.registry import FEATURE_PARITY_REGISTRY, validate_capability_request
 from thesistester.assistant.repository import (
     AssistantRepositoryError,
@@ -2060,6 +2061,10 @@ class AssistantOrchestrator:
                 tool_entry.update(extra)
             if "error" in result.payload:
                 tool_entry["error"] = result.payload["error"]
+            persisted = redact_for_logs(tool_entry)
+            if not isinstance(persisted, dict):
+                # Fail closed: never persist the unredacted tool_entry.
+                raise TypeError("Audit persist redaction must return a mapping.")
             self.repository.append_conversation_message(
                 thesis_id,
                 conversation_id,
@@ -2068,7 +2073,7 @@ class AssistantOrchestrator:
                     "role": "tool",
                     "content": f"{result.status} {result.capability_id}.",
                 },
-                tool_entry=tool_entry,
+                tool_entry=persisted,
             )
         except Exception:
             if not best_effort:
