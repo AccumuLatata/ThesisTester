@@ -316,30 +316,37 @@ def test_ps_debit_is_negative():
     assert stmt.ps_usd == pytest.approx(-12.50)
 
 
-def test_extract_amp_pdf_text_junk_empty_non_pdf_is_typed(tmp_path):
+_MALFORMED_PDF_CASES = (
+    ("junk.pdf", b"%PDF-1.4\nnot a real pdf\n%%EOF\n"),
+    ("empty.pdf", b""),
+    ("plain.pdf", b"hello this is not a pdf"),
+)
+
+
+@pytest.mark.parametrize("name,blob", _MALFORMED_PDF_CASES)
+def test_extract_amp_pdf_text_junk_empty_non_pdf_is_typed(tmp_path, name, blob):
     """QI-08-03 / A-16: malformed PDF bytes are JournalIngestError, not pdfminer."""
-    cases = (
-        ("junk.pdf", b"%PDF-1.4\nnot a real pdf\n%%EOF\n"),
-        ("empty.pdf", b""),
-        ("plain.pdf", b"hello this is not a pdf"),
-    )
-    for name, blob in cases:
-        path = tmp_path / name
-        path.write_bytes(blob)
-        with pytest.raises(JournalIngestError, match="could not be read"):
-            extract_amp_pdf_text(path)
+    path = tmp_path / name
+    path.write_bytes(blob)
+    with pytest.raises(JournalIngestError, match="could not be read") as caught:
+        extract_amp_pdf_text(path)
+    assert caught.value.__cause__ is not None
+    assert "not found" not in str(caught.value)
+    assert "Traceback" not in str(caught.value)
 
 
 def test_extract_amp_pdf_text_missing_file_stays_typed(tmp_path):
     missing = tmp_path / "absent.pdf"
-    with pytest.raises(JournalIngestError, match="not found"):
+    with pytest.raises(JournalIngestError, match="not found") as caught:
         extract_amp_pdf_text(missing)
+    assert "could not be read" not in str(caught.value)
 
 
-def test_journal_reconcile_junk_pdf_rc2_no_traceback(tmp_path, capsys):
-    """QI-08-03: journal reconcile junk PDF → rc 2, no Traceback on stderr."""
-    junk = tmp_path / "junk.pdf"
-    junk.write_bytes(b"%PDF-1.4\nnot a real pdf\n%%EOF\n")
+@pytest.mark.parametrize("name,blob", _MALFORMED_PDF_CASES)
+def test_journal_reconcile_malformed_pdf_rc2_no_traceback(tmp_path, capsys, name, blob):
+    """QI-08-03: journal reconcile junk/empty/non-PDF → rc 2, no Traceback on stderr."""
+    malformed = tmp_path / name
+    malformed.write_bytes(blob)
     executions = FIXTURES / "tradesviz_executions_synthetic.csv"
     out = tmp_path / "out"
     code = cli_main(
@@ -349,7 +356,7 @@ def test_journal_reconcile_junk_pdf_rc2_no_traceback(tmp_path, capsys):
             "--executions",
             str(executions),
             "--statements",
-            str(junk),
+            str(malformed),
             "--output-dir",
             str(out),
         ]

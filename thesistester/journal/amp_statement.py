@@ -117,9 +117,13 @@ def extract_amp_pdf_text(path: str | Path) -> str:
     except Exception as exc:
         # QI-08-03 / MG-24: pdfplumber.open / pdfminer must not leak a
         # traceback through journal reconcile (dispatch catches
-        # JournalIngestError only). Missing-file and text-parse paths stay
-        # typed above / in parse_amp_statement_text.
-        raise JournalIngestError(f"AMP statement PDF could not be read: {pdf_path}") from exc
+        # JournalIngestError only). Keep the pdfminer reason in the
+        # typed message (sibling ingest wrappers include `{exc}`).
+        # Missing-file and text-parse paths stay typed above /
+        # in parse_amp_statement_text.
+        raise JournalIngestError(
+            f"AMP statement PDF could not be read: {pdf_path} ({exc})"
+        ) from exc
     return "\n".join(pages)
 
 
