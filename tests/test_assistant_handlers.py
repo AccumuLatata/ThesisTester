@@ -42,12 +42,29 @@ def _orchestrator(tmp_path: Path) -> tuple[AssistantOrchestrator, AssistantTools
 
 
 def test_get_handler_returns_registry_callables_and_none_for_unknown():
-    for capability_id in _ZERO_MENTION_IDS:
+    assert set(_ZERO_MENTION_IDS) <= set(HANDLER_REGISTRY)
+    for capability_id, registered in HANDLER_REGISTRY.items():
         handler = get_handler(capability_id)
-        assert handler is HANDLER_REGISTRY[capability_id]
+        assert handler is registered
         assert callable(handler)
     assert get_handler("DATA.load_ohlcv") is None
     assert get_handler("not.a_capability") is None
+
+
+def test_zero_mention_ids_have_named_dispatch_payload_probes():
+    """Fail closed if an inventory ID is mention-only (tuple / get_handler)."""
+    source = Path(__file__).read_text(encoding="utf-8")
+    for capability_id in _ZERO_MENTION_IDS:
+        needle = f'capability_id="{capability_id}"'
+        assert needle in source, f"{capability_id} has no named dispatch probe"
+
+
+def test_zero_mention_ids_dispatch_is_not_unavailable(tmp_path):
+    orchestrator, _tools = _orchestrator(tmp_path)
+    for capability_id in _ZERO_MENTION_IDS:
+        result = orchestrator.dispatch(AssistantRequest(capability_id=capability_id, payload={}))
+        assert result.capability_id == capability_id
+        assert result.status in {"completed", "failed", "approval_required"}
 
 
 def test_tool_limits_from_envelope_projects_or_keeps_defaults():
@@ -72,7 +89,10 @@ def test_home_workflow_guide_dispatch_returns_guide(tmp_path):
         AssistantRequest(capability_id="HOME.workflow_guide", payload={})
     )
     assert result.status == "completed"
-    assert "orchestrator" in result.payload["guide"]
+    assert result.payload["guide"] == (
+        "Draft explicit research assumptions, validate a RunSpec, confirm it, "
+        "then execute through the assistant orchestrator."
+    )
 
 
 def test_data_inspect_dataset_dispatch_and_payload(tmp_path, monkeypatch):
@@ -114,6 +134,14 @@ def test_data_manage_saved_datasets_list_describe_and_unknown(tmp_path, monkeypa
     )
     assert described.status == "completed"
     assert described.payload["dataset_id"] == "ds_a"
+
+    gated = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="DATA.manage_saved_datasets",
+            payload={"action": "delete"},
+        )
+    )
+    assert gated.status == "approval_required"
 
     rejected = orchestrator.dispatch(
         AssistantRequest(
@@ -183,6 +211,7 @@ def test_data_configure_roll_assumptions_dispatch(tmp_path, monkeypatch):
     assert result.status == "completed"
     assert result.payload["ok"] is True
     assert result.payload["contract_column"] == "sym"
+    assert result.payload["roll_method"] == "calendar"
     missing = orchestrator.dispatch(
         AssistantRequest(
             capability_id="DATA.configure_roll_assumptions", payload={"bundle_path": ""}
@@ -215,6 +244,15 @@ def test_backtest_manage_execution_defaults_get_save_clear(tmp_path, monkeypatch
     )
     assert got.status == "completed"
     assert got.payload["defaults"]["stop_loss_ticks"] == 8
+
+    gated = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="BACKTEST.manage_execution_defaults",
+            payload={"action": "save", "defaults": {"stop_loss_ticks": 12}},
+        )
+    )
+    assert gated.status == "approval_required"
+    assert store["backtest"]["stop_loss_ticks"] == 8
 
     saved = orchestrator.dispatch(
         AssistantRequest(
@@ -265,6 +303,15 @@ def test_grid_manage_execution_defaults_get_save_clear(tmp_path, monkeypatch):
     assert got.status == "completed"
     assert got.payload["defaults"]["metric"] == "expectancy"
 
+    gated = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="GRID.manage_execution_defaults",
+            payload={"defaults": {"metric": "pf"}},
+        )
+    )
+    assert gated.status == "approval_required"
+    assert store["grid"]["metric"] == "expectancy"
+
     saved = orchestrator.dispatch(
         AssistantRequest(
             capability_id="GRID.manage_execution_defaults",
@@ -274,6 +321,7 @@ def test_grid_manage_execution_defaults_get_save_clear(tmp_path, monkeypatch):
     )
     assert saved.status == "completed"
     assert saved.payload["saved"] is True
+    assert store["grid"]["metric"] == "pf"
 
     cleared = orchestrator.dispatch(
         AssistantRequest(
@@ -317,6 +365,8 @@ def test_validation_run_otf_matrix_dispatch(tmp_path, monkeypatch):
     )
     assert result.status == "completed"
     assert result.payload["matrix"]["instrument"] == "ES"
+    assert result.payload["matrix"]["stop_loss_ticks"] == 8
+    assert result.payload["matrix"]["take_profit_ticks"] == 16
     assert result.payload["matrix"]["train_fraction"] == 0.6
 
     gated = orchestrator.dispatch(
@@ -369,6 +419,8 @@ def test_classic_propose_page_change_validates_without_staging(tmp_path):
     assert result.payload["applied"] is False
     assert result.payload["proposal"]["target_page"] == "pages/7_Backtest.py"
     assert result.payload["proposal"]["note"] == "B-8 payload test"
+    assert result.payload["proposal"]["draft_patch"]["stop_loss_ticks"] == 8.0
+    assert result.payload["proposal"]["draft_patch"]["take_profit_ticks"] == 12.0
 
     rejected = orchestrator.dispatch(
         AssistantRequest(
@@ -377,10 +429,11 @@ def test_classic_propose_page_change_validates_without_staging(tmp_path):
         )
     )
     assert rejected.status == "failed"
+    assert "non-empty object" in rejected.payload["error"]["message"]
 
 
 def test_time_analyze_and_pipeline_run_experiment_payloads(tmp_path, monkeypatch):
-    """Extra handler bodies so ``handlers.py`` clears the B-8 ≥ 70% gate."""
+    """Adjacent routed handlers so ``handlers.py`` clears the B-8 ≥ 70% gate."""
     orchestrator, tools = _orchestrator(tmp_path)
     monkeypatch.setattr(
         tools,
@@ -395,6 +448,13 @@ def test_time_analyze_and_pipeline_run_experiment_payloads(tmp_path, monkeypatch
     )
     assert timed.status == "completed"
     assert timed.payload["groups"][0]["n"] == 12
+    assert timed.payload["groups"][0]["group_col"] == "entry_hour"
+    assert timed.payload["groups"][0]["min_trades"] == 5
+    missing_time = orchestrator.dispatch(
+        AssistantRequest(capability_id="TIME.analyze", payload={"bundle_path": ""})
+    )
+    assert missing_time.status == "failed"
+    assert "bundle_path" in missing_time.payload["error"]["message"]
 
     monkeypatch.setattr(tools, "run_experiment", lambda spec: {"ok": True, "spec": spec})
     monkeypatch.setattr(
@@ -402,6 +462,13 @@ def test_time_analyze_and_pipeline_run_experiment_payloads(tmp_path, monkeypatch
         "run_experiment_to_bundle",
         lambda spec, output_path: {"ok": True, "path": output_path},
     )
+    gated_pipeline = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="PIPELINE.run_experiment", payload={"run_spec": {"dataset": {}}}
+        )
+    )
+    assert gated_pipeline.status == "approval_required"
+
     ran = orchestrator.dispatch(
         AssistantRequest(
             capability_id="PIPELINE.run_experiment", payload={"run_spec": {"dataset": {}}}
