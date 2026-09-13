@@ -419,3 +419,23 @@ def test_protected_key_list_covers_core_producers():
         "dataset_id",
     }
     assert required.issubset(PROTECTED_CLASSIC_SESSION_KEYS)
+
+
+def test_protected_classic_keys_unchanged_detects_value_and_type_drift():
+    session = {"dataset_id": "ds_a", "instrument": "ES"}
+    before = snapshot_protected_classic_keys(session, keys=("dataset_id", "instrument"))
+    assert_protected_classic_keys_unchanged(before, session)
+
+    drifted = dict(session)
+    drifted["dataset_id"] = "ds_b"
+    with pytest.raises(AssertionError, match="changed value"):
+        assert_protected_classic_keys_unchanged(before, drifted)
+
+    typed = dict(session)
+    typed["instrument"] = ["ES"]
+    with pytest.raises(AssertionError, match="changed type"):
+        assert_protected_classic_keys_unchanged(before, typed)
+
+    removed = {"dataset_id": "ds_a"}
+    with pytest.raises(AssertionError, match="was removed"):
+        assert_protected_classic_keys_unchanged(before, removed)
