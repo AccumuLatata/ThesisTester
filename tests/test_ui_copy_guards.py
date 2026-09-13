@@ -1059,6 +1059,173 @@ def test_backtest_policy_help_discloses_allow_all_overlap():
     _assert_allow_all_policy_disclosure(_read(PAGES / "7_Backtest.py"))
 
 
+# QI-04-10 / A-20 (M8): trade-table caption names the pnl_points gross alias.
+_PNL_POINTS_CAPTION_NEEDLES = (
+    "pnl_points",
+    "gross alias",
+    "gross_pnl_points",
+    "net R",
+)
+_TRADE_TABLE_DISPLAY_COL_CANDIDATES = (
+    "trade_id",
+    "signal_id",
+    "trigger",
+    "direction",
+    "entry_timestamp",
+    "entry_price",
+    "entry_model",
+    "exit_timestamp",
+    "exit_price",
+    "exit_reason",
+    "stop_price",
+    "target_price",
+    "stop_loss_ticks",
+    "take_profit_ticks",
+    "gross_pnl_points",
+    "gross_pnl_currency",
+    "commission_cost",
+    "slippage_cost",
+    "net_pnl_currency",
+    "pnl_points",
+    "pnl_currency",
+    "r_multiple",
+    "bars_held",
+    "zone_low",
+    "zone_high",
+    "level_count",
+    "level_names",
+    "setup_name",
+    "mae_points",
+    "mfe_points",
+)
+_BACKTEST_USER_GUIDE_H2 = "Backtest"
+
+
+def _trade_table_display_col_candidates(source: str) -> tuple[str, ...]:
+    """Literal column candidates in ``display_cols`` after Trade table."""
+    tree = ast.parse(source)
+    trade_at = _subheader_lineno(tree, "Trade table")
+    if trade_at is None:
+        raise AssertionError("missing st.subheader('Trade table')")
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or node.lineno < trade_at:
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == "display_cols" for target in node.targets
+        ):
+            continue
+        value = node.value
+        if not isinstance(value, ast.ListComp) or not value.generators:
+            raise AssertionError("display_cols is not a list comprehension")
+        candidates = value.generators[0].iter
+        if not isinstance(candidates, ast.List):
+            raise AssertionError("display_cols candidates are not a list literal")
+        cols: list[str] = []
+        for elt in candidates.elts:
+            text = _literal_str(elt)
+            if text is None:
+                raise AssertionError("display_cols candidate is not a string literal")
+            cols.append(text)
+        return tuple(cols)
+    raise AssertionError("display_cols assignment not found after Trade table")
+
+
+def _assert_backtest_pnl_points_caption(source: str) -> None:
+    """AST-bind QI-04-10 caption after ``Trade table``; columns stay identity.
+
+    File-level / ``help=`` / comments false-green (A-1 / A-5 class). A caption
+    before the Trade table subheader fails closed.
+    """
+    tree = ast.parse(source)
+    trade_at = _subheader_lineno(tree, "Trade table")
+    if trade_at is None:
+        raise AssertionError("missing st.subheader('Trade table')")
+    matching: list[tuple[int, str]] = []
+    for call in _st_calls(tree, "caption"):
+        text = _first_arg_text(call)
+        if text is None:
+            continue
+        if all(needle in text for needle in _PNL_POINTS_CAPTION_NEEDLES):
+            matching.append((call.lineno, text))
+    if not matching:
+        raise AssertionError(f"Trade table st.caption missing {_PNL_POINTS_CAPTION_NEEDLES}")
+    caption_at = min(lineno for lineno, _ in matching)
+    if caption_at <= trade_at:
+        raise AssertionError("pnl_points st.caption must follow Trade table subheader")
+    assert _trade_table_display_col_candidates(source) == _TRADE_TABLE_DISPLAY_COL_CANDIDATES
+
+
+def test_backtest_trade_table_captions_pnl_points_gross_alias():
+    """QI-04-10 / A-20: Trade table caption names gross alias; columns unchanged."""
+    _assert_backtest_pnl_points_caption(_read(PAGES / "7_Backtest.py"))
+
+
+def test_backtest_pnl_points_caption_guard_requires_st_caption_not_help():
+    """Comment / help= needles must not satisfy the Trade table caption."""
+    fake = (
+        "import streamlit as st\n"
+        'st.subheader("Trade table")\n'
+        "st.selectbox(\n"
+        '    "Policy",\n'
+        '    options=["allow_all"],\n'
+        '    help="pnl_points is the gross alias of gross_pnl_points; KPIs use net R",\n'
+        ")\n"
+        "# pnl_points gross alias of gross_pnl_points net R\n"
+        "display_cols = [c for c in [\n"
+        + ",\n".join(f'    "{col}"' for col in _TRADE_TABLE_DISPLAY_COL_CANDIDATES)
+        + "\n] if True]\n"
+    )
+    try:
+        _assert_backtest_pnl_points_caption(fake)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc)
+    else:
+        raise AssertionError("help=/comment pnl_points needles must not false-green st.caption")
+
+
+def test_backtest_pnl_points_caption_guard_requires_caption_after_subheader():
+    """A matching caption before Trade table must not bind."""
+    caption = (
+        "st.caption(\n"
+        '    "`pnl_points` is the gross alias of `gross_pnl_points`. KPIs use net R."\n'
+        ")\n"
+    )
+    cols = (
+        "display_cols = [c for c in [\n"
+        + ",\n".join(f'    "{col}"' for col in _TRADE_TABLE_DISPLAY_COL_CANDIDATES)
+        + "\n] if True]\n"
+    )
+    before = caption + 'st.subheader("Trade table")\n' + cols
+    try:
+        _assert_backtest_pnl_points_caption(before)
+    except AssertionError as exc:
+        assert "must follow" in str(exc)
+    else:
+        raise AssertionError("caption before Trade table subheader must not pass")
+
+
+def test_user_guide_backtest_h2_names_pnl_points_gross_alias():
+    """QI-04-10 / A-20: USER_GUIDE Backtest H2 names the trade-table alias."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _BACKTEST_USER_GUIDE_H2)
+    body_cf = body.casefold()
+    missing = [n for n in _PNL_POINTS_CAPTION_NEEDLES if n.casefold() not in body_cf]
+    assert missing == [], f"Backtest H2 missing A-20 needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Backtest H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+    fake = (
+        "## Notes\n"
+        "| Trade table `pnl_points` | Gross alias of `gross_pnl_points`. KPIs use net R. |\n"
+        "## Grid Search\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _BACKTEST_USER_GUIDE_H2)
+    except AssertionError as exc:
+        assert "Backtest" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Backtest H2")
+
+
 def test_grid_policy_help_discloses_allow_all_overlap():
     """QI-05-09 / A-1: Grid Policy help+caption match Backtest (AST, not file regex)."""
     _assert_allow_all_policy_disclosure(_read(PAGES / "8_Grid_Search.py"))
