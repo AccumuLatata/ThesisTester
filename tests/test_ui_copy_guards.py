@@ -1549,20 +1549,33 @@ _SESSION_CLOSE_F6_NEEDLES = (
 )
 
 
+def _ingestion_mode_radio_lineno(source: str) -> int:
+    """Line of the Data-page ``st.radio`` labeled Ingestion mode."""
+    tree = ast.parse(source)
+    for call in _st_calls(tree, "radio"):
+        if _call_label(call) == "Ingestion mode":
+            return call.lineno
+    raise AssertionError("Data page missing st.radio('Ingestion mode')")
+
+
 def test_data_page_captions_h10_legacy_primary_fork():
-    """QI-01-03 / A-22: Data captions the legacy-primary vs API fatal fork."""
-    _assert_title_caption_contains(
-        _read(PAGES / "1_Data.py"),
-        needle=_H10_CAPTION_NEEDLES[0],
-    )
+    """QI-01-03 / A-22: caption after Ingestion mode names the locked fatal fork.
+
+    Not title-chrome: A-21 binds chrome captions to ``st.title``. H10 sits
+    next to the legacy-primary radio (plan: legacy-primary caption).
+    """
     source = _read(PAGES / "1_Data.py")
+    radio_line = _ingestion_mode_radio_lineno(source)
     tree = ast.parse(source)
     matching = [
-        text
+        (call.lineno, text)
         for call in _st_calls(tree, "caption")
         if (text := _first_arg_text(call)) and all(n in text for n in _H10_CAPTION_NEEDLES)
     ]
     assert matching, f"Data st.caption missing H10 needles {_H10_CAPTION_NEEDLES}"
+    assert min(lineno for lineno, _ in matching) > radio_line, (
+        "H10 caption must follow st.radio('Ingestion mode'), not title chrome"
+    )
 
 
 def test_backtest_captions_h7_and_h15_locked_forks():

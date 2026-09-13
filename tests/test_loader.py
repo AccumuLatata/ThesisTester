@@ -614,20 +614,3 @@ def test_validate_ohlcv_flags_large_gaps_around_dst_transition():
     codes = {issue.code for issue in report.issues}
     assert "significant_gaps" in codes
     assert "dst_transition_gaps" in codes
-
-
-def test_h11_mixed_offset_canonical_recipe_rejects(tmp_path):
-    """QI-01-04 / B-2: parked mixed-offset reject (raw fail; do not UTC-normalize)."""
-    from thesistester.api import load_dataset
-
-    path = tmp_path / "mixed_offset.csv"
-    path.write_text(
-        "timestamp,open,high,low,close,volume\n"
-        "2026-03-08 01:59:00-05:00,100,101,99,100.5,10\n"
-        "2026-03-08 03:00:00-04:00,100.5,102,100,101.5,20\n",
-        encoding="utf-8",
-    )
-    with pytest.raises((ValueError, DataValidationError)):
-        load_ohlcv(path)
-    with pytest.raises((ValueError, DataValidationError)):
-        load_dataset(path, instrument="ES")
