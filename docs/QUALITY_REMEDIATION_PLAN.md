@@ -387,12 +387,12 @@ Medium `Verified defect` rows proposed accepted in the same signature: QI-06-03 
 | QR-C Structural refactors | Not started | 25 | 27 / 0 / 0 |
 | QR-D UI decomposition / state | Not started | 10 | 10 / 0 / 0 |
 | QR-E Application functions | Not started | 11 | 10 / 2 / 0 |
-| QR-F Documentation | In progress (F-1 · F-2) | 10 (3 delivered inside QR-A PRs) | 12 / 5 / 3 |
+| QR-F Documentation | In progress (F-1 · F-2 · F-3) | 10 (3 delivered inside QR-A PRs) | 12 / 5 / 3 |
 | QR-G Dependency / supply chain | In progress (G-1 · G-2 · G-3) | 5 | 6 / 0 / 0 |
 | Closed (no workstream) | — | — | 13 wont-fix · 1 locked without residual (QI-07-10) |
 | **Total** | | **102 PR rows, 99 distinct** | **106 / 11 / 3 + 13 wont-fix + QI-07-10 = 134** |
 
-Status vocabulary: `Not started` · `In progress` · `Blocked` · `Completed` · `Needs follow-up`. `ENGINEERING_ROADMAP.md` gets one QR row (F-1) that points here.
+Status vocabulary: `Not started` · `In progress` · `Blocked` · `Completed` · `Needs follow-up`. `ENGINEERING_ROADMAP.md` gets one QR row (Wave 0 / F-3) that points here.
 
 ---
 

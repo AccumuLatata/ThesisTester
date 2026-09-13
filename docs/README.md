@@ -21,16 +21,13 @@ research snapshots live under [`research/`](research/README.md).
 | [LEVEL_COMBINATION_RESEARCH_CONCEPT.md](LEVEL_COMBINATION_RESEARCH_CONCEPT.md) | Program B: level × MA / rolling VWAP / pivot (`dVWAP` not a required partner) |
 | [LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md](LEVEL_VS_MA_VWAP_PIVOT_INVENTORY.md) | Complete 50-anchor × 22-confirm list and wave order |
 | [PROGRAM_B_OPERATOR_RUNBOOK.md](PROGRAM_B_OPERATOR_RUNBOOK.md) | Bot-facing Program B run list + CLI (YAMLs in `examples/studies/program_b/`) |
-| [DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md](DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md) | DA — `touch`+`both`+`single_position` is long-only; **DA2 landed**; DI is Discuss Intelligence |
 | [LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md](LEVEL_ANCHOR_CONFLUENCE_RESEARCH_PLAN.md) | Program A: desk product funnel (token inventory + staged studies; promote/Admit/L2 power locks; executed) |
 | [ANCHOR_ONLY_IMPLEMENTATION_PLAN.md](ANCHOR_ONLY_IMPLEMENTATION_PLAN.md) | AO — opt-in `anchor_rules` with no partners (`min_valid_confluences: 0`); **AO1 implemented** |
 | [LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md](LEVEL_ANCHOR_DESK_CONTRACT_SWITCH.md) | Handoff: rewrite Notion desk contract without losing logging/roadmap |
 | [ANCHOR_CONFLUENCE.md](ANCHOR_CONFLUENCE.md) | Anchor-confluence workflow guide |
 | [VOICE_SIDECAR_OPS.md](VOICE_SIDECAR_OPS.md) | Localhost realtime voice sidecar ops |
-| [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) | TJ — TradesViz+AMP journal; **TJ9 landed**; `session_date` is CME `trading_session_date` |
-| [JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md](JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md) | JS — journal zones / trigger inference / StudySpec proposal; **JS2 landed**; Gate A can stop after JS2 |
 | [SIMULATE_PERF.md](SIMULATE_PERF.md) · [CAI_BASELINE.md](CAI_BASELINE.md) | Informational performance baselines |
-| [QUALITY_INVESTIGATION_PLAN.md](QUALITY_INVESTIGATION_PLAN.md) | QI — **Completed** (16 slices QI-0…QI-15; reports under `docs/quality/`). Living status SoT is `ENGINEERING_ROADMAP.md`. Remediation: [QUALITY_REMEDIATION_PLAN.md](QUALITY_REMEDIATION_PLAN.md) |
+| [QUALITY_INVESTIGATION_PLAN.md](QUALITY_INVESTIGATION_PLAN.md) | QI — **Completed** (16 slices QI-0…QI-15). Reports indexed in [`quality/README.md`](quality/README.md). Living status SoT is `ENGINEERING_ROADMAP.md`. Remediation: [QUALITY_REMEDIATION_PLAN.md](QUALITY_REMEDIATION_PLAN.md) |
 
 ## Normative contracts (complete — amend carefully)
 
@@ -63,6 +60,7 @@ Engine / data contracts:
 - [STUDY_VIEWER_IMPLEMENTATION_PLAN.md](STUDY_VIEWER_IMPLEMENTATION_PLAN.md) (SV — Studies Inspect catalog / quality / charts / cell peek / briefing; SV0–SV5 ✅; does not reopen RS-D2 execute/session boundaries)
 - [STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md](STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md) (SO — corpus fact table + facets + cohort lock + Program B lens + saved desks + studies pane + cohort labels + lens-as-filter; **SO1–SO4 + SO7–SO9 shipped**; SO5/SO6 parked; does not reopen SV Inspect or execute)
 - [AUDIT_HONESTY_IMPLEMENTATION_PLAN.md](AUDIT_HONESTY_IMPLEMENTATION_PLAN.md) (AH — research-honesty remediations from the 2026-08-18 audit merge; AH0–AH6 landed)
+- [CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md](CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md) (combo attribution Views A–C + Phase 6 direction × combo; **Phase 6 implemented**; retrospective companion to `ANCHOR_CONFLUENCE.md`; archived rollout `docs/archive/anchor_confluence_regression_safe_plan.md`)
 - [DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md](DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md) (DA — Directional Attribution; **not** Discuss Intelligence DI. `touch` + `both` + `single_position` is a long-only sample; **DA6 landed**; Run 2 is `fade` @ 1min; no existing-golden regen)
 - [STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md](STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md) (SAF — Admit follow-up draft from a completed study; SAF1–SAF3 shipped: CLI `--admit-tod auto` / `--tod-group` / `--allow-thin` + Inspect draft + catalog `parent`; SAF4 parked; does not auto-run or add a ToD factor axis)
 - [LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md](LEVEL_CATALOG_CONTRACT_IMPLEMENTATION_PLAN.md) (LC — catalog completeness/correctness for already-emitted levels; LC0–LC4 landed; no new price series)
@@ -86,7 +84,9 @@ status trackers.
 ## Maintenance rules
 
 1. **One living home per topic.** Status → `ENGINEERING_ROADMAP.md`. Behavior →
-   contract or USER_GUIDE / ARCHITECTURE / ASSUMPTIONS.
+   contract or USER_GUIDE / ARCHITECTURE / ASSUMPTIONS. A file is listed in
+   exactly one shelf (Primary **or** Contracts, never both). DA / TJ / JS are
+   contract-complete (Engine / data contracts only).
 2. **Help corpus paths are frozen.** Moving Help-allowlisted files
    (`USER_GUIDE`, `ARCHITECTURE`, `ASSUMPTIONS`, `METRICS_GLOSSARY`,
    `otf-filter`, `research-methodology`, root `README`) requires a matching
