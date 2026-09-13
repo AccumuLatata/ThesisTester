@@ -192,6 +192,38 @@ def test_grid_same_bar_help_defers_to_intrabar_model():
     assert "Uses SL-first pessimistic rule when both are reachable in the same bar." not in text
 
 
+_PHASE8_GLOSSARY_NEEDLES = (
+    "probability_positive",
+    "P(mean R > 0)",
+    "p-value (positive)",
+    "p_value_positive",
+    "Best − Median",
+    "grid_overfit",
+    "Grid-search overfit",
+    "best_vs_median",
+)
+
+
+def test_phase8_permutation_copy_is_diagnostic_not_confirmatory():
+    """QI-05-05 / H13: no success chrome on permutation p; no confirmatory P(mean R > 0)."""
+    text = _read(PAGES / "10_Validation.py")
+    assert "P(mean R > 0)" not in text
+    assert "Share of bootstrap means > 0" in text
+    start = text.index('st.subheader("Sign-flip permutation test")')
+    end = text.index('st.subheader("Grid-search overfit risk")')
+    permutation_block = text[start:end]
+    assert "st.success" not in permutation_block
+    assert "st.info" in permutation_block
+    assert "st.caption" in permutation_block
+
+
+def test_metrics_glossary_has_phase8_diagnostic_rows():
+    """QI-13-03 / F-4: Phase 8 confirmatory labels have glossary rows."""
+    text = _read(REPO_ROOT / "docs" / "METRICS_GLOSSARY.md")
+    missing = [needle for needle in _PHASE8_GLOSSARY_NEEDLES if needle not in text]
+    assert missing == [], f"METRICS_GLOSSARY.md missing Phase 8 needles: {missing}"
+
+
 def test_validation_has_no_stale_r22_parallel_claim():
     text = _read(PAGES / "10_Validation.py")
     assert "R22 parallel acceleration is not yet available" not in text
