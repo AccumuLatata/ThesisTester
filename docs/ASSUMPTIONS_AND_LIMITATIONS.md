@@ -1355,6 +1355,10 @@ other than the last bar in the dataset.
 - `pdfplumber` is imported only in `thesistester/journal/amp_statement.py`.
   CI owns the text parser against redacted fixtures; PDF extraction is
   tested on a synthetic PDF. Desk statements stay out of git.
+- Malformed, empty, or non-PDF statement bytes raise `JournalIngestError`
+  at `extract_amp_pdf_text` (`journal reconcile` rc 2, no traceback).
+  Missing-file and text-parse paths stay typed. pdfplumber/pdfminer
+  exceptions do not leak (QI-08-03).
 
 ## Trade journal (TJ3 — pairing is spread_id, then FIFO; not AMP P&S)
 

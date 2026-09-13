@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from thesistester.cli import main as cli_main
 from thesistester.journal import JournalIngestError
 from thesistester.journal.amp_statement import (
     extract_amp_pdf_text,
@@ -313,6 +314,58 @@ def test_confirmation_total_must_match_fill_qtys():
 def test_ps_debit_is_negative():
     stmt = parse_amp_statement_text(_qty2_statement(ps_usd="12.50 DR"))
     assert stmt.ps_usd == pytest.approx(-12.50)
+
+
+_MALFORMED_PDF_CASES = (
+    ("junk.pdf", b"%PDF-1.4\nnot a real pdf\n%%EOF\n"),
+    ("empty.pdf", b""),
+    ("plain.pdf", b"hello this is not a pdf"),
+)
+
+
+@pytest.mark.parametrize("name,blob", _MALFORMED_PDF_CASES)
+def test_extract_amp_pdf_text_junk_empty_non_pdf_is_typed(tmp_path, name, blob):
+    """QI-08-03 / A-16: malformed PDF bytes are JournalIngestError, not pdfminer."""
+    path = tmp_path / name
+    path.write_bytes(blob)
+    with pytest.raises(JournalIngestError, match="could not be read") as caught:
+        extract_amp_pdf_text(path)
+    assert caught.value.__cause__ is not None
+    assert "not found" not in str(caught.value)
+    assert "Traceback" not in str(caught.value)
+
+
+def test_extract_amp_pdf_text_missing_file_stays_typed(tmp_path):
+    missing = tmp_path / "absent.pdf"
+    with pytest.raises(JournalIngestError, match="not found") as caught:
+        extract_amp_pdf_text(missing)
+    assert "could not be read" not in str(caught.value)
+
+
+@pytest.mark.parametrize("name,blob", _MALFORMED_PDF_CASES)
+def test_journal_reconcile_malformed_pdf_rc2_no_traceback(tmp_path, capsys, name, blob):
+    """QI-08-03: journal reconcile junk/empty/non-PDF → rc 2, no Traceback on stderr."""
+    malformed = tmp_path / name
+    malformed.write_bytes(blob)
+    executions = FIXTURES / "tradesviz_executions_synthetic.csv"
+    out = tmp_path / "out"
+    code = cli_main(
+        [
+            "journal",
+            "reconcile",
+            "--executions",
+            str(executions),
+            "--statements",
+            str(malformed),
+            "--output-dir",
+            str(out),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "Traceback" not in captured.err
+    assert "journal reconcile failed" in captured.out
+    assert "could not be read" in captured.out
 
 
 def test_extract_amp_pdf_text_then_parse_synthetic_pdf(tmp_path):
