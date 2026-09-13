@@ -4,8 +4,13 @@ import pandas as pd
 import pytest
 
 from thesistester.analytics import best_grid_result, run_sl_tp_grid
+from thesistester.analytics import walk_forward as walk_forward_mod
 from thesistester.analytics.walk_forward import (
     WalkForwardResult,
+    _actionable_index_column,
+    _filter_fold_signals_with_otf,
+    _otf_source_for_fold,
+    normalize_otf_history_policy,
     run_walk_forward_sl_tp,
     run_wfa_matrix,
     summarize_walk_forward,
@@ -13,6 +18,7 @@ from thesistester.analytics.walk_forward import (
 from thesistester.analytics.metrics import summarize_trades
 from thesistester.engine.backtest import simulate_trades
 from thesistester.reporting import build_research_artifact
+from thesistester.setup import normalize_otf_filter_config
 
 
 TZ = "America/New_York"
@@ -262,9 +268,14 @@ def test_overlapping_oos_windows_require_explicit_ownership_policy():
         return_result=True,
     )
     rejected = run_walk_forward_sl_tp(**common, overlap_policy="reject")
+    omitted = run_walk_forward_sl_tp(**common)
+    assert omitted.config["overlap_policy"] == "reject"
     assert rejected.summary["stitched_oos_status"] == "overlapping_oos_windows"
+    assert omitted.summary["stitched_oos_status"] == "overlapping_oos_windows"
     assert rejected.stitched_equity.empty
+    assert rejected.summary["stitched_oos_trade_count"] == 0
     assert not rejected.oos_trades.empty
+    assert "test_start_session_date" in rejected.oos_trades.columns
     assert not rejected.oos_trades["trade_id"].duplicated().any()
     assert (
         "OOS windows overlap; stitched equity is unavailable under overlap_policy='reject'."
@@ -274,11 +285,22 @@ def test_overlapping_oos_windows_require_explicit_ownership_policy():
     assert rejected.summary["aggregate_test_total_r"] is not None
     assert rejected.summary["stitched_oos_total_r"] is None
     first = run_walk_forward_sl_tp(**common, overlap_policy="first")
+    last = run_walk_forward_sl_tp(**common, overlap_policy="last")
     assert first.summary["stitched_oos_status"] == "ok"
+    assert last.summary["stitched_oos_status"] == "ok"
+    assert first.summary["stitched_oos_trade_count"] > 0
+    assert last.summary["stitched_oos_trade_count"] > 0
+    assert first.summary["stitched_oos_trade_count"] == len(first.oos_trades)
+    first_sorted = first.oos_trades.sort_values(
+        ["exit_timestamp", "entry_timestamp", "signal_id", "fold_id"],
+        kind="mergesort",
+    )
+    assert list(first.oos_trades["signal_id"]) == list(first_sorted["signal_id"])
     assert not first.oos_trades.duplicated(["global_entry_bar_index", "signal_id"]).any()
     assert not first.oos_trades["trade_id"].duplicated().any()
     # overlap_policy does not change the fold-sum (reject ≠ first stitch).
     assert first.summary["aggregate_test_total_r"] == rejected.summary["aggregate_test_total_r"]
+    assert last.summary["aggregate_test_total_r"] == rejected.summary["aggregate_test_total_r"]
 
 
 def test_session_future_shock_does_not_change_existing_folds():
@@ -597,3 +619,245 @@ def test_research_artifact_includes_walk_forward_outputs():
     assert artifact["results"]["walk_forward_summary"]["fold_count"] == 1
     assert artifact["configuration"]["walk_forward_config"]["train_bars"] == 100
     assert len(artifact["tables"]["walk_forward_results"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# B-4 / QI-11-04 — own-file assertion depth (mutation survivors)
+# ---------------------------------------------------------------------------
+
+
+def test_retention_ratio_is_test_over_positive_train_expectancy():
+    """``train_expectancy > 1e-12`` computes retention; non-positive train does not."""
+    df = _ohlcv(12)
+    signals = _signal_df(*[_touch_signal(i, i) for i in range(10)])
+    profitable = run_walk_forward_sl_tp(
+        df=df,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=4,
+        test_bars=2,
+        step_bars=2,
+        return_result=True,
+    )
+    ok_rows = profitable.folds[profitable.folds["ratio_status"] == "ok"]
+    assert not ok_rows.empty
+    for row in ok_rows.itertuples():
+        assert float(row.train_expectancy_r) > 1e-12
+        expected = float(row.test_expectancy_r) / float(row.train_expectancy_r)
+        assert row.retention_ratio_expectancy == pytest.approx(expected)
+        assert row.degradation_pct_expectancy == pytest.approx(expected - 1.0)
+    assert profitable.summary["median_retention_ratio_expectancy"] == pytest.approx(
+        float(ok_rows["retention_ratio_expectancy"].median())
+    )
+
+    expensive = run_walk_forward_sl_tp(
+        df=df,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=4,
+        test_bars=2,
+        step_bars=2,
+        commission_per_side=10_000.0,
+    )
+    scored = expensive.dropna(subset=["train_expectancy_r", "test_expectancy_r"])
+    assert not scored.empty
+    assert (scored["train_expectancy_r"] <= 1e-12).all()
+    assert (scored["ratio_status"] == "nonpositive_or_undefined_is").all()
+    assert scored["retention_ratio_expectancy"].isna().all()
+
+
+def test_otf_history_policy_fold_local_is_omitted_default():
+    """Own-file lock: omitted ``otf_history_policy`` ≡ explicit ``fold_local``."""
+    assert normalize_otf_history_policy(None) == "fold_local"
+    assert normalize_otf_history_policy("fold_local") == "fold_local"
+    assert normalize_otf_history_policy("causal_prefix") == "causal_prefix"
+    with pytest.raises(ValueError, match="causal_prefix"):
+        normalize_otf_history_policy("any")
+
+    start = pd.Timestamp("2026-01-05 22:00:00", tz=TZ)
+    rows = []
+    price = 100.0
+    for i in range(80):
+        ts = start + pd.Timedelta(minutes=i)
+        rows.append(
+            {
+                "timestamp": ts,
+                "open": price + 0.2,
+                "high": price + 1.0,
+                "low": price,
+                "close": price + 0.6,
+                "volume": 100.0,
+            }
+        )
+        price += 0.05
+    ohlcv = pd.DataFrame(rows)
+    signals = _signal_df(
+        {
+            **_touch_signal(1, 40),
+            "timestamp": pd.Timestamp("2026-01-05 22:40:00", tz=TZ),
+        }
+    )
+    otf = normalize_otf_filter_config(
+        {
+            "enabled": True,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    common = dict(
+        df=ohlcv,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=20,
+        test_bars=20,
+        step_bars=20,
+        otf_config=otf,
+        session_timezone=TZ,
+        eth_start="18:00",
+        return_result=True,
+    )
+    implicit = run_walk_forward_sl_tp(**common)
+    explicit = run_walk_forward_sl_tp(**common, otf_history_policy="fold_local")
+    assert implicit.config["otf_history_policy"] == "fold_local"
+    assert explicit.config["otf_history_policy"] == "fold_local"
+    pd.testing.assert_frame_equal(implicit.folds, explicit.folds)
+
+
+def test_otf_history_policy_causal_prefix_uses_prefix_bars():
+    """``fold_local`` is fold-slice only; ``causal_prefix`` is prefix ∪ fold."""
+    start = pd.Timestamp("2026-01-05 22:00:00", tz=TZ)
+    rows = []
+    price = 100.0
+    for i in range(90):
+        ts = start + pd.Timedelta(minutes=i)
+        rows.append(
+            {
+                "timestamp": ts,
+                "open": price + 0.2,
+                "high": price + 1.0,
+                "low": price,
+                "close": price + 0.6,
+                "volume": 100.0,
+            }
+        )
+        price += 0.05
+    ohlcv = pd.DataFrame(rows)
+    fold_start, fold_end = 40, 60
+    fold_signals = _signal_df(
+        {
+            **_touch_signal(7, 0),
+            "timestamp": pd.Timestamp("2026-01-05 22:40:00", tz=TZ),
+        }
+    )
+    otf = normalize_otf_filter_config(
+        {
+            "enabled": True,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    local_source = _otf_source_for_fold(
+        ohlcv,
+        fold_start=fold_start,
+        fold_end_exclusive=fold_end,
+        otf_history_policy="fold_local",
+    )
+    prefix_source = _otf_source_for_fold(
+        ohlcv,
+        fold_start=fold_start,
+        fold_end_exclusive=fold_end,
+        otf_history_policy="causal_prefix",
+    )
+    assert len(local_source) == fold_end - fold_start
+    assert len(prefix_source) == fold_end
+    assert len(prefix_source) > len(local_source)
+    assert prefix_source["timestamp"].iloc[-1] == local_source["timestamp"].iloc[-1]
+    assert prefix_source["timestamp"].iloc[0] < local_source["timestamp"].iloc[0]
+
+    local_accepted, local_rejected, _ = _filter_fold_signals_with_otf(
+        source_df=local_source,
+        fold_signals=fold_signals,
+        otf_config=otf,
+        session_timezone=TZ,
+        eth_start="18:00",
+    )
+    prefix_accepted, prefix_rejected, _ = _filter_fold_signals_with_otf(
+        source_df=prefix_source,
+        fold_signals=fold_signals,
+        otf_config=otf,
+        session_timezone=TZ,
+        eth_start="18:00",
+    )
+    assert local_accepted.empty
+    assert local_rejected == 1
+    assert len(prefix_accepted) == 1
+    assert prefix_rejected == 0
+    assert int(prefix_accepted.iloc[0]["signal_id"]) == 7
+
+
+def test_session_fold_uses_executable_entry_ownership(monkeypatch):
+    """``fold_mode==sessions`` passes executable next-bar ownership into the slice."""
+    touch = _signal_df(_touch_signal(1, 2))
+    session_idx = _actionable_index_column(touch, executable_entry_ownership=True)
+    bar_idx = _actionable_index_column(touch, executable_entry_ownership=False)
+    assert int(session_idx.iloc[0]) == 3
+    assert int(bar_idx.iloc[0]) == 2
+
+    seen: list[bool] = []
+    real = walk_forward_mod._slice_signals
+
+    def _capture(*args, **kwargs):
+        seen.append(bool(kwargs.get("executable_entry_ownership")))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(walk_forward_mod, "_slice_signals", _capture)
+    df = _session_ohlcv(6)
+    run_walk_forward_sl_tp(
+        df=df,
+        signals=_session_signals(df),
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=1,
+        test_bars=1,
+        fold_mode="sessions",
+        train_sessions=2,
+        test_sessions=1,
+        step_sessions=1,
+    )
+    assert seen
+    assert all(seen)
+    seen.clear()
+    bar_df = _ohlcv(12)
+    run_walk_forward_sl_tp(
+        df=bar_df,
+        signals=_signal_df(*[_touch_signal(i, i) for i in range(10)]),
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=4,
+        test_bars=2,
+        step_bars=2,
+        fold_mode="bars",
+    )
+    assert seen
+    assert not any(seen)

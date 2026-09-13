@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from thesistester.engine.backtest import simulate_trades
+from thesistester.engine.backtest import SimulationResult, simulate_trades
 from thesistester.engine.signals import generate_signals
 
 
@@ -1072,3 +1072,204 @@ def test_allow_all_preserves_input_order_and_trade_ids():
     assert explicit_trades["trade_id"].tolist() == [0, 1, 2], (
         "trade_ids must be assigned in input order"
     )
+
+
+# ---------------------------------------------------------------------------
+# B-4 / QI-11-04 — own-file assertion depth (mutation survivors)
+# ---------------------------------------------------------------------------
+
+
+def test_breakeven_arms_when_same_bar_exit_disabled():
+    """BE still arms on the entry-bar close when ``allow_same_bar_exit=False``."""
+    df = _df(
+        _bar("2026-01-05 09:30", 100.0, 100.0, 100.0, 100.0),
+        _bar("2026-01-05 09:31", 100.0, 103.0, 100.0, 102.0),
+        _bar("2026-01-05 09:32", 102.0, 102.5, 100.0, 100.0),
+    )
+    result = simulate_trades(
+        df,
+        _signal(bar_index=0, trigger="touch", direction="long"),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        breakeven_after_r=1.0,
+        allow_same_bar_exit=False,
+        return_result=True,
+    )
+    assert isinstance(result, SimulationResult)
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "BE"
+    assert int(trade["exit_bar_index"]) == 2
+    assert int(trade["breakeven_activated_bar_index"]) == 1
+    assert result.exit_management_diagnostic["be_exit_count"] == 1
+    assert result.exit_management_diagnostic["trade_count"] == 1
+    assert result.exit_management_diagnostic["trades_with_exit_mgmt_pct"] == pytest.approx(1.0)
+
+
+def test_breakeven_arms_on_entry_bar_close_when_same_bar_exit_allowed():
+    """Default same-bar-exit still arms BE after the entry-bar close (line 1155)."""
+    df = _df(
+        _bar("2026-01-05 09:30", 100.0, 100.0, 100.0, 100.0),
+        _bar("2026-01-05 09:31", 100.0, 103.0, 100.0, 102.0),
+        _bar("2026-01-05 09:32", 102.0, 102.5, 100.0, 100.0),
+    )
+    result = simulate_trades(
+        df,
+        _signal(bar_index=0, trigger="touch", direction="long"),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        breakeven_after_r=1.0,
+        allow_same_bar_exit=True,
+        return_result=True,
+    )
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "BE"
+    assert int(trade["breakeven_activated_bar_index"]) == 1
+    assert result.exit_management_diagnostic["average_stop_adjustments_per_trade"] >= 1.0
+
+
+def test_path_open_proximity_labels_exit_reason():
+    """``path_open_proximity`` stamps ``{SL|TP}_intrabar_path``, not bare SL/TP."""
+    parent = _df(
+        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.0),
+        _bar("2026-01-05 09:35", 100.0, 104.0, 94.0, 100.0),
+    )
+    long_result = simulate_trades(
+        parent,
+        _signal(bar_index=0, trigger="touch", direction="long"),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="path_open_proximity",
+        return_result=True,
+    )
+    short_result = simulate_trades(
+        parent,
+        _signal(bar_index=0, trigger="touch", direction="short"),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="path_open_proximity",
+        return_result=True,
+    )
+    assert isinstance(long_result, SimulationResult)
+    assert long_result.trades.iloc[0]["exit_reason"] == "TP_intrabar_path"
+    assert short_result.trades.iloc[0]["exit_reason"] == "SL_intrabar_path"
+    sl_first = simulate_trades(
+        parent,
+        _signal(bar_index=0, trigger="touch", direction="long"),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="sl_first",
+        return_result=True,
+    )
+    assert sl_first.trades.iloc[0]["exit_reason"] in {"SL", "TP"}
+    assert "_intrabar_path" not in str(sl_first.trades.iloc[0]["exit_reason"])
+
+
+def test_same_bar_both_hit_pct_uses_bracket_exit_denominator():
+    """``both_hit_pct`` is ``both_hit_count / bracket_exit_trade_count``."""
+    both_hit = _df(
+        _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 110.0, 90.0, 100.0),
+    )
+    result = simulate_trades(
+        both_hit,
+        _signal(bar_index=0, trigger="touch", direction="long"),
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        allow_same_bar_exit=True,
+        return_result=True,
+    )
+    assert isinstance(result, SimulationResult)
+    diagnostic = result.intrabar_diagnostic
+    assert diagnostic["same_bar_both_hit_count"] == 1
+    assert diagnostic["bracket_exit_trade_count"] == 1
+    assert diagnostic["same_bar_both_hit_pct"] == pytest.approx(1.0)
+    assert diagnostic["same_bar_both_hit_denominator"] == "bracket_exit_trade_count"
+
+    eod_only = _df(
+        _bar("2026-01-02 09:30", 100.0, 100.1, 99.9, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 100.1, 99.9, 100.05),
+    )
+    eod = simulate_trades(
+        eod_only,
+        _signal(bar_index=0, trigger="touch", direction="long"),
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=400,
+        take_profit_ticks=400,
+        return_result=True,
+    )
+    assert isinstance(eod, SimulationResult)
+    assert eod.trades.iloc[0]["exit_reason"] == "EOD"
+    assert eod.intrabar_diagnostic["bracket_exit_trade_count"] == 0
+    assert eod.intrabar_diagnostic["same_bar_both_hit_count"] == 0
+    assert eod.intrabar_diagnostic["same_bar_both_hit_pct"] == 0.0
+    assert eod.exit_management_diagnostic["trade_count"] == 1
+    empty = simulate_trades(
+        eod_only,
+        _signal(bar_index=0, trigger="touch", direction="long").iloc[0:0],
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        return_result=True,
+    )
+    assert isinstance(empty, SimulationResult)
+    assert empty.trades.empty
+    assert empty.exit_management_diagnostic["trade_count"] == 0
+    assert empty.exit_management_diagnostic["trades_with_exit_mgmt_pct"] == 0.0
+    assert empty.exit_management_diagnostic["average_stop_adjustments_per_trade"] == 0.0
+    assert empty.intrabar_diagnostic["same_bar_both_hit_pct"] == 0.0
+    assert empty.direction_collision_diagnostic["candidate_pairs"] == 0
+    assert empty.direction_collision_diagnostic["accepted_trade_share_from_pairs"] == 0.0
+
+
+def test_direction_collision_pairs_require_both_sides():
+    """``{"long","short"} <= directions`` counts only opposite-direction groups."""
+    df = _df(
+        _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 110.0, 90.0, 100.0),
+    )
+    long_only = simulate_trades(
+        df,
+        _signal(bar_index=0, trigger="touch", direction="long", signal_id=1),
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        return_result=True,
+    )
+    assert long_only.direction_collision_diagnostic["candidate_pairs"] == 0
+    both = pd.concat(
+        [
+            _signal(bar_index=0, trigger="touch", direction="long", signal_id=1),
+            _signal(bar_index=0, trigger="touch", direction="short", signal_id=2),
+        ],
+        ignore_index=True,
+    )
+    paired = simulate_trades(
+        df,
+        both,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        exposure_policy="allow_all",
+        return_result=True,
+    )
+    diagnostic = paired.direction_collision_diagnostic
+    assert diagnostic["candidate_pairs"] == 1
+    assert diagnostic["resolved_long"] == 1
+    assert diagnostic["resolved_short"] == 1
+    assert diagnostic["accepted_trade_share_from_pairs"] == pytest.approx(1.0)
