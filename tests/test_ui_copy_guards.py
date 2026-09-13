@@ -1495,23 +1495,46 @@ _DA0_DIRECTION_HELP_NEEDLES = (
 _DA0_SETUP_BUILDER_H2 = "Setup Builder"
 
 
+def _selectbox_options(source: str, call: ast.Call) -> list:
+    """Literal ``options=`` list, or the assigned list bound to a Name."""
+    node: ast.AST | None = call.args[1] if len(call.args) > 1 else None
+    for kw in call.keywords:
+        if kw.arg == "options":
+            node = kw.value
+            break
+    if node is None:
+        raise AssertionError("Direction selectbox has no options")
+    try:
+        value = ast.literal_eval(node)
+    except (ValueError, TypeError):
+        value = None
+    if isinstance(value, list):
+        return value
+    if isinstance(node, ast.Name):
+        tree = ast.parse(source)
+        for stmt in ast.walk(tree):
+            if not isinstance(stmt, ast.Assign):
+                continue
+            if not any(
+                isinstance(target, ast.Name) and target.id == node.id for target in stmt.targets
+            ):
+                continue
+            try:
+                assigned = ast.literal_eval(stmt.value)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(assigned, list):
+                return assigned
+    raise AssertionError("Direction options is not a list literal")
+
+
 def _assert_da0_direction_help(source: str) -> None:
     """AST-bind DA0 to the unique Direction ``st.selectbox`` ``help=``.
 
     File-level / comment / other-widget ``help=`` needles fail-closed (A-1 class).
     """
     call = _selectbox_call(source, "Direction")
-    options = None
-    if len(call.args) > 1:
-        try:
-            options = ast.literal_eval(call.args[1])
-        except (ValueError, TypeError):
-            options = None
-    if options is None:
-        for kw in call.keywords:
-            if kw.arg == "options":
-                options = ast.literal_eval(kw.value)
-                break
+    options = _selectbox_options(source, call)
     assert options == ["long", "short", "both"], f"Direction options drifted: {options!r}"
     help_text = _kw_str(call, "help")
     assert help_text, "Direction selectbox must have help= (QI-03-08)"
