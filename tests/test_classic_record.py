@@ -7,6 +7,7 @@ import json
 import zipfile
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -928,6 +929,10 @@ def test_render_record_and_discuss_stub(monkeypatch: pytest.MonkeyPatch):
     assert any(name == "checkbox" for name, _args, _kwargs in stub._calls)
     assert any(name == "button" for name, _args, _kwargs in stub._calls)
 
+    monkeypatch.setattr(
+        "thesistester.assistant.AssistantOrchestrator.for_local_workspace",
+        classmethod(lambda cls: SimpleNamespace()),
+    )
     stub = install_classic_streamlit_stub(
         monkeypatch,
         session,
@@ -965,4 +970,7 @@ def test_render_record_and_discuss_stub(monkeypatch: pytest.MonkeyPatch):
     flash = consume_classic_flash(session)
     assert flash is not None
     assert "Recorded" in flash["message"]
+    assert session.get("classic_active_run_id") == "run_recorded1"
+    assert session.get("classic_focus_run_id") == "run_recorded1"
+    assert session.get("assistant_selected_thesis_id") == session["classic_active_thesis_id"]
     assert any(name == "rerun" for name, _args, _kwargs in stub._calls)

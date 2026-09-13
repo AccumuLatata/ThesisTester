@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 import subprocess
 import sys
-import math
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -603,11 +604,13 @@ def test_module_cli_help_exits_zero():
     """QI-6 §3.2: ``--help`` exit 0; verbs run / study / journal."""
     top = _module_cli("--help")
     assert top.returncode == 0, top.stderr
-    collapsed = " ".join(top.stdout.lower().split())
-    for verb in ("run", "study", "journal"):
-        assert verb in collapsed
+    assert "Traceback" not in top.stderr
+    # Fail-closed: argparse usage token, not H8 prose ("Run deterministic…",
+    # "Study emit stays…") which would make substring verb checks pass anyway.
+    assert "{run,study,journal}" in top.stdout
     run_help = _module_cli("run", "--help")
     assert run_help.returncode == 0, run_help.stderr
+    assert "Traceback" not in run_help.stderr
     run_blob = " ".join(run_help.stdout.lower().split())
     assert "experiment" in run_blob
     assert "--workers" in run_help.stdout
@@ -660,6 +663,43 @@ def test_cli_main_error_paths_raise_value_error(tmp_path):
     )
     with pytest.raises(ValueError, match="Unknown experiment configuration keys"):
         main(["run", str(unknown)])
+
+
+def test_cli_main_resolves_yaml_workers_and_output_dir(tmp_path, monkeypatch, capsys):
+    """``main`` uses YAML workers when ``--workers`` is omitted; flag output wins."""
+    yaml_path = tmp_path / "experiment.yaml"
+    yaml_path.write_text("schema_version: 1\nruns: []\n", encoding="utf-8")
+    captured: dict = {}
+
+    monkeypatch.setattr(
+        "thesistester.cli.load_experiment_file",
+        lambda _path: {"schema_version": 1, "workers": 2, "runs": [{"name": "stub"}]},
+    )
+
+    def _fake_batch(experiment, *, base_directory, output_directory, workers):
+        captured["experiment"] = experiment
+        captured["base_directory"] = base_directory
+        captured["output_directory"] = Path(output_directory)
+        captured["workers"] = workers
+        return pd.DataFrame([{"run_name": "stub"}])
+
+    monkeypatch.setattr("thesistester.cli.run_batch", _fake_batch)
+
+    flag_out = tmp_path / "flag-out"
+    assert main(["run", str(yaml_path), "--output-dir", str(flag_out)]) == 0
+    assert captured["workers"] == 2
+    assert captured["output_directory"] == flag_out
+    printed = capsys.readouterr().out
+    assert "Completed 1 run(s) with 2 worker(s)." in printed
+
+    monkeypatch.setattr(
+        "thesistester.cli.load_experiment_file",
+        lambda _path: {"schema_version": 1, "runs": [{"name": "stub"}]},
+    )
+    captured.clear()
+    assert main(["run", str(yaml_path)]) == 0
+    assert captured["workers"] == 1
+    assert captured["output_directory"] == yaml_path.parent / "thesistester_results"
 
 
 def test_cli_main_run_writes_index(tmp_path, capsys):

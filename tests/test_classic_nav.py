@@ -571,6 +571,19 @@ def test_render_discuss_this_run_and_prefill_caption_stub(monkeypatch: pytest.Mo
     )
     render_discuss_this_run(page_key="backtest", session_state=session)
     assert any(name == "error" for name, _args, _kwargs in stub._calls)
+    assert not any(name == "rerun" for name, _args, _kwargs in stub._calls)
+
+    stub = install_classic_streamlit_stub(
+        monkeypatch,
+        session,
+        button_clicks={"classic_discuss_run_backtest": True},
+    )
+    monkeypatch.setattr(
+        "thesistester.classic_nav.discuss_run",
+        lambda state: "run_ok",
+    )
+    render_discuss_this_run(page_key="backtest", session_state=session)
+    assert any(name == "rerun" for name, _args, _kwargs in stub._calls)
 
     other: dict = {}
     init_classic_session_state(other)

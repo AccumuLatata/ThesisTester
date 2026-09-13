@@ -219,8 +219,35 @@ def test_render_classic_proposal_card_stub(monkeypatch: pytest.MonkeyPatch):
     assert any("raise SL" in str(args) for name, args, _kwargs in stub._calls if name == "info")
     assert any(name == "json" for name, _args, _kwargs in stub._calls)
     assert any(name == "caption" for name, _args, _kwargs in stub._calls)
-    assert any(name == "button" for name, _args, _kwargs in stub._calls)
+    assert any(
+        name == "button" and args == ("Apply Assistant proposal",)
+        for name, args, _kwargs in stub._calls
+    )
+    assert any(
+        name == "button" and args == ("Dismiss proposal",) for name, args, _kwargs in stub._calls
+    )
 
+    stub = install_classic_streamlit_stub(
+        monkeypatch,
+        session,
+        button_clicks={"classic_apply_proposal_pages/7_Backtest.py": True},
+    )
+    render_classic_proposal_card(target_page="pages/7_Backtest.py", session_state=session)
+    assert session.get("backtest_sl_ticks") == 8.0
+    assert session.get("backtest_tp_ticks") == 12.0
+    assert get_classic_proposal(session) is None
+    assert any(name == "rerun" for name, _args, _kwargs in stub._calls)
+
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 8, "take_profit_ticks": 12},
+            note="raise SL",
+            evidence_paths=["docs/note.md"],
+        ),
+        navigate=False,
+    )
     stub = install_classic_streamlit_stub(
         monkeypatch,
         session,
