@@ -85,7 +85,10 @@ emit `15s_primary_derive_1m` with MNQ + UTC + History Exporter
 (`default_study_draft()` only; `StudyDraft()` field defaults stay legacy).
 The pdPOC example stays ES / NY. Operator template:
 `examples/studies/pRTH_open_ma.yaml`. Do not point a 15s Quantower file at a
-study without that mode (omitted = `primary` = a different experiment). Do
+study without that mode (omitted = `primary` = a different experiment).
+`validate_study_spec` emits an error-level warning (does not rewrite to
+15s-primary) when `format_profile` is Quantower History Exporter and
+`ingestion_mode` is omitted or `primary` (QI-07-05). Do
 not implement further SIA work by importing `pages/1_Data.py`, reading
 classic `st.session_state`, or editing `engine/` / `api.run_experiment`
 loaders.

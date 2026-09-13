@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import re
+import warnings
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -46,6 +47,13 @@ from thesistester.setup import (
 STUDY_SCHEMA_VERSION = 1
 RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 STUDY_INGESTION_MODES = frozenset({"primary", INGESTION_MODE_15S_PRIMARY_DERIVE_1M})
+# Shared with ``thesistester.study.builder.draft_warnings`` (QI-07-05 / QR A-14).
+# Do not rewrite omitted/primary Quantower specs to 15s-primary (AH §2 item 9).
+_WARNING_QUANTOWER_PRIMARY = (
+    "Quantower profile with primary ingestion treats the CSV as the decision "
+    "timeframe. A 15-second History Exporter file needs "
+    "ingestion_mode=15s_primary_derive_1m to match the Data-page recommended path."
+)
 _VALID_SAME_BAR_OPPOSITE_DIRECTION = frozenset({"legacy", "skip_both", "raise"})
 
 # Static session/profile names; rolling VWAP/POC are not in
@@ -156,6 +164,15 @@ _ENABLED_SECTIONS = ("grid", "validation", "walk_forward")
 
 class StudySpecError(ValueError):
     """Raised when a StudySpec fails fail-closed validation."""
+
+
+class StudySpecWarning(UserWarning):
+    """Authoring warning from ``validate_study_spec`` that does not reject the spec.
+
+    QR A-14 (QI-07-05): Quantower History Exporter + omitted/primary
+    ``ingestion_mode``. Error-level copy (visible hard warning); the spec still
+    validates. AH omit=primary; no rewrite to 15s-primary.
+    """
 
 
 def _require_mapping(value: Any, *, section: str) -> dict[str, Any]:
@@ -481,6 +498,15 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         raise StudySpecError(
             "study.dataset.ingestion_mode must be one of "
             f"{sorted(STUDY_INGESTION_MODES)!r} when present; got {ingestion_mode!r}"
+        )
+    format_profile = dataset.get("format_profile")
+    if format_profile == "quantower_history_exporter" and (
+        ingestion_mode is None or ingestion_mode == "primary"
+    ):
+        warnings.warn(
+            _WARNING_QUANTOWER_PRIMARY,
+            StudySpecWarning,
+            stacklevel=2,
         )
     _validate_dataset_tick_keys(dataset)
 

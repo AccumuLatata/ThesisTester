@@ -22,7 +22,9 @@ default to **MNQ + `source_timezone: UTC`** (AMP/Rithmic HE naive stamps) and
 `workers: 1`. The pdPOC teaching example stays ES / `America/New_York`.
 `examples/studies/pRTH_open_ma.yaml` is the operator MNQ HE template
 (32 cells, one MA per row). Omitted mode remains `primary` (the dopen
-example is legacy 1m). Execute is still CLI / `run_experiment`. Studies does
+example is legacy 1m). Quantower History Exporter + omitted/`primary`
+`ingestion_mode` is an error-level `validate_study_spec` warning (QI-07-05);
+the spec is not rewritten to 15s-primary. Execute is still CLI / `run_experiment`. Studies does
 not walk the Data page. The 15s-primary derive loader resolves OHLC-identical
 source duplicate opens (lowest volume) before 1m derivation; OHLC conflicts
 fail the cell. Optional `dataset.tick_paths` (Quantower Tick–Tick–Last list)

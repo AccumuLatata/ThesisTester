@@ -973,7 +973,7 @@ overview ranking, OTF delta, Research Study Runner
 | `report.min_trades` | Ranked overview excludes low-N cells | Meeting N is not statistical significance |
 | `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs. `--admit-tod auto` drafts a one-cell Admit child; `--tod-group` / `--allow-thin` require that flag. Omit `--admit-tod` for RS5 survivors |
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
-| `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
+| `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Quantower HE + omit/`primary` warns at validate (no rewrite). Same 15s file without the mode is decision-TF 15s, not Data-page R12 |
 | `dataset.tick_paths` | Optional Tick–Tick–Last list for prior VA, APOC, and rolling POC | Named VA / APOC / rolling POC without this refuse (`requires ticks`). New drafts omit it |
 
 **How to use.**
@@ -1046,7 +1046,7 @@ study catalog, study list, StudyDraft
 | CLI output directory | Spawn target for `study run` | Do not reuse another study’s dir |
 | Run via CLI / Confirm | Spawn existing CLI argv | Not in-process; watch Inspect → Refresh |
 | Build StudySpec | Widgets → YAML; Apply to Preview | Not a runner |
-| Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s path |
+| Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s; QT HE + omit/primary warns (no rewrite) |
 | Tick paths (optional) | Quantower Tick–Tick–Last list for prior VA, APOC, rolling POC | Emit writes the key only when set. Named VA / APOC / rolling POC without ticks refuse (`requires ticks`). Does not replace the 15s path |
 | Start from example | pRTH (32 cells) or pdPOC | Replace `dataset.path` |
 | Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |

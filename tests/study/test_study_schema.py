@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+import warnings
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,8 @@ from thesistester.study.schema import (
     STUDY_SCHEMA_VERSION,
     STUDY_STATIC_LEVEL_NAMES,
     StudySpecError,
+    StudySpecWarning,
+    _WARNING_QUANTOWER_PRIMARY,
     closed_level_token_set,
     load_study_spec,
     normalize_study_spec,
@@ -665,8 +668,44 @@ def test_dataset_instrument_required():
 def test_dataset_ingestion_mode_omitted_stays_legal():
     raw = _minimal_study()
     assert "ingestion_mode" not in raw["study"]["dataset"]
-    spec = validate_study_spec(normalize_study_spec(raw))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", StudySpecWarning)
+        spec = validate_study_spec(normalize_study_spec(raw))
     assert "ingestion_mode" not in spec["study"]["dataset"]
+
+
+_VENDOR_15S_HE = Path("tests/fixtures/vendor/quantower_history_exporter_15s.csv")
+
+
+def test_quantower_omitted_ingestion_mode_warns_and_does_not_rewrite():
+    """QI-07-05 / QI-7 §10: 15s HE + omit stays primary; validate warns, no rewrite."""
+    raw = _minimal_study()
+    raw["study"]["dataset"]["path"] = str(_VENDOR_15S_HE)
+    raw["study"]["dataset"]["format_profile"] = "quantower_history_exporter"
+    assert "ingestion_mode" not in raw["study"]["dataset"]
+    with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
+        spec = validate_study_spec(normalize_study_spec(raw))
+    assert "ingestion_mode" not in spec["study"]["dataset"]
+    assert spec["study"]["dataset"]["format_profile"] == "quantower_history_exporter"
+
+
+def test_quantower_primary_ingestion_mode_warns_and_keeps_primary():
+    raw = _minimal_study()
+    raw["study"]["dataset"]["format_profile"] = "quantower_history_exporter"
+    raw["study"]["dataset"]["ingestion_mode"] = "primary"
+    with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
+        spec = validate_study_spec(normalize_study_spec(raw))
+    assert spec["study"]["dataset"]["ingestion_mode"] == "primary"
+
+
+def test_quantower_15s_primary_ingestion_mode_accepted_without_warning():
+    raw = _minimal_study()
+    raw["study"]["dataset"]["format_profile"] = "quantower_history_exporter"
+    raw["study"]["dataset"]["ingestion_mode"] = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", StudySpecWarning)
+        spec = validate_study_spec(normalize_study_spec(raw))
+    assert spec["study"]["dataset"]["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 
 
 def test_dataset_ingestion_mode_accepts_known_tokens():
