@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ast
+import sys
+import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -28,6 +31,7 @@ from thesistester.classic_context import (
     init_classic_session_state,
     is_research_mode,
     link_thesis,
+    render_classic_thesis_chrome,
     resolve_pending_navigation_target,
     set_classic_flash,
     set_pending_navigation,
@@ -439,3 +443,207 @@ def test_protected_classic_keys_unchanged_detects_value_and_type_drift():
     removed = {"dataset_id": "ds_a"}
     with pytest.raises(AssertionError, match="was removed"):
         assert_protected_classic_keys_unchanged(before, removed)
+
+
+def install_classic_streamlit_stub(
+    monkeypatch: pytest.MonkeyPatch,
+    session_state: dict,
+    *,
+    button_clicks: dict[str, bool] | None = None,
+    widget_values: dict[str, object] | None = None,
+) -> types.ModuleType:
+    """QI-10 §3.6 Streamlit stub for classic ``render_*`` helpers (not AppTest)."""
+    st = types.ModuleType("streamlit")
+    clicks = button_clicks or {}
+    values = widget_values or {}
+    calls: list[tuple[str, tuple, dict]] = []
+
+    class _Ctx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def _record(name: str):
+        def _fn(*args, **kwargs):
+            calls.append((name, args, kwargs))
+            return None
+
+        return _fn
+
+    def _button(label, *args, **kwargs):
+        calls.append(("button", (label,), kwargs))
+        key = kwargs.get("key")
+        return bool(clicks.get(key, False))
+
+    def _checkbox(label, *args, **kwargs):
+        calls.append(("checkbox", (label,), kwargs))
+        key = kwargs.get("key")
+        if key in values:
+            return bool(values[key])
+        return bool(kwargs.get("value", False))
+
+    def _text_input(label, *args, **kwargs):
+        calls.append(("text_input", (label,), kwargs))
+        key = kwargs.get("key")
+        if key in values:
+            return values[key]
+        if key in session_state:
+            return session_state[key]
+        if args:
+            return args[0]
+        return kwargs.get("value") or ""
+
+    def _selectbox(label, options=None, *args, **kwargs):
+        calls.append(("selectbox", (label, options), kwargs))
+        key = kwargs.get("key")
+        if key in values:
+            return values[key]
+        choices = list(options or [])
+        index = kwargs.get("index", 0)
+        if index is None or not choices:
+            return None
+        return choices[index]
+
+    def _columns(spec, *args, **kwargs):
+        count = len(spec) if isinstance(spec, (list, tuple)) else int(spec)
+        return [_Ctx() for _ in range(count)]
+
+    def _tabs(labels, *args, **kwargs):
+        calls.append(("tabs", (tuple(labels),), kwargs))
+        return [_Ctx() for _ in labels]
+
+    def _expander(*args, **kwargs):
+        calls.append(("expander", args, kwargs))
+        return _Ctx()
+
+    for name in (
+        "title",
+        "caption",
+        "subheader",
+        "warning",
+        "success",
+        "error",
+        "info",
+        "markdown",
+        "rerun",
+        "stop",
+        "dataframe",
+        "json",
+        "switch_page",
+    ):
+        setattr(st, name, _record(name))
+    st.button = _button  # type: ignore[assignment]
+    st.checkbox = _checkbox  # type: ignore[assignment]
+    st.selectbox = _selectbox  # type: ignore[assignment]
+    st.text_input = _text_input  # type: ignore[assignment]
+    st.columns = _columns  # type: ignore[assignment]
+    st.tabs = _tabs  # type: ignore[assignment]
+    st.expander = _expander  # type: ignore[assignment]
+    st.session_state = session_state  # type: ignore[assignment]
+    st._calls = calls  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+    return st
+
+
+def test_render_classic_thesis_chrome_idle_flash_nav_and_research(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session: dict = {}
+    init_classic_session_state(session)
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+
+    with pytest.raises(ValueError, match="page_key"):
+        render_classic_thesis_chrome(page_key="  ")
+
+    render_classic_thesis_chrome(page_key="setup")
+    assert not any(name == "caption" for name, _args, _kwargs in stub._calls)
+
+    stub._calls.clear()
+    set_classic_flash(session, level="info", message="linked chrome")
+    render_classic_thesis_chrome(page_key="setup")
+    assert any(name == "info" and args == ("linked chrome",) for name, args, _kwargs in stub._calls)
+
+    stub._calls.clear()
+    set_pending_navigation(session, "pages/not_a_page.py")
+    render_classic_thesis_chrome(page_key="setup")
+    assert any(name == "warning" for name, _args, _kwargs in stub._calls)
+    assert not any(name == "switch_page" for name, _args, _kwargs in stub._calls)
+
+    stub._calls.clear()
+    set_pending_navigation(session, "pages/7_Backtest.py")
+    render_classic_thesis_chrome(page_key="setup")
+    assert any(
+        name == "switch_page" and args == ("pages/7_Backtest.py",)
+        for name, args, _kwargs in stub._calls
+    )
+
+    link_thesis(
+        session,
+        thesis_id="th" + ("a" * 32),
+        thesis_name="Chrome thesis",
+        dataset_id="ds_test_aaa",
+    )
+    stub._calls.clear()
+    render_classic_thesis_chrome(page_key="backtest", dataset_id="ds_test_aaa")
+    captions = [args[0] for name, args, _kwargs in stub._calls if name == "caption"]
+    assert any("Research mode" in text and "Chrome thesis" in text for text in captions)
+    assert any(
+        name == "button" and args == ("Exit research mode",) for name, args, _kwargs in stub._calls
+    )
+    assert any(name == "selectbox" for name, _args, _kwargs in stub._calls)
+
+    stub = install_classic_streamlit_stub(
+        monkeypatch,
+        session,
+        button_clicks={"classic_exit_research_backtest": True},
+    )
+    render_classic_thesis_chrome(page_key="backtest", dataset_id="ds_test_aaa")
+    assert not is_research_mode(session)
+    assert any(name == "rerun" for name, _args, _kwargs in stub._calls)
+
+
+def test_render_classic_thesis_chrome_create_link_expander(monkeypatch: pytest.MonkeyPatch):
+    session: dict = {}
+    init_classic_session_state(session)
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+    created: list[str] = []
+    orch = SimpleNamespace(
+        list_theses=lambda include_archived=False: [],
+        create_thesis=lambda name: (
+            created.append(name) or SimpleNamespace(thesis_id="th" + ("b" * 32), name=name)
+        ),
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.AssistantOrchestrator.for_local_workspace",
+        classmethod(lambda cls: orch),
+    )
+    render_classic_thesis_chrome(page_key="setup", allow_create_link=True)
+    assert any(name == "expander" for name, _args, _kwargs in stub._calls)
+    assert any(
+        name == "tabs" and args == (("Create thesis", "Link existing"),)
+        for name, args, _kwargs in stub._calls
+    )
+    assert any(
+        name == "text_input" and args == ("Thesis name",) for name, args, _kwargs in stub._calls
+    )
+    assert any(
+        name == "button" and args == ("Create and link thesis",)
+        for name, args, _kwargs in stub._calls
+    )
+    assert any(
+        name == "info" and "No active theses yet" in args[0] for name, args, _kwargs in stub._calls
+    )
+
+    stub = install_classic_streamlit_stub(
+        monkeypatch,
+        session,
+        button_clicks={"classic_create_thesis_btn_setup": True},
+        widget_values={"classic_create_thesis_name_setup": "Created thesis"},
+    )
+    render_classic_thesis_chrome(page_key="setup", allow_create_link=True)
+    assert created == ["Created thesis"]
+    assert is_research_mode(session)
+    assert get_active_thesis_name(session) == "Created thesis"
+    assert any(name == "rerun" for name, _args, _kwargs in stub._calls)

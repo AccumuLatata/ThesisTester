@@ -7,6 +7,7 @@ import json
 import zipfile
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +26,7 @@ from thesistester.classic_record import (
     classic_session_registration_gaps,
     materialize_classic_source_csv,
     record_classic_session_run,
+    render_record_and_discuss,
     resolve_classic_record_source,
     resolve_classic_record_source_path,
 )
@@ -881,3 +883,94 @@ def test_materialize_and_resolve_source_helpers(tmp_path: Path):
         materialize_dir=tmp_path / "mat2",
     )
     assert Path(via_key) == session_path.resolve()
+
+
+def test_render_record_and_discuss_stub(monkeypatch: pytest.MonkeyPatch):
+    from thesistester.assistant import OrchestrationResult, OrchestrationStatus
+    from thesistester.classic_context import (
+        consume_classic_flash,
+        consume_pending_navigation,
+        init_classic_session_state,
+        link_thesis,
+    )
+    from tests.test_classic_context import install_classic_streamlit_stub
+
+    idle: dict = {}
+    init_classic_session_state(idle)
+    stub = install_classic_streamlit_stub(monkeypatch, idle)
+    with pytest.raises(ValueError, match="page_key"):
+        render_record_and_discuss(page_key="", session_state=idle)
+    monkeypatch.setattr(
+        "thesistester.classic_record.classic_session_ready_for_record",
+        lambda state: False,
+    )
+    render_record_and_discuss(page_key="backtest", session_state=idle)
+    assert not any(name == "subheader" for name, _args, _kwargs in stub._calls)
+
+    monkeypatch.setattr(
+        "thesistester.classic_record.classic_session_ready_for_record",
+        lambda state: True,
+    )
+    stub = install_classic_streamlit_stub(monkeypatch, idle)
+    render_record_and_discuss(page_key="backtest", session_state=idle)
+    assert any(name == "info" for name, _args, _kwargs in stub._calls)
+
+    session: dict = {}
+    init_classic_session_state(session)
+    link_thesis(
+        session,
+        thesis_id="th" + ("a" * 32),
+        thesis_name="Record thesis",
+        dataset_id="ds",
+    )
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+    render_record_and_discuss(page_key="backtest", session_state=session)
+    assert any(name == "caption" for name, _args, _kwargs in stub._calls)
+    assert any(name == "checkbox" for name, _args, _kwargs in stub._calls)
+    assert any(name == "button" for name, _args, _kwargs in stub._calls)
+
+    monkeypatch.setattr(
+        "thesistester.assistant.AssistantOrchestrator.for_local_workspace",
+        classmethod(lambda cls: SimpleNamespace()),
+    )
+    stub = install_classic_streamlit_stub(
+        monkeypatch,
+        session,
+        button_clicks={"classic_record_and_discuss_backtest": True},
+    )
+    monkeypatch.setattr(
+        "thesistester.classic_record.record_classic_session_run",
+        lambda *a, **k: (_ for _ in ()).throw(ValueError("Missing: signals")),
+    )
+    render_record_and_discuss(page_key="backtest", session_state=session)
+    assert any(
+        name == "error" and "Missing: signals" in args[0] for name, args, _kwargs in stub._calls
+    )
+
+    stub = install_classic_streamlit_stub(
+        monkeypatch,
+        session,
+        button_clicks={"classic_record_and_discuss_backtest": True},
+    )
+    monkeypatch.setattr(
+        "thesistester.classic_record.record_classic_session_run",
+        lambda *a, **k: OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id="BUNDLE.register_external_run",
+            payload={
+                "run_id": "run_recorded1",
+                "canonical_bundle_hash": "abc123def456",
+                "idempotent": False,
+                "execution_origin": "classic",
+            },
+        ),
+    )
+    render_record_and_discuss(page_key="backtest", session_state=session)
+    assert consume_pending_navigation(session) == "pages/14_Research_Assistant.py"
+    flash = consume_classic_flash(session)
+    assert flash is not None
+    assert "Recorded" in flash["message"]
+    assert session.get("classic_active_run_id") == "run_recorded1"
+    assert session.get("classic_focus_run_id") == "run_recorded1"
+    assert session.get("assistant_selected_thesis_id") == session["classic_active_thesis_id"]
+    assert any(name == "rerun" for name, _args, _kwargs in stub._calls)
