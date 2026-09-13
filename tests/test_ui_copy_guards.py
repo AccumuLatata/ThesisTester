@@ -1357,6 +1357,96 @@ def test_user_guide_studies_viewer_h2_names_inspect_vs_report_failed():
         raise AssertionError("Notes-only needles must not bind as Studies viewer H2")
 
 
+_H16_RANKING_ASSUMPTIONS_H2 = "Research Study Runner ranking (RS4)"
+_H16_RANKING_STUDY_RUNNER_H2 = "RS4 — Overview report"
+_H16_RANKING_RS1_H2 = "RS1 — StudySpec schema (`schema_version: 1`)"
+_H16_RANKING_RS5_H2 = "RS5 — Promote + stage-first examples"
+_H16_RANKING_NEEDLES = (
+    "H16",
+    "wfa_median_test_expectancy_r",
+    "not rankable",
+    "primary_metric",
+    "stored",
+)
+_ASSUMPTIONS_H2_SOFT_BUDGET = 4500
+
+
+def _assert_a11_h2_needles(
+    markdown: str,
+    title: str,
+    needles: tuple[str, ...],
+    *,
+    notes_next_h2: str,
+    label: str,
+    budget: int | None = None,
+) -> None:
+    """H2-bind A-11 needles; Notes-only copy after the same H2 must not satisfy."""
+    body = _md_h2_body(markdown, title)
+    missing = [needle for needle in needles if needle not in body]
+    assert missing == [], f"{label} missing A-11 needles {missing}"
+    if budget is not None:
+        assert len(body) <= budget, f"{label} exceeds soft budget: {len(body)}"
+    fake = (
+        f"## {title}\n"
+        "unrelated ranking copy without the contract needles\n"
+        "## Notes\n"
+        f"{' '.join(needles)}\n"
+        f"## {notes_next_h2}\nunrelated\n"
+    )
+    leaked = [needle for needle in needles if needle in _md_h2_body(fake, title)]
+    assert leaked == [], f"Notes-only needles must not bind as {label}: {leaked}"
+
+
+def test_assumptions_rs4_h2_names_wfa_oos_not_rankable():
+    """QI-05-06 / A-11: ASSUMPTIONS RS4 H2 names H16 stored-not-rankable."""
+    _assert_a11_h2_needles(
+        _read(REPO_ROOT / "docs" / "ASSUMPTIONS_AND_LIMITATIONS.md"),
+        _H16_RANKING_ASSUMPTIONS_H2,
+        _H16_RANKING_NEEDLES,
+        notes_next_h2="Research Study Runner diagnostic rollup (RS-D4)",
+        label="ASSUMPTIONS RS4 H2",
+        budget=_ASSUMPTIONS_H2_SOFT_BUDGET,
+    )
+
+
+def test_study_runner_rs1_h2_names_primary_metric_allowlist():
+    """STUDY_RUNNER RS1 H2 names in-sample primary_metric; WFA token not rankable."""
+    _assert_a11_h2_needles(
+        _read(REPO_ROOT / "docs" / "STUDY_RUNNER.md"),
+        _H16_RANKING_RS1_H2,
+        _H16_RANKING_NEEDLES,
+        notes_next_h2="RS2 — Deterministic expansion",
+        label="STUDY_RUNNER RS1 H2",
+    )
+
+
+def test_study_runner_rs4_h2_names_h16_wfa_not_rankable():
+    """STUDY_RUNNER RS4 H2 names H16 stored-not-rankable ranking."""
+    _assert_a11_h2_needles(
+        _read(REPO_ROOT / "docs" / "STUDY_RUNNER.md"),
+        _H16_RANKING_STUDY_RUNNER_H2,
+        _H16_RANKING_NEEDLES,
+        notes_next_h2="RS5 — Promote + stage-first examples",
+        label="STUDY_RUNNER RS4 H2",
+    )
+
+
+def test_study_runner_rs5_h2_names_metric_override_not_allowlist():
+    """STUDY_RUNNER RS5 H2: --metric does not make the WFA token rankable."""
+    _assert_a11_h2_needles(
+        _read(REPO_ROOT / "docs" / "STUDY_RUNNER.md"),
+        _H16_RANKING_RS5_H2,
+        (
+            "--metric",
+            "wfa_median_test_expectancy_r",
+            "not rankable",
+            "primary_metric",
+        ),
+        notes_next_h2="RS6 — Default-off `STUDY.*` assistant capabilities",
+        label="STUDY_RUNNER RS5 H2",
+    )
+
+
 def test_user_guide_study_runner_h2_stays_under_soft_budget():
     """A-9 H8 contrast lives on Purpose; Study Runner must stay ≤ Help chunk budget."""
     body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_STUDY_H2)

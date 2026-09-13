@@ -116,6 +116,11 @@ Normalization defaults (when omitted): `workers=1`, `confirm_above_runs=200`,
 block (`primary_metric: expectancy_r`, `multiple_testing: warn`, …). Default
 `group_by` is the intersection of the preferred axes with this study’s
 `factors` (never invents axes the study does not declare).
+`primary_metric` is in-sample / all-day only: `expectancy_r` / `total_r` /
+`max_drawdown_r` / `trade_count` / `profit_factor`. Index / rollup keep a
+stored `wfa_median_test_expectancy_r` when WFA ran; that column is **not rankable**
+— validate rejects it as `study.report.primary_metric` (H16 / QI-05-06).
+WFA math is unchanged.
 
 ### Supported factor axes
 
@@ -363,6 +368,7 @@ never re-sorts the ranked table.
 - **Failed** section: always a `## Failed` heading (empty → `No failed cells.`). Rows are index `status=failed` (stay in `study.overview.csv` and rollup N; `AUDIT_FINAL` §5.1 item 34). Error text from `study.ledger.json` when present, else `unknown error`. Excluded from ranked / promote.
 - Index-only orphan rows (`factors_joined=False`) stay in `study.overview.csv` but are excluded from ranked / low-N / unresolved / group summaries / crowning.
 - Sort: higher-is-better for `expectancy_r` / `total_r` / `profit_factor` / `trade_count`; lower-is-better for `max_drawdown_r`.
+- **H16:** `wfa_median_test_expectancy_r` is stored on `results_index.csv` / rollup when present; it is **not rankable** as `primary_metric`. Default overview ranking and default promote use the in-sample allowlist, not the stored WFA OOS column (QI-05-06).
 - `multiple_testing: error` suppresses best-cell crowning in Markdown (ranked table still emitted as descriptive).
 
 ### Profit factor / win_rate source (RS-D7)
@@ -424,7 +430,7 @@ python -m thesistester study expand drafts/pdPOC_survivors.yaml --output-dir out
 | `study_dir` | Completed study output (spec + expansion + index/bundles) |
 | `--output` | Draft StudySpec path (required); refuses overwrite unless `--force` |
 | `--top-n` | Ranked survivors to include (default 10) |
-| `--metric` | Optional ranking override (default `report.primary_metric`) |
+| `--metric` | Optional overview-column ranking override (default `report.primary_metric`). Does not expand the spec allowlist; `wfa_median_test_expectancy_r` stays **not rankable** as `primary_metric` |
 | `--force` | Replace an existing draft at `--output` |
 
 Draft rules:

@@ -22,6 +22,7 @@ from thesistester.levels.catalog import (
     pivot_column_names,
 )
 from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES, compute_pivot_levels
+from thesistester.study import schema as study_schema
 from thesistester.study.schema import (
     STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
@@ -996,3 +997,123 @@ def test_random_baseline_invalid_values_fail(block, match):
     raw["study"]["report"]["random_baseline"] = block
     with pytest.raises(StudySpecError, match=match):
         validate_study_spec(normalize_study_spec(raw))
+
+
+_WFA_OOS_METRIC = "wfa_median_test_expectancy_r"
+_RANKABLE_PRIMARY_METRICS = frozenset(
+    {"expectancy_r", "total_r", "max_drawdown_r", "trade_count", "profit_factor"}
+)
+_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "thesistester" / "study" / "schema.py"
+
+
+def _index_primary_metrics_targets(node: ast.stmt) -> list[ast.Name]:
+    if isinstance(node, ast.Assign):
+        return [target for target in node.targets if isinstance(target, ast.Name)]
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+        return [node.target]
+    return []
+
+
+def _index_primary_metrics_call(node: ast.stmt) -> ast.Call:
+    value = node.value
+    if (
+        not isinstance(value, ast.Call)
+        or not isinstance(value.func, ast.Name)
+        or value.func.id != "frozenset"
+        or len(value.args) != 1
+        or not isinstance(value.args[0], ast.Set)
+    ):
+        raise AssertionError("_INDEX_PRIMARY_METRICS must be a frozenset({...}) literal")
+    return value
+
+
+def _index_primary_metrics_literals_from(source: str) -> frozenset[str]:
+    """AST-bind `_INDEX_PRIMARY_METRICS` string literals (comment needles fail-closed)."""
+    tree = ast.parse(source)
+    assignments = [
+        node
+        for node in tree.body
+        if any(
+            target.id == "_INDEX_PRIMARY_METRICS" for target in _index_primary_metrics_targets(node)
+        )
+    ]
+    if not assignments:
+        raise AssertionError("missing _INDEX_PRIMARY_METRICS assignment")
+    if len(assignments) != 1:
+        raise AssertionError("multiple _INDEX_PRIMARY_METRICS assignments")
+    tokens: set[str] = set()
+    for elt in _index_primary_metrics_call(assignments[0]).args[0].elts:
+        if not isinstance(elt, ast.Constant) or not isinstance(elt.value, str):
+            raise AssertionError("_INDEX_PRIMARY_METRICS members must be string literals")
+        tokens.add(elt.value)
+    return frozenset(tokens)
+
+
+def _index_primary_metrics_literals() -> frozenset[str]:
+    return _index_primary_metrics_literals_from(_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def test_index_primary_metrics_allowlist_excludes_wfa_oos_token():
+    """QI-05-06 / A-11 document path: ranking allowlist stays in-sample."""
+    literals = _index_primary_metrics_literals()
+    assert literals == _RANKABLE_PRIMARY_METRICS
+    assert literals == study_schema._INDEX_PRIMARY_METRICS
+    assert _WFA_OOS_METRIC not in literals
+    assert _WFA_OOS_METRIC not in study_schema._INDEX_PRIMARY_METRICS
+
+
+def test_index_primary_metrics_comment_needles_do_not_bind():
+    """File-level / comment WFA needles must not satisfy the allowlist AST bind."""
+    fake = (
+        "_INDEX_PRIMARY_METRICS = frozenset(\n"
+        '    {"expectancy_r", "total_r", "max_drawdown_r", "trade_count", "profit_factor"}\n'
+        ")\n"
+        f"# {_WFA_OOS_METRIC}\n"
+    )
+    literals = _index_primary_metrics_literals_from(fake)
+    assert literals == _RANKABLE_PRIMARY_METRICS
+    assert _WFA_OOS_METRIC not in literals
+
+    widened = (
+        "_INDEX_PRIMARY_METRICS = frozenset(\n"
+        '    {"expectancy_r", "total_r", "max_drawdown_r", "trade_count", '
+        f'"profit_factor", "{_WFA_OOS_METRIC}"}}\n'
+        ")\n"
+    )
+    assert _WFA_OOS_METRIC in _index_primary_metrics_literals_from(widened)
+
+    second_assign = (
+        "_INDEX_PRIMARY_METRICS = frozenset(\n"
+        '    {"expectancy_r", "total_r", "max_drawdown_r", "trade_count", "profit_factor"}\n'
+        ")\n"
+        f"_INDEX_PRIMARY_METRICS = _INDEX_PRIMARY_METRICS | {{'{_WFA_OOS_METRIC}'}}\n"
+    )
+    try:
+        _index_primary_metrics_literals_from(second_assign)
+    except AssertionError as exc:
+        assert "multiple _INDEX_PRIMARY_METRICS assignments" in str(exc)
+    else:
+        raise AssertionError("second assignment must not bind the first allowlist literal")
+
+
+@pytest.mark.parametrize("metric", sorted(_RANKABLE_PRIMARY_METRICS))
+def test_rankable_primary_metric_accepted(metric):
+    raw = _minimal_study()
+    raw["study"]["report"]["primary_metric"] = metric
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["report"]["primary_metric"] == metric
+
+
+def test_wfa_median_test_expectancy_r_not_rankable_primary_metric():
+    """QI-05-06 / A-11: stored WFA OOS token is rejected as primary_metric."""
+    raw = _minimal_study()
+    raw["study"]["report"]["primary_metric"] = _WFA_OOS_METRIC
+    with pytest.raises(StudySpecError, match="primary_metric must be one of") as excinfo:
+        validate_study_spec(normalize_study_spec(raw))
+    message = str(excinfo.value)
+    listed, sep, got = message.partition("; got ")
+    assert sep, f"reject message must echo the rejected token: {message}"
+    assert _WFA_OOS_METRIC not in listed
+    assert _WFA_OOS_METRIC in got
+    for token in sorted(_RANKABLE_PRIMARY_METRICS):
+        assert token in listed
