@@ -1452,6 +1452,10 @@ Uploader nonce ≠ leftover research keys: apply also clears
 `focused_equity_curve`, and the A-7 (QI-06-03) residual set
 `otf_validation_matrix`, `otf_validation_config`, `otf_validation_summary`,
 `skipped_signals`, `direction_collision_diagnostic` (clear-only; not hashed).
+`display_timezone` is also clear-only and **reset** on apply to the restored
+`exchange_timezone` (QI-10-01 / A-8). Dataset switch (`_clear_dataset_dependent_state`)
+pops the same AH4 leftover set (`focused_trades`, `focused_equity_curve`,
+`otf_filter_summary`, `signal_settings`, `setup_config`) plus `display_timezone`.
 After a dataset-less import,
 `bundle_import_omitted_data` skips page-12 and Data-page
 `bootstrap_active_saved_dataset` and blocks Data-page Sample auto-load
@@ -1481,7 +1485,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `base_interval` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), dataset persistence (`pages/1_Data.py`) | `str \| None` |
 | `source_timezone` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), dataset persistence (`pages/1_Data.py`) | `str \| None` |
 | `exchange_timezone` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), Backtest/Report TZ handling (`pages/7_Backtest.py`, `pages/11_Report_Export.py`) | `str \| None` |
-| `display_timezone` | Data/Backtest/Time/Report widgets (`pages/1_Data.py`, `pages/7_Backtest.py`, `pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | Time/Report export conversions (`pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | `str` |
+| `display_timezone` | Data/Backtest/Time/Report widgets (`pages/1_Data.py`, `pages/7_Backtest.py`, `pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | Time/Report export conversions (`pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | `str`. Display/export only — not a fill TZ. AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-8 / QI-10-01); not hashed. Bundle apply resets it to the restored `exchange_timezone`. Dataset switch pops then rebinds via `ensure_display_timezone`. |
 | `dataset_id` | Data (`pages/1_Data.py`) | Levels/Signals persistence (`pages/2_Levels.py`, `pages/6_Signals.py`) | `str` |
 | `levels` | Levels (`pages/2_Levels.py`) | Setup/Signals/Backtest/Grid/Report/Bundles (`pages/3_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV + derived level columns |
 | `session_levels` | Levels (`pages/2_Levels.py`) | Bundles/save (`pages/2_Levels.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` session-level table |
@@ -1513,7 +1517,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `time_bucketed_trades` | Time (`pages/9_Time_Analysis.py`) | Report/Bundles availability checks (`pages/12_Research_Bundles.py`) | `pd.DataFrame` trades + time-bucket columns |
 | `time_grouped_summary` | Time (`pages/9_Time_Analysis.py`) | Report export (`pages/11_Report_Export.py`, `thesistester/reporting.py`) | `pd.DataFrame` grouped diagnostics |
 | `focus_entry_window` | Time Focus (SW1) | Backtest Focus overlay, Time Analysis | Normalized post-hoc window dict (`enabled`/`mode`/…); overlay only |
-| `focused_trades` | Time Focus (SW1) | Backtest/Time display | Filtered trade subset; does not replace `trades` |
+| `focused_trades` | Time Focus (SW1) | Backtest/Time display | Filtered trade subset; does not replace `trades`. AH4 clear-only on bundle apply; also popped on dataset switch (`_clear_dataset_dependent_state`, A-8 / QI-10-01) so a leftover Focus overlay cannot arm after load/switch. |
 | `focused_trade_summary` | Time Focus (SW1) | Backtest/Time display | Same shape as `trade_summary` on the subset |
 | `focused_equity_curve` | Time Focus (SW1) | Backtest/Time display | Subset-replay equity (C8); same shape as `equity_curve` |
 | `focus_provenance` | Time Focus (SW1) | Banners / Report / Bundles (SW6) | Counts, `sample_warning`, honesty flags |

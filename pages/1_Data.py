@@ -668,6 +668,14 @@ def _clear_dataset_dependent_state() -> None:
         TICK_ROW_COUNT_KEY,
         TICK_SESSION_COUNT_KEY,
         TICK_WARNINGS_KEY,
+        # QI-10-01 / A-8: AH4 leftover set must also clear on dataset switch.
+        "focused_trades",
+        "focused_equity_curve",
+        "otf_filter_summary",
+        "signal_settings",
+        "setup_config",
+        "_setup_builder_editor_config",
+        "display_timezone",
     ]:
         st.session_state.pop(key, None)
 

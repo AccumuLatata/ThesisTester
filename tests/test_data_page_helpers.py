@@ -573,6 +573,93 @@ def test_clear_dataset_dependent_state_clears_tick_paths(monkeypatch):
         assert key not in session_state
 
 
+_QI1001_DATASET_CLEAR_LEFTOVERS = (
+    "focused_trades",
+    "focused_equity_curve",
+    "otf_filter_summary",
+    "signal_settings",
+    "setup_config",
+    "_setup_builder_editor_config",
+    "display_timezone",
+)
+
+
+def test_clear_dataset_dependent_state_clears_ah4_leftover_set(monkeypatch):
+    """QI-10-01 / A-8: dataset-switch leftover set must pop; data/dataset_id stay."""
+    kept_data = pd.DataFrame({"timestamp": [1], "open": [1], "high": [1], "low": [1], "close": [1]})
+    session_state = {
+        "data": kept_data,
+        "dataset_id": "keep-id",
+        "focused_trades": pd.DataFrame({"trade_id": [99]}),
+        "focused_equity_curve": pd.DataFrame({"cum_r": [9.9]}),
+        "otf_filter_summary": {"leftover": True},
+        "signal_settings": {"leftover": True},
+        "setup_config": {"name": "old setup", "dataset_id": "keep-id"},
+        "_setup_builder_editor_config": {"name": "draft setup", "dataset_id": "keep-id"},
+        "display_timezone": "UTC",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._clear_dataset_dependent_state()
+
+    assert session_state["data"] is kept_data
+    assert session_state["dataset_id"] == "keep-id"
+    for key in _QI1001_DATASET_CLEAR_LEFTOVERS:
+        assert key not in session_state, f"{key} leftover survived dataset-dependent clear"
+
+
+def test_set_active_dataset_state_clears_ah4_leftover_set(monkeypatch):
+    """QI-10-01 / A-8: load/switch dataset leaves no AH4 leftover; display TZ rebinds."""
+    previous = pd.DataFrame({"timestamp": [1], "open": [1], "high": [1], "low": [1], "close": [1]})
+    session_state = {
+        "data": previous,
+        "dataset_id": "dataset-old",
+        "focused_trades": pd.DataFrame({"trade_id": [99]}),
+        "focused_equity_curve": pd.DataFrame({"cum_r": [9.9]}),
+        "otf_filter_summary": {"leftover": True},
+        "signal_settings": {"leftover": True},
+        # Matching new dataset_id would survive the mismatch-only pop; A-8 must still clear.
+        "setup_config": {"name": "matching setup", "dataset_id": "dataset-new"},
+        "_setup_builder_editor_config": {"name": "draft setup", "dataset_id": "dataset-new"},
+        "display_timezone": "UTC",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "set_active_dataset_id", lambda *a, **k: None)
+    monkeypatch.setattr(data_page, "clear_active_dataset_id", lambda *a, **k: None)
+
+    replacement = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                "2026-07-01 09:30:00", periods=2, freq="1min", tz="America/New_York"
+            ),
+            "open": [10.0, 11.0],
+            "high": [12.0, 13.0],
+            "low": [9.0, 10.0],
+            "close": [11.0, 12.0],
+            "volume": [5, 6],
+        }
+    )
+    data_page._set_active_dataset_state(
+        replacement,
+        instrument="ES",
+        base_interval="1min",
+        source_timezone="America/New_York",
+        exchange_timezone="Europe/Berlin",
+        resampled_data={},
+        saved_dataset_id="dataset-new",
+    )
+
+    assert session_state["data"] is replacement
+    assert session_state["dataset_id"] == "dataset-new"
+    assert session_state["exchange_timezone"] == "Europe/Berlin"
+    assert session_state["display_timezone"] == "Europe/Berlin"
+    for key in _QI1001_DATASET_CLEAR_LEFTOVERS:
+        if key == "display_timezone":
+            continue
+        assert key not in session_state, f"{key} leftover survived dataset switch"
+
+
 def test_validate_attached_tick_paths_uses_quantower_ticks(tmp_path):
     fixture = pathlib.Path(__file__).parent / "fixtures" / "ticks" / "rth_open_stub.csv"
     dest = tmp_path / "es_ticks.csv"

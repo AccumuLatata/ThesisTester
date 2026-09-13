@@ -182,6 +182,9 @@ _MANAGED_RESEARCH_KEYS = {
     "otf_validation_summary",
     "skipped_signals",
     "direction_collision_diagnostic",
+    # QI-10-01 / A-8: leftover display TZ is clear-only (not hashed). Apply
+    # resets it to the restored exchange TZ via reset_display_timezone.
+    "display_timezone",
     "equity_curve",
     "grid_results",
     "best_grid_result",
@@ -1101,6 +1104,15 @@ def apply_research_bundle_to_session(
     # empty sessions only).
     session_state[DATA_PAGE_INVALIDATE_SOURCE_KEY] = True
     session_state[BUNDLE_IMPORT_OMITTED_DATA_KEY] = "data" not in session_values
+
+    # QI-10-01 / A-8: leftover display TZ must not survive apply. Rebind to
+    # the restored exchange TZ (or TIMEZONE_OPTIONS[0] when the zip omitted it).
+    from thesistester.timezone_display import reset_display_timezone
+
+    reset_display_timezone(
+        session_state,
+        exchange_timezone=session_state.get("exchange_timezone"),
+    )
 
     return {
         "cleared_keys": sorted(set(cleared_keys)),
