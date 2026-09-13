@@ -554,11 +554,7 @@ def test_failed_section_flattens_multiline_ledger_error(tmp_path: Path):
     )
     result = report_study(study_dir)
     _assert_failed_heading(result.markdown)
-    rows = [
-        line
-        for line in result.markdown.splitlines()
-        if failed_name in line and "boom" in line
-    ]
+    rows = [line for line in result.markdown.splitlines() if failed_name in line and "boom" in line]
     assert rows
     assert "traceback line" in rows[0]
     assert rows[0].count("|") >= 3
