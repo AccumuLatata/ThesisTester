@@ -26,6 +26,7 @@ from thesistester.study.schema import (
     STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
     StudySpecError,
+    _WARNING_QUANTOWER_PRIMARY,
     closed_level_token_set,
     normalize_study_spec,
     validate_study_spec,
@@ -55,11 +56,6 @@ _DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
 _WARNING_15S_SL_FIRST = (
     "15s-primary attaches 15s for R12, but backtest.intrabar_model is sl_first "
     "(or omitted → sl_first). Data-page recommended model is subtimeframe_conservative."
-)
-_WARNING_QUANTOWER_PRIMARY = (
-    "Quantower profile with primary ingestion treats the CSV as the decision "
-    "timeframe. A 15-second History Exporter file needs "
-    "ingestion_mode=15s_primary_derive_1m to match the Data-page recommended path."
 )
 _WARNING_GRID_SL_FIRST = (
     "grid.intrabar_model is sl_first (or omitted → sl_first) while backtest uses "
