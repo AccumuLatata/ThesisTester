@@ -21,6 +21,7 @@ from thesistester.classic_nav import (
     clarification_target_page,
     consume_classic_focus,
     consume_classic_focus_run,
+    consume_classic_nav_prefill,
     discuss_run,
     get_classic_active_run_id,
     identity_badge_label,
@@ -31,6 +32,7 @@ from thesistester.classic_nav import (
     resolve_run_identities,
     set_classic_active_run,
     set_classic_focus_run,
+    set_classic_nav_prefill,
 )
 from thesistester.classic_proposal import (
     get_classic_proposal,
@@ -492,3 +494,27 @@ def test_rq4_thesis_switch_and_exit_clear_both_focus_keys(
     clear_classic_thesis_context(state)
     assert state["classic_focus_run_id"] is None
     assert state["classic_focus_channel"] is None
+
+
+def test_clarification_and_prefill_helpers_reject_empty_and_unknown():
+    session: dict = {}
+    init_classic_session_state(session)
+    assert clarification_target_page("") is None
+    assert clarification_target_page("   ") is None
+    assert clarification_target_page("no matching classic page phrase") is None
+    assert identity_badge_label("not-a-relation") == "identity unavailable"
+
+    with pytest.raises(ValueError, match="allowlisted classic page"):
+        set_classic_nav_prefill(session, target_page="pages/99_Nope.py", note="x")
+    with pytest.raises(ValueError, match="non-empty string"):
+        set_classic_nav_prefill(session, target_page="pages/1_Data.py", note="  ")
+    with pytest.raises(ValueError, match="non-empty string"):
+        set_classic_focus_run(session, "  ")
+    with pytest.raises(ValueError, match="non-empty string"):
+        set_classic_active_run(session, run_id="")
+
+    session["classic_nav_prefill"] = {"target_page": 1, "note": "x"}
+    assert consume_classic_nav_prefill(session) is None
+    session["classic_nav_prefill"] = "not-a-mapping"
+    assert consume_classic_nav_prefill(session) is None
+    assert get_classic_active_run_id({"classic_active_run_id": "  "}) is None

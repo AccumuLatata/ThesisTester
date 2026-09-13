@@ -26,6 +26,7 @@ from thesistester.classic_record import (
     materialize_classic_source_csv,
     record_classic_session_run,
     resolve_classic_record_source,
+    resolve_classic_record_source_path,
 )
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 from thesistester.research_identity import DataIdentity
@@ -849,3 +850,34 @@ def test_dispatch_requires_confirmation_for_register(tmp_path: Path):
         confirmed=False,
     )
     assert result.status == OrchestrationStatus.APPROVAL_REQUIRED.value
+
+
+def test_materialize_and_resolve_source_helpers(tmp_path: Path):
+    import pandas as pd
+
+    with pytest.raises(ValueError, match="missing a data DataFrame"):
+        materialize_classic_source_csv({}, output_dir=tmp_path)
+    with pytest.raises(ValueError, match="OHLCV columns"):
+        materialize_classic_source_csv(
+            {"data": pd.DataFrame({"timestamp": [1], "close": [1.0]})},
+            output_dir=tmp_path,
+        )
+
+    explicit = tmp_path / "explicit.csv"
+    explicit.write_text("timestamp,open,high,low,close,volume\n", encoding="utf-8")
+    resolved = resolve_classic_record_source(
+        {"format_profile": "quantower_history_exporter"},
+        materialize_dir=tmp_path / "mat",
+        source_path=explicit,
+    )
+    assert resolved.materialized is False
+    assert resolved.format_profile == "quantower_history_exporter"
+    assert Path(resolved.path) == explicit.resolve()
+
+    session_path = tmp_path / "session.csv"
+    session_path.write_text("timestamp,open,high,low,close,volume\n", encoding="utf-8")
+    via_key = resolve_classic_record_source_path(
+        {"source_csv_path": str(session_path)},
+        materialize_dir=tmp_path / "mat2",
+    )
+    assert Path(via_key) == session_path.resolve()

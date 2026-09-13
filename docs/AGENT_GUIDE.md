@@ -578,6 +578,16 @@ Every request must first parse as an `AssistantRequest`, then pass
   informational line. The job still **does not** fail: `--cov-fail-under` and
   `[tool.coverage.report] fail_under` stay unset. A later PR flips the same
   floor to blocking, then ratchet +1 pt per release.
+- **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
+  these modules (QI-11 §2.3 debt map). Test the contracts named here; do
+  not spawn a live sidecar or a provider socket:
+  - `thesistester/__main__.py` — `if __name__` guard only. `cli.main()` is
+    exercised from journal/study CLI tests; `test_cli.py` covers
+    argparse / `run_batch`, not the `__main__` wrapper.
+  - `thesistester/assistant/voice/sidecar.py` — subprocess / network
+    lifecycle. Voice tests cover bind/redact, not launch or the health loop.
+  - `thesistester/assistant/voice/xai_realtime.py` — provider I/O. Evals
+    and realtime tests stub transports.
 
 ## Regression-safety gates in CI
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request.

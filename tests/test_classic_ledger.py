@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,6 +23,7 @@ from thesistester.classic_ledger import (
     fail_classic_execution_ledger,
     is_classic_ledger_run,
     ledger_run_label,
+    list_classic_ledger_runs,
     should_record_all_executions,
 )
 from thesistester.research_identity import DataIdentity
@@ -338,3 +340,40 @@ def test_provenance_card_includes_ledger_fields(tmp_path: Path, monkeypatch: pyt
     assert card["classic_config_hash"]
     assert card["execution_origin"] == "classic"
     assert card["status"] == "failed"
+
+
+def test_ledger_run_label_and_list_newest_first():
+    ledger = SimpleNamespace(
+        request={"action": CLASSIC_LEDGER_ACTION, "origin_page": "signals"},
+        provenance={},
+    )
+    assert ledger_run_label(ledger) == "ledger:signals"
+    assert is_classic_ledger_run({"request": {"action": CLASSIC_LEDGER_ACTION}}) is True
+
+    recorded = SimpleNamespace(
+        request={"action": "register_external_bundle"},
+        provenance={"execution_origin": "classic"},
+    )
+    assert ledger_run_label(recorded) == "recorded:manual"
+    assert is_classic_ledger_run({"request": {"action": "register_external_bundle"}}) is False
+
+    classic = SimpleNamespace(
+        request={"action": "other"}, provenance={"execution_origin": "classic"}
+    )
+    assert ledger_run_label(classic) == "classic"
+
+    assistant = SimpleNamespace(
+        request={"action": None}, provenance={"execution_origin": "assistant"}
+    )
+    assert ledger_run_label(assistant) == "assistant"
+
+    generic = SimpleNamespace(request={"action": "custom_action"}, provenance={})
+    assert ledger_run_label(generic) == "custom_action"
+    assert is_classic_ledger_run({"request": None}) is False
+
+    class _Orch:
+        def list_runs(self, thesis_id: str):
+            assert thesis_id == "th" + ("a" * 32)
+            return ("older", "newer")
+
+    assert list_classic_ledger_runs(_Orch(), thesis_id="th" + ("a" * 32)) == ("newer", "older")
