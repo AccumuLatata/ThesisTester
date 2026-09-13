@@ -37,7 +37,7 @@ def _section_83_slice_rows(text: str) -> list[str]:
 
 def test_roadmap_qi_row_names_each_slice_report() -> None:
     reports = sorted(p.name for p in QI_DIR.glob("QI-*.md"))
-    assert reports, "expected docs/quality/QI-*.md reports"
+    assert len(reports) == 16, f"expected 16 QI-00…QI-15 reports, got {len(reports)}: {reports}"
     row = _qi_status_row(ROADMAP.read_text(encoding="utf-8"))
     missing = [name for name in reports if f"docs/quality/{name}" not in row]
     assert missing == [], f"ROADMAP QI row omitted {missing}"
