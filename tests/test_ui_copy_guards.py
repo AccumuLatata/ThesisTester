@@ -466,6 +466,271 @@ def _assert_wfa_m9_copy(source: str) -> None:
     )
 
 
+_GRID_RANKING_HELP_NEEDLES = (
+    "In-sample",
+    "Does not prove",
+    "Do not treat ranking",
+)
+_GRID_RANKING_OVERCLAIM = "best SL/TP"
+_GRID_USER_GUIDE_H2 = "Grid Search"
+_WFA_HEATMAP_CAPTION_NEEDLES = (
+    "do not pick",
+    "greenest cell",
+)
+_WFA_OVERFIT_SUBHEADER = "Overfitting-detection battery"
+_OTF_MATRIX_SUBHEADER = "OTF filter validation matrix"
+_OTF_INFO_LABEL = "Train-selected configuration"
+_OTF_NOT_CONTEST = "not a contest win"
+
+
+def _is_go_heatmap(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "Heatmap"
+    )
+
+
+def _heatmap_colorscale(call: ast.Call) -> str | None:
+    for kw in call.keywords:
+        if kw.arg == "colorscale":
+            return _literal_str(kw.value)
+    return None
+
+
+def _assert_grid_ranking_m10_help(source: str) -> None:
+    """QI-05-08 / M10: Ranking metric help is in-sample sort, not a proven best.
+
+    AST-bound to the Ranking metric ``st.selectbox`` ``help=``. File-level /
+    comment needles false-green — same class as QI-05-09 Policy.
+    """
+    call = _selectbox_call(source, "Ranking metric")
+    help_text = _kw_str(call, "help")
+    assert help_text, "Ranking metric selectbox must have help="
+    missing = [n for n in _GRID_RANKING_HELP_NEEDLES if n not in help_text]
+    assert missing == [], f"Ranking help missing {missing}: {help_text!r}"
+    assert _GRID_RANKING_OVERCLAIM not in help_text, (
+        f"Ranking help must not restore contest 'best SL/TP': {help_text!r}"
+    )
+
+
+def _assert_wfa_m10_copy(source: str) -> None:
+    """QI-05-08 / M10: WFA RdYlGn caption after heatmap + OTF info, no trophy.
+
+    Caption is AST-bound to ``st.caption`` after the RdYlGn ``st.plotly_chart``
+    and before Overfitting-detection battery. File-level / ``help=`` / comment
+    needles false-green — same class as QI-05-09 Policy and A-5 M9. OTF
+    ``st.info`` must pair train-selected with “not a contest win”; 🏆 anywhere
+    on the page restores contest chrome.
+    """
+    tree = ast.parse(source)
+    rdylgn_lines = [
+        node.lineno
+        for node in ast.walk(tree)
+        if _is_go_heatmap(node) and _heatmap_colorscale(node) == "RdYlGn"
+    ]
+    assert rdylgn_lines, "missing go.Heatmap colorscale='RdYlGn' (WFA matrix)"
+
+    plotly_after = [
+        call.lineno for call in _st_calls(tree, "plotly_chart") if call.lineno >= min(rdylgn_lines)
+    ]
+    assert plotly_after, "missing st.plotly_chart after WFA RdYlGn heatmap"
+    wfa_plotly = min(plotly_after)
+
+    overfit_start = _subheader_lineno(tree, _WFA_OVERFIT_SUBHEADER)
+    assert overfit_start is not None, f"missing st.subheader({_WFA_OVERFIT_SUBHEADER!r})"
+    assert wfa_plotly < overfit_start, "WFA heatmap must precede Overfitting battery"
+
+    matching: list[str] = []
+    caption_lines: list[int] = []
+    for call in _st_calls(tree, "caption"):
+        text = _first_arg_text(call)
+        if text is None or not all(n in text for n in _WFA_HEATMAP_CAPTION_NEEDLES):
+            continue
+        matching.append(text)
+        caption_lines.append(call.lineno)
+    assert matching, (
+        f"WFA st.caption missing greenest-cell needles {list(_WFA_HEATMAP_CAPTION_NEEDLES)}"
+    )
+    assert min(caption_lines) > wfa_plotly, "WFA st.caption must follow RdYlGn st.plotly_chart"
+    assert min(caption_lines) < overfit_start, (
+        "WFA st.caption must precede Overfitting-detection battery"
+    )
+
+    otf_start = _subheader_lineno(tree, _OTF_MATRIX_SUBHEADER)
+    assert otf_start is not None, f"missing st.subheader({_OTF_MATRIX_SUBHEADER!r})"
+    otf_infos = [
+        text
+        for call in _st_calls(tree, "info")
+        if call.lineno >= otf_start
+        for text in (_first_arg_text(call),)
+        if text is not None and _OTF_INFO_LABEL in text
+    ]
+    assert otf_infos, f"OTF st.info missing {_OTF_INFO_LABEL!r} after {_OTF_MATRIX_SUBHEADER!r}"
+    missing_contest = [t for t in otf_infos if _OTF_NOT_CONTEST not in t]
+    assert missing_contest == [], (
+        f"OTF Train-selected st.info must pair {_OTF_NOT_CONTEST!r}: {missing_contest!r}"
+    )
+    trophy_infos = [t for t in otf_infos if "🏆" in t]
+    assert trophy_infos == [], f"OTF Train-selected st.info must not use 🏆: {trophy_infos!r}"
+    assert "🏆" not in source, "page 10 must not restore OTF contest trophy chrome"
+
+
+def test_grid_ranking_help_is_diagnostic_not_contest():
+    """QI-05-08 / M10: Ranking metric help is in-sample sort, not a proven best."""
+    _assert_grid_ranking_m10_help(_read(PAGES / "8_Grid_Search.py"))
+
+
+def test_wfa_heatmap_caption_and_otf_trophy_are_not_contest():
+    """QI-05-08 / M10: WFA heatmap caption + no OTF trophy prefix."""
+    _assert_wfa_m10_copy(_read(PAGES / "10_Validation.py"))
+
+
+def test_grid_ranking_help_guard_ignores_comment_and_file_needles():
+    """Comment / file-level M10 needles must not satisfy Ranking metric help."""
+    fake = (
+        "import streamlit as st\n"
+        "# In-sample Does not prove Do not treat ranking\n"
+        "st.selectbox(\n"
+        '    "Ranking metric",\n'
+        '    options=["expectancy_r"],\n'
+        "    index=0,\n"
+        '    help="Metric used to find the best SL/TP pair.",\n'
+        ")\n"
+    )
+    try:
+        _assert_grid_ranking_m10_help(fake)
+    except AssertionError as exc:
+        assert "missing" in str(exc) or "best SL/TP" in str(exc)
+    else:
+        raise AssertionError("old Ranking help must not pass via comment needles")
+
+
+def test_wfa_heatmap_caption_guard_requires_st_caption_not_comment():
+    """Comment / help= 'greenest' needles must not satisfy the heatmap caption."""
+    fake = (
+        "import plotly.graph_objects as go\n"
+        "import streamlit as st\n"
+        "# do not pick the greenest cell\n"
+        'st.selectbox("x", options=["a"], help="do not pick the greenest cell")\n'
+        "go.Heatmap(z=[[1]], colorscale='RdYlGn')\n"
+        "st.plotly_chart(None)\n"
+        f'st.subheader("{_WFA_OVERFIT_SUBHEADER}")\n'
+        f'st.subheader("{_OTF_MATRIX_SUBHEADER}")\n'
+        'st.info("**Train-selected configuration:** `x` (not a contest win).")\n'
+    )
+    try:
+        _assert_wfa_m10_copy(fake)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc)
+    else:
+        raise AssertionError("help=/comment greenest needles must not false-green st.caption")
+
+
+def test_wfa_heatmap_caption_guard_requires_caption_after_rdylgn_plotly():
+    """Caption before the RdYlGn chart, or after Overfitting, must fail closed."""
+    select_otf = (
+        "import plotly.graph_objects as go\n"
+        "import streamlit as st\n"
+        "go.Heatmap(z=[[1]], colorscale='RdYlGn')\n"
+    )
+    caption = (
+        "st.caption(\n"
+        '    "Diagnostic robustness surface — do not pick the greenest cell as a "\n'
+        '    "production train/test length (M10)."\n'
+        ")\n"
+    )
+    tail = (
+        f'st.subheader("{_WFA_OVERFIT_SUBHEADER}")\n'
+        f'st.subheader("{_OTF_MATRIX_SUBHEADER}")\n'
+        'st.info("**Train-selected configuration:** `x` (not a contest win).")\n'
+    )
+    before_plotly = select_otf + caption + "st.plotly_chart(None)\n" + tail
+    try:
+        _assert_wfa_m10_copy(before_plotly)
+    except AssertionError as exc:
+        assert "must follow" in str(exc)
+    else:
+        raise AssertionError("caption before WFA plotly must not pass")
+
+    after_overfit = (
+        select_otf
+        + "st.plotly_chart(None)\n"
+        + f'st.subheader("{_WFA_OVERFIT_SUBHEADER}")\n'
+        + caption
+        + f'st.subheader("{_OTF_MATRIX_SUBHEADER}")\n'
+        + 'st.info("**Train-selected configuration:** `x` (not a contest win).")\n'
+    )
+    try:
+        _assert_wfa_m10_copy(after_overfit)
+    except AssertionError as exc:
+        assert "Overfitting" in str(exc)
+    else:
+        raise AssertionError("caption after Overfitting battery must not pass")
+
+
+def test_otf_train_selected_guard_requires_st_info_not_comment():
+    """File-level 'not a contest win' / leftover 🏆 must not false-green OTF info."""
+    heatmap = (
+        "import plotly.graph_objects as go\n"
+        "import streamlit as st\n"
+        "go.Heatmap(z=[[1]], colorscale='RdYlGn')\n"
+        "st.plotly_chart(None)\n"
+        "st.caption(\n"
+        '    "Diagnostic robustness surface — do not pick the greenest cell as a "\n'
+        '    "production train/test length (M10)."\n'
+        ")\n"
+        f'st.subheader("{_WFA_OVERFIT_SUBHEADER}")\n'
+        f'st.subheader("{_OTF_MATRIX_SUBHEADER}")\n'
+    )
+    comment_only = heatmap + (
+        "# not a contest win\n"
+        'st.info("**Train-selected configuration:** `x` (selected by train_expectancy_r only).")\n'
+    )
+    try:
+        _assert_wfa_m10_copy(comment_only)
+    except AssertionError as exc:
+        assert _OTF_NOT_CONTEST in str(exc)
+    else:
+        raise AssertionError("comment 'not a contest win' must not satisfy OTF st.info")
+
+    trophy = heatmap + (
+        'st.info("🏆 **Train-selected configuration:** `x` (not a contest win).")\n'
+    )
+    try:
+        _assert_wfa_m10_copy(trophy)
+    except AssertionError as exc:
+        assert "🏆" in str(exc)
+    else:
+        raise AssertionError("OTF trophy prefix must fail closed")
+
+
+def test_user_guide_grid_h2_names_m10_ranking():
+    """USER_GUIDE Grid Search H2 (Help-allowlisted) names in-sample ranking, not greenest."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _GRID_USER_GUIDE_H2)
+    missing = [
+        n for n in ("In-sample sort", "not a proven", "top ranked cell", "M10") if n not in body
+    ]
+    assert missing == [], f"Grid Search H2 missing M10 needles {missing}"
+    assert "top/greenest cell" not in body
+    assert len(body) <= 4500, f"Grid Search H2 exceeds USER_GUIDE soft budget: {len(body)}"
+
+
+def test_user_guide_validation_h2_names_m10_greenest_cell():
+    """USER_GUIDE Validation H2 names WFA greenest-cell caveat; Notes-only must not bind."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _WFA_USER_GUIDE_H2)
+    missing = [n for n in ("greenest cell", "M10") if n not in body]
+    assert missing == [], f"Validation H2 missing M10 needles {missing}"
+    assert len(body) <= 4500, f"Validation H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    fake = "## Notes\ngreenest cell M10 do not pick the greenest cell\n## Grid Search\nunrelated\n"
+    try:
+        _md_h2_body(fake, _WFA_USER_GUIDE_H2)
+    except AssertionError as exc:
+        assert "Validation" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Validation H2")
+
+
 def test_wfa_overlap_help_and_aggregate_caption_name_fold_sum():
     """QI-05-07 / M9: overlap help + caption name fold-sum, not stitch-only."""
     _assert_wfa_m9_copy(_read(PAGES / "10_Validation.py"))

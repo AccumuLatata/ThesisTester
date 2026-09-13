@@ -293,7 +293,11 @@ with st.sidebar:
         options=["expectancy_r", "total_r", "profit_factor", "win_rate"],
         index=0,
         key="grid_ranking_metric_widget",
-        help="Metric used to find the best SL/TP pair.",
+        help=(
+            "In-sample sort key for the grid table. Does not prove the top "
+            "cell is a live SL/TP. Do not treat ranking as picking a proven "
+            "best (M10)."
+        ),
     )
 
     min_trades = int(

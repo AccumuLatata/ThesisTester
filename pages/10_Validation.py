@@ -771,6 +771,10 @@ if isinstance(wfa_matrix, pd.DataFrame) and not wfa_matrix.empty:
         margin=dict(l=10, r=10, t=30, b=10),
     )
     st.plotly_chart(matrix_fig, width="stretch")
+    st.caption(
+        "Diagnostic robustness surface — do not pick the greenest cell as a "
+        "production train/test length (M10)."
+    )
     st.dataframe(wfa_matrix, width="stretch", hide_index=True)
 
 st.divider()
@@ -1971,8 +1975,8 @@ else:
         _selected_label = _summary.get("selected_train_config")
         if _selected_label:
             st.info(
-                f"🏆 **Train-selected configuration:** `{_selected_label}` "
-                f"(selected by train_expectancy_r only). "
+                f"**Train-selected configuration:** `{_selected_label}` "
+                f"(selected by train_expectancy_r only; not a contest win). "
                 f"OOS expectancy for selected config: "
                 f"{_fmt_value(_summary.get('selected_oos_expectancy_r'))} R. "
                 "⚠️ This is diagnostic — not a production recommendation."

@@ -763,6 +763,11 @@ other than the last bar in the dataset.
 - The WFA matrix is a robustness surface across train/test session lengths,
   not another parameter optimizer. Selecting the best matrix cell using its
   OOS result reintroduces multiple-testing bias.
+- **M10.** Grid ranking is an in-sample sort, not a contest. The WFA RdYlGn
+  heatmap is a robustness surface of median OOS expectancy — do not treat the
+  top ranked cell or the greenest matrix cell as a production selection. OTF
+  matrix train-selected chrome is diagnostic (no trophy). Ranking math is
+  unchanged.
 - R15 CSCV/PBO partitions realized trade R sequences contiguously. It is not
   purged/embargoed bar-level cross-validation and assumes limited dependence
   across blocks.
