@@ -558,7 +558,7 @@ def test_render_classic_thesis_chrome_idle_flash_nav_and_research(
         dataset_id="ds_test_aaa",
     )
     stub._calls.clear()
-    render_classic_thesis_chrome(page_key="backtest")
+    render_classic_thesis_chrome(page_key="backtest", dataset_id="ds_test_aaa")
     captions = [args[0] for name, args, _kwargs in stub._calls if name == "caption"]
     assert any("Research mode" in text and "Chrome thesis" in text for text in captions)
     assert any(name == "button" for name, _args, _kwargs in stub._calls)
