@@ -392,7 +392,7 @@ Medium `Verified defect` rows proposed accepted in the same signature: QI-06-03 
 | Closed (no workstream) | — | — | 13 wont-fix · 1 locked without residual (QI-07-10) |
 | **Total** | | **102 PR rows, 99 distinct** | **106 / 11 / 3 + 13 wont-fix + QI-07-10 = 134** |
 
-Status vocabulary: `Not started` · `In progress` · `Blocked` · `Completed` · `Needs follow-up`. `ENGINEERING_ROADMAP.md` gets one QR row (F-1) that points here.
+Status vocabulary: `Not started` · `In progress` · `Blocked` · `Completed` · `Needs follow-up`. `ENGINEERING_ROADMAP.md` gets one QR row (Wave 0 / F-3) that points here.
 
 ---
 

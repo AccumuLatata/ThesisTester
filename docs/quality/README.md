@@ -149,8 +149,9 @@ needed):
 
 `id,axis,classification,severity,confidence,blast_radius,iso25010,files_symbols,repro_or_reasoning,expected,observed,impact,regression_surface,remediation_direction,tests_required_later,docs_required_later,locked_by,handoff_to,prior_id`
 
-QI-15 may add `merge_group,score,qr_workstream,disposition` later. Do
-not add those columns in QI-1…QI-14.
+QI-15 added `merge_group,score,qr_workstream,disposition` (see Reports
+table). Slice reports do not invent further columns; QR owns disposition
+updates.
 
 ISO 25010 tokens (plan §A.5): `functional_suitability` ·
 `performance_efficiency` · `compatibility` · `usability` ·
