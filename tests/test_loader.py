@@ -614,3 +614,137 @@ def test_validate_ohlcv_flags_large_gaps_around_dst_transition():
     codes = {issue.code for issue in report.issues}
     assert "significant_gaps" in codes
     assert "dst_transition_gaps" in codes
+
+
+_H11_MIXED_OFFSET_CSV = (
+    "timestamp,open,high,low,close,volume\n"
+    "2026-03-08 01:59:00-05:00,100,101,99,100.5,10\n"
+    "2026-03-08 03:00:00-04:00,100.5,102,100,101.5,20\n"
+)
+_H11_QT_MIXED_OFFSET_CSV = (
+    "Time left;Time right;Open;High;Low;Close;Volume;\n"
+    "2026-03-08 01:59:00-05:00;2026-03-08 01:59:59.999-05:00;100;101;99;100.5;10;\n"
+    "2026-03-08 03:00:00-04:00;2026-03-08 03:00:59.999-04:00;100.5;102;100;101.5;20;\n"
+)
+_H11_NAIVE_DST_CROSS_CSV = (
+    "timestamp,open,high,low,close,volume\n"
+    "2026-03-08 01:59:00,100,101,99,100.5,10\n"
+    "2026-03-08 03:00:00,100.5,102,100,101.5,20\n"
+)
+
+
+def _pandas_major() -> int:
+    return int(pd.__version__.split(".", 1)[0])
+
+
+def assert_h11_raw_mixed_offset_reject(load_fn) -> None:
+    """Parked H11: raw reject. Do not UTC-normalize or retype as DataValidationError.
+
+    pandas 3 (CI py3.11/3.12): ``ValueError`` ``Mixed timezones`` / ``utc=True``.
+    pandas 2 (CI py3.10): object-dtype parse then ``.dt`` ``AttributeError``.
+    """
+    try:
+        load_fn()
+    except DataValidationError as exc:
+        raise AssertionError(
+            "H11 inverted: mixed-offset wrapped as DataValidationError (typed reject is parked)"
+        ) from exc
+    except ValueError as exc:
+        if _pandas_major() < 3:
+            raise AssertionError(
+                f"pandas 2 H11 expected AttributeError, got ValueError: {exc}"
+            ) from exc
+        if type(exc) is not ValueError:
+            raise AssertionError(f"H11 must stay raw ValueError, got {type(exc)}") from exc
+        text = str(exc)
+        if "utc=True" not in text and "Mixed timezones" not in text:
+            raise AssertionError(
+                f"pandas 3 H11 ValueError must name utc=True / Mixed timezones: {exc}"
+            )
+        return
+    except AttributeError as exc:
+        if _pandas_major() >= 3:
+            raise AssertionError(
+                f"pandas 3 H11 expected ValueError, got AttributeError: {exc}"
+            ) from exc
+        if "datetimelike" not in str(exc).lower():
+            raise AssertionError(f"pandas 2 H11 AttributeError must be the .dt accessor: {exc}")
+        return
+    except Exception as exc:
+        raise AssertionError(f"H11 unexpected exception {type(exc).__name__}: {exc}") from exc
+    raise AssertionError("H11 inverted: mixed-offset CSV was accepted (do not UTC-normalize)")
+
+
+def test_h11_mixed_offset_canonical_recipe_rejects(tmp_path):
+    """QI-01-04 / B-2: parked mixed-offset reject (raw fail; do not UTC-normalize)."""
+    from thesistester.api import load_dataset
+
+    path = tmp_path / "mixed_offset.csv"
+    path.write_text(_H11_MIXED_OFFSET_CSV, encoding="utf-8")
+    assert_h11_raw_mixed_offset_reject(lambda: load_ohlcv(path))
+    assert_h11_raw_mixed_offset_reject(lambda: load_dataset(path, instrument="ES"))
+
+
+def test_h11_mixed_offset_quantower_profile_rejects(tmp_path):
+    """QI-01-04 / B-2: QT-aware mixed-offset hits ``_profile_timestamp`` raw fail."""
+    from thesistester.api import load_dataset
+
+    path = tmp_path / "mixed_offset_qt.csv"
+    path.write_text(_H11_QT_MIXED_OFFSET_CSV, encoding="utf-8")
+    assert_h11_raw_mixed_offset_reject(
+        lambda: load_ohlcv(path, format_profile="quantower_history_exporter")
+    )
+    assert_h11_raw_mixed_offset_reject(
+        lambda: load_dataset(
+            path,
+            instrument="ES",
+            format_profile="quantower_history_exporter",
+        )
+    )
+
+
+def test_h11_naive_dst_crossing_still_accepts(tmp_path):
+    """QI-1 §3: naive 01:59/03:00 local still loads (do not over-close H11)."""
+    from thesistester.api import load_dataset
+
+    path = tmp_path / "naive_dst_cross.csv"
+    path.write_text(_H11_NAIVE_DST_CROSS_CSV, encoding="utf-8")
+    bars = load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
+    assert len(bars) == 2
+    assert str(bars["timestamp"].dt.tz) == "America/New_York"
+    assert bars["timestamp"].dt.strftime("%H:%M").tolist() == ["01:59", "03:00"]
+    loaded = load_dataset(
+        path,
+        instrument="ES",
+        source_timezone="America/New_York",
+    )
+    assert len(loaded) == 2
+    assert str(loaded["timestamp"].dt.tz) == "America/New_York"
+
+
+def test_h11_raw_reject_guard_rejects_typed_wrap_and_accept():
+    """Fail-closed: DataValidationError wrap or silent accept must not bind H11."""
+
+    def current_raw():
+        if _pandas_major() >= 3:
+            raise ValueError("Mixed timezones detected. Pass utc=True")
+        raise AttributeError("Can only use .dt accessor with datetimelike values")
+
+    assert_h11_raw_mixed_offset_reject(current_raw)
+
+    def typed_wrap():
+        raise DataValidationError("Mixed timezones detected. Pass utc=True")
+
+    try:
+        assert_h11_raw_mixed_offset_reject(typed_wrap)
+    except AssertionError as exc:
+        assert "DataValidationError" in str(exc)
+    else:
+        raise AssertionError("typed DataValidationError wrap must invert H11")
+
+    try:
+        assert_h11_raw_mixed_offset_reject(lambda: pd.DataFrame({"timestamp": [1, 2]}))
+    except AssertionError as exc:
+        assert "accepted" in str(exc)
+    else:
+        raise AssertionError("UTC-normalize accept must invert H11")
