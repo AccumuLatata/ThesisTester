@@ -109,33 +109,6 @@ Regenerate with:
 python -m tests.fixtures.golden.record_fade_enabled_golden --confirm-regenerate
 ```
 
-### 2.5 Default-on branch families (QR-B B-3 / QI-11-02)
-
-Additive identity gates for default-on *branches* the four older families do not
-exercise. Isolated from legacy / OTF / entry_window / fade: these files never
-rewrite those artifacts. AH1 (`test_ah1_*`) and AH5 (`test_ah5_*`) stay the
-live unit probes.
-
-| Path | Default-on? | Gate |
-|---|---|---|
-| `sl_first` + same-bar both-hit | yes | legacy `test_golden_master.py` |
-| `allow_all` | yes | legacy `test_golden_master.py` |
-| flatten-on (`flat_by_session_close=True`) | off as product default; branch not identity-gated before B-3 | `flatten_on_*` / `tests/test_default_on_golden.py` |
-| 3c filled/void (`sl_first`) | not default trigger | `three_c_sl_first_*` / `tests/test_default_on_golden.py` |
-| BE / trail enabled | off (`None`) as product default | `be_trail_be_*` + `be_trail_trail_*` |
-| `same_bar_opposite_direction="legacy"` | yes (omitted ≡ explicit) | `opposite_direction_legacy_*` |
-| enabled `entry_window` | opt-in | `test_entry_window_golden.py` |
-| enabled OTF | opt-in | `test_otf_golden.py` |
-
-8/8 paths above are now golden-gated. Recorder:
-
-```bash
-python -m tests.fixtures.golden.record_default_on_golden --confirm-regenerate
-```
-
-Do **not** regenerate legacy artifacts for these families. The CI
-`golden-master regeneration guard` job is unchanged (legacy set only).
-
 ## 3. Determinism contract (measured, not assumed)
 
 Two properties were verified on this repository before writing this spec. Both shape the
@@ -214,10 +187,8 @@ Golden outputs are **never** silently re-recorded.
 4. Regeneration commands:
    - Legacy: `python -m tests.fixtures.golden.record_golden --confirm-regenerate`
    - Enabled OTF: `python -m tests.fixtures.golden.record_otf_enabled_golden --confirm-regenerate`
-   - Default-on branches (B-3): `python -m tests.fixtures.golden.record_default_on_golden --confirm-regenerate`
 
-   Each recorder refuses to write any files without the flag. The default-on
-   recorder never rewrites the legacy artifact set.
+   Both refuse to write any files without the flag.
 
 ## 5. Repository plumbing
 
@@ -239,6 +210,3 @@ committed.
 - [x] Enabled-OTF additive family recorded (`otf_enabled_*`) with overnight ETH
       session coverage, accepted/rejected populations, rejection reasons, trades,
       future-shock tests, and legacy-isolation assertions (`tests/test_otf_golden.py`).
-- [x] B-3 default-on branch families recorded (`flatten_on_*`,
-      `three_c_sl_first_*`, `be_trail_*`, `opposite_direction_legacy_*`)
-      (`tests/test_default_on_golden.py`). Legacy artifacts not rewritten.

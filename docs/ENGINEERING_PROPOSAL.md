@@ -156,7 +156,26 @@ The golden-master mechanism (rule 2) is the load-bearing control for the only in
 3. **Regeneration policy.** Golden outputs change only via a dedicated, reviewable PR that includes: the reason, a readable diff (CSV) of golden vs. new, and regression justification. CI blocks PRs that alter golden outputs unless an explicit `GOLDEN_REGEN` label and approval are present. Intentional new behavior always lands behind a new flag; the legacy golden is never silently regenerated.
 4. **Brittleness control.** Keep golden scope minimal (small fixture) so legitimate improvements are not blocked; scope goldens to *legacy-mode* outputs only, per §7.
 
-QR-B **B-3** (QI-11-02) adds additive default-on *branch* families (flatten-on, 3c filled/void `sl_first`, BE/trail, `same_bar_opposite_direction="legacy"`). Those families sit beside the identity gate and must not rewrite `trades_legacy.*` / `legacy_bundle_hash.txt`. The default-on branch table lives in `tests/fixtures/golden/README.md`. The `golden-master regeneration guard` job still watches only the legacy artifact set.
+QR-B **B-3** (QI-11-02) adds additive default-on *branch* families (flatten-on, 3c filled/void `sl_first`, BE/trail, `same_bar_opposite_direction="legacy"`). Those families sit beside the identity gate and must not rewrite `trades_legacy.*` / `legacy_bundle_hash.txt`. `tests/fixtures/golden/README.md` is identity-locked by `test_existing_golden_files_byte_identical` (B-1 lesson); the default-on branch table lives here. The `golden-master regeneration guard` job still watches only the legacy artifact set.
+
+| Path | Default-on? | Gate |
+|---|---|---|
+| `sl_first` + same-bar both-hit | yes | legacy `test_golden_master.py` |
+| `allow_all` | yes | legacy `test_golden_master.py` |
+| flatten-on (`flat_by_session_close=True`) | off as product default; branch not identity-gated before B-3 | `flatten_on_*` / `tests/test_default_on_golden.py` |
+| 3c filled/void (`sl_first`) | not default trigger | `three_c_sl_first_*` / `tests/test_default_on_golden.py` |
+| BE / trail enabled | off (`None`) as product default | `be_trail_be_*` + `be_trail_trail_*` |
+| `same_bar_opposite_direction="legacy"` | yes (omitted ≡ explicit) | `opposite_direction_legacy_*` |
+| enabled `entry_window` | opt-in | `test_entry_window_golden.py` |
+| enabled OTF | opt-in | `test_otf_golden.py` |
+
+8/8 paths above are golden-gated. Recorder (does not rewrite the legacy artifact set):
+
+```bash
+python -m tests.fixtures.golden.record_default_on_golden --confirm-regenerate
+```
+
+AH1 (`test_ah1_*`) and AH5 (`test_ah5_*`) stay the live unit probes.
 
 ### 4.2 Per-milestone PR acceptance checklist
 
