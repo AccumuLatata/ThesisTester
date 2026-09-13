@@ -305,10 +305,9 @@ cutoff**; **Focus vs Admit**; Grid Search; Research Assistant **Discuss runs**.
 
 ## Exposure policy
 
-**What it is.** Exposure policy is the Backtest, Grid Search, and Portfolio
-admission gate: whether an otherwise-executable signal may open while other
-trades are open, or during optional cooldown after exit. **Backtest** and
-**Grid Search** label the control **Policy** under **Exposure policy**
+**What it is.** Backtest, Grid Search, and Portfolio admission gate: whether
+an otherwise-executable signal may open while other trades are open, or during
+optional cooldown after exit. Control: **Policy** under **Exposure policy**
 (`exposure_policy`).
 
 **When to use it.** Use restrictive policies when you want path KPIs that
@@ -342,26 +341,27 @@ exposure_group_key
    `entry_bar_index` through `exit_bar_index + cooldown_bars_after_exit`.
 4. Skips appear in **Skipped signals** with `skip_reason`, `blocking_trade_id`,
    and `exposure_group_key`. These are **not** OTF rejects and **not** `3c` voids.
-5. Backtest captions split skip counts: outside entry window / after entry
-   cutoff / exposure-other.
+5. Skip captions split window / cutoff / other. DA1 captions `candidate_pairs`
+   (same-bar opposite-direction pairs — not an overlap/admission gate, not
+   proof of fill quality) next to **Skipped signals**; under `allow_all` the
+   skip table is empty by design while DA1 can still report pairs.
 
-**Portfolio note.** Portfolio uses the same four policy **names** after merging
-completed per-setup trades (diagnostic merge — not a live margin engine), but
-grouping differs: Portfolio `single_setup` keys on merged `setup_id` (not the
-Backtest signal-field chain above). Portfolio admission skips show
-`skip_reason` / `blocking_trade_id` in **Portfolio admission skips** and do
-**not** emit `exposure_group_key`. Prefer upstream Backtest `allow_all` so the
-portfolio gate is applied once at merge time. Cooldown is likewise a no-op
-under Portfolio `allow_all`.
+**Portfolio note.** Same four policy **names** after a diagnostic merge of
+completed per-setup trades (not a live margin engine). `single_setup` keys on
+merged `setup_id` (not the Backtest field chain). Skips show `skip_reason` /
+`blocking_trade_id` in **Portfolio admission skips** and omit
+`exposure_group_key`. Prefer upstream Backtest `allow_all` so the portfolio
+gate is applied once at merge time. Cooldown is a no-op under Portfolio
+`allow_all`.
 
 **How to use.**
 
-1. Open **Backtest** or **Grid Search** → **Exposure policy**.
-2. Choose **Policy** and optional **Cooldown bars after exit**.
-3. **Run backtest**, then inspect **Skipped signals** if trade count looks thin.
-4. On **Portfolio**, set `Portfolio exposure policy` / cooldown → **Run
+1. Open **Backtest** or **Grid Search** → **Exposure policy**; choose **Policy**
+   and optional **Cooldown bars after exit**.
+2. **Run backtest**, then read **Skipped signals** and the DA1 pair caption.
+3. On **Portfolio**, set `Portfolio exposure policy` / cooldown → **Run
    portfolio analysis**, then read **Portfolio admission skips**.
-5. Grid / Validation apply one fixed exposure policy across cells/folds —
+4. Grid / Validation apply one fixed exposure policy across cells/folds —
    exposure is not a swept axis.
 
 **What it is not.**

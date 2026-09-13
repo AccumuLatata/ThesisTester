@@ -424,9 +424,12 @@ selected data/model could distinguish event order.
 
 ## DA1 direction-collision diagnostic
 
-In-memory only (`SimulationResult.direction_collision_diagnostic`,
-`run_backtest` / `run_experiment` state). Not a performance metric and not a
-hashed bundle member.
+In-memory diagnostic (`SimulationResult.direction_collision_diagnostic`,
+`run_backtest` / `run_experiment` state). Classic Backtest also persists the
+same dict on `direction_collision_diagnostic` and captions `candidate_pairs`
+next to the skip table. Same-bar opposite-direction counts only — not an
+admission gate and not proof of fill quality. Not a performance metric and
+not a hashed bundle member (AH §2 item 8).
 
 | Field | Definition |
 |---|---|
