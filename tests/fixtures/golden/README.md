@@ -204,8 +204,8 @@ Do not regenerate goldens to “fix” them. H10/H11 lock tests are B-2.
 
 | Fork | Why uncovered here | Lock test |
 |---|---|---|
-| H7 cutoff without flatten | UI forces `None`; API applies YAML cutoff | `tests/test_ah8_cutoff_without_flatten.py` |
-| H15 OTF/Admit TZ | UI session TZ vs API `inst.exchange_tz` | `tests/test_ah8_otf_tz_ui_vs_api.py` |
+| H7 cutoff without flatten | UI forces `None`; API applies YAML cutoff. AST fail-closed (comment / unused formula / sibling `disabled=` do not bind). | `tests/test_ah8_cutoff_without_flatten.py` |
+| H15 OTF/Admit TZ | UI Data-page `exchange_timezone` vs API `inst.exchange_tz`. AST fail-closed (comment / omitted kw / inverted Name do not bind). | `tests/test_ah8_otf_tz_ui_vs_api.py` |
 
 ## 7. Recording status
 
