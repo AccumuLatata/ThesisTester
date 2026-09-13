@@ -233,8 +233,7 @@ def test_validation_summary_returns_expected_top_level_keys():
         n_permutations=100,
         random_state=0,
     )
-    for key in ("bootstrap", "permutation", "trade_count", "grid_overfit"):
-        assert key in result, f"Missing top-level key: {key}"
+    assert set(result) == {"bootstrap", "permutation", "trade_count", "grid_overfit"}
 
 
 def test_validation_summary_with_grid():
