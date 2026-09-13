@@ -2054,6 +2054,11 @@ with st.expander(
             if spec.status == "confirmed" and {"dataset", "setup", "backtest"}.issubset(
                 spec.normalized_run_spec
             ):
+                st.caption(
+                    "Omitted battery enabled means on for this confirmed run "
+                    "(grid / walk_forward / validation; same as api/CLI). "
+                    "Study emit stays explicit false. Nested OTF matrix is default-off."
+                )
                 if st.button("Run confirmed research", type="primary", key=f"run-{spec.version}"):
                     try:
                         run_result = orchestrator.execute_confirmed_run(

@@ -205,13 +205,28 @@ def run_batch(
     return index
 
 
+# QI-06-08 / A-9: H8 disclosure on --help. Default stays omit-means-on
+# (AH §2 item 9). Do not flip api `.get("enabled", True)`.
+_H8_OMIT_MEANS_ON_HELP = (
+    "Omitted battery enabled means on for api/CLI/assistant "
+    "(grid, walk_forward, validation). Study emit stays explicit false. "
+    "Nested OTF validation matrix is default-off."
+)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m thesistester",
-        description="Run deterministic ThesisTester research experiments.",
+        description=(
+            "Run deterministic ThesisTester research experiments. " + _H8_OMIT_MEANS_ON_HELP
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    run_parser = subparsers.add_parser("run", help="Run a versioned YAML experiment batch")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run a versioned YAML experiment batch",
+        description=_H8_OMIT_MEANS_ON_HELP,
+    )
     run_parser.add_argument("experiment", type=Path, help="Path to experiment YAML")
     run_parser.add_argument(
         "--workers",

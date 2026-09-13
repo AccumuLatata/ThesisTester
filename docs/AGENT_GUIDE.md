@@ -288,6 +288,12 @@ runs:
       enabled: false
 ```
 
+H8 (locked, AH §2 item 9): omitted battery `enabled` means **on** for
+`api.run_experiment`, `python -m thesistester run`, and Assistant confirmed
+runs. The example above sets `enabled: false` on purpose. Study expand still
+emits explicit `false`. Nested OTF validation matrix is default-off. Do not
+flip `.get("enabled", True)`.
+
 Anchor-only (opt-in): `confluence_mode: anchor_rules`, `confluence_rules: []`,
 `min_valid_confluences: 0`. Default `min_valid` stays 1. See
 `docs/ANCHOR_ONLY_IMPLEMENTATION_PLAN.md`.

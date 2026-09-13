@@ -518,6 +518,58 @@ def test_study_report_rebuild_direction_flag():
     assert default.rebuild_direction is False
 
 
+_H8_CLI_HELP_NEEDLES = (
+    "omitted battery enabled means on",
+    "study emit stays explicit false",
+    "otf validation matrix is default-off",
+)
+
+
+def _cli_help_blobs() -> tuple[str, str]:
+    import argparse
+
+    from thesistester.cli import _parser
+
+    parser = _parser()
+    run_help = None
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            run_help = action.choices["run"].format_help()
+            break
+    if run_help is None:
+        raise AssertionError("cli parser has no run subparser")
+    return parser.format_help(), run_help
+
+
+def _collapsed(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def test_cli_help_discloses_omitted_battery_enabled_means_on():
+    """QI-06-08 / A-9: ``--help`` must name omit-means-on (not a comment needle)."""
+    top, run_help = _cli_help_blobs()
+    for blob, label in ((top, "top-level --help"), (run_help, "run --help")):
+        collapsed = _collapsed(blob)
+        missing = [needle for needle in _H8_CLI_HELP_NEEDLES if needle not in collapsed]
+        assert missing == [], f"{label} missing H8 needles {missing}"
+        assert "qi-06-08" not in collapsed, f"{label} leaked a source-comment needle"
+
+
+def test_omitted_grid_enabled_still_runs_qi0608(tmp_path):
+    """QI-06-08 / A-9: omitted ``grid.enabled`` still runs (locked H8). Do not flip."""
+    _write_dataset(tmp_path / "bars.csv")
+    omitted = _run("omit-enabled")
+    assert "enabled" not in omitted["grid"]
+    on_state = api.run_experiment(omitted, base_directory=tmp_path)
+    assert on_state.get("grid_results") is not None
+    assert not on_state["grid_results"].empty
+
+    off = _run("explicit-false")
+    off["grid"] = {**off["grid"], "enabled": False}
+    off_state = api.run_experiment(off, base_directory=tmp_path)
+    assert "grid_results" not in off_state
+
+
 def test_programmatic_batch_rejects_unsafe_and_duplicate_names(tmp_path):
     _write_dataset(tmp_path / "bars.csv")
     for runs, message in (

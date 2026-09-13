@@ -18,7 +18,12 @@ ThesisTester is a research-screening backtester for futures day-trading
 workflows (levels → setups → signals → backtest / grid / validation). Help
 answers from allowlisted docs only; it does not invent run metrics, prove OOS
 edge, or place live trades. Performance questions belong in **Discuss results**
-(Research Assistant mode **Discuss runs**).
+(Research Assistant mode **Discuss runs**). Classic headless
+(`python -m thesistester run` / `api.run_experiment`) and Assistant confirmed
+runs treat an omitted battery `enabled` key as **on** for grid / walk-forward /
+validation. Study expand still emits explicit `enabled: false`. Nested OTF
+validation matrix is default-off. Bare `{}` in R18 YAML arms batteries. The
+default is unchanged (AH §2 item 9 / H8).
 
 ## Classic workflow overview
 
@@ -850,7 +855,7 @@ version
 | `Advanced: draft, runs & compare` | Optional draft → validate → confirm → run path | Classic pages remain the primary workflow |
 | `Draft research plan` (optional) | Persists an immutable specification version | `Apply` controls only stage the session draft |
 | `Validate executable RunSpec` → `Confirm validated RunSpec` | Confirmation-/schema-gated | Confirm appears only after Validate succeeds **and** clarifications are clear |
-| `Run confirmed research` | Executes only a **Confirmed** spec version | Apply/Draft alone never start compute |
+| `Run confirmed research` | Executes only a **Confirmed** spec version | Apply/Draft alone never start compute. Omitted battery `enabled` means **on** (same as api/CLI); set `enabled: false` to skip. Nested OTF matrix stays default-off |
 
 **How to use (Assistant confirm/run path).**
 
@@ -947,7 +952,7 @@ study-owned ledger, then report an honest overview (and optionally roll up
 per-cell WFA/validation/overfitting diagnostics). Distinct from in-trade
 confluence-combo attribution on Backtest. Optional default-off assistant
 `STUDY.expand` / `STUDY.run` / `STUDY.report` / `STUDY.promote` wrap those CLI
-surfaces; `study rollup` remains CLI-only (no `STUDY.rollup` tool).
+surfaces; `study rollup` remains CLI-only.
 
 **When to use it.** When you want a stage-first factorial screen (e.g. pdPOC ×
 MA partners × modes × OTF) without driving classic Streamlit research pages,

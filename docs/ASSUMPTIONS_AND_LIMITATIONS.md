@@ -334,6 +334,14 @@ This engine is for **research screening**, not proof of a durable edge.
   Generator defaults still emit the Run 1 `touch` packet. Run 1 YAMLs are
   historical. Run 1 vs Run 2 is not a paired ΔE.
 
+### 4c) Classic headless battery `enabled` omit-means-on (H8)
+- **H8:** For `api.run_experiment`, `python -m thesistester run`, and Assistant
+  confirmed RunSpecs, an omitted battery `enabled` key means **on** for
+  `grid` / `walk_forward` / `validation` (and nested Monte Carlo / noise /
+  sensitivity / excursion / overfitting). The default is unchanged (AH §2
+  item 9). Study expand still emits explicit `enabled: false`. Nested OTF
+  validation matrix is default-off. Admit `entry_window` omit is off.
+
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
 - When `trigger_timeframe` is non-base, trigger evaluation is performed on resampled trigger candles, and `trigger_timestamp` stores trigger-candle completion/actionability time.
@@ -1176,6 +1184,10 @@ other than the last bar in the dataset.
 - Default study emission keeps `grid` / `validation` / `walk_forward`
   `enabled: false`, so most MVP cells show battery status `not_run` with null
   diagnostic columns — that is expected, not a bug.
+- **H8:** Classic headless (`api.run_experiment`, `python -m thesistester run`)
+  and Assistant confirmed RunSpecs treat an omitted battery `enabled` key as
+  **on**. Study emit stays explicit `false` (this section). Nested OTF
+  validation matrix is default-off. Default unchanged (AH §2 item 9).
 - R15 `overfitting_summary` / `cscv_pbo` require **grid cell trade sequences**.
   After promote, humans may opt into survivor-stage constants with explicit
   `enabled: true` flags (never bare `{}`), for example:
