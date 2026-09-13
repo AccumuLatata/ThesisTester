@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import zipfile
@@ -17,7 +18,9 @@ from thesistester.study.ledger import empty_ledger, mark_cell, save_ledger
 from thesistester.study.promote import promote_study
 from thesistester.study.report import (
     StudyReportError,
+    failed_overview_rows,
     otf_canonical_key,
+    render_overview_markdown,
     report_study,
 )
 from thesistester.study.schema import STUDY_SCHEMA_VERSION
@@ -462,6 +465,23 @@ def test_report_rank_stays_primary_metric_not_null(tmp_path: Path):
     assert "random_p_value_ge" in result.markdown
 
 
+def _assert_failed_heading(markdown: str) -> None:
+    """Heading must be its own ATX H2 (metric-sources 'Failed heading' is not enough)."""
+    assert "## Failed" in markdown.splitlines()
+
+
+def _string_constants_in_func(source: str, func_name: str) -> set[str]:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
+            found: set[str] = set()
+            for child in ast.walk(node):
+                if isinstance(child, ast.Constant) and isinstance(child.value, str):
+                    found.add(child.value)
+            return found
+    raise AssertionError(f"missing function {func_name}")
+
+
 def test_overview_csv_byte_identical_and_failed_zero_section(tmp_path: Path):
     """A-10: all-ok overview CSV schema/bytes unchanged; MD still labels Failed."""
     study_dir = _write_report_fixture(tmp_path)
@@ -471,7 +491,7 @@ def test_overview_csv_byte_identical_and_failed_zero_section(tmp_path: Path):
     second = report_study(study_dir)
     assert (study_dir / "study.overview.csv").read_bytes() == csv_bytes
     assert "failed: **0**" in first.markdown
-    assert "## Failed" in first.markdown
+    _assert_failed_heading(first.markdown)
     assert "No failed cells." in first.markdown
     assert first.markdown == second.markdown
 
@@ -493,10 +513,111 @@ def test_mixed_ok_failed_overview_failed_section_qi0704(tmp_path: Path):
     assert failed_name not in set(result.ranked["run_name"])
     assert list(result.ranked["run_name"]) == ranked_before[1:]
     assert "failed: **1**" in result.markdown
-    assert "## Failed" in result.markdown
+    _assert_failed_heading(result.markdown)
     assert "ValueError: injected boom" in result.markdown
     assert failed_name in result.markdown
+    heading_at = result.markdown.splitlines().index("## Failed")
+    sources_at = result.markdown.splitlines().index("## Metric sources")
+    assert heading_at < sources_at
 
     promoted = promote_study(study_dir, output=tmp_path / "draft.yaml", top_n=2)
     assert failed_name not in promoted.selected_run_names
     assert promoted.selected_run_names == list(result.ranked["run_name"])[:2]
+
+
+def test_failed_section_index_driven_without_ledger(tmp_path: Path):
+    """A-10: Failed rows come from the index (item 34), not a ledger gate."""
+    study_dir = _write_report_fixture(tmp_path)
+    index = pd.read_csv(study_dir / "results_index.csv")
+    failed_name = str(index.iloc[0]["run_name"])
+    index.loc[index["run_name"] == failed_name, "status"] = "failed"
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    assert not (study_dir / "study.ledger.json").is_file()
+
+    result = report_study(study_dir)
+    assert len(result.overview) == 4
+    assert (result.overview["status"] == "failed").sum() == 1
+    assert "error" not in result.overview.columns
+    assert "failed: **1**" in result.markdown
+    _assert_failed_heading(result.markdown)
+    assert failed_name in result.markdown
+    assert "unknown error" in result.markdown
+
+
+def test_failed_section_flattens_multiline_ledger_error(tmp_path: Path):
+    """A-10: ledger tracebacks must not break the Failed MD table."""
+    study_dir = _write_report_fixture(tmp_path)
+    index = pd.read_csv(study_dir / "results_index.csv")
+    failed_name = str(index.iloc[0]["run_name"])
+    _inject_failed_index_and_ledger(
+        study_dir, failed_name, error="ValueError: boom\ntraceback line"
+    )
+    result = report_study(study_dir)
+    _assert_failed_heading(result.markdown)
+    rows = [
+        line
+        for line in result.markdown.splitlines()
+        if failed_name in line and "boom" in line
+    ]
+    assert rows
+    assert "traceback line" in rows[0]
+    assert rows[0].count("|") >= 3
+
+
+def test_failed_overview_rows_sorts_run_name():
+    frame = pd.DataFrame(
+        {
+            "run_name": ["c", "a", "b"],
+            "status": ["failed", "ok", "failed"],
+        }
+    )
+    out = failed_overview_rows(frame)
+    assert list(out["run_name"]) == ["b", "c"]
+
+
+def test_failed_section_lists_all_rows_not_md_table_default_cap():
+    """A-10: Failed is uncapped (ranked/low-N still use _md_table limit=50)."""
+    names = [f"c{i:04d}" for i in range(51)]
+    overview = pd.DataFrame(
+        {
+            "run_name": names,
+            "status": ["failed"] * 51,
+            "trade_count": [0] * 51,
+            "expectancy_r": [None] * 51,
+        }
+    )
+    empty = overview.iloc[0:0]
+    markdown = render_overview_markdown(
+        study_name="cap",
+        report={
+            "primary_metric": "expectancy_r",
+            "min_trades": 30,
+            "multiple_testing": "warn",
+        },
+        overview=overview,
+        ranked=empty,
+        low_n=empty,
+        unresolved=empty,
+        group_summaries={},
+        otf_delta=empty,
+        best_cell_suppressed=False,
+        failed_errors={name: "boom" for name in names},
+    )
+    assert "failed: **51**" in markdown
+    _assert_failed_heading(markdown)
+    assert "more row" not in markdown
+    assert sum(1 for line in markdown.splitlines() if line.startswith("| c")) == 51
+
+
+def test_render_overview_markdown_failed_heading_is_ast_literal():
+    """Comment / metric-sources '## Failed' must not satisfy the heading emit."""
+    source = Path("thesistester/study/report.py").read_text(encoding="utf-8")
+    constants = _string_constants_in_func(source, "render_overview_markdown")
+    assert "## Failed" in constants
+    assert any("failed: **" in value for value in constants)
+    fake = (
+        "def render_overview_markdown():\n"
+        "    # ## Failed\n"
+        '    return "listed under Failed heading"\n'
+    )
+    assert "## Failed" not in _string_constants_in_func(fake, "render_overview_markdown")

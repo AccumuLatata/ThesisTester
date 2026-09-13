@@ -20,6 +20,7 @@ import pandas as pd
 from thesistester.study.report import (
     _bundle_path_within_study,
     _failed_display_frame,
+    failed_overview_rows,
     ledger_failed_errors,
 )
 
@@ -296,10 +297,7 @@ def render_rollup_markdown(
     wfa_n = int((frame["wfa_battery"] == PRESENT).sum()) if not frame.empty else 0
     val_n = int((frame["validation_battery"] == PRESENT).sum()) if not frame.empty else 0
     of_n = int((frame["overfitting_battery"] == PRESENT).sum()) if not frame.empty else 0
-    if frame.empty or "status" not in frame.columns:
-        failed = frame.iloc[0:0].copy() if not frame.empty else frame
-    else:
-        failed = frame.loc[frame["status"].astype(str).eq("failed")].copy()
+    failed = failed_overview_rows(frame)
     failed_n = int(len(failed))
     lines = [
         f"# Study diagnostic rollup — {study_name}",
@@ -329,7 +327,8 @@ def render_rollup_markdown(
         "## Failed",
         "",
         "Cells with `status=failed` stay in rollup N (AUDIT_FINAL §5.1 item 34) "
-        "and are not ranked or promoted. Error text from `study.ledger.json`.",
+        "and are not ranked or promoted. Error text from `study.ledger.json` "
+        "when present.",
         "",
     ]
     failed_display = _failed_display_frame(failed, errors=failed_errors or {})

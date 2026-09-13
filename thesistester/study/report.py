@@ -400,11 +400,10 @@ def failed_overview_rows(overview: pd.DataFrame) -> pd.DataFrame:
     """``status=failed`` cells for the MD Failed section (CSV/ranking unchanged)."""
     if overview.empty or "status" not in overview.columns:
         return overview.iloc[0:0].copy()
-    return (
-        overview.loc[overview["status"].astype(str).eq("failed")]
-        .sort_values("run_name", kind="mergesort")
-        .reset_index(drop=True)
-    )
+    failed = overview.loc[overview["status"].astype(str).eq("failed")]
+    if "run_name" in failed.columns:
+        failed = failed.sort_values("run_name", kind="mergesort")
+    return failed.reset_index(drop=True)
 
 
 def ledger_failed_errors(study_dir: str | Path) -> dict[str, str]:
@@ -429,17 +428,32 @@ def ledger_failed_errors(study_dir: str | Path) -> dict[str, str]:
     return errors
 
 
+def _scalar_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _display_error_text(raw: Any, *, fallback: str) -> str:
+    """Single-line MD cell: ledger/index error, else ``unknown error``."""
+    if _scalar_missing(raw) or str(raw).strip() == "":
+        raw = fallback
+    collapsed = " ".join(str(raw).splitlines()).strip()
+    return collapsed or "unknown error"
+
+
 def _failed_display_frame(failed: pd.DataFrame, *, errors: Mapping[str, str]) -> pd.DataFrame:
     if failed.empty:
         return pd.DataFrame(columns=["run_name", "error"])
     rows = []
     for record in failed.to_dict(orient="records"):
-        name = str(record.get("run_name") or "")
+        raw_name = record.get("run_name")
+        name = "" if _scalar_missing(raw_name) else str(raw_name)
         raw = record.get("error") if "error" in failed.columns else None
-        if raw is None or (isinstance(raw, float) and pd.isna(raw)) or str(raw) == "":
-            text = errors.get(name, "unknown error")
-        else:
-            text = str(raw)
+        text = _display_error_text(raw, fallback=errors.get(name, "unknown error"))
         rows.append({"run_name": name, "error": text})
     return pd.DataFrame(rows, columns=["run_name", "error"])
 
@@ -725,16 +739,16 @@ def _fmt_num(value: Any) -> str:
     return f"{number:.6g}"
 
 
-def _md_table(frame: pd.DataFrame, columns: list[str], *, limit: int = 50) -> list[str]:
+def _md_table(frame: pd.DataFrame, columns: list[str], *, limit: int | None = 50) -> list[str]:
     cols = [c for c in columns if c in frame.columns]
     if not cols or frame.empty:
         return ["_(none)_", ""]
-    head = frame.loc[:, cols].head(limit)
+    view = frame.loc[:, cols] if limit is None else frame.loc[:, cols].head(limit)
     lines = [
         "| " + " | ".join(cols) + " |",
         "| " + " | ".join("---" for _ in cols) + " |",
     ]
-    for _, row in head.iterrows():
+    for _, row in view.iterrows():
         cells: list[str] = []
         for col in cols:
             val = row[col]
@@ -756,7 +770,7 @@ def _md_table(frame: pd.DataFrame, columns: list[str], *, limit: int = 50) -> li
                 text = "—" if pd.isna(val) else str(val)
                 cells.append(text.replace("|", "\\|"))
         lines.append("| " + " | ".join(cells) + " |")
-    if len(frame) > limit:
+    if limit is not None and len(frame) > limit:
         lines.append(f"_… {len(frame) - limit} more row(s)_")
     lines.append("")
     return lines
@@ -863,14 +877,16 @@ def render_overview_markdown(
     lines.extend(["## Failed", ""])
     lines.append(
         "Cells with `status=failed` (included in overview CSV and rollup N; "
-        "excluded from ranked / promote). Error text from `study.ledger.json`."
+        "excluded from ranked / promote). Error text from `study.ledger.json` "
+        "when present."
     )
     lines.append("")
     if failed_display.empty:
         lines.append("No failed cells.")
         lines.append("")
     else:
-        lines.extend(_md_table(failed_display, ["run_name", "error"]))
+        # Honesty: list every failed cell (do not inherit ranked-table cap=50).
+        lines.extend(_md_table(failed_display, ["run_name", "error"], limit=None))
 
     lines.extend(["## Group summaries", ""])
     if not group_summaries:
@@ -938,7 +954,7 @@ def render_overview_markdown(
             "- Ranked / low-N / unresolved / group summaries require `factors_joined=True` "
             "(index-only orphans stay in the overview CSV).",
             "- Failed cells stay in the overview CSV (AUDIT_FINAL §5.1 item 34) and are "
-            "listed under ## Failed; they are not ranked or promoted.",
+            "listed under the Failed heading; they are not ranked or promoted.",
             "- Group summaries use the same ranked-eligible gate (min_trades + "
             "non-null primary) so `cell_count` matches the mean/median population.",
             "",
