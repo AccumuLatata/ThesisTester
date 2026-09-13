@@ -16,6 +16,7 @@ from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.expand import expand_study_to_directory
 from thesistester.study.ledger import empty_ledger, mark_cell, save_ledger
 from thesistester.study.promote import promote_study
+from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.report import (
     StudyReportError,
     failed_overview_rows,
@@ -283,10 +284,67 @@ def test_markdown_includes_multiple_testing_honesty(tmp_path: Path):
     assert "multiple-testing" in (study_dir / "study.overview.md").read_text().lower() or (
         "validated edge" in (study_dir / "study.overview.md").read_text()
     )
-    # QI-07-06 / A-15: overview MD carries the AGENT_GUIDE Replay clause.
-    assert "not study run" in result.markdown
-    assert "run_batch" in result.markdown
-    assert "expand-time file" in result.markdown
+
+
+def _honesty_replay_line(markdown: str) -> str:
+    """Bind the Honesty Replay bullet (file-level needles / later sections fail-closed)."""
+    lines = markdown.splitlines()
+    honesty_at = lines.index("## Honesty")
+    ranked_at = lines.index("## Ranked cells")
+    hits = [
+        line
+        for line in lines[honesty_at:ranked_at]
+        if line.startswith("- Replay of `experiment.yaml`")
+    ]
+    assert hits, "Honesty section missing Replay bullet"
+    assert len(hits) == 1
+    return hits[0]
+
+
+def test_overview_md_replay_clause_qi0706(tmp_path: Path):
+    """QI-07-06 / A-15: written overview MD Honesty bullet is the shared clause."""
+    study_dir = _write_report_fixture(tmp_path, multiple_testing="warn")
+    result = report_study(study_dir)
+    expected = (
+        f"- Replay of `experiment.yaml` via `python -m thesistester run`: {REPLAY_NOT_STUDY_RUN}."
+    )
+    assert _honesty_replay_line(result.markdown) == expected
+    written = (study_dir / "study.overview.md").read_text(encoding="utf-8")
+    assert written == (
+        result.markdown if result.markdown.endswith("\n") else result.markdown + "\n"
+    )
+    assert _honesty_replay_line(written) == expected
+
+
+def _func_uses_name(source: str, func_name: str, name: str) -> bool:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
+            return any(isinstance(child, ast.Name) and child.id == name for child in ast.walk(node))
+    raise AssertionError(f"missing function {func_name}")
+
+
+def test_replay_clause_ast_binds_runtime_surfaces_not_comments():
+    """QI-07-06: comment/file-level needles must not satisfy the Name bind."""
+    cli_src = Path("thesistester/study/cli_study.py").read_text(encoding="utf-8")
+    expand_src = Path("thesistester/study/expand.py").read_text(encoding="utf-8")
+    report_src = Path("thesistester/study/report.py").read_text(encoding="utf-8")
+    assert _func_uses_name(cli_src, "_cmd_expand", "REPLAY_NOT_STUDY_RUN")
+    assert _func_uses_name(
+        expand_src, "write_expansion_artifacts", "_EXPERIMENT_YAML_REPLAY_COMMENT"
+    )
+    assert _func_uses_name(report_src, "render_overview_markdown", "REPLAY_NOT_STUDY_RUN")
+    report_imports = {
+        node.module for node in ast.walk(ast.parse(report_src)) if isinstance(node, ast.ImportFrom)
+    }
+    assert "thesistester.study.expand" not in report_imports
+    assert "thesistester.study.replay_disclosure" in report_imports
+    comment_only = (
+        "def _cmd_expand(args):\n"
+        "    # Replay: not study run; still run_batch; expand-time file\n"
+        '    print("Replay: python -m thesistester run out/experiment.yaml")\n'
+    )
+    assert not _func_uses_name(comment_only, "_cmd_expand", "REPLAY_NOT_STUDY_RUN")
 
 
 def test_multiple_testing_error_suppresses_best_cell(tmp_path: Path):

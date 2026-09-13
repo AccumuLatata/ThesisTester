@@ -21,6 +21,7 @@ from thesistester.study.apoc_provenance import (
     should_write_apoc_provenance,
 )
 from thesistester.study.naming import build_run_name
+from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.schema import (
     RUN_NAME_RE,
     StudySpecError,
@@ -32,12 +33,7 @@ from thesistester.study.schema import (
 # Omitting them previously invented silent defaults (touch / base / global_cluster).
 _REQUIRED_CELL_AXES = ("confluence_mode", "trigger", "trigger_timeframe")
 _DATASET_PATH_KEYS = ("path", "subtimeframe_path")
-# QI-07-06 / QR A-15: AGENT_GUIDE Replay clause. Disclosure only — not a
-# ``run_batch`` behavior change (AH §2 item 7).
-REPLAY_NOT_STUDY_RUN = (
-    "same dataset bytes when the expand-time file still exists; "
-    "still run_batch — fail-fast, origin=cli, no index status — not study run"
-)
+# QI-07-06 / QR A-15: prefix only. Clause SoT is ``REPLAY_NOT_STUDY_RUN``.
 _EXPERIMENT_YAML_REPLAY_COMMENT = f"# Replay: {REPLAY_NOT_STUDY_RUN}\n"
 
 

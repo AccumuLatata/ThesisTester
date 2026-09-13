@@ -295,9 +295,11 @@ python -m thesistester study run path/to/study.yaml --output-dir out/study1 \
 `python -m thesistester run experiment.yaml` still uses `run_batch` (fail-fast,
 `execution_origin=cli`, no study index `status`). After AH2 path-pin, replay
 loads the **same dataset bytes** when the expand-time file still exists. It is
-**not** `study run`. `study expand` prints that Replay clause on stdout and
-prefixes `experiment.yaml` with the same comment; overview MD repeats it
-(QI-07-06). Study runs do **not** call `run_batch`; they loop
+**not** `study run`. `study expand` prints
+`Replay: python -m thesistester run …/experiment.yaml  # <that clause>`
+(bash-safe: the command before `  #` is copy-pasteable) and prefixes
+`experiment.yaml` with `# Replay: <same clause>`; overview MD repeats the
+clause under Honesty (QI-07-06). Study runs do **not** call `run_batch`; they loop
 `run_experiment` → `build_research_bundle` with `execution_origin="study"` and
 `cache_policy="read_write"`.
 

@@ -26,8 +26,8 @@ import pandas as pd
 import yaml
 
 from thesistester.setup import normalize_otf_filter_config
-from thesistester.study.expand import REPLAY_NOT_STUDY_RUN
 from thesistester.study.ledger import load_ledger
+from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.schema import load_study_spec
 
 OVERVIEW_CSV = "study.overview.csv"

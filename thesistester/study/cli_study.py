@@ -13,8 +13,8 @@ from thesistester.study.execute import (
     rebuild_direction_index,
     run_study,
 )
-from thesistester.study.expand import REPLAY_NOT_STUDY_RUN
 from thesistester.study.promote import StudyPromoteError, promote_study
+from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.report import StudyReportError, report_study
 from thesistester.study.rollup import StudyRollupError, rollup_study
 from thesistester.study.observatory import (
@@ -278,7 +278,8 @@ def _cmd_expand(args: argparse.Namespace) -> int:
     print(f"Artifacts: {out / 'study.spec.yaml'}")
     print(f"           {out / 'study.expansion.json'}")
     print(f"           {out / 'experiment.yaml'}")
-    print(f"Replay: python -m thesistester run {out / 'experiment.yaml'} ({REPLAY_NOT_STUDY_RUN})")
+    # ``#`` keeps the Replay command copy-pasteable (bash ignores the clause).
+    print(f"Replay: python -m thesistester run {out / 'experiment.yaml'}  # {REPLAY_NOT_STUDY_RUN}")
     return os.EX_OK
 
 
