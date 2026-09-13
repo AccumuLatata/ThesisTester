@@ -114,6 +114,55 @@ def test_every_routed_registry_capability_has_a_handler():
     assert all(capability_id in HANDLER_REGISTRY for capability_id in routed)
 
 
+def test_record_audit_redacts_secret_shaped_payload_keys(tmp_path):
+    """QI-09-06: caller-controlled payload secrets must not persist (L10)."""
+    secret = "sk-injected-should-not-persist"
+    tools = AssistantTools(data_roots=(tmp_path,))
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="AuditScrub")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
+    request = AssistantRequest(
+        capability_id="HOME.workflow_guide",
+        payload={"action": "inspect", "api_key": secret},
+    )
+
+    orchestrator._record_audit(
+        OrchestrationResult(
+            capability_id="HOME.workflow_guide",
+            status="completed",
+            payload={"ok": True},
+        ),
+        request=request,
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+    )
+
+    assert request.payload["api_key"] == secret
+
+    transcript = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).tool_transcript
+    assert len(transcript) == 1
+    persisted_payload = transcript[0]["request"]["payload"]
+    assert persisted_payload["action"] == "inspect"
+    assert persisted_payload.get("api_key") in (None, "[redacted]")
+    assert persisted_payload.get("api_key") != secret
+    assert secret not in persisted_payload.values()
+
+    on_disk = (
+        tmp_path
+        / "assistant"
+        / "theses"
+        / thesis.thesis_id
+        / "conversations"
+        / f"{conversation.conversation_id}.json"
+    )
+    disk_text = on_disk.read_text(encoding="utf-8")
+    assert secret not in disk_text
+    assert "[redacted]" in disk_text
+
+
 def _confirmed_run(repository, *, name: str):
     thesis = repository.create_thesis(name=name)
     conversation = repository.create_conversation(thesis.thesis_id)

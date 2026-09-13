@@ -225,9 +225,17 @@ class AssistantRequest:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-safe representation."""
+        """Return a JSON-safe persist representation.
+
+        Secret-shaped payload keys are replaced with ``[redacted]`` via
+        ``sidecar.redact_for_logs`` (QI-09-06). Live ``payload`` on this
+        instance is not mutated; dispatch and handlers keep the original
+        values.
+        """
+        from thesistester.assistant.voice.sidecar import redact_for_logs
+
         return {
             "schema_version": self.schema_version,
             "capability_id": self.capability_id,
-            "payload": self.payload,
+            "payload": redact_for_logs(self.payload),
         }

@@ -330,6 +330,13 @@ RQ/HC/DI/RI/VA/DX/RUX). Status index: `docs/ENGINEERING_ROADMAP.md`.
 Every request must first parse as an `AssistantRequest`, then pass
 `validate_capability_request()`.
 
+- **Audit-payload rule (QI-09-06):** `_record_audit` and
+  `AssistantRequest.to_dict` must run persist surfaces through
+  `sidecar.redact_for_logs` before `append_conversation_message`. Do not
+  write plaintext `api_key` (or other secret-shaped keys) into
+  `tool_transcript` / conversation JSON. Dispatch confirmation still
+  reads live `request.payload`. Keep the orchestrator audit-scrub probe
+  and AIA registry tests green when changing audit persist.
 - Unknown request keys and unknown capability IDs fail closed.
 - Capability IDs classified as `unsupported` cannot be executed; their
   registry limitation must be surfaced to the user.

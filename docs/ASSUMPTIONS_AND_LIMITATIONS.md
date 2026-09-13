@@ -1023,6 +1023,15 @@ other than the last bar in the dataset.
   rejected. Never store the key in tracked configuration. Non-secret knobs
   (`provider`, `model`, retries, history trim, `evidence_only`) live in
   `config/assistant.toml`.
+- Audit persist (QI-09-06 / AUDIT_FINAL L10): caller-controlled
+  `AssistantRequest.payload` keys that match `sidecar.redact_for_logs`
+  (`api_key`, `authorization`, `token`, `secret`, `client_secret`,
+  `xai_api_key`, `value`) are stored as `[redacted]` in `tool_transcript`
+  and conversation JSON. `_record_audit` scrubs the tool entry before
+  `append_conversation_message`. Live `request.payload` used by dispatch
+  and handlers is not mutated; confirmation gating is unchanged. Default
+  UI does not inject keys; this is the residual for agent/library callers
+  that put secret-shaped fields in capability payloads.
 - Provider timeouts retry per `max_retries`; exhaustion surfaces as a provider
   error and leaves the deterministic packet intact. Transport failures from
   `UrllibOpenAITransport` keep the stable prefix

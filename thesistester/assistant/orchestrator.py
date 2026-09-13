@@ -2050,6 +2050,8 @@ class AssistantOrchestrator:
         if thesis_id is None or conversation_id is None:
             return
         try:
+            from thesistester.assistant.voice.sidecar import redact_for_logs
+
             conversation = self.repository.get_conversation(thesis_id, conversation_id)
             tool_entry = {
                 "capability_id": result.capability_id,
@@ -2060,6 +2062,9 @@ class AssistantOrchestrator:
                 tool_entry.update(extra)
             if "error" in result.payload:
                 tool_entry["error"] = result.payload["error"]
+            persisted = redact_for_logs(tool_entry)
+            if not isinstance(persisted, dict):
+                persisted = tool_entry
             self.repository.append_conversation_message(
                 thesis_id,
                 conversation_id,
@@ -2068,7 +2073,7 @@ class AssistantOrchestrator:
                     "role": "tool",
                     "content": f"{result.status} {result.capability_id}.",
                 },
-                tool_entry=tool_entry,
+                tool_entry=persisted,
             )
         except Exception:
             if not best_effort:
