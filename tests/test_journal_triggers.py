@@ -376,13 +376,29 @@ def test_wrapper_rejects_non_trade_direction() -> None:
 
 
 def test_existing_golden_files_byte_identical() -> None:
+    """Files already on the regression base stay byte-identical.
+
+    Additive families (OTF / entry_window / fade / B-3 default-on) may add
+    files. ``tests/fixtures/golden/README.md`` is identity-locked: do not edit
+    it (B-1 lesson). Put new golden docs in ``docs/ENGINEERING_PROPOSAL.md`` §4.1.
+    """
     base = _regression_base_ref()
-    diff = subprocess.check_output(
-        ["git", "diff", "--name-only", base, "--", "tests/fixtures/golden"],
+    existing = subprocess.check_output(
+        ["git", "ls-tree", "-r", "--name-only", base, "--", "tests/fixtures/golden"],
         cwd=REPO,
         text=True,
     )
-    assert diff.strip() == ""
+    paths = [line.strip() for line in existing.splitlines() if line.strip()]
+    if not paths:
+        pytest.skip("no golden files on regression base")
+    diff = subprocess.check_output(
+        ["git", "diff", "--name-only", base, "--", *paths],
+        cwd=REPO,
+        text=True,
+    )
+    assert diff.strip() == "", (
+        f"Existing golden files changed vs {base} (additive files are allowed):\n{diff}"
+    )
     digest = hashlib.sha256()
     for path in sorted(GOLDEN_DIR.rglob("*")):
         if path.is_file() and path.suffix in {".csv", ".parquet", ".json", ".txt"}:
