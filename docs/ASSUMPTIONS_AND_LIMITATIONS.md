@@ -1174,11 +1174,10 @@ other than the last bar in the dataset.
 - Study execute does not change R18 `run_batch` semantics; overview join does
   not invent new inference.
 - **H16:** Study ranking ignores WFA OOS. `wfa_median_test_expectancy_r` is
-  stored on the study index / rollup when walk-forward ran; it is **not
-  rankable**. `study.report.primary_metric` must be one of `expectancy_r` /
-  `total_r` / `max_drawdown_r` / `trade_count` / `profit_factor`. Validate
-  rejects the WFA token. Disclosure only — the ranking allowlist and WFA
-  math are unchanged.
+  stored on the study index / rollup when walk-forward ran; it is **not rankable**.
+  `study.report.primary_metric` must be one of `expectancy_r` / `total_r` /
+  `max_drawdown_r` / `trade_count` / `profit_factor`. Validate rejects the WFA
+  token. Disclosure only — the ranking allowlist and WFA math are unchanged.
 
 ## Research Study Runner diagnostic rollup (RS-D4)
 
