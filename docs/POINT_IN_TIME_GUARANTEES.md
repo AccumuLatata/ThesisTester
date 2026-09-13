@@ -150,7 +150,7 @@ not part of the current public trigger set accepted by `generate_signals()`.
 | `reclaim` | `_check_reclaim` | **Yes** | Signal at trigger-bar close | Same | Same |
 | legacy/internal `confirm_3bar` helper | `_check_confirm_3bar` | **Yes** | Signal timestamped at **bar 3** (`bar3_idx`), not backdated to arrival bar | Entry is bar3 OHLC intrabar fill (pessimistic SL-first); bar3 is both signal bar and entry bar | `test_r3_point_in_time.py::test_confirm_3bar_not_backdated` |
 | `3c` (base TF) | `detect_3c_setups` | **Yes** | Signal at `entry_idx` (filled) or `reversal_idx` (void); never backdated to arrival | Looks forward only to find reversal and retrace within allowed window | `test_r3_point_in_time.py::test_3c_signals_not_backdated` |
-| `3c` (non-base TF) | `detect_3c_setups_with_trigger_timeframe` | **Yes** | `bar_index` / `timestamp` are canonical/base indexed at entry or reversal bar | Developing-partner zone prices stay the early-window value vs completed HTF OHLC (**H14**); `trigger_timestamp` is HTF close (reversal candle completion), not a snap to `base_end` | Same |
+| `3c` (non-base TF) | `detect_3c_setups_with_trigger_timeframe` | **Yes** | `bar_index` / `timestamp` are canonical/base indexed at entry or reversal bar | `trigger_arrival_bar_index` / `trigger_reversal_bar_index` are trigger-TF indices; `trigger_timestamp` is reversal candle completion. Developing-partner **zone prices** stay the early-window value vs completed HTF OHLC (**H14**). Zone T remaps to HTF close; those prices are not snapped to `base_end` | Same |
 
 ---
 
@@ -200,7 +200,7 @@ For **`3c`**:
 - Non-base `3c` projects intra-window zones onto the completed HTF bar.
   Developing partners (dVWAP / SMA / rolling VWAP) keep the **early-window**
   price tested against that HTF OHLC. Decision T is HTF close (**H14**
-  status). This is not a snap-to-`base_end` (parked CTO decision).
+  status). This does not snap those prices to `base_end` (parked CTO decision).
 
 ---
 

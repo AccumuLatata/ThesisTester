@@ -14,9 +14,6 @@ Covers:
 
 from __future__ import annotations
 
-import ast
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
@@ -1343,67 +1340,18 @@ def test_project_zones_empty_input():
 
 
 # ===========================================================================
-# QI-03-06 / A-13: H14 status lock + Signals caption (disclosure only)
+# QI-03-06 / A-13: H14 status lock (disclosure only; copy probes in copy_guards)
 # ===========================================================================
 
 _H14_EARLY_WINDOW_DVWAP = 5200.125
 _H14_BASE_END_DVWAP = 5200.500
-_H14_CAPTION_NEEDLES = (
-    "H14",
-    "dVWAP",
-    "early-window",
-    "completed HTF OHLC",
-    "HTF close",
-)
-_SIGNALS_PAGE = Path(__file__).resolve().parents[1] / "pages" / "6_Signals.py"
-
-
-def _st_caption_texts(source: str) -> list[str]:
-    """Literal first-arg strings of ``st.caption(...)`` (not ``help=`` / comments)."""
-    tree = ast.parse(source)
-    texts: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
-            continue
-        if node.func.attr != "caption":
-            continue
-        value = node.func.value
-        if not (isinstance(value, ast.Name) and value.id == "st"):
-            continue
-        if not node.args:
-            continue
-        arg = node.args[0]
-        try:
-            text = ast.literal_eval(arg)
-        except (ValueError, TypeError):
-            text = None
-        if isinstance(text, str):
-            texts.append(text)
-            continue
-        if isinstance(arg, ast.BinOp):
-            continue
-        if isinstance(arg, ast.Tuple):
-            parts = []
-            for elt in arg.elts:
-                try:
-                    piece = ast.literal_eval(elt)
-                except (ValueError, TypeError):
-                    parts = []
-                    break
-                if isinstance(piece, str):
-                    parts.append(piece)
-                else:
-                    parts = []
-                    break
-            if parts:
-                texts.append("".join(parts))
-    return texts
 
 
 def test_h14_projection_keeps_early_window_developing_price():
     """QI-3 Drift-VWAP HTF recipe: projection remaps T; prices stay early-window.
 
     Locks current H14 status. Does not demand snap-to-``base_end``.
+    Caption/help AST probes live in ``tests/test_ui_copy_guards.py``.
     """
     base_rows = [
         {"open": 5200.00, "high": 5200.25, "low": 5199.75, "close": 5200.00},
@@ -1441,28 +1389,6 @@ def test_h14_projection_keeps_early_window_developing_price():
     assert float(row["tested_level_price"]) == _H14_EARLY_WINDOW_DVWAP
     assert float(row["zone_mid"]) != _H14_BASE_END_DVWAP
     assert early_ts != htf_end
-
-
-def test_signals_page_htf_3c_caption_discloses_h14():
-    """QI-03-06 / A-13: HTF+3c ``st.caption`` names H14 (help=/comments fail-closed)."""
-    source = _SIGNALS_PAGE.read_text(encoding="utf-8")
-    matching = [
-        text for text in _st_caption_texts(source) if all(n in text for n in _H14_CAPTION_NEEDLES)
-    ]
-    assert matching, f"Signals HTF+3c st.caption missing H14 needles {_H14_CAPTION_NEEDLES}"
-    fake = (
-        "import streamlit as st\n"
-        "st.selectbox(\n"
-        '    "Trigger timeframe",\n'
-        '    options=["5min"],\n'
-        '    help="H14 dVWAP early-window completed HTF OHLC HTF close",\n'
-        ")\n"
-        "# H14 dVWAP early-window completed HTF OHLC HTF close\n"
-    )
-    fake_matching = [
-        text for text in _st_caption_texts(fake) if all(n in text for n in _H14_CAPTION_NEEDLES)
-    ]
-    assert fake_matching == [], "help=/comment H14 needles must not satisfy st.caption"
 
 
 # ===========================================================================

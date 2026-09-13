@@ -1676,26 +1676,245 @@ def test_user_guide_setup_builder_direction_pitfall_names_da0():
 
 
 _H14_SIGNALS_H2 = "Signals"
-_H14_SIGNALS_NEEDLES = (
-    "3c",
-    "Trigger timeframe",
+_H14_TRIGGER_TF_LABEL = "Trigger timeframe"
+_H14_HELP_NEEDLES = (
+    "H14",
     "dVWAP",
     "early-window",
+    "completed HTF OHLC",
+    "HTF close",
+)
+_H14_CAPTION_NEEDLES = _H14_HELP_NEEDLES
+_H14_SIGNALS_PITFALL_NEEDLES = (
+    "dVWAP",
+    "early-window",
+    "completed HTF OHLC",
     "HTF close",
     "H14",
 )
+_H14_3C_INFO_NEEDLE = "non-base trigger timeframe"
+_H14_HELP_LITERAL = (
+    "H14: developing partners (dVWAP / SMA / rolling VWAP) keep the early-window "
+    "value tested against completed HTF OHLC; decision T is HTF close. "
+    "Not a snap of those prices to base_end."
+)
+
+
+def _last_assigned_value(source: str, name: str, before_lineno: int) -> ast.AST | None:
+    """Last assignment of ``name`` at or before ``before_lineno`` (A-12 last-wins)."""
+    tree = ast.parse(source)
+    best: tuple[int, ast.AST] | None = None
+    for stmt in ast.walk(tree):
+        if not isinstance(stmt, ast.Assign) or stmt.lineno > before_lineno:
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == name for target in stmt.targets):
+            continue
+        if best is None or stmt.lineno >= best[0]:
+            best = (stmt.lineno, stmt.value)
+    return None if best is None else best[1]
+
+
+def _ifexp_branch_when_name_eq(ifexp: ast.IfExp, name: str, value: str) -> ast.AST:
+    """Return the branch taken when ``name == value`` (fail-closed on other tests)."""
+    test = ifexp.test
+    if isinstance(test, ast.Compare) and len(test.ops) == 1 and len(test.comparators) == 1:
+        left, right = test.left, test.comparators[0]
+        op = test.ops[0]
+        left_name = isinstance(left, ast.Name) and left.id == name
+        right_name = isinstance(right, ast.Name) and right.id == name
+        matches = (left_name and _literal_str(right) == value) or (
+            right_name and _literal_str(left) == value
+        )
+        if matches:
+            if isinstance(op, ast.Eq):
+                return ifexp.body
+            if isinstance(op, ast.NotEq):
+                return ifexp.orelse
+    raise AssertionError(f"help IfExp is not `{name} == {value!r}`")
+
+
+def _string_from_help_node(source: str, node: ast.AST, before_lineno: int) -> str:
+    """Literal ``help=`` or last Name assignment; IfExp uses the ``trigger == '3c'`` branch."""
+    text = _joined_text(node) or _literal_str(node)
+    if text is not None:
+        return text
+    if isinstance(node, ast.Name):
+        assigned = _last_assigned_value(source, node.id, before_lineno)
+        if assigned is None:
+            raise AssertionError("Trigger timeframe help= Name has no assignment")
+        if isinstance(assigned, ast.IfExp):
+            branch = _ifexp_branch_when_name_eq(assigned, "trigger", "3c")
+            text = _joined_text(branch) or _literal_str(branch)
+            if text is None:
+                raise AssertionError("3c help IfExp branch is not a string")
+            return text
+        text = _joined_text(assigned) or _literal_str(assigned)
+        if text is None:
+            raise AssertionError("Trigger timeframe help assignment is not a string")
+        return text
+    raise AssertionError("Trigger timeframe help= is not a string literal or Name")
+
+
+def _assert_h14_trigger_timeframe_help(source: str) -> None:
+    """AST-bind H14 to Trigger timeframe ``help=`` (3c branch).
+
+    File-level / comment / caption / simple-TF else-branch needles fail-closed.
+    """
+    call = _selectbox_call(source, _H14_TRIGGER_TF_LABEL)
+    help_node = None
+    for kw in call.keywords:
+        if kw.arg == "help":
+            help_node = kw.value
+            break
+    if help_node is None:
+        raise AssertionError("Trigger timeframe selectbox must have help=")
+    help_text = _string_from_help_node(source, help_node, call.lineno)
+    missing = [n for n in _H14_HELP_NEEDLES if n not in help_text]
+    assert missing == [], f"Trigger timeframe 3c help missing {missing}: {help_text!r}"
+
+
+def _assert_h14_htf_3c_caption(source: str) -> None:
+    """AST-bind H14 ``st.caption`` after the 3c non-base ``st.info``.
+
+    ``help=`` / comments / a caption before that info fail-closed (A-6 class).
+    """
+    tree = ast.parse(source)
+    info_lines = [
+        call.lineno
+        for call in _st_calls(tree, "info")
+        if (text := _first_arg_text(call)) and _H14_3C_INFO_NEEDLE in text
+    ]
+    if not info_lines:
+        raise AssertionError("missing 3c non-base trigger timeframe st.info")
+    info_at = min(info_lines)
+    matching: list[tuple[int, str]] = []
+    for call in _st_calls(tree, "caption"):
+        text = _first_arg_text(call)
+        if text and all(n in text for n in _H14_CAPTION_NEEDLES):
+            matching.append((call.lineno, text))
+    if not matching:
+        raise AssertionError(
+            f"Signals HTF+3c st.caption missing H14 needles {list(_H14_CAPTION_NEEDLES)}"
+        )
+    caption_at = min(lineno for lineno, _ in matching)
+    if caption_at <= info_at:
+        raise AssertionError("H14 st.caption must follow 3c non-base st.info")
+
+
+def _signals_3c_htf_pitfall(body: str) -> str:
+    """Common-pitfall cell of the Signals ``3c`` + ``Trigger timeframe`` row."""
+    for line in body.splitlines():
+        if "| `3c` + `Trigger timeframe` |" not in line:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 3 and cells[0] == "`3c` + `Trigger timeframe`":
+            return cells[2]
+    raise AssertionError("Signals H2 missing `3c` + `Trigger timeframe` key-settings row")
+
+
+def test_signals_trigger_timeframe_help_discloses_h14():
+    """QI-03-06 / A-13: Trigger timeframe 3c help= names H14 (Name → IfExp)."""
+    _assert_h14_trigger_timeframe_help(_read(PAGES / "6_Signals.py"))
+
+
+def test_signals_htf_3c_caption_discloses_h14():
+    """QI-03-06 / A-13: HTF+3c st.caption follows non-base info."""
+    _assert_h14_htf_3c_caption(_read(PAGES / "6_Signals.py"))
+
+
+def test_h14_help_guard_ignores_comment_caption_and_else_branch():
+    """Comment / caption / simple-TF else-branch needles must not satisfy 3c help."""
+    fake = (
+        "import streamlit as st\n"
+        f"# {_H14_HELP_LITERAL}\n"
+        "trigger_timeframe_help = (\n"
+        '    "Candle-close trigger logic."\n'
+        '    if trigger == "3c"\n'
+        "    else (\n"
+        f'        "{_H14_HELP_LITERAL}"\n'
+        "    )\n"
+        ")\n"
+        "st.selectbox(\n"
+        f'    "{_H14_TRIGGER_TF_LABEL}",\n'
+        '    options=["5min"],\n'
+        "    help=trigger_timeframe_help,\n"
+        ")\n"
+        f'st.info("3c with {_H14_3C_INFO_NEEDLE}: arrival on HTF.")\n'
+        f'st.caption("{_H14_HELP_LITERAL}")\n'
+    )
+    try:
+        _assert_h14_trigger_timeframe_help(fake)
+    except AssertionError as exc:
+        assert "missing" in str(exc) or "help=" in str(exc)
+    else:
+        raise AssertionError("else-branch/comment/caption H14 needles must not bind 3c help")
+
+
+def test_h14_help_resolves_name_ifexp_true_branch():
+    """Name + ``trigger == '3c'`` IfExp must bind the true branch."""
+    fake = (
+        "import streamlit as st\n"
+        "trigger_timeframe_help = (\n"
+        f'    "{_H14_HELP_LITERAL}"\n'
+        '    if trigger == "3c"\n'
+        "    else (\n"
+        '        "Candle-close trigger logic."\n'
+        "    )\n"
+        ")\n"
+        "st.selectbox(\n"
+        f'    "{_H14_TRIGGER_TF_LABEL}",\n'
+        '    options=["5min"],\n'
+        "    help=trigger_timeframe_help,\n"
+        ")\n"
+    )
+    _assert_h14_trigger_timeframe_help(fake)
+
+
+def test_h14_caption_guard_requires_st_caption_after_nonbase_info():
+    """help=/comment needles, or a caption before the 3c info, fail-closed."""
+    head = "import streamlit as st\n"
+    caption = f'st.caption("{_H14_HELP_LITERAL}")\n'
+    info = f'st.info("3c with {_H14_3C_INFO_NEEDLE}: arrival on HTF.")\n'
+    help_only = (
+        head
+        + "st.selectbox(\n"
+        + f'    "{_H14_TRIGGER_TF_LABEL}",\n'
+        + '    options=["5min"],\n'
+        + f'    help="{_H14_HELP_LITERAL}",\n'
+        + ")\n"
+        + f"# {_H14_HELP_LITERAL}\n"
+        + info
+    )
+    try:
+        _assert_h14_htf_3c_caption(help_only)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc)
+    else:
+        raise AssertionError("help=/comment H14 needles must not satisfy st.caption")
+
+    before_info = head + caption + info
+    try:
+        _assert_h14_htf_3c_caption(before_info)
+    except AssertionError as exc:
+        assert "must follow" in str(exc)
+    else:
+        raise AssertionError("H14 caption before 3c non-base info must not pass")
 
 
 def test_user_guide_signals_h2_names_h14_3c_htf():
-    """QI-03-06 / A-13: Signals H2 names 3c HTF developing-partner H14."""
+    """QI-03-06 / A-13: Signals 3c HTF pitfall cell names H14 (Help H2)."""
     body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H14_SIGNALS_H2)
-    missing = [n for n in _H14_SIGNALS_NEEDLES if n not in body]
-    assert missing == [], f"Signals H2 missing A-13 needles {missing}"
+    pitfall = _signals_3c_htf_pitfall(body)
+    missing = [n for n in _H14_SIGNALS_PITFALL_NEEDLES if n not in pitfall]
+    assert missing == [], f"Signals 3c HTF pitfall missing A-13 needles {missing}"
     assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
         f"Signals H2 exceeds USER_GUIDE soft budget: {len(body)}"
     )
     fake = (
-        "## Notes\n3c Trigger timeframe dVWAP early-window HTF close H14\n## Backtest\nunrelated\n"
+        "## Notes\n"
+        "| `3c` + `Trigger timeframe` | HTF | "
+        "dVWAP early-window completed HTF OHLC HTF close H14 |\n"
+        "## Backtest\nunrelated\n"
     )
     try:
         _md_h2_body(fake, _H14_SIGNALS_H2)
@@ -1703,3 +1922,16 @@ def test_user_guide_signals_h2_names_h14_3c_htf():
         assert "Signals" in str(exc)
     else:
         raise AssertionError("Notes-only needles must not bind as Signals H2")
+
+    empty_then_notes = (
+        "## Signals\n"
+        "| Control | Meaning | Common pitfall |\n"
+        "| `3c` + `Trigger timeframe` | HTF | — |\n"
+        "## Notes\n"
+        "| `3c` + `Trigger timeframe` | HTF | "
+        "dVWAP early-window completed HTF OHLC HTF close H14 |\n"
+    )
+    notes_body = _md_h2_body(empty_then_notes, _H14_SIGNALS_H2)
+    notes_pitfall = _signals_3c_htf_pitfall(notes_body)
+    assert notes_pitfall == "—", "Notes-table needles must not bind as Signals 3c HTF pitfall"
+    assert any(n not in notes_pitfall for n in _H14_SIGNALS_PITFALL_NEEDLES)

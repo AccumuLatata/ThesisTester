@@ -238,7 +238,7 @@ developing partners, H14, signal table, signal runs
 |---|---|---|
 | `Setup source` | `Configure manually` / `Use active setup` / `Use saved setup from library` | Library OTF snapshot is whatever was saved |
 | Manual confluence + trigger controls | Same concepts as Setup Builder | Easy to drift from the saved setup |
-| `3c` + `Trigger timeframe` | Arrival / reversal on HTF candles when non-base | Developing partners (dVWAP / SMA / rolling VWAP) keep the early-window value vs completed HTF OHLC (H14; decision T is HTF close). Not a snap to `base_end` |
+| `3c` + `Trigger timeframe` | Arrival / reversal on HTF candles when non-base | Developing partners (dVWAP / SMA / rolling VWAP) keep the early-window value vs completed HTF OHLC (H14; decision T is HTF close). Not a snap of those prices to `base_end` |
 | **Generate signals** | Build zones + candidate entries | Does **not** apply OTF admission |
 | Saved signal runs | Load/save/delete generated artifacts | Needs trusted dataset + levels identity |
 
