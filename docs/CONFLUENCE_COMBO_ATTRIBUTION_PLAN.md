@@ -2,13 +2,14 @@
 
 **Status:** Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5a + Phase 5b + Phase 5c + Phase 5d + **Phase 6 (direction × combo) implemented**
 **Document type:** Focused analytics / Backtest UX implementation plan  
-**Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
+**Shelf:** normative engine / data contract (contract-complete) in [`docs/README.md`](README.md).  
+**Regression framework:** [`docs/ENGINEERING_PROPOSAL.md`](ENGINEERING_PROPOSAL.md) §4, §4.1, §4.2  
 **Related docs:**  
-`docs/anchor_confluence_regression_safe_plan.md`,  
-`docs/PREV30M_VWAP_IMPLEMENTATION_PLAN.md`,  
-`docs/ASSUMPTIONS_AND_LIMITATIONS.md`,  
-`docs/METRICS_GLOSSARY.md`,  
-`docs/ARCHITECTURE.md`
+[`docs/archive/anchor_confluence_regression_safe_plan.md`](archive/anchor_confluence_regression_safe_plan.md) (archived rollout; living successor [`ANCHOR_CONFLUENCE.md`](ANCHOR_CONFLUENCE.md)),  
+[`docs/PREV30M_VWAP_IMPLEMENTATION_PLAN.md`](PREV30M_VWAP_IMPLEMENTATION_PLAN.md),  
+[`docs/ASSUMPTIONS_AND_LIMITATIONS.md`](ASSUMPTIONS_AND_LIMITATIONS.md),  
+[`docs/METRICS_GLOSSARY.md`](METRICS_GLOSSARY.md),  
+[`docs/ARCHITECTURE.md`](ARCHITECTURE.md)
 
 **Date:** 2026-08-09 (Phase 6 scope lock: 2026-08-10)
 
