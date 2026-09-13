@@ -1613,8 +1613,7 @@ def test_data_page_captions_h10_legacy_primary_fork():
     first_lineno, first_text = min(after, key=lambda item: item[0])
     missing = [n for n in _H10_CAPTION_NEEDLES if n not in first_text]
     assert missing == [], (
-        f"first caption after Ingestion mode (L{first_lineno}) missing H10 "
-        f"needles {missing}"
+        f"first caption after Ingestion mode (L{first_lineno}) missing H10 needles {missing}"
     )
 
 
