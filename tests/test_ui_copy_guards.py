@@ -3,14 +3,36 @@
 from __future__ import annotations
 
 import pathlib
+import re
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAGES = REPO_ROOT / "pages"
 APP = REPO_ROOT / "app.py"
 
+# Phase 4 bullet through the next top-level Phase 5 bullet (not the later 3c
+# four-rule block, which also names `3c` as a standalone token).
+_README_PHASE4_RE = re.compile(
+    r"^- \*\*Phase 4\b.*?(?=^- \*\*Phase 5\b)",
+    flags=re.MULTILINE | re.DOTALL,
+)
+# "N trigger types — `tok`, `tok` — exposed"
+_README_TRIGGER_LIST_RE = re.compile(
+    r"trigger types\s+[—–-]\s*(.*?)\s+[—–-]\s+exposed",
+    flags=re.DOTALL,
+)
+
 
 def _read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _phase4_listed_triggers(readme: str) -> set[str]:
+    """Exact backticked tokens in the Phase 4 "trigger types — … — exposed" list."""
+    phase4_match = _README_PHASE4_RE.search(readme)
+    assert phase4_match is not None, "README.md has no Phase 4 bullet"
+    list_match = _README_TRIGGER_LIST_RE.search(phase4_match.group(0))
+    assert list_match is not None, "README Phase 4 has no backticked trigger-types list"
+    return set(re.findall(r"`([^`]+)`", list_match.group(1)))
 
 
 def test_home_workflow_puts_levels_before_setup():
@@ -110,3 +132,41 @@ def test_assistant_page_is_discuss_first_without_duplicate_nav_strip():
     assert "Debug: raw JSON & conversation audit" in text
     assert "Assistant chat" in text
     assert "Discuss results" in text
+
+
+def test_readme_phase4_trigger_list_covers_valid_triggers():
+    """QI-13-02 / QR F-2: Help-allowlisted README lists every VALID_TRIGGERS token.
+
+    Parse the Phase 4 enumerated list, not any later `` `token` `` mention.
+    Whole-file / whole-bullet search still passes if Phase 4 drops `3c` from
+    the list but keeps "including `3c`" or the four-rule block.
+    """
+    from thesistester.engine.signals import VALID_TRIGGERS
+
+    readme = _read(REPO_ROOT / "README.md")
+    assert "five trigger types" not in readme
+    listed = _phase4_listed_triggers(readme)
+    missing = sorted(token for token in VALID_TRIGGERS if token not in listed)
+    assert missing == [], f"README Phase 4 omitted VALID_TRIGGERS {missing}"
+
+    # F-2: 3c four-rule / 8-variant block stays (separate bullet, not the list).
+    assert "**4 rules (long):**" in readme
+    assert "Arrival candle must touch or pass through the key level." in readme
+    assert "Reversal candle must close above the arrival candle high." in readme
+
+
+def test_readme_phase4_list_parser_ignores_later_token_mentions():
+    """List ⊇ VALID_TRIGGERS; later `` `3c` `` / `` `fade` `` must not hide a drop."""
+    fake = (
+        "- **Phase 4 (x):** seven trigger types — `touch`, `reject`, `break`, "
+        "`reclaim`, `fade`, `continuation` — exposed via Signals. "
+        "Trigger timeframe applies to all triggers including `3c`. "
+        "For non-base simple triggers (`touch`, `reject`, `break`, `reclaim`, "
+        "`fade`, `continuation`), timestamps stay base-aligned.\n"
+        "- **Phase 5 (y):**\n"
+        "- **3c trigger — authoritative 4-rule / 8-variant model:**\n"
+        "  The `3c` trigger. Variants: `3c_long`.\n"
+    )
+    listed = _phase4_listed_triggers(fake)
+    assert "3c" not in listed
+    assert "`3c`" in fake  # whole-file `` `3c` `` would false-pass
