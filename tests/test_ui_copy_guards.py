@@ -117,6 +117,205 @@ def _caption_texts(source: str) -> list[str]:
     return texts
 
 
+def _joined_text(node: ast.AST) -> str | None:
+    """String literal or f-string / implicit-concat constant parts (QI-05-05)."""
+    literal = _literal_str(node)
+    if literal is not None:
+        return literal
+    if isinstance(node, ast.JoinedStr):
+        parts: list[str] = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            elif isinstance(value, ast.FormattedValue):
+                parts.append("{}")
+            else:
+                return None
+        return "".join(parts)
+    return None
+
+
+def _first_arg_text(call: ast.Call) -> str | None:
+    if not call.args:
+        return None
+    return _joined_text(call.args[0])
+
+
+def _metric_label(call: ast.Call) -> str | None:
+    if not isinstance(call.func, ast.Attribute) or call.func.attr != "metric":
+        return None
+    return _first_arg_text(call)
+
+
+def _st_calls(tree: ast.AST, attr: str) -> list[ast.Call]:
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _is_st_attr_call(node, attr)
+    ]
+
+
+def _subheader_lineno(tree: ast.AST, title: str) -> int | None:
+    for call in _st_calls(tree, "subheader"):
+        if _literal_str(call.args[0]) == title if call.args else False:
+            return call.lineno
+    return None
+
+
+def _md_h2_body(markdown: str, title: str) -> str:
+    """Body of an ATX H2 through the next H2 (A-3 / QI-13-03 section bind)."""
+    marker = f"## {title}\n"
+    start = markdown.find(marker)
+    if start < 0:
+        raise AssertionError(f"missing H2 {title!r}")
+    rest = markdown[start + len(marker) :]
+    nxt = rest.find("\n## ")
+    return rest if nxt < 0 else rest[:nxt]
+
+
+_PHASE8_METRIC_LABEL = "Share of bootstrap means > 0"
+_PHASE8_OLD_METRIC_LABEL = "P(mean R > 0)"
+_PHASE8_PERM_SUBHEADER = "Sign-flip permutation test"
+_PHASE8_GRID_SUBHEADER = "Grid-search overfit risk"
+_PHASE8_INFO_NEEDLES = (
+    "Diagnostic only",
+    "not a significance test",
+    "not proof of edge",
+)
+_PHASE8_CAPTION_NEEDLES = (
+    "sign symmetry",
+    "serial dependence",
+)
+_PHASE8_CELEBRATORY = (
+    "statistically significant",
+    "proven",
+    "confirms edge",
+    "has edge",
+)
+_VD_HEADING = "## Validation Diagnostics"
+_VD_BANNER = "⚠️ Diagnostic only — not a significance test and not proof of edge."
+_PHASE8_GLOSSARY_H2 = "Phase 8 validation diagnostics"
+
+
+def _assert_phase8_permutation_copy(source: str) -> None:
+    """AST-bind H13 permutation chrome + bootstrap metric (A-1 / A-3 class).
+
+    File-level ``st.caption`` / ``st.info`` / label search false-greens on the
+    method caption, comments, and ``help=`` — same class as QI-05-09 Policy.
+    """
+    tree = ast.parse(source)
+    metric_labels = [
+        label
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for label in (_metric_label(node),)
+        if label is not None
+    ]
+    assert _PHASE8_OLD_METRIC_LABEL not in metric_labels, (
+        f"confirmatory metric label still present: {metric_labels!r}"
+    )
+    assert metric_labels.count(_PHASE8_METRIC_LABEL) == 1, (
+        f"expected one {_PHASE8_METRIC_LABEL!r} metric, got {metric_labels!r}"
+    )
+
+    perm_start = _subheader_lineno(tree, _PHASE8_PERM_SUBHEADER)
+    perm_end = _subheader_lineno(tree, _PHASE8_GRID_SUBHEADER)
+    assert perm_start is not None, f"missing st.subheader({_PHASE8_PERM_SUBHEADER!r})"
+    assert perm_end is not None, f"missing st.subheader({_PHASE8_GRID_SUBHEADER!r})"
+    assert perm_start < perm_end, "permutation block must precede grid-overfit"
+
+    success = [call for call in _st_calls(tree, "success") if perm_start <= call.lineno < perm_end]
+    assert success == [], (
+        f"st.success still on permutation path: line {[c.lineno for c in success]}"
+    )
+
+    info_texts = [
+        text
+        for call in _st_calls(tree, "info")
+        if perm_start <= call.lineno < perm_end
+        for text in (_first_arg_text(call),)
+        if text is not None
+    ]
+    matching_info = [t for t in info_texts if all(n in t for n in _PHASE8_INFO_NEEDLES)]
+    assert matching_info, (
+        f"p≤0.05 st.info missing diagnostic needles {_PHASE8_INFO_NEEDLES}: {info_texts!r}"
+    )
+    celebratory = [
+        word for text in matching_info for word in _PHASE8_CELEBRATORY if word in text.lower()
+    ]
+    assert celebratory == [], f"permutation info is celebratory: {celebratory}"
+
+    caption_texts = [
+        text
+        for call in _st_calls(tree, "caption")
+        if perm_start <= call.lineno < perm_end
+        for text in (_first_arg_text(call),)
+        if text is not None
+    ]
+    matching_caption = [t for t in caption_texts if all(n in t for n in _PHASE8_CAPTION_NEEDLES)]
+    assert matching_caption, f"H13 st.caption missing {_PHASE8_CAPTION_NEEDLES}: {caption_texts!r}"
+
+    low_branch: list[ast.stmt] | None = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
+            continue
+        if not (isinstance(node.test.left, ast.Name) and node.test.left.id == "p_val"):
+            continue
+        if not any(isinstance(op, ast.Gt) for op in node.test.ops):
+            continue
+        comps = node.test.comparators
+        if len(comps) != 1 or not isinstance(comps[0], ast.Constant):
+            continue
+        if comps[0].value != 0.05:
+            continue
+        low_branch = node.orelse
+        break
+    assert low_branch, "missing else branch of p_val > 0.05 (permutation pass path)"
+    low_calls = [
+        stmt.value
+        for stmt in low_branch
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+    ]
+    assert any(_is_st_attr_call(call, "info") for call in low_calls), (
+        "p≤0.05 path must st.info (not st.success)"
+    )
+    assert not any(_is_st_attr_call(call, "success") for call in low_calls), (
+        "p≤0.05 path must not st.success"
+    )
+    assert any(
+        _is_st_attr_call(call, "caption")
+        and (text := _first_arg_text(call))
+        and all(n in text for n in _PHASE8_CAPTION_NEEDLES)
+        for call in low_calls
+    ), "p≤0.05 path must st.caption H13 needles (method caption is not enough)"
+
+
+def _assert_validation_diagnostics_banner(source: str) -> None:
+    """Banner must be the next non-empty string after the VD heading (AST list)."""
+    tree = ast.parse(source)
+    found = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.List):
+            continue
+        texts = [_literal_str(elt) for elt in node.elts]
+        if _VD_HEADING not in texts:
+            continue
+        found = True
+        idx = texts.index(_VD_HEADING)
+        for text in texts[idx + 1 :]:
+            if text is None:
+                raise AssertionError("Validation Diagnostics banner must precede metric f-strings")
+            if text == "":
+                continue
+            assert text == _VD_BANNER, (
+                f"first line under {_VD_HEADING!r} must be banner, got {text!r}"
+            )
+            break
+        else:
+            raise AssertionError(f"no banner string after {_VD_HEADING!r}")
+    assert found, f"no list containing {_VD_HEADING!r} in reporting.py"
+
+
 def _assert_allow_all_policy_disclosure(source: str) -> None:
     """Two-candidate overlap recipe (docs/quality/README.md; QI-4 §3) → copy only.
 
@@ -190,6 +389,140 @@ def test_grid_same_bar_help_defers_to_intrabar_model():
     text = _read(PAGES / "8_Grid_Search.py")
     assert "selected Intrabar resolution model" in text
     assert "Uses SL-first pessimistic rule when both are reachable in the same bar." not in text
+
+
+_PHASE8_GLOSSARY_NEEDLES = (
+    "probability_positive",
+    "P(mean R > 0)",
+    "p-value (positive)",
+    "p_value_positive",
+    "Best − Median",
+    "grid_overfit",
+    "Grid-search overfit",
+    "best_vs_median",
+)
+
+
+def test_phase8_permutation_copy_is_diagnostic_not_confirmatory():
+    """QI-05-05 / H13: no success chrome on permutation p; no confirmatory P(mean R > 0)."""
+    _assert_phase8_permutation_copy(_read(PAGES / "10_Validation.py"))
+    _assert_validation_diagnostics_banner(_read(REPO_ROOT / "thesistester" / "reporting.py"))
+
+
+def test_metrics_glossary_has_phase8_diagnostic_rows():
+    """QI-13-03 / F-4: Phase 8 rows live under the dedicated H2, not Notes-only."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "METRICS_GLOSSARY.md"), _PHASE8_GLOSSARY_H2)
+    missing = [needle for needle in _PHASE8_GLOSSARY_NEEDLES if needle not in body]
+    assert missing == [], f"Phase 8 H2 missing needles {missing}"
+
+
+def test_phase8_copy_guard_ignores_comment_help_and_method_caption():
+    """File-level / method-caption / help= needles must not false-green H13."""
+    fake = (
+        "import streamlit as st\n"
+        "col5 = st\n"
+        'st.subheader("Sign-flip permutation test")\n'
+        "# Share of bootstrap means > 0\n"
+        "# Diagnostic only — not a significance test and not proof of edge.\n"
+        "st.caption(\n"
+        '    "Null hypothesis: trade signs are random around zero. "\n'
+        '    "One-sided p-value = fraction of permuted means >= observed mean R."\n'
+        ")\n"
+        'st.selectbox("x", options=["a"], help="sign symmetry serial dependence")\n'
+        "p_val = 0.01\n"
+        "if p_val is not None:\n"
+        "    if p_val > 0.10:\n"
+        '        st.info("high")\n'
+        "    elif p_val > 0.05:\n"
+        '        st.info("mid")\n'
+        "    else:\n"
+        "        st.success(\n"
+        '            "p = 0.01 — Observed mean R is in the tail. "\n'
+        '            "Diagnostic only — not a significance test and not proof of edge."\n'
+        "        )\n"
+        'st.subheader("Grid-search overfit risk")\n'
+        'col5.metric("P(mean R > 0)", "50%")\n'
+    )
+    try:
+        _assert_phase8_permutation_copy(fake)
+    except AssertionError as exc:
+        assert "st.success" in str(exc) or "metric" in str(exc) or "st.info" in str(exc)
+    else:
+        raise AssertionError("comment/method-caption/success path must not pass H13 guard")
+
+
+def test_phase8_copy_guard_requires_h13_caption_on_low_p_path():
+    """Method caption + diagnostic st.info without the H13 caption must fail."""
+    fake = (
+        "import streamlit as st\n"
+        "col5 = st\n"
+        'st.subheader("Sign-flip permutation test")\n'
+        "st.caption(\n"
+        '    "Null hypothesis: trade signs are random around zero."\n'
+        ")\n"
+        'col5.metric("Share of bootstrap means > 0", "50%")\n'
+        "p_val = 0.01\n"
+        "if p_val is not None:\n"
+        "    if p_val > 0.10:\n"
+        '        st.info("high")\n'
+        "    elif p_val > 0.05:\n"
+        '        st.info("mid")\n'
+        "    else:\n"
+        "        st.info(\n"
+        '            "p = 0.01 — Observed mean R is in the tail of the "\n'
+        '            "sign-flip null. Diagnostic only — not a significance test "\n'
+        '            "and not proof of edge."\n'
+        "        )\n"
+        'st.subheader("Grid-search overfit risk")\n'
+    )
+    try:
+        _assert_phase8_permutation_copy(fake)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc) or "H13" in str(exc)
+    else:
+        raise AssertionError("method caption must not satisfy p≤0.05 H13 caption")
+
+
+def test_phase8_glossary_guard_ignores_notes_needles():
+    """Needles in Notes / other H2s must not satisfy the Phase 8 row bind."""
+    fake = (
+        "## Notes\n"
+        "probability_positive P(mean R > 0) p-value (positive) p_value_positive "
+        "Best − Median grid_overfit Grid-search overfit best_vs_median\n"
+        "## Grid Search directional metrics\n"
+        "unrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _PHASE8_GLOSSARY_H2)
+    except AssertionError as exc:
+        assert "Phase 8" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Phase 8 H2")
+
+
+def test_validation_diagnostics_banner_guard_rejects_late_or_comment_banner():
+    """Banner after metric f-strings / heading-only list must fail closed."""
+    late = (
+        "lines = [\n"
+        '    "## Validation Diagnostics",\n'
+        '    f"- P(mean R > 0): {x}",\n'
+        '    "⚠️ Diagnostic only — not a significance test and not proof of edge.",\n'
+        "]\n"
+    )
+    try:
+        _assert_validation_diagnostics_banner(late)
+    except AssertionError as exc:
+        assert "banner" in str(exc) or "f-string" in str(exc)
+    else:
+        raise AssertionError("banner after metric f-string must not pass")
+
+    heading_only = 'lines = ["## Validation Diagnostics", ""]\n'
+    try:
+        _assert_validation_diagnostics_banner(heading_only)
+    except AssertionError as exc:
+        assert "banner" in str(exc)
+    else:
+        raise AssertionError("heading without banner must not pass")
 
 
 def test_validation_has_no_stale_r22_parallel_claim():

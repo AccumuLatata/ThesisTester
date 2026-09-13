@@ -685,6 +685,9 @@ OTF validation matrix, diagnostic only
 **What it is not.**
 
 - Not a hypothesis test that “proves” a strategy.
+- Phase 8 permutation `p ≤ 0.05` is **not confirmatory** (H13). The page uses
+  info/caption, not success chrome. `probability_positive` is the share of
+  bootstrap means above zero — not P(edge exists).
 - Batteries appear only **when run** — missing sections mean they were not
   executed in this session, not that they passed.
 - `allow_all` exposure upstream can inflate trade counts and understate

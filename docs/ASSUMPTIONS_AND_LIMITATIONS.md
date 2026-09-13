@@ -707,6 +707,13 @@ other than the last bar in the dataset.
   pandas-major-sensitive as documented by the golden-master policy.
 - Validation diagnostics explicitly warn that assumptions like sign symmetry and independence limits apply; serial dependence is ignored (`thesistester/analytics/validation.py:10-11`, `115-117`).
 - Outputs are explicitly framed as diagnostics and not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`).
+- **H13.** Phase 8 permutation `p_value_positive` / UI **p-value (positive)**
+  and bootstrap `probability_positive` (UI: share of bootstrap means > 0;
+  export historically `P(mean R > 0)`) are **diagnostics**, not confirmatory
+  significance tests and not proof of edge. UI uses info/caption for low
+  permutation p (not success chrome). The markdown export banners
+  `## Validation Diagnostics` accordingly. Sign-flip assumes sign symmetry
+  and ignores serial dependence.
 - Walk-forward / out-of-sample diagnostics are also descriptive only, not proof of edge.
 - MAE/MFE excursion analytics are post-trade diagnostics only. They use terminal
   bar-level `mae_points` / `mfe_points` captured by the engine and cannot prove

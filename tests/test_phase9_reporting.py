@@ -453,6 +453,14 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "- PBO: 25.0%" in markdown
     assert "## Parameter Sensitivity (SPP-lite)" in markdown
     assert "## Validation Diagnostics" in markdown
+    vd_start = markdown.index("## Validation Diagnostics")
+    vd_end = markdown.find("\n## ", vd_start + 1)
+    vd_section = markdown[vd_start : vd_end if vd_end != -1 else None]
+    vd_lines = [ln for ln in vd_section.splitlines() if ln.strip()]
+    assert vd_lines[0] == "## Validation Diagnostics"
+    assert vd_lines[1] == ("⚠️ Diagnostic only — not a significance test and not proof of edge."), (
+        f"banner must be the first line under the heading, got {vd_lines[1:]!r}"
+    )
     assert "## Excursion Analytics" in markdown
     assert "- Mean edge ratio: 2.0000" in markdown
     assert "- Calibration both-hit rule: stop_first" in markdown

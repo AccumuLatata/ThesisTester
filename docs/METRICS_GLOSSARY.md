@@ -277,8 +277,27 @@ summarizes path uncertainty under the selected method; it is not a forecast.
 - Exported research artifacts preserve execution-cost assumptions separately for backtest and grid sections.
 - Backtest directional KPIs ("Long vs Short KPIs") use the same formulas above, applied independently to `direction == "long"` and `direction == "short"` subsets.
 - Validation pages label outputs as diagnostic only (`pages/10_Validation.py:18`, `thesistester/analytics/validation.py:13`).
+- Phase 8 confirmatory labels (`probability_positive`, permutation p-value, grid-overfit Best/Median/delta) are defined in **Phase 8 validation diagnostics** below; they are not proof of edge (H13).
 - Higher-moment and tail metrics (`trade_return_skew`, `trade_return_kurtosis`, `p95_r`, `p05_r`, `tail_ratio`) are descriptive only and can swing sharply on small samples.
 - Advanced metrics are computed in per-trade `R` units and are not annualized or normalized to time.
+
+## Phase 8 validation diagnostics
+
+Phase 8 `validation_summary()` shape is frozen:
+`{bootstrap, permutation, trade_count, grid_overfit}`. Numbers below are
+**diagnostics**, not confirmatory significance tests and not proof of edge (H13).
+
+| Label / key | What it is | What it is not |
+|---|---|---|
+| `probability_positive` (UI: share of bootstrap means > 0; export historically `P(mean R > 0)`) | Fraction of bootstrap resampled means that are greater than zero | Not P(edge exists); not a Bayesian posterior |
+| Phase 8 permutation p-value — `p_value_positive` / UI **p-value (positive)** | One-sided sign-flip fraction of permuted means ≥ observed mean R | Not a published significance test; assumes sign symmetry and ignores serial dependence |
+| Grid-search overfit — `grid_overfit` | Selection-risk summary over the realized SL/TP grid | Not a live-edge certificate |
+| `best_metric` / UI **Best** | Best in-sample cell on the selected ranking metric | Not the production SL/TP |
+| `median_metric` / UI **Median** | Median of valid grid cells | Not a robust out-of-sample estimate |
+| `best_vs_median` / `best_vs_median_delta` / UI **Best − Median** | Best minus median on that ranking metric | A large delta is a selection-risk diagnostic, not proof the best cell is real |
+
+Implementation: `thesistester/analytics/validation.py`. UI: `pages/10_Validation.py`.
+Export: `## Validation Diagnostics` in `thesistester/reporting.py` (bannered).
 
 ## Grid Search directional metrics
 

@@ -1599,7 +1599,7 @@ col4.metric(
     _fmt(bs.get("ci_upper")),
 )
 col5.metric(
-    "P(mean R > 0)",
+    "Share of bootstrap means > 0",
     _fmt(bs.get("probability_positive"), ".1%")
     if bs.get("probability_positive") is not None
     else "—",
@@ -1651,11 +1651,12 @@ if p_val is not None:
             "Interpret with caution."
         )
     else:
-        st.success(
-            f"p = {p_val:.4f} — Observed mean R is in the tail of the null "
-            "distribution. Note: this test assumes sign symmetry and ignores "
-            "serial dependence. It is a diagnostic, not a significance test."
+        st.info(
+            f"p = {p_val:.4f} — Observed mean R is in the tail of the "
+            "sign-flip null. Diagnostic only — not a significance test "
+            "and not proof of edge."
         )
+        st.caption("Sign-flip assumes sign symmetry and ignores serial dependence (H13).")
 
 st.divider()
 

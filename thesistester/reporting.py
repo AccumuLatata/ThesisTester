@@ -1493,6 +1493,8 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Grouped summary rows exported: {len(tables.get('time_grouped_summary', [])) if isinstance(tables.get('time_grouped_summary', []), list) else 0}",
         "",
         "## Validation Diagnostics",
+        "⚠️ Diagnostic only — not a significance test and not proof of edge.",
+        "",
         f"- Bootstrap CI: [{_fmt_number(bootstrap.get('ci_lower') if isinstance(bootstrap, Mapping) else None)}, {_fmt_number(bootstrap.get('ci_upper') if isinstance(bootstrap, Mapping) else None)}]",
         f"- P(mean R > 0): {_fmt_pct(bootstrap.get('probability_positive') if isinstance(bootstrap, Mapping) else None)}",
         f"- Permutation p-value (positive): {_fmt_number(permutation.get('p_value_positive') if isinstance(permutation, Mapping) else None)}",
