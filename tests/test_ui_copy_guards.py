@@ -1489,14 +1489,23 @@ _DA0_DIRECTION_HELP_NEEDLES = (
     "touch",
     "both",
     "single_position",
+    "accepted",
     "long-only",
+    "same-bar",
     "§4b",
 )
 _DA0_SETUP_BUILDER_H2 = "Setup Builder"
+_DA0_HELP_LITERAL = (
+    "touch + both + single_position accepted trades are long-only "
+    "(same-bar short skipped). See ASSUMPTIONS §4b."
+)
 
 
 def _selectbox_options(source: str, call: ast.Call) -> list:
-    """Literal ``options=`` list, or the assigned list bound to a Name."""
+    """Literal ``options=`` list, or the last assigned list bound to a Name.
+
+    First-assignment wins would false-green a later drifted Name (A-11 class).
+    """
     node: ast.AST | None = call.args[1] if len(call.args) > 1 else None
     for kw in call.keywords:
         if kw.arg == "options":
@@ -1512,8 +1521,9 @@ def _selectbox_options(source: str, call: ast.Call) -> list:
         return value
     if isinstance(node, ast.Name):
         tree = ast.parse(source)
+        best: tuple[int, list] | None = None
         for stmt in ast.walk(tree):
-            if not isinstance(stmt, ast.Assign):
+            if not isinstance(stmt, ast.Assign) or stmt.lineno > call.lineno:
                 continue
             if not any(
                 isinstance(target, ast.Name) and target.id == node.id for target in stmt.targets
@@ -1523,8 +1533,10 @@ def _selectbox_options(source: str, call: ast.Call) -> list:
                 assigned = ast.literal_eval(stmt.value)
             except (ValueError, TypeError):
                 continue
-            if isinstance(assigned, list):
-                return assigned
+            if isinstance(assigned, list) and (best is None or stmt.lineno >= best[0]):
+                best = (stmt.lineno, assigned)
+        if best is not None:
+            return best[1]
     raise AssertionError("Direction options is not a list literal")
 
 
@@ -1543,6 +1555,7 @@ def _assert_da0_direction_help(source: str) -> None:
 
 
 def _setup_builder_direction_pitfall(body: str) -> str:
+    """Common-pitfall cell (column 3) of the Setup Builder ``Direction`` row."""
     for line in body.splitlines():
         if "| `Direction` |" not in line:
             continue
@@ -1550,7 +1563,7 @@ def _setup_builder_direction_pitfall(body: str) -> str:
         if len(cells) < 3:
             continue
         if cells[0] == "`Direction`":
-            return cells[-1]
+            return cells[2]
     raise AssertionError("Setup Builder H2 missing `Direction` key-settings row")
 
 
@@ -1577,9 +1590,9 @@ def test_direction_help_guard_ignores_comment_and_other_widget():
         '    "Trigger",\n'
         '    options=["touch"],\n'
         "    index=0,\n"
-        '    help="touch both single_position long-only §4b",\n'
+        f'    help="{_DA0_HELP_LITERAL}",\n'
         ")\n"
-        "# touch + both + single_position is long-only §4b\n"
+        f"# {_DA0_HELP_LITERAL}\n"
     )
     try:
         _assert_da0_direction_help(fake)
@@ -1587,6 +1600,42 @@ def test_direction_help_guard_ignores_comment_and_other_widget():
         assert "help=" in str(exc)
     else:
         raise AssertionError("Direction without help= must not pass via Trigger/comment needles")
+
+
+def test_direction_help_resolves_options_name():
+    """Setup Builder binds ``options=direction_options``; resolve the Name."""
+    fake = (
+        "import streamlit as st\n"
+        'direction_options = ["long", "short", "both"]\n'
+        "st.selectbox(\n"
+        '    "Direction",\n'
+        "    options=direction_options,\n"
+        "    index=2,\n"
+        f'    help="{_DA0_HELP_LITERAL}",\n'
+        ")\n"
+    )
+    _assert_da0_direction_help(fake)
+
+
+def test_direction_help_guard_rejects_stale_options_assignment():
+    """Earlier correct list-literal must not bind a later drifted Name (A-11)."""
+    fake = (
+        "import streamlit as st\n"
+        'direction_options = ["long", "short", "both"]\n'
+        'direction_options = ["hedge"]\n'
+        "st.selectbox(\n"
+        '    "Direction",\n'
+        "    options=direction_options,\n"
+        "    index=0,\n"
+        f'    help="{_DA0_HELP_LITERAL}",\n'
+        ")\n"
+    )
+    try:
+        _assert_da0_direction_help(fake)
+    except AssertionError as exc:
+        assert "drifted" in str(exc)
+    else:
+        raise AssertionError("stale first assignment must not bind Direction options")
 
 
 def test_user_guide_setup_builder_direction_pitfall_names_da0():
@@ -1601,7 +1650,8 @@ def test_user_guide_setup_builder_direction_pitfall_names_da0():
     )
     fake = (
         "## Notes\n"
-        "| `Direction` | long short both | touch both single_position long-only §4b |\n"
+        "| `Direction` | long short both | "
+        "touch both single_position accepted long-only same-bar §4b |\n"
         "## Signals\nunrelated\n"
     )
     try:
@@ -1610,3 +1660,16 @@ def test_user_guide_setup_builder_direction_pitfall_names_da0():
         assert "Setup Builder" in str(exc)
     else:
         raise AssertionError("Notes-only needles must not bind as Setup Builder H2")
+
+    empty_then_notes = (
+        "## Setup Builder\n"
+        "| Control | Meaning | Common pitfall |\n"
+        "| `Direction` | long short both | — |\n"
+        "## Notes\n"
+        "| `Direction` | long short both | "
+        "touch both single_position accepted long-only same-bar §4b |\n"
+    )
+    notes_body = _md_h2_body(empty_then_notes, _DA0_SETUP_BUILDER_H2)
+    notes_pitfall = _setup_builder_direction_pitfall(notes_body)
+    assert notes_pitfall == "—", "Notes-table needles must not bind as Setup Builder pitfall"
+    assert any(n not in notes_pitfall for n in _DA0_DIRECTION_HELP_NEEDLES)

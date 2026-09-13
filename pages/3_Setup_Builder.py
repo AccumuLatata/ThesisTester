@@ -1141,8 +1141,8 @@ direction = st.selectbox(
     index=direction_index,
     key=WIDGET_KEY_DIRECTION,
     help=(
-        "touch + both + single_position is long-only (same-bar short skipped). "
-        "See ASSUMPTIONS §4b. Admission unchanged."
+        "touch + both + single_position accepted trades are long-only "
+        "(same-bar short skipped). See ASSUMPTIONS §4b."
     ),
 )
 

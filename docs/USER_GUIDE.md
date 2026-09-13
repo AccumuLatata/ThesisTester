@@ -191,7 +191,7 @@ direction, OTF filter, active setup, save setup, thesis link
 | `Naked only` + `Naked requirement` | Untested-level filter (`any` / `all`) | — |
 | `Trigger` | `touch`, `reject`, `break`, `reclaim`, `3c`, `fade`, `continuation` | 3c adds retrace / wait-bar params. `fade` / `continuation` derive side from approach; optional close confirmation |
 | `Trigger timeframe` | Base or higher TF for trigger logic | Non-base 3c splits work across TFs |
-| `Direction` | `long`, `short`, or `both` | `touch` + `both` + `single_position` is long-only (same-bar short skipped; ASSUMPTIONS §4b). Not a long-vs-short test |
+| `Direction` | `long`, `short`, or `both` | `touch` + `both` + `single_position` accepted trades are long-only (same-bar short skipped; ASSUMPTIONS §4b). Not a long-vs-short test |
 | `Enable OTF filter` + OTF TFs / min bars | Higher-TF one-timeframing gate | Default off; applied later, not on Signals |
 | `Save Admit entry window on setup` | Persists normalized Admit `entry_window` | Default off; distinct from Time Analysis Focus |
 
