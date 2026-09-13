@@ -1,0 +1,11 @@
+{
+  "accepted_signal_ids": [
+    1
+  ],
+  "be_exit_count": 1,
+  "exit_reasons": [
+    "BE"
+  ],
+  "family": "be_trail",
+  "scenario": "breakeven"
+}

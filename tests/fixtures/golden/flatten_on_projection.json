@@ -1,0 +1,17 @@
+{
+  "accepted_signal_ids": [
+    2
+  ],
+  "exit_reasons": [
+    "SESSION_CLOSE"
+  ],
+  "family": "flatten_on",
+  "flat_by_session_close": true,
+  "session_close_time": "16:00",
+  "skip_reasons": [
+    "empty_session_close_cap"
+  ],
+  "skip_signal_ids": [
+    1
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "accepted_signal_ids": [
+    1
+  ],
+  "exit_reasons": [
+    "TRAIL"
+  ],
+  "family": "be_trail",
+  "scenario": "trail",
+  "trail_exit_count": 1
+}
