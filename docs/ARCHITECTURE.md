@@ -207,6 +207,17 @@ are cleared on import and not restored from the identity member).
 / golden projections stay hash-stable); when an older bundle omits it there,
 restore falls back to `data_identity.format_profile`.
 
+**Bundle trust boundary (QI-06-09 / A-18).** Untrusted zip import
+(`load_research_bundle`) rejects an upload over `MAX_BUNDLE_UPLOAD_BYTES`
+(declared `.size` / path `st_size` before the bytes copy; measured length
+after) and rejects a **named** member whose `ZipInfo.file_size` exceeds
+`MAX_BUNDLE_MEMBER_BYTES` **before** `ZipFile.read`. `peek_research_identity`
+uses the same upload cap (path or bytes) and the same member cap on
+`research_identity.json`. Unknown / traversal members are never extracted
+to disk and are ignored. Column policy stays schema-only. Page 12 does
+**not** add a hash gate (AH §2 item 8). Assistant open-exact remains the
+hash-fail-closed path.
+
 ## Classic/Assistant execution-artifact store (CAI-2)
 
 `thesistester/persistence/execution_artifacts.py` owns an **internal**

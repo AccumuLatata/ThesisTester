@@ -21,6 +21,7 @@ from thesistester.research_bundle import (
     build_research_bundle,
     canonical_bundle_hash,
     load_research_bundle,
+    peek_research_identity,
     should_skip_dataset_bootstrap,
 )
 
@@ -757,6 +758,126 @@ def test_unknown_zip_files_are_ignored():
 
     loaded = load_research_bundle(output.getvalue())
     assert "data" in loaded["session_values"]
+
+
+def test_path_traversal_member_is_ignored():
+    """QI-06-09 / QI-6 §9: traversal members are not extracted; known names load."""
+    bundle_bytes = build_research_bundle({"data": _dataset_df()})
+    output = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as src, zipfile.ZipFile(output, "w") as dst:
+        for name in src.namelist():
+            dst.writestr(name, src.read(name))
+        dst.writestr("../outside.parquet", b"PWN")
+        dst.writestr("padding.bin", b"\x00" * 2048)
+
+    loaded = load_research_bundle(output.getvalue())
+    assert "data" in loaded["session_values"]
+    restored: dict = {}
+    apply_research_bundle_to_session(loaded, restored)
+    assert "../outside.parquet" not in restored
+    assert "padding.bin" not in restored
+    assert "data" in restored
+
+
+def _track_zip_reads(monkeypatch) -> list[str]:
+    read_names: list[str] = []
+    real_read = zipfile.ZipFile.read
+
+    def _tracked_read(self, name, *args, **kwargs):
+        read_names.append(str(name))
+        return real_read(self, name, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", _tracked_read)
+    return read_names
+
+
+def test_oversized_named_member_rejected_before_read(monkeypatch):
+    """QI-06-09: ZipInfo.file_size over cap → ValueError before ZipFile.read."""
+    bundle_bytes = build_research_bundle({"data": _dataset_df()})
+    with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as zf:
+        manifest_size = zf.getinfo("manifest.json").file_size
+        parquet_size = zf.getinfo("dataset.parquet").file_size
+    assert parquet_size > manifest_size
+
+    monkeypatch.setattr(research_bundle, "MAX_BUNDLE_MEMBER_BYTES", manifest_size)
+    read_names = _track_zip_reads(monkeypatch)
+    with pytest.raises(ValueError, match="size cap"):
+        load_research_bundle(bundle_bytes)
+    assert "dataset.parquet" not in read_names
+
+
+def test_negative_declared_member_size_rejected_before_read(monkeypatch):
+    """QI-06-09: attacker-controlled negative ZipInfo.file_size is fail-closed."""
+    bundle_bytes = build_research_bundle({"data": _dataset_df()})
+    real_getinfo = zipfile.ZipFile.getinfo
+
+    def _lying_getinfo(self, name):
+        info = real_getinfo(self, name)
+        if name == "dataset.parquet":
+            info.file_size = -1
+        return info
+
+    monkeypatch.setattr(zipfile.ZipFile, "getinfo", _lying_getinfo)
+    read_names = _track_zip_reads(monkeypatch)
+    with pytest.raises(ValueError, match="invalid size"):
+        load_research_bundle(bundle_bytes)
+    assert "dataset.parquet" not in read_names
+
+
+def test_oversized_upload_rejected_before_zip_open(monkeypatch):
+    monkeypatch.setattr(research_bundle, "MAX_BUNDLE_UPLOAD_BYTES", 16)
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("ZipFile must not open an oversize upload")
+
+    monkeypatch.setattr(research_bundle.zipfile, "ZipFile", _boom)
+    with pytest.raises(ValueError, match="upload cap"):
+        load_research_bundle(b"PK\x03\x04" + b"x" * 32)
+
+
+def test_declared_upload_size_rejects_before_getvalue(monkeypatch):
+    """Streamlit-style .size over cap must not copy bytes via getvalue()."""
+
+    class _SizedUpload:
+        size = 32
+
+        def getvalue(self):
+            raise AssertionError("getvalue must not run after size-cap reject")
+
+    monkeypatch.setattr(research_bundle, "MAX_BUNDLE_UPLOAD_BYTES", 16)
+    with pytest.raises(ValueError, match="upload cap"):
+        load_research_bundle(_SizedUpload())
+
+
+def test_getvalue_non_bytes_is_typed_error():
+    class _NotBytes:
+        def getvalue(self):
+            return "not-bytes"
+
+    with pytest.raises(ValueError, match="must be bytes"):
+        load_research_bundle(_NotBytes())
+
+
+def test_peek_path_respects_upload_cap_before_read_bytes(tmp_path, monkeypatch):
+    """QI-06-09: peek Path must not read_bytes when st_size is over the cap."""
+    path = tmp_path / "oversize.research.zip"
+    path.write_bytes(b"PK\x03\x04" + b"x" * 32)
+    monkeypatch.setattr(research_bundle, "MAX_BUNDLE_UPLOAD_BYTES", 16)
+
+    def _boom(self):
+        raise AssertionError("read_bytes must not run after size-cap reject")
+
+    monkeypatch.setattr(Path, "read_bytes", _boom)
+    assert peek_research_identity(path) is None
+    assert peek_research_identity(b"PK\x03\x04" + b"x" * 32) is None
+
+
+def test_honest_bundle_fixture_still_loads():
+    """QI-06-09: honest export/import stays under the default caps."""
+    bundle_bytes = build_research_bundle({"data": _dataset_df()})
+    loaded = load_research_bundle(bundle_bytes)
+    assert "data" in loaded["session_values"]
+    assert len(loaded["session_values"]["data"]) == 3
 
 
 def test_missing_manifest_raises_clear_error():

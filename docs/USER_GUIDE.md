@@ -761,7 +761,7 @@ snapshot, hash identity, restore session, record and discuss, portable state
 |---|---|---|
 | **Export preview** | Which artifacts will be included | Empty session → nothing meaningful to export |
 | **Download research bundle** | Writes a timestamped zip | Bundle ≠ live broker state |
-| **Upload research bundle** + **Import bundle into session** | Restores included artifacts into session | Re-check classic context after import |
+| **Upload research bundle** + **Import bundle into session** | Restores included artifacts into session | Re-check classic context after import. Named members over the size cap refuse (`ValueError`) before decompress; traversal/unknown names are ignored. Not a hash gate on page 12 |
 | **Thesis recording** (when available) | **Record and discuss this run** / **Discuss this run** | Discuss needs a recorded run, not only live trades |
 
 **How to use.**
@@ -781,9 +781,10 @@ snapshot, hash identity, restore session, record and discuss, portable state
   job).
 - Import restores research artifacts; it does not re-prove metrics or invent
   missing batteries.
-- Classic zip import validates manifest/schema/members. `canonical_bundle_hash`
-  fail-closed checks apply when recording/discussing a thesis-bound run — not as
-  a re-hash gate on zip restore itself.
+- Classic zip import validates manifest/schema/members and a per-member size
+  cap (QI-06-09). `canonical_bundle_hash` fail-closed checks apply when
+  recording/discussing a thesis-bound run — not as a re-hash gate on zip
+  restore itself.
 
 **Related pages.** Report Export; classic pages listed in the import flash
 (Data through Portfolio).
