@@ -69,6 +69,11 @@ include = ["thesistester*"]
 testpaths = ["tests"]
 
 [tool.coverage.run]
+# Statement + branch of `thesistester`. CI warn-first floor is 82%
+# (`COVERAGE_FLOOR` in .github/workflows/ci.yml; B-6 / QI-12-04 measured
+# QI-0 / QI-11 line). Do not set fail_under here — a later PR flips the
+# same floor to blocking (`--cov-fail-under` / fail_under), then ratchet
+# +1 pt per release.
 source = ["thesistester"]
 branch = true
 
