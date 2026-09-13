@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from thesistester.cli import main as cli_main
 from thesistester.journal import JournalIngestError
 from thesistester.journal.amp_statement import (
     extract_amp_pdf_text,
@@ -313,6 +314,51 @@ def test_confirmation_total_must_match_fill_qtys():
 def test_ps_debit_is_negative():
     stmt = parse_amp_statement_text(_qty2_statement(ps_usd="12.50 DR"))
     assert stmt.ps_usd == pytest.approx(-12.50)
+
+
+def test_extract_amp_pdf_text_junk_empty_non_pdf_is_typed(tmp_path):
+    """QI-08-03 / A-16: malformed PDF bytes are JournalIngestError, not pdfminer."""
+    cases = (
+        ("junk.pdf", b"%PDF-1.4\nnot a real pdf\n%%EOF\n"),
+        ("empty.pdf", b""),
+        ("plain.pdf", b"hello this is not a pdf"),
+    )
+    for name, blob in cases:
+        path = tmp_path / name
+        path.write_bytes(blob)
+        with pytest.raises(JournalIngestError, match="could not be read"):
+            extract_amp_pdf_text(path)
+
+
+def test_extract_amp_pdf_text_missing_file_stays_typed(tmp_path):
+    missing = tmp_path / "absent.pdf"
+    with pytest.raises(JournalIngestError, match="not found"):
+        extract_amp_pdf_text(missing)
+
+
+def test_journal_reconcile_junk_pdf_rc2_no_traceback(tmp_path, capsys):
+    """QI-08-03: journal reconcile junk PDF → rc 2, no Traceback on stderr."""
+    junk = tmp_path / "junk.pdf"
+    junk.write_bytes(b"%PDF-1.4\nnot a real pdf\n%%EOF\n")
+    executions = FIXTURES / "tradesviz_executions_synthetic.csv"
+    out = tmp_path / "out"
+    code = cli_main(
+        [
+            "journal",
+            "reconcile",
+            "--executions",
+            str(executions),
+            "--statements",
+            str(junk),
+            "--output-dir",
+            str(out),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "Traceback" not in captured.err
+    assert "journal reconcile failed" in captured.out
+    assert "could not be read" in captured.out
 
 
 def test_extract_amp_pdf_text_then_parse_synthetic_pdf(tmp_path):

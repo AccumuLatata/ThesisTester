@@ -106,11 +106,20 @@ def extract_amp_pdf_text(path: str | Path) -> str:
     if not pdf_path.is_file():
         raise JournalIngestError(f"AMP statement PDF not found: {pdf_path}")
     pages: list[str] = []
-    with pdfplumber.open(pdf_path) as pdf:
-        if not pdf.pages:
-            raise JournalIngestError("AMP statement PDF has no pages")
-        for page in pdf.pages:
-            pages.append(page.extract_text(layout=True) or "")
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                raise JournalIngestError("AMP statement PDF has no pages")
+            for page in pdf.pages:
+                pages.append(page.extract_text(layout=True) or "")
+    except JournalIngestError:
+        raise
+    except Exception as exc:
+        # QI-08-03 / MG-24: pdfplumber.open / pdfminer must not leak a
+        # traceback through journal reconcile (dispatch catches
+        # JournalIngestError only). Missing-file and text-parse paths stay
+        # typed above / in parse_amp_statement_text.
+        raise JournalIngestError(f"AMP statement PDF could not be read: {pdf_path}") from exc
     return "\n".join(pages)
 
 
