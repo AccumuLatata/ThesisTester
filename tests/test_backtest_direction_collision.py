@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import zipfile
 from dataclasses import fields
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -181,17 +183,79 @@ def test_legacy_return_shapes_do_not_expose_diagnostic():
 
 def test_page_helper_persists_candidate_pairs_after_return_result_run():
     """QI-04-06 / A-2: classic persist stores DA1 after return_result=True."""
-    result = _simulate("allow_all")
+    df, signals = _three_touch_pairs()
+    kwargs = dict(
+        df=df,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT_VALUE,
+        stop_loss_ticks=8,
+        take_profit_ticks=8,
+        exposure_policy="allow_all",
+    )
+    legacy = simulate_trades(**kwargs)
+    assert isinstance(legacy, pd.DataFrame)
+    session_legacy: dict[str, object] = {}
+    stored_legacy = persist_direction_collision_diagnostic(session_legacy, legacy)
+    assert stored_legacy == {}
+    assert session_legacy[DIRECTION_COLLISION_SESSION_KEY] == {}
+
+    result = simulate_trades(**kwargs, return_result=True)
     assert isinstance(result, SimulationResult)
+    expected = dict(result.direction_collision_diagnostic)
+    assert expected["candidate_pairs"] == 3
     session: dict[str, object] = {}
     stored = persist_direction_collision_diagnostic(session, result)
-    assert stored["candidate_pairs"] == 3
-    assert session[DIRECTION_COLLISION_SESSION_KEY]["candidate_pairs"] == 3
+    assert stored == expected
+    assert stored is not result.direction_collision_diagnostic
+    assert session[DIRECTION_COLLISION_SESSION_KEY] == expected
     assert session[DIRECTION_COLLISION_SESSION_KEY] is stored
+
+    # Nested mapping (run_backtest-shaped) must not persist the whole result.
+    nested_session: dict[str, object] = {}
+    nested_stored = persist_direction_collision_diagnostic(
+        nested_session,
+        {"trades": result.trades, DIRECTION_COLLISION_SESSION_KEY: expected},
+    )
+    assert nested_stored == expected
+    assert "trades" not in nested_stored
+
     caption = format_direction_collision_caption(stored)
     assert "3 candidate pair" in caption
+    assert "not an admission gate" in caption
+    assert "not proof of fill quality" in caption
     assert "skip table is empty" in caption
     assert "not a hashed bundle member" in caption
+
+
+def test_backtest_page_asts_persist_after_return_result():
+    """QI-04-06 page bind: persist + caption after return_result=True (not a comment)."""
+    tree = ast.parse(Path("pages/7_Backtest.py").read_text(encoding="utf-8"))
+    persist_lines: list[int] = []
+    format_lines: list[int] = []
+    return_result_lines: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = node.func.id if isinstance(node.func, ast.Name) else None
+        if name == "persist_direction_collision_diagnostic":
+            persist_lines.append(node.lineno)
+        elif name == "format_direction_collision_caption":
+            format_lines.append(node.lineno)
+        elif name == "simulate_trades":
+            for kw in node.keywords:
+                if (
+                    kw.arg == "return_result"
+                    and isinstance(kw.value, ast.Constant)
+                    and kw.value.value is True
+                ):
+                    return_result_lines.append(node.lineno)
+    assert return_result_lines, (
+        "pages/7_Backtest.py must call simulate_trades(..., return_result=True)"
+    )
+    assert persist_lines, "pages/7_Backtest.py must call persist_direction_collision_diagnostic"
+    assert format_lines, "pages/7_Backtest.py must call format_direction_collision_caption"
+    assert min(persist_lines) > min(return_result_lines)
 
 
 def test_empty_signals_return_zero_diagnostic():
