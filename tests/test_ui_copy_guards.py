@@ -1301,7 +1301,7 @@ def test_user_guide_assistant_h2_names_confirm_run_omit_means_on():
         n
         for n in (
             "Run confirmed research",
-            "omitted battery `enabled`",
+            "Omitted battery `enabled`",
             "Nested OTF",
             "default-off",
         )
@@ -1313,7 +1313,7 @@ def test_user_guide_assistant_h2_names_confirm_run_omit_means_on():
     )
     fake = (
         "## Notes\n"
-        "Run confirmed research omitted battery `enabled` Nested OTF default-off\n"
+        "Run confirmed research Omitted battery `enabled` Nested OTF default-off\n"
         "## Research mode on classic pages\nunrelated\n"
     )
     try:
