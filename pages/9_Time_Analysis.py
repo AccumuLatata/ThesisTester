@@ -430,6 +430,12 @@ _has_focus = bool(
 if _has_focus:
     st.caption(f"**{FOCUS_STATUS_BADGE}**")
     st.warning(FOCUS_HONESTY_BANNER)
+    # QI-05-04 / A-3: consumer-only H12 sentence. Do not edit FOCUS_HONESTY_BANNER.
+    st.caption(
+        "Under `single_position`, Focus fills may differ from an Admit re-sim "
+        "(occupancy can substitute which `signal_id` fills). Focus N is not an Admit N "
+        "(counts may match while fill sets differ)."
+    )
     st.info(FOCUS_EQUITY_CAVEAT)
     st.caption(
         f"Focused window: **{format_entry_window_label(_focus_window)}** · "

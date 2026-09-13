@@ -225,6 +225,14 @@ This engine is for **research screening**, not proof of a durable edge.
 - Under `exposure_policy="allow_all"` and `cooldown_bars_after_exit=0`, Focus
   and Admit admit the same `signal_id` set (C7). See
   `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`.
+- **H12:** Under `single_position` (and other restrictive policies), Focus
+  fill `signal_id` sets can differ from an Admit re-sim of the same clock
+  window — occupancy-conditioned substitution. Focus N is not an Admit N
+  (counts may match while sets differ). Time Analysis and Validation caption
+  this next to `FOCUS_HONESTY_BANNER` (consumer text only; the banner constant
+  is unchanged). C7 identity and AH §2 item 5 are unchanged. No Focus
+  re-simulation. Validation batteries use the last `trades` frame and any
+  inherited Admit window — not the Focus subset.
 - TZ law (C5): RTH-segment membership always evaluates in the instrument
   exchange/session timezone via `entry_window_exchange_tz` (API/UI pass the
   instrument exchange TZ). This is distinct from `session_timezone`, which
