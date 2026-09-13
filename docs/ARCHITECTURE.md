@@ -944,7 +944,8 @@ and captions it next to the skip table. The key is additive and **not**
 hashed (AH §2 item 8). DA1 is not an admission gate. AH4 decision **landed
 in A-7 (QI-06-03):** `direction_collision_diagnostic` is **clear-only** in
 `_MANAGED_RESEARCH_KEYS` — leftover values are popped on bundle apply and
-are not restored (no export schema, not hashed). Dataset-switch clear is A-8.
+are not restored (no export schema, not hashed). A-8 dataset-switch does
+**not** pop this A-7 residual (apply-clear only; registry unification is D-1).
 DA3 reports the active
 `same_bar_opposite_direction` token in `policy`. `skip_both` collisions
 appear as `resolved_none` without a second pass; conflicted candidates stay
@@ -1454,8 +1455,16 @@ Uploader nonce ≠ leftover research keys: apply also clears
 `skipped_signals`, `direction_collision_diagnostic` (clear-only; not hashed).
 `display_timezone` is also clear-only and **reset** on apply to the restored
 `exchange_timezone` (QI-10-01 / A-8). Dataset switch (`_clear_dataset_dependent_state`)
-pops the same AH4 leftover set (`focused_trades`, `focused_equity_curve`,
-`otf_filter_summary`, `signal_settings`, `setup_config`) plus `display_timezone`.
+pops the AH4 leftover set and the Focus/OTF overlays that would otherwise
+re-arm after a later Backtest/Report: `focused_trades`, `focused_equity_curve`,
+`focus_entry_window`, `focused_trade_summary`, `focus_provenance`,
+`focused_direction_summary`,
+`otf_filter_summary`, `otf_filter_result`, `backtest_otf_filter`,
+`grid_otf_filter`, `otf_rejected_signals`, `otf_candidate_signals`,
+`otf_accepted_signals`, `signal_settings`, `signal_settings_hash`,
+`setup_config`, plus `display_timezone`. A-7 residuals
+(`otf_validation_*` / `skipped_signals` / `direction_collision_diagnostic`)
+stay apply-clear only.
 After a dataset-less import,
 `bundle_import_omitted_data` skips page-12 and Data-page
 `bootstrap_active_saved_dataset` and blocks Data-page Sample auto-load
@@ -1485,7 +1494,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `base_interval` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), dataset persistence (`pages/1_Data.py`) | `str \| None` |
 | `source_timezone` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), dataset persistence (`pages/1_Data.py`) | `str \| None` |
 | `exchange_timezone` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), Backtest/Report TZ handling (`pages/7_Backtest.py`, `pages/11_Report_Export.py`) | `str \| None` |
-| `display_timezone` | Data/Backtest/Time/Report widgets (`pages/1_Data.py`, `pages/7_Backtest.py`, `pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | Time/Report export conversions (`pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | `str`. Display/export only — not a fill TZ. AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-8 / QI-10-01); not hashed. Bundle apply resets it to the restored `exchange_timezone`. Dataset switch pops then rebinds via `ensure_display_timezone`. |
+| `display_timezone` | Data/Backtest/Time/Report widgets (`pages/1_Data.py`, `pages/7_Backtest.py`, `pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | Time/Report export conversions (`pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | `str`. Display/export only — not a fill TZ. AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-8 / QI-10-01); not hashed. Bundle apply resets it to the restored `exchange_timezone`. Dataset switch calls `reset_display_timezone` (ensure alone does not overwrite a valid leftover TZ). Same-dataset / first load still uses `ensure_display_timezone`. |
 | `dataset_id` | Data (`pages/1_Data.py`) | Levels/Signals persistence (`pages/2_Levels.py`, `pages/6_Signals.py`) | `str` |
 | `levels` | Levels (`pages/2_Levels.py`) | Setup/Signals/Backtest/Grid/Report/Bundles (`pages/3_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV + derived level columns |
 | `session_levels` | Levels (`pages/2_Levels.py`) | Bundles/save (`pages/2_Levels.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` session-level table |
@@ -1496,8 +1505,8 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `confluence_zones` | Signals (`pages/6_Signals.py`) | Signals display (`pages/6_Signals.py`), Backtest chart overlay (`pages/7_Backtest.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` zone rows |
 | `naked_flags` | Signals (`pages/6_Signals.py`) | Signals logic/save (`pages/6_Signals.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` naked-level flags |
 | `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Report/Bundles (`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` candidate/fill signal rows |
-| `signal_settings` | Signals (`pages/6_Signals.py`) | Signals save consistency checks (`pages/6_Signals.py`) | `dict` |
-| `signal_settings_hash` | Signals (`pages/6_Signals.py`) | Signals save/load matching (`pages/6_Signals.py`) | `str` |
+| `signal_settings` | Signals (`pages/6_Signals.py`) | Signals save consistency checks (`pages/6_Signals.py`) | `dict`. Also popped on dataset switch (`_clear_dataset_dependent_state`, A-8 / QI-10-01). |
+| `signal_settings_hash` | Signals (`pages/6_Signals.py`) | Signals save/load matching (`pages/6_Signals.py`) | `str`. Also popped on dataset switch with `signal_settings` (A-8 / QI-10-01) so a leftover hash cannot look like a match. |
 | `signal_context` | Signals (`pages/6_Signals.py`) | Backtest caption (`pages/7_Backtest.py`) | `dict` (`setup_name`, `confluence_mode`, `setup_caption`) |
 | `last_signal_setup` | Signals (`pages/6_Signals.py`) | Signals persistence/report artifact (`pages/6_Signals.py`, `thesistester/reporting.py`) | `dict` |
 | `trades` | Backtest (`pages/7_Backtest.py`) | Time/Validation/Report/Bundles (`pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` simulated trade rows |
@@ -1507,7 +1516,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `backtest_intrabar_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R12 schema-versioned both-hit/ambiguity diagnostic |
 | `backtest_exit_management_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R13 schema-versioned BE/trailing parameter snapshot |
 | `backtest_exit_management_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R13 schema-versioned BE/TRAIL counts and adjustment diagnostics |
-| `direction_collision_diagnostic` | Backtest persist after `return_result` (`pages/7_Backtest.py`); also `run_backtest` / `run_experiment` (DA1) | Backtest caption next to skip table | Same-bar opposite-direction pair counts. Not an admission gate. Additive unhashed session key — **not** in `_BACKTEST_META_KEYS` / hashed `session_keys` (AH §2 item 8). AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-7 / QI-06-03): leftover values are popped on apply and not restored. Dataset-switch clear is A-8. DA3 `policy` reports `legacy` / `skip_both` / `raise`. |
+| `direction_collision_diagnostic` | Backtest persist after `return_result` (`pages/7_Backtest.py`); also `run_backtest` / `run_experiment` (DA1) | Backtest caption next to skip table | Same-bar opposite-direction pair counts. Not an admission gate. Additive unhashed session key — **not** in `_BACKTEST_META_KEYS` / hashed `session_keys` (AH §2 item 8). AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-7 / QI-06-03): leftover values are popped on apply and not restored. A-8 dataset-switch does **not** pop this A-7 residual (apply-clear only). DA3 `policy` reports `legacy` / `skip_both` / `raise`. |
 | `backtest_same_bar_opposite_direction` | Backtest (`pages/7_Backtest.py`) advanced expander | Backtest `simulate_trades`; save/reset via `execution_defaults` | Widget token `legacy` (default) / `skip_both` / `raise`. Not a hashed bundle key. |
 | DA2 study-index keys (`long_trade_count`, `short_trade_count`, `long_expectancy_r`, `short_expectancy_r`, `long_share`, `directional_integrity`, `collision_pairs`, `collision_resolved_long`) | `execute_study_cell` / `_index_row_from_existing_bundle` / `study report --rebuild-direction` | `results_index.csv` (`STUDY_INDEX_KEYS` only; not R18 / not hashed) | Long/short n and E plus integrity class. Collision copies are live-cell only. |
 | `grid_results` | Grid (`pages/8_Grid_Search.py`) | Validation/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` one row per SL/TP cell |
@@ -1516,11 +1525,11 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `grid_exit_management_policy` | Grid/R18 API | Validation walk-forward, Report, Research Bundles | R13 schema-versioned grid BE/trailing sweep snapshot |
 | `time_bucketed_trades` | Time (`pages/9_Time_Analysis.py`) | Report/Bundles availability checks (`pages/12_Research_Bundles.py`) | `pd.DataFrame` trades + time-bucket columns |
 | `time_grouped_summary` | Time (`pages/9_Time_Analysis.py`) | Report export (`pages/11_Report_Export.py`, `thesistester/reporting.py`) | `pd.DataFrame` grouped diagnostics |
-| `focus_entry_window` | Time Focus (SW1) | Backtest Focus overlay, Time Analysis | Normalized post-hoc window dict (`enabled`/`mode`/…); overlay only |
-| `focused_trades` | Time Focus (SW1) | Backtest/Time display | Filtered trade subset; does not replace `trades`. AH4 clear-only on bundle apply; also popped on dataset switch (`_clear_dataset_dependent_state`, A-8 / QI-10-01) so a leftover Focus overlay cannot arm after load/switch. |
-| `focused_trade_summary` | Time Focus (SW1) | Backtest/Time display | Same shape as `trade_summary` on the subset |
-| `focused_equity_curve` | Time Focus (SW1) | Backtest/Time display | Subset-replay equity (C8); same shape as `equity_curve` |
-| `focus_provenance` | Time Focus (SW1) | Banners / Report / Bundles (SW6) | Counts, `sample_warning`, honesty flags |
+| `focus_entry_window` | Time Focus (SW1) | Backtest Focus overlay, Time Analysis | Normalized post-hoc window dict (`enabled`/`mode`/…); overlay only. Backtest/Time arm Focus on this + `focused_trade_summary`. Also popped on dataset switch (A-8 / QI-10-01). |
+| `focused_trades` | Time Focus (SW1) | Backtest/Time display | Filtered trade subset; does not replace `trades`. AH4 clear-only on bundle apply; also popped on dataset switch (`_clear_dataset_dependent_state`, A-8 / QI-10-01). Clearing this alone does not disarm Focus — `focus_entry_window` + `focused_trade_summary` must go too. |
+| `focused_trade_summary` | Time Focus (SW1) | Backtest/Time display | Same shape as `trade_summary` on the subset. Also popped on dataset switch (A-8 / QI-10-01) so leftover KPIs cannot arm the overlay. |
+| `focused_equity_curve` | Time Focus (SW1) | Backtest/Time display | Subset-replay equity (C8); same shape as `equity_curve`. Also popped on dataset switch (A-8 / QI-10-01). |
+| `focus_provenance` | Time Focus (SW1) | Banners / Report / Bundles (SW6) | Counts, `sample_warning`, honesty flags. Also popped on dataset switch (A-8 / QI-10-01). |
 | `entry_window` | Backtest Admit (SW3) / Promote (SW4) | Backtest / Grid / Validation | Normalized Admit window (armed or last applied) |
 | `entry_window_armed` | Time Analysis Promote (SW4) | Backtest / Time Analysis | `bool` — pending re-sim after Promote |
 | `entry_window_promote_provenance` | Time Analysis Promote (SW4) | banners / audit | Promote source, counts, `sample_warning`, status |
@@ -1561,13 +1570,13 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `excursion_quadrant_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` MAE×MFE threshold quadrant counts |
 | `monte_carlo_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R11 schema version 1 (`observed_equity`, per-method percentile bands, drawdown probabilities, config, caveat) |
 | `monte_carlo_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `monte_carlo_summary["config"]` |
-| `otf_filter_result` | Backtest (`pages/7_Backtest.py`) | Backtest display helpers | Frozen `OtfFilterResult` from `apply_configured_otf_filter` |
-| `otf_filter_summary` | Backtest | Report (`build_otf_filter_metadata`), Bundles | JSON-safe OTF summary incl. config hash, counts, `session_timezone`, `eth_start` |
-| `otf_candidate_signals` | Backtest | Audit / export | Deep copy of pre-filter candidates (`signals` is never overwritten) |
-| `otf_accepted_signals` | Backtest | Audit | OTF-accepted candidates passed to `simulate_trades` |
-| `otf_rejected_signals` | Backtest, Report Export | Audit / CSV download | OTF-rejected candidates with reasons; distinct from exposure skips / 3c voids |
-| `backtest_otf_filter` | Backtest | Report / Bundles | Alias of backtest OTF summary for research artifacts |
-| `grid_otf_filter` | Grid (`pages/8_Grid_Search.py`) | Report / Bundles | OTF summary for the single pre-grid filter application |
+| `otf_filter_result` | Backtest (`pages/7_Backtest.py`) | Backtest display helpers | Frozen `OtfFilterResult` from `apply_configured_otf_filter`. Also popped on dataset switch (A-8 / QI-10-01); Report prefers this over `otf_filter_summary`. |
+| `otf_filter_summary` | Backtest | Report (`build_otf_filter_metadata`), Bundles | JSON-safe OTF summary incl. config hash, counts, `session_timezone`, `eth_start`. Also popped on dataset switch (A-8 / QI-10-01). |
+| `otf_candidate_signals` | Backtest | Audit / export | Deep copy of pre-filter candidates (`signals` is never overwritten). Also popped on dataset switch (A-8 / QI-10-01). |
+| `otf_accepted_signals` | Backtest | Audit | OTF-accepted candidates passed to `simulate_trades`. Also popped on dataset switch (A-8 / QI-10-01). |
+| `otf_rejected_signals` | Backtest, Report Export | Audit / CSV download | OTF-rejected candidates with reasons; distinct from exposure skips / 3c voids. Also popped on dataset switch (A-8 / QI-10-01). |
+| `backtest_otf_filter` | Backtest | Report / Bundles | Alias of backtest OTF summary for research artifacts. Report's preferred leftover; also popped on dataset switch (A-8 / QI-10-01). |
+| `grid_otf_filter` | Grid (`pages/8_Grid_Search.py`) | Report / Bundles | OTF summary for the single pre-grid filter application. Also popped on dataset switch (A-8 / QI-10-01). |
 | `grid_accepted_signals` | Grid | Grid reuse / audit | Accepted signal set shared by all SL/TP cells |
 | `walk_forward_otf_filter` | Validation WFO | Report / Bundles | Fold-run OTF identity summary (`enabled`, config, hash, `session_timezone`, `eth_start`) |
 | `otf_validation_matrix` | Validation | Report / Bundles | Fixed five-config train/OOS OTF comparison DataFrame. AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-7 / QI-06-03); not hashed / not a zip member. |

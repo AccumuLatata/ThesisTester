@@ -1023,6 +1023,7 @@ def _json_contains_key(value: object, key: str) -> bool:
 
 
 _QI1001_CLEAR_ONLY_KEYS = ("display_timezone",)
+_QI1001_LEFTOVER_DISPLAY_TZ = "UTC"
 _AH4_RESIDUAL_CLEAR_ONLY_KEYS = (*_QI0603_CLEAR_ONLY_KEYS, *_QI1001_CLEAR_ONLY_KEYS)
 
 
@@ -1069,7 +1070,9 @@ def _assert_qi0603_leftovers_cleared(session: dict) -> None:
     for key in _QI0603_CLEAR_ONLY_KEYS:
         assert key not in session, f"{key} leftover survived apply"
     # QI-10-01 / A-8: leftover UTC is reset, not sticky. Backtest-only zips omit
-    # exchange_timezone, so reset binds TIMEZONE_OPTIONS[0].
+    # exchange_timezone, so reset binds TIMEZONE_OPTIONS[0]. Leftover must not
+    # already equal the fallback or this probe is vacuous.
+    assert _QI1001_LEFTOVER_DISPLAY_TZ != TIMEZONE_OPTIONS[0]
     assert session["display_timezone"] == TIMEZONE_OPTIONS[0]
 
 
@@ -1105,37 +1108,99 @@ def _assert_qi0603_managed_set_literals(source: str) -> None:
 
 
 def _function_def(tree: ast.AST, name: str) -> ast.FunctionDef:
-    for node in ast.walk(tree):
+    if not isinstance(tree, ast.Module):
+        raise AssertionError("expected a module AST")
+    for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == name:
             return node
-    raise AssertionError(f"missing def {name}")
+    raise AssertionError(f"missing module-level def {name}")
+
+
+def _iter_direct_stmts(stmts: list[ast.stmt]):
+    """Walk statements excluding nested function/class defs (A-1/A-6 class)."""
+    stack = list(reversed(stmts))
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        yield node
+        stack.extend(reversed(list(ast.iter_child_nodes(node))))
+
+
+def _iter_direct_body(fn: ast.FunctionDef):
+    yield from _iter_direct_stmts(fn.body)
+
+
+def _is_reset_display_timezone_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name) and func.id == "reset_display_timezone":
+        return True
+    return isinstance(func, ast.Attribute) and func.attr == "reset_display_timezone"
+
+
+def _iterates_session_values_items(node: ast.For) -> bool:
+    it = node.iter
+    return (
+        isinstance(it, ast.Call)
+        and isinstance(it.func, ast.Attribute)
+        and it.func.attr == "items"
+        and isinstance(it.func.value, ast.Name)
+        and it.func.value.id == "session_values"
+    )
+
+
+def _reset_binds_restored_exchange_timezone(call: ast.Call) -> bool:
+    for kw in call.keywords:
+        if kw.arg != "exchange_timezone":
+            continue
+        val = kw.value
+        if (
+            isinstance(val, ast.Call)
+            and isinstance(val.func, ast.Attribute)
+            and val.func.attr == "get"
+            and val.args
+            and isinstance(val.args[0], ast.Constant)
+            and val.args[0].value == "exchange_timezone"
+        ):
+            return True
+    return False
 
 
 def _assert_apply_resets_display_timezone(source: str) -> None:
-    """Apply must call ``reset_display_timezone`` (comment / ensure-only fails closed)."""
+    """Apply must reset leftover TZ after restore (comment / ensure / nested fail closed)."""
     tree = ast.parse(source)
     fn = _function_def(tree, "apply_research_bundle_to_session")
-    for node in ast.walk(fn):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Name) and func.id == "reset_display_timezone":
-            return
-        if isinstance(func, ast.Attribute) and func.attr == "reset_display_timezone":
-            return
-    raise AssertionError("apply_research_bundle_to_session must call reset_display_timezone")
+    restore_end: int | None = None
+    reset_line: int | None = None
+    reset_binds = False
+    for node in _iter_direct_body(fn):
+        if isinstance(node, ast.For) and _iterates_session_values_items(node):
+            restore_end = getattr(node, "end_lineno", node.lineno)
+        if _is_reset_display_timezone_call(node):
+            reset_line = node.lineno
+            reset_binds = _reset_binds_restored_exchange_timezone(node)
+    if reset_line is None:
+        raise AssertionError("apply_research_bundle_to_session must call reset_display_timezone")
+    if not reset_binds:
+        raise AssertionError("reset_display_timezone must bind restored exchange_timezone")
+    if restore_end is None:
+        raise AssertionError("apply must restore session_values before timezone reset")
+    if reset_line <= restore_end:
+        raise AssertionError("reset_display_timezone must run after session_values restore")
 
 
 def _assert_apply_pops_managed_set(source: str) -> None:
     """Apply must ``pop`` keys from ``_MANAGED_RESEARCH_KEYS`` (not a comment / other set)."""
     tree = ast.parse(source)
     fn = _function_def(tree, "apply_research_bundle_to_session")
-    for node in ast.walk(fn):
+    for node in _iter_direct_body(fn):
         if not isinstance(node, ast.For):
             continue
         if not isinstance(node.iter, ast.Name) or node.iter.id != "_MANAGED_RESEARCH_KEYS":
             continue
-        for child in ast.walk(node):
+        for child in _iter_direct_stmts(node.body):
             if not isinstance(child, ast.Call):
                 continue
             func = child.func
@@ -1155,7 +1220,7 @@ def test_ah4_p6_qi0603_residual_leftovers_cleared_on_zip_without_those_sections(
         "skipped_signals": pd.DataFrame({"signal_id": [1], "skip_reason": ["leftover"]}),
         "direction_collision_diagnostic": {"candidate_pairs": 99, "policy": "legacy"},
         "trades": leftover_trades,
-        "display_timezone": "UTC",
+        "display_timezone": _QI1001_LEFTOVER_DISPLAY_TZ,
     }
     bundle_state = {
         "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
@@ -1169,7 +1234,7 @@ def test_ah4_p6_qi0603_residual_leftovers_cleared_on_zip_without_those_sections(
         "otf_validation_summary": session["otf_validation_summary"],
         "skipped_signals": session["skipped_signals"],
         "direction_collision_diagnostic": session["direction_collision_diagnostic"],
-        "display_timezone": "UTC",
+        "display_timezone": _QI1001_LEFTOVER_DISPLAY_TZ,
     }
     leftover_bundle = build_research_bundle(with_leftovers)
     baseline_bundle = build_research_bundle(bundle_state)
@@ -1207,13 +1272,13 @@ def test_apply_research_bundle_resets_leftover_display_timezone_qi1001():
         reset_display_timezone,
     )
 
-    leftover = {"display_timezone": "UTC"}
+    leftover = {"display_timezone": _QI1001_LEFTOVER_DISPLAY_TZ}
     assert ensure_display_timezone(leftover, exchange_timezone="Europe/Berlin") == "UTC"
     assert reset_display_timezone(leftover, exchange_timezone="Europe/Berlin") == "Europe/Berlin"
     assert leftover["display_timezone"] == "Europe/Berlin"
 
     session = {
-        "display_timezone": "UTC",
+        "display_timezone": _QI1001_LEFTOVER_DISPLAY_TZ,
         "focused_trades": pd.DataFrame({"trade_id": [99]}),
         "exchange_timezone": "UTC",
     }
@@ -1224,7 +1289,9 @@ def test_apply_research_bundle_resets_leftover_display_timezone_qi1001():
         "source_timezone": "America/New_York",
         "exchange_timezone": "Europe/Berlin",
     }
-    leftover_bundle = build_research_bundle({**bundle_state, "display_timezone": "UTC"})
+    leftover_bundle = build_research_bundle(
+        {**bundle_state, "display_timezone": _QI1001_LEFTOVER_DISPLAY_TZ}
+    )
     baseline_bundle = build_research_bundle(bundle_state)
     assert canonical_bundle_hash(leftover_bundle) == canonical_bundle_hash(baseline_bundle)
     _assert_qi0603_not_exported_or_hashed(leftover_bundle)
@@ -1301,6 +1368,48 @@ def test_ah4_p6_apply_guard_requires_reset_display_timezone():
         raise AssertionError(
             "comment reset_display_timezone must not satisfy the apply reset probe"
         )
+
+    restore = (
+        "    session_values = bundle['session_values']\n"
+        "    for key, value in session_values.items():\n"
+        "        session_state[key] = value\n"
+    )
+    nested = header + (
+        restore
+        + "    def helper():\n"
+        + "        reset_display_timezone("
+        + "session_state, exchange_timezone=session_state.get('exchange_timezone'))\n"
+        + "    pass\n"
+    )
+    try:
+        _assert_apply_resets_display_timezone(nested)
+    except AssertionError as exc:
+        assert "reset_display_timezone" in str(exc)
+    else:
+        raise AssertionError(
+            "nested unused reset_display_timezone must not satisfy the apply probe"
+        )
+
+    before_restore = header + (
+        "    reset_display_timezone("
+        "session_state, exchange_timezone=session_state.get('exchange_timezone'))\n" + restore
+    )
+    try:
+        _assert_apply_resets_display_timezone(before_restore)
+    except AssertionError as exc:
+        assert "after session_values restore" in str(exc)
+    else:
+        raise AssertionError("reset before restore must not satisfy the apply reset probe")
+
+    none_tz = (
+        header + restore + "    reset_display_timezone(session_state, exchange_timezone=None)\n"
+    )
+    try:
+        _assert_apply_resets_display_timezone(none_tz)
+    except AssertionError as exc:
+        assert "exchange_timezone" in str(exc)
+    else:
+        raise AssertionError("reset with exchange_timezone=None must not satisfy the apply probe")
 
 
 def test_ah4_p6_export_probe_fails_closed_when_keys_enter_session_keys():

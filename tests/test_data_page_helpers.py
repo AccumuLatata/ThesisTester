@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import pathlib
@@ -8,6 +9,8 @@ import types
 
 import pandas as pd
 import pytest
+
+from thesistester.reporting import build_otf_filter_metadata
 
 
 def _parent_and_subtimeframe_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -573,31 +576,174 @@ def test_clear_dataset_dependent_state_clears_tick_paths(monkeypatch):
         assert key not in session_state
 
 
-_QI1001_DATASET_CLEAR_LEFTOVERS = (
+# AH4 leftover set + Focus/OTF overlays that re-arm after a later Backtest/Report.
+# A-7 residuals (otf_validation_* / skipped_signals / direction_collision_diagnostic)
+# stay apply-clear only.
+_QI1001_AH4_LEFTOVER_KEYS = (
     "focused_trades",
     "focused_equity_curve",
     "otf_filter_summary",
+    "otf_filter_result",
+    "backtest_otf_filter",
+    "grid_otf_filter",
+    "otf_rejected_signals",
+    "otf_candidate_signals",
+    "otf_accepted_signals",
     "signal_settings",
+    "signal_settings_hash",
     "setup_config",
+)
+_QI1001_FOCUS_OVERLAY_KEYS = (
+    "focus_entry_window",
+    "focused_trade_summary",
+    "focus_provenance",
+    "focused_direction_summary",
+)
+_QI1001_DATASET_CLEAR_LEFTOVERS = (
+    *_QI1001_AH4_LEFTOVER_KEYS,
+    *_QI1001_FOCUS_OVERLAY_KEYS,
     "_setup_builder_editor_config",
     "display_timezone",
 )
+_QI1001_A7_APPLY_ONLY_KEYS = (
+    "otf_validation_matrix",
+    "otf_validation_config",
+    "otf_validation_summary",
+    "skipped_signals",
+    "direction_collision_diagnostic",
+)
+_DATA_PAGE_SOURCE = pathlib.Path("pages/1_Data.py").read_text(encoding="utf-8")
+
+
+def _qi1001_leftover_session(*, data, dataset_id: str) -> dict:
+    """Seed leftovers that would arm Focus / Report OTF after a later Backtest."""
+    return {
+        "data": data,
+        "dataset_id": dataset_id,
+        "focused_trades": pd.DataFrame({"trade_id": [99]}),
+        "focused_equity_curve": pd.DataFrame({"cum_r": [9.9]}),
+        "focus_entry_window": {"enabled": True, "mode": "clock_range"},
+        "focused_trade_summary": {"trade_count": 12, "expectancy_r": 9.9},
+        "focus_provenance": {"trade_count_after": 12, "trade_count_before": 99},
+        "focused_direction_summary": {"long": 1},
+        "otf_filter_summary": {"leftover": True, "otf_rejected_signal_count": 12},
+        "otf_filter_result": object(),
+        "backtest_otf_filter": {
+            "otf_filter_enabled": True,
+            "otf_rejected_signal_count": 12,
+            "otf_accepted_signal_count": 0,
+            "candidate_signal_count": 12,
+        },
+        "grid_otf_filter": {"otf_filter_enabled": True, "otf_rejected_signal_count": 4},
+        "otf_rejected_signals": pd.DataFrame({"signal_id": [1]}),
+        "otf_candidate_signals": pd.DataFrame({"signal_id": [1]}),
+        "otf_accepted_signals": pd.DataFrame({"signal_id": [1]}),
+        "signal_settings": {"leftover": True},
+        "signal_settings_hash": "leftover-hash",
+        "setup_config": {"name": "matching setup", "dataset_id": "dataset-new"},
+        "_setup_builder_editor_config": {"name": "draft setup", "dataset_id": "dataset-new"},
+        "display_timezone": "UTC",
+    }
+
+
+def _focus_overlay_would_arm(session_state: dict) -> bool:
+    """Backtest/Time arm Focus on window+summary, not focused_trades alone."""
+    window = session_state.get("focus_entry_window")
+    summary = session_state.get("focused_trade_summary")
+    return isinstance(window, dict) and bool(window.get("enabled")) and isinstance(summary, dict)
+
+
+def _module_function_def(source: str, name: str) -> ast.FunctionDef:
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"missing module-level def {name}")
+
+
+def _iter_direct_body(fn: ast.FunctionDef):
+    """Walk ``fn`` body excluding nested function/class defs (A-1/A-6 class)."""
+    stack = list(reversed(fn.body))
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        yield node
+        stack.extend(reversed(list(ast.iter_child_nodes(node))))
+
+
+def _clear_dataset_dependent_state_literals(source: str) -> set[str]:
+    """String literals in ``_clear_dataset_dependent_state``'s pop list (AST)."""
+    fn = _module_function_def(source, "_clear_dataset_dependent_state")
+    for node in fn.body:
+        if not isinstance(node, ast.For) or not isinstance(node.iter, (ast.List, ast.Tuple)):
+            continue
+        literals = {
+            elt.value
+            for elt in node.iter.elts
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+        }
+        if literals:
+            return literals
+    raise AssertionError("_clear_dataset_dependent_state must pop a list/tuple of string literals")
+
+
+def _assert_clear_list_literals(source: str) -> None:
+    """AST-bind leftover keys to the pop list. Comment needles fail-closed."""
+    literals = _clear_dataset_dependent_state_literals(source)
+    missing = [key for key in _QI1001_DATASET_CLEAR_LEFTOVERS if key not in literals]
+    assert missing == [], f"_clear_dataset_dependent_state missing literals {missing}"
+    leaked = [key for key in _QI1001_A7_APPLY_ONLY_KEYS if key in literals]
+    assert leaked == [], f"A-7 residuals must stay apply-clear only, leaked {leaked}"
+
+
+def _is_reset_display_timezone_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name) and func.id == "reset_display_timezone":
+        return True
+    return isinstance(func, ast.Attribute) and func.attr == "reset_display_timezone"
+
+
+def _reset_binds_exchange_timezone_arg(call: ast.Call) -> bool:
+    for kw in call.keywords:
+        if kw.arg != "exchange_timezone":
+            continue
+        val = kw.value
+        if isinstance(val, ast.Name) and val.id == "exchange_timezone":
+            return True
+        if (
+            isinstance(val, ast.Call)
+            and isinstance(val.func, ast.Attribute)
+            and val.func.attr == "get"
+            and val.args
+            and isinstance(val.args[0], ast.Constant)
+            and val.args[0].value == "exchange_timezone"
+        ):
+            return True
+    return False
+
+
+def _assert_set_active_resets_display_timezone(source: str) -> None:
+    """Switch path must call ``reset_display_timezone`` (ensure-only fails closed)."""
+    fn = _module_function_def(source, "_set_active_dataset_state")
+    for node in _iter_direct_body(fn):
+        if _is_reset_display_timezone_call(node) and _reset_binds_exchange_timezone_arg(node):
+            return
+    raise AssertionError(
+        "_set_active_dataset_state must call reset_display_timezone("
+        "exchange_timezone=exchange_timezone) on dataset switch"
+    )
 
 
 def test_clear_dataset_dependent_state_clears_ah4_leftover_set(monkeypatch):
     """QI-10-01 / A-8: dataset-switch leftover set must pop; data/dataset_id stay."""
     kept_data = pd.DataFrame({"timestamp": [1], "open": [1], "high": [1], "low": [1], "close": [1]})
-    session_state = {
-        "data": kept_data,
-        "dataset_id": "keep-id",
-        "focused_trades": pd.DataFrame({"trade_id": [99]}),
-        "focused_equity_curve": pd.DataFrame({"cum_r": [9.9]}),
-        "otf_filter_summary": {"leftover": True},
-        "signal_settings": {"leftover": True},
-        "setup_config": {"name": "old setup", "dataset_id": "keep-id"},
-        "_setup_builder_editor_config": {"name": "draft setup", "dataset_id": "keep-id"},
-        "display_timezone": "UTC",
-    }
+    session_state = _qi1001_leftover_session(data=kept_data, dataset_id="keep-id")
+    session_state["setup_config"] = {"name": "old setup", "dataset_id": "keep-id"}
+    assert _focus_overlay_would_arm(session_state)
+    assert build_otf_filter_metadata(session_state)["available"] is True
     data_page = _import_data_page_module(session_state)
     monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
 
@@ -607,23 +753,18 @@ def test_clear_dataset_dependent_state_clears_ah4_leftover_set(monkeypatch):
     assert session_state["dataset_id"] == "keep-id"
     for key in _QI1001_DATASET_CLEAR_LEFTOVERS:
         assert key not in session_state, f"{key} leftover survived dataset-dependent clear"
+    assert not _focus_overlay_would_arm(session_state)
+    assert build_otf_filter_metadata(session_state)["available"] is False
 
 
 def test_set_active_dataset_state_clears_ah4_leftover_set(monkeypatch):
     """QI-10-01 / A-8: load/switch dataset leaves no AH4 leftover; display TZ rebinds."""
     previous = pd.DataFrame({"timestamp": [1], "open": [1], "high": [1], "low": [1], "close": [1]})
-    session_state = {
-        "data": previous,
-        "dataset_id": "dataset-old",
-        "focused_trades": pd.DataFrame({"trade_id": [99]}),
-        "focused_equity_curve": pd.DataFrame({"cum_r": [9.9]}),
-        "otf_filter_summary": {"leftover": True},
-        "signal_settings": {"leftover": True},
-        # Matching new dataset_id would survive the mismatch-only pop; A-8 must still clear.
-        "setup_config": {"name": "matching setup", "dataset_id": "dataset-new"},
-        "_setup_builder_editor_config": {"name": "draft setup", "dataset_id": "dataset-new"},
-        "display_timezone": "UTC",
-    }
+    session_state = _qi1001_leftover_session(data=previous, dataset_id="dataset-old")
+    # Matching new dataset_id would survive the mismatch-only pop; A-8 must still clear.
+    assert session_state["setup_config"]["dataset_id"] == "dataset-new"
+    assert _focus_overlay_would_arm(session_state)
+    assert build_otf_filter_metadata(session_state)["available"] is True
     data_page = _import_data_page_module(session_state)
     monkeypatch.setattr(data_page, "set_active_dataset_id", lambda *a, **k: None)
     monkeypatch.setattr(data_page, "clear_active_dataset_id", lambda *a, **k: None)
@@ -658,6 +799,60 @@ def test_set_active_dataset_state_clears_ah4_leftover_set(monkeypatch):
         if key == "display_timezone":
             continue
         assert key not in session_state, f"{key} leftover survived dataset switch"
+    assert not _focus_overlay_would_arm(session_state)
+    assert build_otf_filter_metadata(session_state)["available"] is False
+
+
+def test_qi1001_clear_list_and_switch_reset_are_ast_bound():
+    """QI-10-01 / A-8: comment / ensure-only needles must not bind clear or switch reset."""
+    _assert_clear_list_literals(_DATA_PAGE_SOURCE)
+    _assert_set_active_resets_display_timezone(_DATA_PAGE_SOURCE)
+
+
+def test_qi1001_clear_list_guard_ignores_comment_needles():
+    fake = (
+        "def _clear_dataset_dependent_state():\n"
+        "    # focused_trades otf_filter_summary signal_settings setup_config\n"
+        "    # focus_entry_window backtest_otf_filter display_timezone\n"
+        '    for key in ["levels", "trades"]:\n'
+        "        pass\n"
+    )
+    try:
+        _assert_clear_list_literals(fake)
+    except AssertionError as exc:
+        assert "missing literals" in str(exc)
+    else:
+        raise AssertionError("comment leftover keys must not satisfy the dataset-clear probe")
+
+
+def test_qi1001_switch_reset_guard_rejects_ensure_only_and_nested_def():
+    header = (
+        "def _set_active_dataset_state(df, *, exchange_timezone=None):\n"
+        "    previous_dataset_id = 'old'\n"
+        "    dataset_id = 'new'\n"
+    )
+    ensure_only = header + (
+        "    from thesistester.timezone_display import ensure_display_timezone\n"
+        "    ensure_display_timezone(st.session_state, exchange_timezone=exchange_timezone)\n"
+    )
+    try:
+        _assert_set_active_resets_display_timezone(ensure_only)
+    except AssertionError as exc:
+        assert "reset_display_timezone" in str(exc)
+    else:
+        raise AssertionError("ensure_display_timezone must not satisfy the switch reset probe")
+
+    nested = header + (
+        "    def helper():\n"
+        "        reset_display_timezone(st.session_state, exchange_timezone=exchange_timezone)\n"
+        "    ensure_display_timezone(st.session_state, exchange_timezone=exchange_timezone)\n"
+    )
+    try:
+        _assert_set_active_resets_display_timezone(nested)
+    except AssertionError as exc:
+        assert "reset_display_timezone" in str(exc)
+    else:
+        raise AssertionError("nested unused reset_display_timezone must not satisfy the probe")
 
 
 def test_validate_attached_tick_paths_uses_quantower_ticks(tmp_path):
