@@ -29,11 +29,7 @@ def test_require_tz_aware_timestamp_accepts_aware_timestamp():
     utc = pd.DataFrame({"timestamp": pd.to_datetime(["2026-05-14 09:30:00"], utc=True)})
     require_tz_aware_timestamp(utc)
     ny = pd.DataFrame(
-        {
-            "timestamp": pd.to_datetime(["2026-05-14 09:30:00"]).tz_localize(
-                "America/New_York"
-            )
-        }
+        {"timestamp": pd.to_datetime(["2026-05-14 09:30:00"]).tz_localize("America/New_York")}
     )
     require_tz_aware_timestamp(ny)
 
