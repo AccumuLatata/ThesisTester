@@ -1522,6 +1522,95 @@ def test_user_guide_honesty_names_diagnostic_not_proof_and_data_cap():
         raise AssertionError("Notes-only needles must not bind as Data H2")
 
 
+_H10_CAPTION_NEEDLES = (
+    "legacy one-minute primary",
+    "fatal OHLCV",
+    "api.load_dataset",
+    "fail-closed",
+)
+_H7_CAPTION_NEEDLES = (
+    "no_new_entries_after",
+    "forced None",
+    "api.run_backtest",
+    "after_entry_cutoff",
+)
+_H15_CAPTION_NEEDLES = (
+    "OTF",
+    "exchange_timezone",
+    "api.run_backtest",
+    "instrument exchange TZ",
+)
+_SESSION_CLOSE_H2 = "Session close and entry cutoff"
+_SESSION_CLOSE_F6_NEEDLES = (
+    "no_new_entries_after",
+    "api.run_backtest",
+    "after_entry_cutoff",
+    "exchange_timezone",
+)
+
+
+def test_data_page_captions_h10_legacy_primary_fork():
+    """QI-01-03 / A-22: Data captions the legacy-primary vs API fatal fork."""
+    _assert_title_caption_contains(
+        _read(PAGES / "1_Data.py"),
+        needle=_H10_CAPTION_NEEDLES[0],
+    )
+    source = _read(PAGES / "1_Data.py")
+    tree = ast.parse(source)
+    matching = [
+        text
+        for call in _st_calls(tree, "caption")
+        if (text := _first_arg_text(call)) and all(n in text for n in _H10_CAPTION_NEEDLES)
+    ]
+    assert matching, f"Data st.caption missing H10 needles {_H10_CAPTION_NEEDLES}"
+
+
+def test_backtest_captions_h7_and_h15_locked_forks():
+    """QI-04-03 / QI-04-04 / A-22: cutoff + OTF TZ captions after Session exit."""
+    source = _read(PAGES / "7_Backtest.py")
+    tree = ast.parse(source)
+    session_at = _subheader_lineno(tree, "Session exit policy")
+    assert session_at is not None
+    h7 = [
+        (call.lineno, text)
+        for call in _st_calls(tree, "caption")
+        if (text := _first_arg_text(call)) and all(n in text for n in _H7_CAPTION_NEEDLES)
+    ]
+    h15 = [
+        (call.lineno, text)
+        for call in _st_calls(tree, "caption")
+        if (text := _first_arg_text(call)) and all(n in text for n in _H15_CAPTION_NEEDLES)
+    ]
+    assert h7, f"Backtest st.caption missing H7 needles {_H7_CAPTION_NEEDLES}"
+    assert h15, f"Backtest st.caption missing H15 needles {_H15_CAPTION_NEEDLES}"
+    assert min(lineno for lineno, _ in h7) > session_at
+    assert min(lineno for lineno, _ in h15) > session_at
+
+
+def test_api_docstrings_name_h7_h10_h15():
+    """A-22 composer B: api.load_dataset / run_backtest docstrings name the forks."""
+    api = _read(REPO_ROOT / "thesistester" / "api.py")
+    assert "H10 locked fork" in api
+    assert "H7 locked fork" in api
+    assert "H15 locked fork" in api
+
+
+def test_user_guide_session_close_names_h7_h15_forks():
+    """QI-13-07 / F-6: Session close H2 names the locked UI vs API cutoff/TZ fork."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _SESSION_CLOSE_H2)
+    missing = [n for n in _SESSION_CLOSE_F6_NEEDLES if n not in body]
+    assert missing == [], f"Session close H2 missing F-6 needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Session close H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+    data = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), "Data")
+    for needle in ("fatal OHLCV", "dataset_id", "Mixed-offset"):
+        assert needle in data, f"Data H2 missing A-22/F-6 needle {needle!r}"
+    assert len(data) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Data H2 exceeds USER_GUIDE soft budget: {len(data)}"
+    )
+
+
 def test_grid_policy_help_discloses_allow_all_overlap():
     """QI-05-09 / A-1: Grid Policy help+caption match Backtest (AST, not file regex)."""
     _assert_allow_all_policy_disclosure(_read(PAGES / "8_Grid_Search.py"))

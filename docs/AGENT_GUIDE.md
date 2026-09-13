@@ -709,6 +709,17 @@ When OTF is enabled in walk-forward:
 - Run `pytest -q tests/test_noise.py tests/test_api.py tests/test_golden_master.py`
   after R16 changes.
 
+## Locked composer forks (H7 / H10 / H15)
+
+Disclosure only — do not invert these forks (A-22 / F-6 / B-1 / B-2).
+
+| Fork | Classic UI | `thesistester.api` / CLI / Study / Assistant | Lock tests |
+|---|---|---|---|
+| H7 cutoff without flatten | Backtest/Grid force `no_new_entries_after=None` when flatten is off | YAML cutoff still applies (`after_entry_cutoff`) | `tests/test_ah8_cutoff_without_flatten.py` |
+| H15 OTF / Admit TZ | `exchange_timezone` or instrument TZ | always `inst.exchange_tz` | `tests/test_ah8_otf_tz_ui_vs_api.py` |
+| H10 fatal OHLCV | Legacy 1m primary installs + warns | `load_dataset` raises `ValueError` | `tests/test_data_page_helpers.py` (`test_h10_*`) |
+| H11 mixed offsets | raw reject | raw reject (do not UTC-normalize) | `tests/test_loader.py` (`test_h11_*`) |
+
 ## R17 ingestion research safety
 
 - Keep `dataset.format_profile` explicit in API/CLI specifications; canonical
@@ -736,8 +747,8 @@ When OTF is enabled in walk-forward:
 - Preserve captured raw rows only as provenance; use canonical one-minute bars
   for current engine work and do not treat raw ticks as R12 subtimeframe data.
 - Confirm the canonical sample CSV remains byte-identical after loader edits.
-- Run `pytest -q tests/test_loader.py tests/test_vendor_loaders.py tests/test_local_store.py`
-  after R17 changes.
+- Run `pytest -q tests/test_loader.py tests/test_vendor_loaders.py tests/test_local_store.py tests/test_data_page_helpers.py`
+  after R17 changes. Keep H10/H11 lock tests green; do not invert the forks.
 
 ## R19 parameter-sensitivity research safety
 

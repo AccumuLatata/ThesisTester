@@ -1515,3 +1515,38 @@ def test_tv4_honesty_docs_lock_suggested_pdpoc_and_readme_object():
     assert "only when the column exists" in assumptions
     assert "Suggested `pdPOC` appears only when the column" in study_runner
     assert "under cwd or the local store (same as Studies launch)" in user_guide
+
+
+def test_h10_legacy_primary_installs_fatal_ohlcv_api_rejects(tmp_path, monkeypatch):
+    """QI-01-03 / B-2: lock H10 — UI helper installs; api.load_dataset rejects."""
+    from thesistester.api import load_dataset
+    from thesistester.data.loader import load_ohlcv, validate_ohlcv
+    from thesistester.data.sessions import tag_session
+
+    path = tmp_path / "dup_primary.csv"
+    path.write_text(
+        "timestamp,open,high,low,close,volume\n"
+        "2026-06-02 09:30:00,100,101,99,100.5,10\n"
+        "2026-06-02 09:30:00,100,101,99,100.5,11\n"
+        "2026-06-02 09:31:00,100.5,102,100,101.5,20\n",
+        encoding="utf-8",
+    )
+    raw = load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
+    report = validate_ohlcv(raw)
+    data_page = _import_data_page_module({})
+    fatals = [issue.code for issue in report.issues if issue.code in data_page.FATAL_OHLCV_CODES]
+    assert "duplicate_timestamps" in fatals
+    installed = tag_session(raw, "ES")
+    assert len(installed) == 3
+    with pytest.raises(ValueError, match="Dataset validation failed"):
+        load_dataset(path, instrument="ES", source_timezone="America/New_York")
+
+    source = (
+        pathlib.Path(__file__)
+        .resolve()
+        .parents[1]
+        .joinpath("pages", "1_Data.py")
+        .read_text(encoding="utf-8")
+    )
+    assert "_fatal_validation_messages(parent_report)" in source
+    assert "tag_session(raw_df, inst)" in source

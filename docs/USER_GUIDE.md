@@ -78,7 +78,7 @@ datasets, dataset identity, message size, MessageSizeError
 |---|---|---|
 | `Instrument` | Contract metadata (tick size, point value) | Wrong instrument → wrong R and costs |
 | `Source` | `Sample data` or `Upload CSV` | Sample auto-loads only on an empty session; it does not replace imported or already-loaded data when you navigate back |
-| `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; a few OHLC-identical 15s duplicate opens are resolved (lowest volume) before derive. Use R12 `subtimeframe_conservative` unless Build empty bars is on |
+| `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Legacy 1m primary still installs fatal OHLCV (then warns); `api.load_dataset` rejects those codes. 15s parent is fail-closed. `dataset_id` omits mode |
 | `Quantower tick-last (optional)` | One-or-many Tick–Tick–Last CSVs for prior VA, APOC, and rolling POC | Not an ingestion mode and not a 15s replacement. Paths must sit under cwd or the local store (same as Studies launch). Named VA / APOC / rolling POC refuse without ticks (`requires ticks`) |
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
@@ -109,12 +109,13 @@ levels and downstream results when the dataset identity changes.
 **What it is not.**
 
 - Not a live data feed or broker connection.
-- Native one-minute primary duplicates are never silently auto-deduped (volume/VWAP honesty). On 15s-primary derive, OHLC-identical 15s source duplicates are resolved before 1m derivation (lowest volume kept; audit in provenance). OHLC conflicts still fail.
+- Native 1m primary never auto-dedupes (volume/VWAP). 15s-primary resolves
+  OHLC-identical source dups (lowest volume) before derive; OHLC conflicts fail.
 - Lower-timeframe dual-upload is optional/legacy and for replay diagnostics.
-- Tick-last attach is optional until a study or compute path **needs** VA,
-  APOC, or rolling POC. Those families refuse without ticks (`requires
-  ticks`). Production math is tick Last×Volume only (never typical).
-  15s stays the bar clock.
+- Tick-last is optional until VA / APOC / rolling POC **need** ticks
+  (`requires ticks`). Math is tick Last×Volume; 15s stays the bar clock.
+- Mixed-offset timestamps fail raw (no UTC-normalize). `dataset_id` omits
+  `ingestion_mode` (binding keys include mode).
 - Format profiles are explicit; wrong profile → bad bars, not a soft warning-only
   success.
 - `MessageSizeError` is Streamlit's frontend websocket limit (repo default
@@ -146,7 +147,7 @@ saved snapshots, regenerate
 | `SMA lengths` / `EMA lengths` + timeframes | Indicator levels on chosen TFs | Comma-separated lengths must parse |
 | `Rolling VWAP windows` / `Rolling POC windows` | Intraday rolling anchors | Large data + rolling POC can be slow |
 | `Value area (%)` + prior D/W/M VA aggregation ticks | Profile VA/POC binning | Aggregation ticks ≠ instrument tick size. Classic Calculate omits `pdVA*` / `pw*` / `pm*` (no tick table). Data-page attach does not feed that button — paste paths into Studies `dataset.tick_paths` |
-| **Advanced opt-in levels** | Pivots, dVWAP_RTH, dVWAP (CME session), wVWAP, mVWAP (developing week/month), TPO single prints, APOC, prev30mVWAP | Built-in defaults enable all families; uncheck a box to omit |
+| **Advanced opt-in levels** | Pivots, dVWAP_RTH, dVWAP (CME session), wVWAP, mVWAP (developing week/month), TPO single prints, APOC, prev30mVWAP | Three planes (page / `normalize_levels_config` defaults / kwargs). Omit a family key ⇒ on; uncheck a box to omit |
 | **Calculate levels** / **Recalculate levels** | Build or refresh level artifacts | Stale after data/settings change |
 
 **How to use.**
@@ -501,6 +502,10 @@ after_entry_cutoff, session exit policy
 - Not overnight ETH session templates (same-calendar-day RTH-style only today).
 - Not Admit Focus/Promote windows — cutoff clocks ≠ entry-window membership TZ
   rules (`session_timezone` vs exchange TZ for RTH segments).
+- Locked fork: with flatten off, this page and Grid force
+  `no_new_entries_after` to None. Headless `api.run_backtest` still applies a
+  YAML cutoff (`after_entry_cutoff`). OTF/Admit TZ: UI uses session
+  `exchange_timezone` or the instrument TZ; API always uses the instrument TZ.
 
 **Related pages.** Backtest; **Focus vs Admit**; **Exposure policy**.
 
@@ -524,7 +529,7 @@ directional ranking, IS selection
 |---|---|---|
 | `SL start` / `SL stop` / `SL step` | Stop-loss sweep in ticks | Huge grids are slow and easy to overfit |
 | `TP start` / `TP stop` / `TP step` | Take-profit sweep in ticks | Same |
-| Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
+| Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell. Grid uses the same flatten-gate as Backtest: cutoff is None unless Flat by session close is on |
 | `Policy` (exposure) | Same four names as Backtest; default `allow_all` | Overlapping fills inflate every cell N; skip table empty by design (overlap not recorded) |
 | Inherited `entry_window` (Admit) | Fixed constraint from Backtest/Promote | Not a swept axis — all cells share it |
 | `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | In-sample sort only — not a proven live SL/TP; do not treat the top ranked cell as production (M10) |

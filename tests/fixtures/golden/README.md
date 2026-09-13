@@ -197,7 +197,19 @@ Golden parquet fixtures are explicitly re-included via
 `!tests/fixtures/golden/*.parquet`, so recording a fixture cannot silently fail to be
 committed.
 
-## 6. Recording status
+## 6. Uncovered locked-fork paths (not golden-gated)
+
+These composer forks stay identity-locked by unit tests, not by legacy goldens.
+Do not regenerate goldens to “fix” them.
+
+| Fork | Why uncovered here | Lock test |
+|---|---|---|
+| H7 cutoff without flatten | UI forces `None`; API applies YAML cutoff | `tests/test_ah8_cutoff_without_flatten.py` |
+| H15 OTF/Admit TZ | UI session TZ vs API `inst.exchange_tz` | `tests/test_ah8_otf_tz_ui_vs_api.py` |
+| H10 legacy-primary fatals | UI installs; `load_dataset` rejects | `tests/test_data_page_helpers.py` |
+| H11 mixed offsets | raw reject both composers | `tests/test_loader.py` |
+
+## 7. Recording status
 
 - [x] Deterministic generator committed; fixture rebuildable from it.
 - [x] `trades_legacy.parquet` + `trades_legacy.csv` + `fixture_manifest.json` +
