@@ -1,7 +1,10 @@
 name: CI
 
 # R9 regression-safety gate (docs/ENGINEERING_PROPOSAL.md §4.9): full pytest + lint on
-# every push and pull request. Coverage is reported but never blocking (monitor first).
+# every push and pull request. Coverage is warn-first at the QI-0 / QI-11 measured
+# 82% (B-6 / QI-12-04), not the R9 88% baseline or the old 85% informational line.
+# Still not a merge gate — a later PR flips the same floor to --cov-fail-under,
+# then ratchet +1 pt per release.
 
 on:
   push:
@@ -16,9 +19,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Informational only: CI warns below this line, it never fails on coverage.
-  # Baseline at R9 was 88% statement+branch coverage of `thesistester`.
-  COVERAGE_FLOOR: 85
+  # Warn-first only: CI emits ::warning below this line, it never fails on coverage.
+  # 82% is the QI-0 / QI-11 measured statement+branch total of `thesistester`
+  # (B-6 / QI-12-04). R9 baseline was 88%; the previous informational line was 85%.
+  # A later PR flips this same floor to --cov-fail-under, then ratchet +1 pt/release.
+  COVERAGE_FLOOR: 82
 
 jobs:
   lint:
@@ -119,9 +124,9 @@ jobs:
       - name: Report coverage (informational)
         run: |
           total="$(python -m coverage report --format=total)"
-          echo "Coverage: ${total}% (informational floor: ${COVERAGE_FLOOR}%)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Coverage: ${total}% (warn-first floor: ${COVERAGE_FLOOR}%; not blocking)" >> "$GITHUB_STEP_SUMMARY"
           if [ "${total}" -lt "${COVERAGE_FLOOR}" ]; then
-            echo "::warning title=Coverage below floor::${total}% < ${COVERAGE_FLOOR}% (informational, not blocking)"
+            echo "::warning title=Coverage below floor::${total}% < ${COVERAGE_FLOOR}% (warn-first, not blocking)"
           fi
       - name: Upload coverage report
         if: matrix.python-version == '3.12'

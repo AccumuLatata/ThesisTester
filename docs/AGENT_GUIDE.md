@@ -570,6 +570,14 @@ Every request must first parse as an `AssistantRequest`, then pass
   (target 80 %). B-4 recorded adjusted rates: `backtest.py` 100 % and
   `walk_forward.py` 100 % (12/12). Timeouts count as killed. This is **not** a
   required CI cell. Do not add `[tool.mutmut]` here — QI-12 owns packaging.
+- **Coverage floor (B-6 / QI-12-04).** `pytest` cells report statement+branch
+  coverage of `thesistester` and emit `::warning` when the total is below
+  **82%** (`COVERAGE_FLOOR` in `.github/workflows/ci.yml`). That is the
+  QI-0 / QI-11 measured line (35,598 stmts / 5,132 missed; 14,994 branches /
+  3,117 partial at `e30cc48`), not the R9 88% baseline or the old 85%
+  informational line. The job still **does not** fail: `--cov-fail-under` and
+  `[tool.coverage.report] fail_under` stay unset. A later PR flips the same
+  floor to blocking, then ratchet +1 pt per release.
 
 ## Regression-safety gates in CI
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request.
@@ -587,7 +595,7 @@ cells do not block merge.
 | Job | Gate |
 |---|---|
 | `ruff (lint + format)` | `ruff check` + `ruff format --check`; required on `main` |
-| `pytest (py3.10)` | full suite; required on `main`. Coverage is reported and warns below an informational floor, never blocks |
+| `pytest (py3.10)` | full suite; required on `main`. Coverage warns below the measured 82% floor (B-6 / QI-12-04); still not blocking (`--cov-fail-under` is a later PR) |
 | `pytest (py3.11)` | full suite; required on `main` |
 | `pytest (py3.12)` | full suite; required on `main` |
 | `editable install (no dev extras)` | `pip install -e .` + import + `pip check` in a clean venv; required on `main` |
