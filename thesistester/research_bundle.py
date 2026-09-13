@@ -765,21 +765,22 @@ def peek_research_identity(bundle: Any) -> dict[str, Any] | None:
     """Read ``research_identity.json`` only — no parquet / full bundle load (CAI-8).
 
     Accepts bytes, a filesystem path, or a file-like object. Returns None when
-    the member is absent or unreadable.
+    the member is absent or unreadable. Oversized uploads (QI-06-09) return
+    None without reading path bytes or opening the zip.
     """
     try:
-        raw = _read_uploaded_bytes(bundle) if not isinstance(bundle, (str, Path)) else None
+        if isinstance(bundle, (str, Path)):
+            path = Path(bundle)
+            if not path.is_file():
+                return None
+            try:
+                _reject_declared_upload_size(path.stat().st_size)
+                raw = _ensure_within_upload_cap(path.read_bytes())
+            except OSError:
+                return None
+        else:
+            raw = _read_uploaded_bytes(bundle)
     except ValueError:
-        return None
-    if isinstance(bundle, (str, Path)):
-        path = Path(bundle)
-        if not path.is_file():
-            return None
-        try:
-            raw = path.read_bytes()
-        except OSError:
-            return None
-    if not isinstance(raw, bytes):
         return None
     try:
         with zipfile.ZipFile(io.BytesIO(raw), mode="r") as zf:
@@ -792,20 +793,46 @@ def peek_research_identity(bundle: Any) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _upload_cap_error() -> ValueError:
+    return ValueError(f"Research bundle exceeds the {MAX_BUNDLE_UPLOAD_BYTES} byte upload cap.")
+
+
+def _reject_declared_upload_size(size_hint: Any) -> None:
+    """Refuse a declared size over the upload cap before reading bytes."""
+    if isinstance(size_hint, bool) or not isinstance(size_hint, int):
+        return
+    if size_hint > MAX_BUNDLE_UPLOAD_BYTES:
+        raise _upload_cap_error()
+
+
+def _ensure_within_upload_cap(data: Any) -> bytes:
+    if not isinstance(data, bytes):
+        raise ValueError("Uploaded bundle content must be bytes.")
+    if len(data) > MAX_BUNDLE_UPLOAD_BYTES:
+        raise _upload_cap_error()
+    return data
+
+
 def _read_uploaded_bytes(uploaded_file: Any) -> bytes:
     if isinstance(uploaded_file, bytes):
-        data = uploaded_file
-    elif hasattr(uploaded_file, "getvalue"):
-        data = uploaded_file.getvalue()
-    elif hasattr(uploaded_file, "read"):
-        data = uploaded_file.read()
-        if not isinstance(data, bytes):
-            raise ValueError("Uploaded bundle content must be bytes.")
-    else:
-        raise ValueError("Unsupported uploaded bundle object.")
-    if len(data) > MAX_BUNDLE_UPLOAD_BYTES:
-        raise ValueError(f"Research bundle exceeds the {MAX_BUNDLE_UPLOAD_BYTES} byte upload cap.")
-    return data
+        return _ensure_within_upload_cap(uploaded_file)
+    _reject_declared_upload_size(getattr(uploaded_file, "size", None))
+    if hasattr(uploaded_file, "getvalue"):
+        return _ensure_within_upload_cap(uploaded_file.getvalue())
+    if hasattr(uploaded_file, "read"):
+        return _ensure_within_upload_cap(uploaded_file.read())
+    raise ValueError("Unsupported uploaded bundle object.")
+
+
+def _declared_zip_member_size(info: zipfile.ZipInfo, filename: str) -> int:
+    """Uncompressed size from the central directory; fail closed on junk."""
+    try:
+        file_size = int(info.file_size)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Bundle member '{filename}' has an invalid size.") from exc
+    if file_size < 0:
+        raise ValueError(f"Bundle member '{filename}' has an invalid size.")
+    return file_size
 
 
 def _read_zip_member_bytes(zf: zipfile.ZipFile, filename: str) -> bytes:
@@ -814,11 +841,14 @@ def _read_zip_member_bytes(zf: zipfile.ZipFile, filename: str) -> bytes:
         info = zf.getinfo(filename)
     except KeyError as exc:
         raise ValueError(f"Bundle is missing required file '{filename}'.") from exc
-    if info.file_size > MAX_BUNDLE_MEMBER_BYTES:
+    if _declared_zip_member_size(info, filename) > MAX_BUNDLE_MEMBER_BYTES:
         raise ValueError(
             f"Bundle member '{filename}' exceeds the {MAX_BUNDLE_MEMBER_BYTES} byte size cap."
         )
-    return zf.read(filename)
+    try:
+        return zf.read(filename)
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Bundle member '{filename}' is corrupt.") from exc
 
 
 def _read_json_from_zip(zf: zipfile.ZipFile, filename: str) -> dict[str, Any]:
