@@ -614,3 +614,64 @@ def test_validate_ohlcv_flags_large_gaps_around_dst_transition():
     codes = {issue.code for issue in report.issues}
     assert "significant_gaps" in codes
     assert "dst_transition_gaps" in codes
+
+
+_H11_MIXED_OFFSET_CSV = (
+    "timestamp,open,high,low,close,volume\n"
+    "2026-03-08 01:59:00-05:00,100,101,99,100.5,10\n"
+    "2026-03-08 03:00:00-04:00,100.5,102,100,101.5,20\n"
+)
+_H11_QT_MIXED_OFFSET_CSV = (
+    "Time left;Time right;Open;High;Low;Close;Volume;\n"
+    "2026-03-08 01:59:00-05:00;2026-03-08 01:59:59.999-05:00;100;101;99;100.5;10;\n"
+    "2026-03-08 03:00:00-04:00;2026-03-08 03:00:59.999-04:00;100.5;102;100;101.5;20;\n"
+)
+_H11_NAIVE_DST_CROSS_CSV = (
+    "timestamp,open,high,low,close,volume\n"
+    "2026-03-08 01:59:00,100,101,99,100.5,10\n"
+    "2026-03-08 03:00:00,100.5,102,100,101.5,20\n"
+)
+
+
+def test_h11_mixed_offset_canonical_recipe_rejects(tmp_path):
+    """QI-01-04 / B-2: parked mixed-offset reject (raw fail; do not UTC-normalize)."""
+    from thesistester.api import load_dataset
+
+    path = tmp_path / "mixed_offset.csv"
+    path.write_text(_H11_MIXED_OFFSET_CSV, encoding="utf-8")
+    with pytest.raises((ValueError, DataValidationError), match="utc=True|Mixed timezones"):
+        load_ohlcv(path)
+    with pytest.raises((ValueError, DataValidationError), match="utc=True|Mixed timezones"):
+        load_dataset(path, instrument="ES")
+
+
+def test_h11_mixed_offset_quantower_profile_rejects(tmp_path):
+    """QI-01-04 / B-2: QT-aware mixed-offset hits ``_profile_timestamp`` raw fail."""
+    from thesistester.api import load_dataset
+
+    path = tmp_path / "mixed_offset_qt.csv"
+    path.write_text(_H11_QT_MIXED_OFFSET_CSV, encoding="utf-8")
+    with pytest.raises((ValueError, DataValidationError), match="utc=True|Mixed timezones"):
+        load_ohlcv(path, format_profile="quantower_history_exporter")
+    with pytest.raises((ValueError, DataValidationError), match="utc=True|Mixed timezones"):
+        load_dataset(
+            path,
+            instrument="ES",
+            format_profile="quantower_history_exporter",
+        )
+
+
+def test_h11_naive_dst_crossing_still_accepts(tmp_path):
+    """QI-1 §3: naive 01:59/03:00 local still loads (do not over-close H11)."""
+    from thesistester.api import load_dataset
+
+    path = tmp_path / "naive_dst_cross.csv"
+    path.write_text(_H11_NAIVE_DST_CROSS_CSV, encoding="utf-8")
+    bars = load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
+    assert len(bars) == 2
+    loaded = load_dataset(
+        path,
+        instrument="ES",
+        source_timezone="America/New_York",
+    )
+    assert len(loaded) == 2

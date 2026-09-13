@@ -718,8 +718,8 @@ are B-1; H10/H11 lock tests are B-2.
 |---|---|---|---|
 | H7 cutoff without flatten | Backtest/Grid force `no_new_entries_after=None` when flatten is off | YAML cutoff still applies (`after_entry_cutoff`) | `tests/test_ah8_cutoff_without_flatten.py` |
 | H15 OTF / Admit TZ | Backtest: Data-page `exchange_timezone` or instrument TZ | always `inst.exchange_tz` | `tests/test_ah8_otf_tz_ui_vs_api.py` |
-| H10 fatal OHLCV | Legacy 1m primary installs + warns | `load_dataset` raises `ValueError` | B-2 |
-| H11 mixed offsets | raw reject | raw reject (do not UTC-normalize) | B-2 |
+| H10 fatal OHLCV | Legacy 1m primary installs + warns | `load_dataset` raises `ValueError` | `tests/test_data_page_helpers.py` (`test_h10_*`) |
+| H11 mixed offsets | raw reject | raw reject (do not UTC-normalize) | `tests/test_loader.py` (`test_h11_*`) |
 
 ## R17 ingestion research safety
 
@@ -748,8 +748,8 @@ are B-1; H10/H11 lock tests are B-2.
 - Preserve captured raw rows only as provenance; use canonical one-minute bars
   for current engine work and do not treat raw ticks as R12 subtimeframe data.
 - Confirm the canonical sample CSV remains byte-identical after loader edits.
-- Run `pytest -q tests/test_loader.py tests/test_vendor_loaders.py tests/test_local_store.py`
-  after R17 changes.
+- Run `pytest -q tests/test_loader.py tests/test_vendor_loaders.py tests/test_local_store.py tests/test_data_page_helpers.py`
+  after R17 changes. Keep H10/H11 lock tests green; do not invert the forks.
 
 ## R19 parameter-sensitivity research safety
 
