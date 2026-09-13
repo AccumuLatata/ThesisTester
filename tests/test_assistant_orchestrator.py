@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from thesistester.assistant import (
     AssistantOrchestrator,
     AssistantRequest,
@@ -124,30 +126,35 @@ def test_record_audit_redacts_secret_shaped_payload_keys(tmp_path):
     orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
     request = AssistantRequest(
         capability_id="HOME.workflow_guide",
-        payload={"action": "inspect", "api_key": secret},
+        payload={"action": "inspect", "api_key": secret, "nested": {"token": secret}},
     )
 
     orchestrator._record_audit(
         OrchestrationResult(
             capability_id="HOME.workflow_guide",
-            status="completed",
-            payload={"ok": True},
+            status="failed",
+            payload={"error": {"message": "tool failed", "api_key": secret}},
         ),
         request=request,
         thesis_id=thesis.thesis_id,
         conversation_id=conversation.conversation_id,
+        extra={"xai_api_key": secret},
     )
 
     assert request.payload["api_key"] == secret
+    assert request.payload["nested"]["token"] == secret
 
     transcript = repository.get_conversation(
         thesis.thesis_id, conversation.conversation_id
     ).tool_transcript
     assert len(transcript) == 1
-    persisted_payload = transcript[0]["request"]["payload"]
+    persisted = transcript[0]
+    persisted_payload = persisted["request"]["payload"]
     assert persisted_payload["action"] == "inspect"
-    assert persisted_payload.get("api_key") in (None, "[redacted]")
-    assert persisted_payload.get("api_key") != secret
+    assert persisted_payload["api_key"] == "[redacted]"
+    assert persisted_payload["nested"]["token"] == "[redacted]"
+    assert persisted["error"]["api_key"] == "[redacted]"
+    assert persisted["xai_api_key"] == "[redacted]"
     assert secret not in persisted_payload.values()
 
     on_disk = (
@@ -161,6 +168,89 @@ def test_record_audit_redacts_secret_shaped_payload_keys(tmp_path):
     disk_text = on_disk.read_text(encoding="utf-8")
     assert secret not in disk_text
     assert "[redacted]" in disk_text
+
+
+def test_dispatch_confirmation_keeps_live_secret_and_redacts_audit(tmp_path):
+    """Confirmation gating reads live payload; audit persist is scrubbed."""
+    secret = "sk-injected-should-not-persist"
+    tools = AssistantTools(data_roots=(tmp_path,))
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="ConfirmScrub")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
+    request = AssistantRequest(
+        capability_id="PIPELINE.run_experiment",
+        payload={"run_spec": {}, "api_key": secret},
+    )
+
+    result = orchestrator.dispatch(
+        request,
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+    )
+
+    assert result.status == "approval_required"
+    assert result.payload["error"]["category"] == "confirmation"
+    assert request.payload["api_key"] == secret
+    assert secret not in str(result.payload)
+
+    transcript = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).tool_transcript
+    assert transcript[0]["request"]["payload"]["api_key"] == "[redacted]"
+    disk_text = (
+        tmp_path
+        / "assistant"
+        / "theses"
+        / thesis.thesis_id
+        / "conversations"
+        / f"{conversation.conversation_id}.json"
+    ).read_text(encoding="utf-8")
+    assert secret not in disk_text
+
+
+def test_record_audit_fail_closed_when_redact_returns_non_mapping(tmp_path, monkeypatch):
+    """Unredacted tool_entry must not persist if redaction does not return a mapping."""
+    secret = "sk-injected-should-not-persist"
+    tools = AssistantTools(data_roots=(tmp_path,))
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="AuditFailClosed")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
+    request = AssistantRequest(
+        capability_id="HOME.workflow_guide",
+        payload={"action": "inspect", "api_key": secret},
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.orchestrator.redact_for_logs",
+        lambda payload: "not-a-mapping",
+    )
+
+    with pytest.raises(TypeError, match="must return a mapping"):
+        orchestrator._record_audit(
+            OrchestrationResult(
+                capability_id="HOME.workflow_guide",
+                status="completed",
+                payload={"ok": True},
+            ),
+            request=request,
+            thesis_id=thesis.thesis_id,
+            conversation_id=conversation.conversation_id,
+        )
+
+    transcript = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).tool_transcript
+    assert transcript == ()
+    disk_text = (
+        tmp_path
+        / "assistant"
+        / "theses"
+        / thesis.thesis_id
+        / "conversations"
+        / f"{conversation.conversation_id}.json"
+    ).read_text(encoding="utf-8")
+    assert secret not in disk_text
 
 
 def _confirmed_run(repository, *, name: str):

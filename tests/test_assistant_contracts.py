@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import math
+from pathlib import Path
 
 import pytest
 
@@ -105,6 +107,38 @@ def test_request_round_trip_is_json_safe_and_fail_closed():
         )
     with pytest.raises(AssistantContractError, match="non-finite"):
         AssistantRequest(capability_id="PIPELINE.validate_run_spec", payload={"value": math.nan})
+
+
+def test_request_to_dict_redacts_secret_shaped_keys_without_mutating():
+    """QI-09-06: persist representation scrubs secrets; live payload stays."""
+    secret = "sk-injected-should-not-persist"
+    request = AssistantRequest(
+        capability_id="HOME.workflow_guide",
+        payload={"action": "inspect", "api_key": secret, "nested": {"token": secret}},
+    )
+
+    dumped = request.to_dict()
+
+    assert request.payload["api_key"] == secret
+    assert request.payload["nested"]["token"] == secret
+    assert dumped["payload"]["action"] == "inspect"
+    assert dumped["payload"]["api_key"] == "[redacted]"
+    assert dumped["payload"]["nested"]["token"] == "[redacted]"
+
+
+def test_contracts_module_does_not_import_sidecar_or_engine():
+    """to_dict must reuse redact_for_logs without pulling the voice/engine stack."""
+    source = (
+        Path(__file__).resolve().parents[1] / "thesistester" / "assistant" / "contracts.py"
+    ).read_text(encoding="utf-8")
+    imported: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    assert "thesistester.assistant.redact" in imported
+    assert not any("sidecar" in module or module == "thesistester.api" for module in imported)
 
 
 @pytest.mark.parametrize("schema_version", [True, 1.0])
