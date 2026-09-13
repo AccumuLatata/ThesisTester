@@ -1673,3 +1673,33 @@ def test_user_guide_setup_builder_direction_pitfall_names_da0():
     notes_pitfall = _setup_builder_direction_pitfall(notes_body)
     assert notes_pitfall == "—", "Notes-table needles must not bind as Setup Builder pitfall"
     assert any(n not in notes_pitfall for n in _DA0_DIRECTION_HELP_NEEDLES)
+
+
+_H14_SIGNALS_H2 = "Signals"
+_H14_SIGNALS_NEEDLES = (
+    "3c",
+    "Trigger timeframe",
+    "dVWAP",
+    "early-window",
+    "HTF close",
+    "H14",
+)
+
+
+def test_user_guide_signals_h2_names_h14_3c_htf():
+    """QI-03-06 / A-13: Signals H2 names 3c HTF developing-partner H14."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H14_SIGNALS_H2)
+    missing = [n for n in _H14_SIGNALS_NEEDLES if n not in body]
+    assert missing == [], f"Signals H2 missing A-13 needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Signals H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+    fake = (
+        "## Notes\n3c Trigger timeframe dVWAP early-window HTF close H14\n## Backtest\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _H14_SIGNALS_H2)
+    except AssertionError as exc:
+        assert "Signals" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Signals H2")

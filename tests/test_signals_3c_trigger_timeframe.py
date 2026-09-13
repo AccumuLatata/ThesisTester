@@ -14,6 +14,8 @@ Covers:
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -1338,6 +1340,129 @@ def test_project_zones_empty_input():
     trigger_df = pd.DataFrame()
     result = _project_zones_to_trigger_df(zones, trigger_df)
     assert result.empty
+
+
+# ===========================================================================
+# QI-03-06 / A-13: H14 status lock + Signals caption (disclosure only)
+# ===========================================================================
+
+_H14_EARLY_WINDOW_DVWAP = 5200.125
+_H14_BASE_END_DVWAP = 5200.500
+_H14_CAPTION_NEEDLES = (
+    "H14",
+    "dVWAP",
+    "early-window",
+    "completed HTF OHLC",
+    "HTF close",
+)
+_SIGNALS_PAGE = Path(__file__).resolve().parents[1] / "pages" / "6_Signals.py"
+
+
+def _st_caption_texts(source: str) -> list[str]:
+    """Literal first-arg strings of ``st.caption(...)`` (not ``help=`` / comments)."""
+    tree = ast.parse(source)
+    texts: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "caption":
+            continue
+        value = node.func.value
+        if not (isinstance(value, ast.Name) and value.id == "st"):
+            continue
+        if not node.args:
+            continue
+        arg = node.args[0]
+        try:
+            text = ast.literal_eval(arg)
+        except (ValueError, TypeError):
+            text = None
+        if isinstance(text, str):
+            texts.append(text)
+            continue
+        if isinstance(arg, ast.BinOp):
+            continue
+        if isinstance(arg, ast.Tuple):
+            parts = []
+            for elt in arg.elts:
+                try:
+                    piece = ast.literal_eval(elt)
+                except (ValueError, TypeError):
+                    parts = []
+                    break
+                if isinstance(piece, str):
+                    parts.append(piece)
+                else:
+                    parts = []
+                    break
+            if parts:
+                texts.append("".join(parts))
+    return texts
+
+
+def test_h14_projection_keeps_early_window_developing_price():
+    """QI-3 Drift-VWAP HTF recipe: projection remaps T; prices stay early-window.
+
+    Locks current H14 status. Does not demand snap-to-``base_end``.
+    """
+    base_rows = [
+        {"open": 5200.00, "high": 5200.25, "low": 5199.75, "close": 5200.00},
+        {"open": 5200.00, "high": 5200.50, "low": 5200.00, "close": 5200.25},
+        {"open": 5200.25, "high": 5200.75, "low": 5200.25, "close": 5200.50},
+        {"open": 5200.50, "high": 5201.00, "low": 5200.50, "close": 5200.75},
+        {"open": 5200.75, "high": 5201.25, "low": 5200.75, "close": 5201.00},
+    ]
+    base_df = _base_df(base_rows, freq="1min").reset_index(drop=True)
+    trigger_df = _prepare_trigger_dataframe(base_df, "5min")
+    assert len(trigger_df) == 1
+    early_ts = base_df.iloc[1]["timestamp"]
+    htf_end = trigger_df.iloc[0]["trigger_bar_end_timestamp"]
+    zones = pd.DataFrame(
+        [
+            {
+                "bar_index": 1,
+                "timestamp": early_ts,
+                "zone_low": _H14_EARLY_WINDOW_DVWAP - TICK,
+                "zone_high": _H14_EARLY_WINDOW_DVWAP + TICK,
+                "zone_mid": _H14_EARLY_WINDOW_DVWAP,
+                "tested_level_price": _H14_EARLY_WINDOW_DVWAP,
+                "level_count": 1,
+                "level_names": "dVWAP",
+                "level_prices": str(_H14_EARLY_WINDOW_DVWAP),
+            }
+        ]
+    )
+    projected = _project_zones_to_trigger_df(zones, trigger_df)
+    assert len(projected) == 1
+    row = projected.iloc[0]
+    assert int(row["bar_index"]) == 0
+    assert row["timestamp"] == htf_end
+    assert float(row["zone_mid"]) == _H14_EARLY_WINDOW_DVWAP
+    assert float(row["tested_level_price"]) == _H14_EARLY_WINDOW_DVWAP
+    assert float(row["zone_mid"]) != _H14_BASE_END_DVWAP
+    assert early_ts != htf_end
+
+
+def test_signals_page_htf_3c_caption_discloses_h14():
+    """QI-03-06 / A-13: HTF+3c ``st.caption`` names H14 (help=/comments fail-closed)."""
+    source = _SIGNALS_PAGE.read_text(encoding="utf-8")
+    matching = [
+        text for text in _st_caption_texts(source) if all(n in text for n in _H14_CAPTION_NEEDLES)
+    ]
+    assert matching, f"Signals HTF+3c st.caption missing H14 needles {_H14_CAPTION_NEEDLES}"
+    fake = (
+        "import streamlit as st\n"
+        "st.selectbox(\n"
+        '    "Trigger timeframe",\n'
+        '    options=["5min"],\n'
+        '    help="H14 dVWAP early-window completed HTF OHLC HTF close",\n'
+        ")\n"
+        "# H14 dVWAP early-window completed HTF OHLC HTF close\n"
+    )
+    fake_matching = [
+        text for text in _st_caption_texts(fake) if all(n in text for n in _H14_CAPTION_NEEDLES)
+    ]
+    assert fake_matching == [], "help=/comment H14 needles must not satisfy st.caption"
 
 
 # ===========================================================================

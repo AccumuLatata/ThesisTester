@@ -1143,7 +1143,9 @@ with st.sidebar:
         trigger_timeframe_help = (
             "Arrival, inside/muted, SFP, and reversal are evaluated on the selected trigger timeframe. "
             "Retrace entry fill is evaluated on canonical/base bars after reversal candle completes. "
-            "max_entry_wait_bars_after_reversal counts trigger-timeframe bars."
+            "max_entry_wait_bars_after_reversal counts trigger-timeframe bars. "
+            "H14: developing partners (dVWAP / SMA / rolling VWAP) keep the early-window "
+            "value tested against completed HTF OHLC; decision T is HTF close."
             if trigger == "3c"
             else (
                 "Candle-close trigger logic is evaluated on the selected trigger timeframe. "
@@ -1162,6 +1164,9 @@ with st.sidebar:
                 "3c with non-base trigger timeframe: arrival, muted, SFP, and reversal "
                 "are evaluated on trigger-timeframe candles. "
                 "Retrace entry fill is evaluated on canonical/base bars."
+            )
+            st.caption(
+                "H14: developing partners (dVWAP / SMA / rolling VWAP) keep the early-window value tested against completed HTF OHLC. Decision T is HTF close — not a snap to base_end."
             )
 
         naked_only = st.toggle("Naked / untested levels only", value=False)
