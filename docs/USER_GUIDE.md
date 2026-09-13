@@ -516,7 +516,7 @@ directional ranking, IS selection
 | Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
 | `Policy` (exposure) | Same four names as Backtest; default `allow_all` | Overlapping fills inflate every cell N; skip table empty by design (overlap not recorded) |
 | Inherited `entry_window` (Admit) | Fixed constraint from Backtest/Promote | Not a swept axis — all cells share it |
-| `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | In-sample sort only — not a proven live SL/TP; do not treat the top/greenest cell as production (M10) |
+| `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | In-sample sort only — not a proven live SL/TP; do not treat the top ranked cell as production (M10) |
 | `Min trade count` | Drop thin cells before ranking | Too low → noisy “winners” |
 | **Enable directional ranking** | When on, ranks by **Directional ranking metric** instead of `Ranking metric` | Extra selection degrees of freedom |
 | `Directional ranking metric` / `Min long trades` / `Min short trades` | Shown when directional ranking is enabled | Side-specific mins can empty the ranked set |
