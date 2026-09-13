@@ -342,16 +342,19 @@ exposure_group_key
    `entry_bar_index` through `exit_bar_index + cooldown_bars_after_exit`.
 4. Skips appear in **Skipped signals** with `skip_reason`, `blocking_trade_id`,
    and `exposure_group_key`. These are **not** OTF rejects and **not** `3c` voids.
-5. Skip captions split window / cutoff / other. DA1 reports `candidate_pairs`
-   next to **Skipped signals** even when `allow_all` skips are empty.
+5. Skip captions split window / cutoff / other. DA1 captions `candidate_pairs`
+   next to **Skipped signals**. Same-bar opposite-direction counts only — not
+   an admission gate and not proof of fill quality. Under `allow_all` the skip
+   table can be empty while DA1 still reports pairs.
 
 **Portfolio note.** Portfolio uses the same four policy **names** after merging
 completed per-setup trades (diagnostic merge — not a live margin engine), but
 grouping differs: Portfolio `single_setup` keys on merged `setup_id` (not the
 Backtest signal-field chain above). Portfolio admission skips show
 `skip_reason` / `blocking_trade_id` in **Portfolio admission skips** and do
-**not** emit `exposure_group_key`. Prefer upstream Backtest `allow_all`.
-Portfolio cooldown is a no-op under `allow_all`.
+**not** emit `exposure_group_key`. Prefer upstream Backtest `allow_all` so the
+portfolio gate is applied once at merge time. Cooldown is likewise a no-op
+under Portfolio `allow_all`.
 
 **How to use.**
 
