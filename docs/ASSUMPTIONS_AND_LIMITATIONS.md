@@ -169,7 +169,7 @@ This engine is for **research screening**, not proof of a durable edge.
   - `single_direction`,
   - `single_setup`.
 - Default remains `allow_all` for backward compatibility and broad signal screening (AH §2.1; unchanged).
-- **H5:** `allow_all` can inflate trade counts because overlapping signals are treated independently. Under `allow_all` the skip table is empty by design — overlap is not recorded as a skip row. Backtest and Grid **Policy** widgets disclose this; the default is unchanged.
+- **H5:** `allow_all` can inflate trade counts because overlapping signals are treated independently. Under `allow_all` the skip table is empty by design — overlap is not recorded as a skip row (window/cutoff skips are separate). Backtest and Grid **Policy** widgets disclose this; the default is unchanged.
 - Restrictive policies apply deterministic admission ordering and optional cooldown (`cooldown_bars_after_exit`) to model more conservative trade lifecycle assumptions.
 - Optional skipped-signal diagnostics may include exposure-policy rejections,
   `after_entry_cutoff` when `no_new_entries_after` rejects with skip capture on

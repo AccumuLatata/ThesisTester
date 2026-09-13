@@ -356,12 +356,12 @@ under Portfolio `allow_all`.
 
 **How to use.**
 
-1. Open **Backtest** → **Exposure policy**.
+1. Open **Backtest** or **Grid Search** → **Exposure policy**.
 2. Choose **Policy** and optional **Cooldown bars after exit**.
 3. **Run backtest**, then inspect **Skipped signals** if trade count looks thin.
 4. On **Portfolio**, set `Portfolio exposure policy` / cooldown → **Run
    portfolio analysis**, then read **Portfolio admission skips**.
-5. Grid / Validation inherit one fixed exposure policy across cells/folds —
+5. Grid / Validation apply one fixed exposure policy across cells/folds —
    exposure is not a swept axis.
 
 **What it is not.**
@@ -514,7 +514,7 @@ directional ranking, IS selection
 | `SL start` / `SL stop` / `SL step` | Stop-loss sweep in ticks | Huge grids are slow and easy to overfit |
 | `TP start` / `TP stop` / `TP step` | Take-profit sweep in ticks | Same |
 | Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
-| `Policy` (exposure) | Same four names as Backtest; default `allow_all` | Overlapping fills inflate every cell N; skip table empty by design |
+| `Policy` (exposure) | Same four names as Backtest; default `allow_all` | Overlapping fills inflate every cell N; skip table empty by design (overlap not recorded) |
 | Inherited `entry_window` (Admit) | Fixed constraint from Backtest/Promote | Not a swept axis — all cells share it |
 | `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | Best cell is in-sample under that metric |
 | `Min trade count` | Drop thin cells before ranking | Too low → noisy “winners” |
