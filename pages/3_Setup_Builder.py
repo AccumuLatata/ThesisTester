@@ -1136,7 +1136,14 @@ direction_index, _, direction_fallback = _safe_selectbox_index_fallback(
 if direction_fallback:
     st.session_state[WIDGET_KEY_DIRECTION] = "both"
 direction = st.selectbox(
-    "Direction", options=direction_options, index=direction_index, key=WIDGET_KEY_DIRECTION
+    "Direction",
+    options=direction_options,
+    index=direction_index,
+    key=WIDGET_KEY_DIRECTION,
+    help=(
+        "touch + both + single_position accepted trades are long-only "
+        "(same-bar short skipped). See ASSUMPTIONS §4b."
+    ),
 )
 
 trigger_params = {}

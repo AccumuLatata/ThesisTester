@@ -1128,6 +1128,10 @@ with st.sidebar:
             "Direction",
             options=["long", "short", "both"],
             index=2,
+            help=(
+                "touch + both + single_position accepted trades are long-only "
+                "(same-bar short skipped). See ASSUMPTIONS §4b."
+            ),
         )
         trigger_timeframe_options = [
             value for value in TRIGGER_TIMEFRAME_CHOICES if value in VALID_TRIGGER_TIMEFRAMES
