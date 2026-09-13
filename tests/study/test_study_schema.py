@@ -675,37 +675,118 @@ def test_dataset_ingestion_mode_omitted_stays_legal():
 
 
 _VENDOR_15S_HE = Path("tests/fixtures/vendor/quantower_history_exporter_15s.csv")
+_QUANTOWER_PROFILE = "quantower_history_exporter"
+_BUILDER_PATH = Path("thesistester/study/builder.py")
+_PROGRAM_B_ROOTS = (
+    Path("examples/studies/program_b"),
+    Path("examples/studies/program_b_run2"),
+)
 
 
 def test_quantower_omitted_ingestion_mode_warns_and_does_not_rewrite():
     """QI-07-05 / QI-7 §10: 15s HE + omit stays primary; validate warns, no rewrite."""
+    assert _VENDOR_15S_HE.is_file(), f"missing QI-7 §10 fixture: {_VENDOR_15S_HE}"
     raw = _minimal_study()
     raw["study"]["dataset"]["path"] = str(_VENDOR_15S_HE)
-    raw["study"]["dataset"]["format_profile"] = "quantower_history_exporter"
+    raw["study"]["dataset"]["format_profile"] = _QUANTOWER_PROFILE
     assert "ingestion_mode" not in raw["study"]["dataset"]
     with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
         spec = validate_study_spec(normalize_study_spec(raw))
     assert "ingestion_mode" not in spec["study"]["dataset"]
-    assert spec["study"]["dataset"]["format_profile"] == "quantower_history_exporter"
+    assert spec["study"]["dataset"]["format_profile"] == _QUANTOWER_PROFILE
 
 
 def test_quantower_primary_ingestion_mode_warns_and_keeps_primary():
     raw = _minimal_study()
-    raw["study"]["dataset"]["format_profile"] = "quantower_history_exporter"
+    raw["study"]["dataset"]["format_profile"] = _QUANTOWER_PROFILE
     raw["study"]["dataset"]["ingestion_mode"] = "primary"
     with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
         spec = validate_study_spec(normalize_study_spec(raw))
     assert spec["study"]["dataset"]["ingestion_mode"] == "primary"
+    assert spec["study"]["dataset"]["ingestion_mode"] != INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+
+
+def test_quantower_padded_format_profile_warns_and_does_not_rewrite():
+    """Builder strips profile tokens; validate must still warn without mutating the key."""
+    raw = _minimal_study()
+    raw["study"]["dataset"]["format_profile"] = f"  {_QUANTOWER_PROFILE}  "
+    assert "ingestion_mode" not in raw["study"]["dataset"]
+    with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
+        spec = validate_study_spec(normalize_study_spec(raw))
+    assert spec["study"]["dataset"]["format_profile"] == f"  {_QUANTOWER_PROFILE}  "
+    assert "ingestion_mode" not in spec["study"]["dataset"]
 
 
 def test_quantower_15s_primary_ingestion_mode_accepted_without_warning():
     raw = _minimal_study()
-    raw["study"]["dataset"]["format_profile"] = "quantower_history_exporter"
+    raw["study"]["dataset"]["format_profile"] = _QUANTOWER_PROFILE
     raw["study"]["dataset"]["ingestion_mode"] = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
     with warnings.catch_warnings():
         warnings.simplefilter("error", StudySpecWarning)
         spec = validate_study_spec(normalize_study_spec(raw))
     assert spec["study"]["dataset"]["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+
+
+def test_quantower_warning_sentence_matches_builder_draft_warnings():
+    """Same sentence as builder.draft_warnings; no diverging copy."""
+    from thesistester.study.builder import StudyDraft, draft_warnings
+
+    draft = StudyDraft()
+    draft.format_profile = _QUANTOWER_PROFILE
+    assert draft.ingestion_mode == "primary"
+    assert draft_warnings(draft) == (_WARNING_QUANTOWER_PRIMARY,)
+
+
+def test_builder_does_not_duplicate_quantower_primary_warning_sentence():
+    """AST-bind: builder imports the schema constant and does not re-literal the sentence."""
+    source = _BUILDER_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported = False
+    for node in tree.body:
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "thesistester.study.schema"
+            and any(alias.name == "_WARNING_QUANTOWER_PRIMARY" for alias in node.names)
+        ):
+            imported = True
+            break
+    assert imported, "builder must import _WARNING_QUANTOWER_PRIMARY from schema"
+    for node in tree.body:
+        targets: list[ast.Name] = []
+        if isinstance(node, ast.Assign):
+            targets = [t for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            targets = [node.target]
+        if any(target.id == "_WARNING_QUANTOWER_PRIMARY" for target in targets):
+            raise AssertionError("builder must not reassign _WARNING_QUANTOWER_PRIMARY")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and node.value == _WARNING_QUANTOWER_PRIMARY:
+            raise AssertionError("builder must not re-literal the Quantower-primary sentence")
+
+
+def test_program_b_manifests_validate_without_quantower_primary_warning():
+    """A-14 exit gate: Program B 15s-primary packets stay silent at validate."""
+    seen: set[Path] = set()
+    for root in _PROGRAM_B_ROOTS:
+        for manifest_name in ("manifest.yaml", "manifest_tick.yaml"):
+            manifest_path = root / manifest_name
+            assert manifest_path.is_file(), manifest_path
+            manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+            for row in manifest["studies"]:
+                path = (root / row["file"]).resolve()
+                if path in seen:
+                    continue
+                seen.add(path)
+                raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+                dataset = raw["study"]["dataset"]
+                assert dataset.get("format_profile") == _QUANTOWER_PROFILE, path.name
+                assert dataset.get("ingestion_mode") == INGESTION_MODE_15S_PRIMARY_DERIVE_1M, (
+                    path.name
+                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", StudySpecWarning)
+                    validate_study_spec(normalize_study_spec(raw))
+    assert seen, "Program B manifests listed no studies"
 
 
 def test_dataset_ingestion_mode_accepts_known_tokens():

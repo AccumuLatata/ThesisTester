@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import asdict
 from pathlib import Path
 
@@ -71,6 +72,8 @@ from thesistester.study.expand import expand_study, study_identity_hash
 from thesistester.study.preview import preview_study_spec
 from thesistester.study.schema import (
     StudySpecError,
+    StudySpecWarning,
+    _WARNING_QUANTOWER_PRIMARY,
     load_study_spec,
     normalize_study_spec,
     validate_study_spec,
@@ -291,7 +294,8 @@ def test_identity_hash_roundtrip_pdpoc_example_emits_15s_primary_contract():
 
 
 def test_identity_hash_roundtrip_dopen_example():
-    original, roundtrip = _roundtrip_hash(DOPEN_EXAMPLE)
+    with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
+        original, roundtrip = _roundtrip_hash(DOPEN_EXAMPLE)
     assert original == roundtrip
 
 
@@ -362,19 +366,20 @@ def test_dopen_hydrate_fields():
     banner = DOPEN_EXAMPLE.read_text(encoding="utf-8")
     assert "LEGACY 1m PRIMARY" in banner
     assert "ingestion_mode: 15s_primary_derive_1m" in banner
-    loaded = load_study_spec(DOPEN_EXAMPLE)
-    draft = hydrate_study_draft(loaded)
-    assert draft.ingestion_mode == INGESTION_MODE_PRIMARY
-    assert "ingestion_mode" not in loaded["study"]["dataset"]
-    assert draft.format_profile == "quantower_history_exporter"
-    assert draft.backtest["intrabar_model"] == "sl_first"
-    assert draft.otf is None
-    assert draft.trigger == ["3c"]
-    assert draft.grid["enabled"] is True
-    assert draft.grid["stop_loss_ticks_values"] == [20, 40, 60, 80]
-    assert draft.grid["take_profit_ticks_values"] == [80, 160, 400, 800, 1000]
-    assert draft.emit_entry_window is True
-    spec = emit_study_spec(draft)
+    with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
+        loaded = load_study_spec(DOPEN_EXAMPLE)
+        draft = hydrate_study_draft(loaded)
+        assert draft.ingestion_mode == INGESTION_MODE_PRIMARY
+        assert "ingestion_mode" not in loaded["study"]["dataset"]
+        assert draft.format_profile == "quantower_history_exporter"
+        assert draft.backtest["intrabar_model"] == "sl_first"
+        assert draft.otf is None
+        assert draft.trigger == ["3c"]
+        assert draft.grid["enabled"] is True
+        assert draft.grid["stop_loss_ticks_values"] == [20, 40, 60, 80]
+        assert draft.grid["take_profit_ticks_values"] == [80, 160, 400, 800, 1000]
+        assert draft.emit_entry_window is True
+        spec = emit_study_spec(draft)
     assert spec["study"]["dataset"]["format_profile"] == "quantower_history_exporter"
     assert "ingestion_mode" not in spec["study"]["dataset"]
     assert spec["study"]["constants"]["backtest"]["intrabar_model"] == "sl_first"
@@ -1005,11 +1010,12 @@ def test_preview_yaml_hydrate_emit_identity_hash():
 
 
 def test_dopen_hydrate_preview_is_eight_cells():
-    draft = hydrate_study_draft(load_study_spec(DOPEN_EXAMPLE))
-    assert draft.format_profile == "quantower_history_exporter"
-    assert draft.grid["stop_loss_ticks_values"] == [20, 40, 60, 80]
-    assert draft.grid["take_profit_ticks_values"] == [80, 160, 400, 800, 1000]
-    preview = preview_study_spec(emit_study_spec(draft))
+    with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
+        draft = hydrate_study_draft(load_study_spec(DOPEN_EXAMPLE))
+        assert draft.format_profile == "quantower_history_exporter"
+        assert draft.grid["stop_loss_ticks_values"] == [20, 40, 60, 80]
+        assert draft.grid["take_profit_ticks_values"] == [80, 160, 400, 800, 1000]
+        preview = preview_study_spec(emit_study_spec(draft))
     assert preview.run_count == 8
     assert preview.needs_confirm is False
 
@@ -1157,6 +1163,7 @@ def test_draft_warnings_sia_ingest_rows():
 
     primary_quantower = StudyDraft()
     primary_quantower.format_profile = "quantower_history_exporter"
+    assert draft_warnings(primary_quantower) == (_WARNING_QUANTOWER_PRIMARY,)
     assert draft_warnings(primary_quantower) == (
         "Quantower profile with primary ingestion treats the CSV as the decision "
         "timeframe. A 15-second History Exporter file needs "

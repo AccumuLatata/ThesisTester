@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,8 @@ from thesistester.study.apoc_provenance import (
 from thesistester.study.schema import (
     STUDY_SCHEMA_VERSION,
     StudySpecError,
+    StudySpecWarning,
+    _WARNING_QUANTOWER_PRIMARY,
     normalize_study_spec,
     validate_study_spec,
 )
@@ -431,8 +434,9 @@ def test_example_dopen_ma_3c_mnq_expands_to_8():
     from thesistester.study.schema import load_study_spec
 
     example = Path(__file__).resolve().parents[2] / "examples" / "studies" / "dopen_ma_3c_mnq.yaml"
-    spec = load_study_spec(example)
-    expansion = expand_study(spec)
+    with pytest.warns(StudySpecWarning, match=re.escape(_WARNING_QUANTOWER_PRIMARY)):
+        spec = load_study_spec(example)
+        expansion = expand_study(spec)
     assert expansion.run_count == 8
     run = expansion.experiment["runs"][0]
     assert run["dataset"]["instrument"] == "MNQ"

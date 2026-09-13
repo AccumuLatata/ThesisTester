@@ -2,6 +2,8 @@
 
 Expansion / execution live in later RS milestones. This module only accepts a
 closed StudySpec and rejects unknown keys and out-of-domain factor tokens.
+Quantower History Exporter + omitted/primary ``ingestion_mode`` is an
+authoring ``StudySpecWarning`` (QI-07-05); the spec is not rewritten.
 """
 
 from __future__ import annotations
@@ -447,7 +449,12 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate a normalized StudySpec. Returns the same mapping on success."""
+    """Validate a normalized StudySpec. Returns the same mapping on success.
+
+    Quantower History Exporter + omitted/primary ``ingestion_mode`` emits
+    ``StudySpecWarning`` (QI-07-05 / QR A-14). The spec is not rewritten to
+    15s-primary (AH §2 item 9).
+    """
     payload = _require_mapping(spec, section="StudySpec")
     _unknown_keys(payload, _TOP_LEVEL_KEYS, section="StudySpec")
 
@@ -500,7 +507,8 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
             f"{sorted(STUDY_INGESTION_MODES)!r} when present; got {ingestion_mode!r}"
         )
     format_profile = dataset.get("format_profile")
-    if format_profile == "quantower_history_exporter" and (
+    profile_token = format_profile.strip() if isinstance(format_profile, str) else format_profile
+    if profile_token == "quantower_history_exporter" and (
         ingestion_mode is None or ingestion_mode == "primary"
     ):
         warnings.warn(

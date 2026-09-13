@@ -1,7 +1,9 @@
 # Research Study Runner — dOpen × MA partners × 3c (1m) on MNQ
 #
 # LEGACY 1m PRIMARY. This example will not match Data-page 15s-primary
-# results on the same dates. Conversion recipe: point path at the 15s
+# results on the same dates. Quantower HE + omitted ingestion_mode is an
+# error-level validate_study_spec warning (QI-07-05); the spec is not
+# rewritten to 15s-primary. Conversion recipe: point path at the 15s
 # Quantower export, set ingestion_mode: 15s_primary_derive_1m and
 # format_profile: quantower_history_exporter, set
 # intrabar_model: subtimeframe_conservative, remove any subtimeframe_path.
