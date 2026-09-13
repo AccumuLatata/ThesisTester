@@ -941,10 +941,11 @@ member and is not hashed.
 under `direction_collision_diagnostic`. Classic Backtest persists the same
 dict after a `return_result` run (`thesistester/backtest_page_helpers.py`)
 and captions it next to the skip table. The key is additive and **not**
-hashed (AH §2 item 8). DA1 is not an admission gate. AH4 decision:
-**clear-only** when it joins `_MANAGED_RESEARCH_KEYS` (QR A-7 / QI-06-03);
-sticky on bundle apply until then (dataset-switch clear is A-8). DA3 reports
-the active
+hashed (AH §2 item 8). DA1 is not an admission gate. AH4 decision **landed
+in A-7 (QI-06-03):** `direction_collision_diagnostic` is **clear-only** in
+`_MANAGED_RESEARCH_KEYS` — leftover values are popped on bundle apply and
+are not restored (no export schema, not hashed). Dataset-switch clear is A-8.
+DA3 reports the active
 `same_bar_opposite_direction` token in `policy`. `skip_both` collisions
 appear as `resolved_none` without a second pass; conflicted candidates stay
 in `ordered_candidates`. The policy is a no-op under `allow_all` and
@@ -1447,8 +1448,11 @@ execution dependents).
 Uploader nonce ≠ leftover research keys: apply also clears
 `otf_filter_summary`, `otf_filter_result`, `backtest_otf_filter`,
 `grid_otf_filter`, `otf_rejected_signals`, `otf_candidate_signals`,
-`otf_accepted_signals`, `setup_config`, `focused_trades`, and
-`focused_equity_curve`. After a dataset-less import,
+`otf_accepted_signals`, `setup_config`, `focused_trades`,
+`focused_equity_curve`, and the A-7 (QI-06-03) residual set
+`otf_validation_matrix`, `otf_validation_config`, `otf_validation_summary`,
+`skipped_signals`, `direction_collision_diagnostic` (clear-only; not hashed).
+After a dataset-less import,
 `bundle_import_omitted_data` skips page-12 and Data-page
 `bootstrap_active_saved_dataset` and blocks Data-page Sample auto-load
 so an active saved dataset (or the sample file) cannot refill `data`.
@@ -1499,7 +1503,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `backtest_intrabar_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R12 schema-versioned both-hit/ambiguity diagnostic |
 | `backtest_exit_management_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R13 schema-versioned BE/trailing parameter snapshot |
 | `backtest_exit_management_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R13 schema-versioned BE/TRAIL counts and adjustment diagnostics |
-| `direction_collision_diagnostic` | Backtest persist after `return_result` (`pages/7_Backtest.py`); also `run_backtest` / `run_experiment` (DA1) | Backtest caption next to skip table | Same-bar opposite-direction pair counts. Not an admission gate. Additive unhashed session key — **not** in `_BACKTEST_META_KEYS` / hashed `session_keys` (AH §2 item 8). AH4: **clear-only** when it joins `_MANAGED_RESEARCH_KEYS` (A-7); sticky on bundle apply until then (dataset-switch clear is A-8). DA3 `policy` reports `legacy` / `skip_both` / `raise`. |
+| `direction_collision_diagnostic` | Backtest persist after `return_result` (`pages/7_Backtest.py`); also `run_backtest` / `run_experiment` (DA1) | Backtest caption next to skip table | Same-bar opposite-direction pair counts. Not an admission gate. Additive unhashed session key — **not** in `_BACKTEST_META_KEYS` / hashed `session_keys` (AH §2 item 8). AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-7 / QI-06-03): leftover values are popped on apply and not restored. Dataset-switch clear is A-8. DA3 `policy` reports `legacy` / `skip_both` / `raise`. |
 | `backtest_same_bar_opposite_direction` | Backtest (`pages/7_Backtest.py`) advanced expander | Backtest `simulate_trades`; save/reset via `execution_defaults` | Widget token `legacy` (default) / `skip_both` / `raise`. Not a hashed bundle key. |
 | DA2 study-index keys (`long_trade_count`, `short_trade_count`, `long_expectancy_r`, `short_expectancy_r`, `long_share`, `directional_integrity`, `collision_pairs`, `collision_resolved_long`) | `execute_study_cell` / `_index_row_from_existing_bundle` / `study report --rebuild-direction` | `results_index.csv` (`STUDY_INDEX_KEYS` only; not R18 / not hashed) | Long/short n and E plus integrity class. Collision copies are live-cell only. |
 | `grid_results` | Grid (`pages/8_Grid_Search.py`) | Validation/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` one row per SL/TP cell |
@@ -1517,7 +1521,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `entry_window_armed` | Time Analysis Promote (SW4) | Backtest / Time Analysis | `bool` — pending re-sim after Promote |
 | `entry_window_promote_provenance` | Time Analysis Promote (SW4) | banners / audit | Promote source, counts, `sample_warning`, status |
 | `grid_entry_window` | Grid Search (SW5) | Validation inherit / artifacts | Normalized window used for last grid run |
-| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window` + `after_entry_cutoff` + DA3 `direction_conflict`) |
+| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window` + `after_entry_cutoff` + DA3 `direction_conflict`). AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-7 / QI-06-03); not hashed / not a bundle export member. |
 | `validation_summary` | Validation (`pages/10_Validation.py`) | Validation display/Report/Bundles (`pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
 | `walk_forward_results` | Validation/R18 API | Validation display, Report, Research Bundles | R14 per-fold `pd.DataFrame` with bar/session boundaries and IS/OOS metrics |
 | `walk_forward_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R14 schema-version-2 summary including retention and stitched OOS status |
@@ -1562,9 +1566,9 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `grid_otf_filter` | Grid (`pages/8_Grid_Search.py`) | Report / Bundles | OTF summary for the single pre-grid filter application |
 | `grid_accepted_signals` | Grid | Grid reuse / audit | Accepted signal set shared by all SL/TP cells |
 | `walk_forward_otf_filter` | Validation WFO | Report / Bundles | Fold-run OTF identity summary (`enabled`, config, hash, `session_timezone`, `eth_start`) |
-| `otf_validation_matrix` | Validation | Report / Bundles | Fixed five-config train/OOS OTF comparison DataFrame |
-| `otf_validation_config` | Validation | Report / Bundles | Matrix train fraction, SL/TP, `session_timezone`, `eth_start` |
-| `otf_validation_summary` | Validation | Report / assistant evidence | Train-selected label + OOS expectancy + diagnostic caveat |
+| `otf_validation_matrix` | Validation | Report / Bundles | Fixed five-config train/OOS OTF comparison DataFrame. AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-7 / QI-06-03); not hashed / not a zip member. |
+| `otf_validation_config` | Validation | Report / Bundles | Matrix train fraction, SL/TP, `session_timezone`, `eth_start`. Clear-only managed (A-7); not hashed. |
+| `otf_validation_summary` | Validation | Report / assistant evidence | Train-selected label + OOS expectancy + diagnostic caveat. Clear-only managed (A-7); not hashed. |
 
 ### OTF composition notes
 

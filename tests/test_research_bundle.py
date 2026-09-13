@@ -12,6 +12,9 @@ from thesistester.reporting import build_otf_filter_metadata
 from thesistester.research_bundle import (
     BUNDLE_IMPORT_OMITTED_DATA_KEY,
     DATA_PAGE_INVALIDATE_SOURCE_KEY,
+    _BACKTEST_META_KEYS,
+    _MANAGED_RESEARCH_KEYS,
+    _VALIDATION_META_KEYS,
     apply_research_bundle_to_session,
     build_research_bundle,
     canonical_bundle_hash,
@@ -986,3 +989,53 @@ def test_ah4_p5_page_12_stays_schema_only():
     assert "canonical_bundle_hash" not in source
     assert "should_skip_dataset_bootstrap" in source
     assert "bootstrap_active_saved_dataset()" in source
+
+
+_QI0603_CLEAR_ONLY_KEYS = (
+    "otf_validation_matrix",
+    "otf_validation_config",
+    "otf_validation_summary",
+    "skipped_signals",
+    "direction_collision_diagnostic",
+)
+
+
+def test_ah4_p6_qi0603_residual_leftovers_cleared_on_zip_without_those_sections():
+    """QI-06-03 / A-7: leftover OTF-validation / skip / DA1 keys do not survive apply."""
+    for key in _QI0603_CLEAR_ONLY_KEYS:
+        assert key in _MANAGED_RESEARCH_KEYS
+        assert key not in _BACKTEST_META_KEYS
+        assert key not in _VALIDATION_META_KEYS
+
+    leftover_trades = pd.DataFrame({"trade_id": [99], "r_multiple": [9.9]})
+    session = {
+        "otf_validation_matrix": pd.DataFrame({"train_expectancy_r": [9.9]}),
+        "otf_validation_config": {"train_fraction": 0.5, "leftover": True},
+        "otf_validation_summary": {"selected_train_config": "leftover"},
+        "skipped_signals": pd.DataFrame({"signal_id": [1], "skip_reason": ["leftover"]}),
+        "direction_collision_diagnostic": {"candidate_pairs": 99, "policy": "legacy"},
+        "trades": leftover_trades,
+        "display_timezone": "UTC",
+    }
+    bundle_state = {
+        "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
+        "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [1.0]}),
+        "trade_summary": {"trade_count": 1},
+    }
+    with_leftovers = {
+        **bundle_state,
+        "otf_validation_matrix": session["otf_validation_matrix"],
+        "otf_validation_config": session["otf_validation_config"],
+        "otf_validation_summary": session["otf_validation_summary"],
+        "skipped_signals": session["skipped_signals"],
+        "direction_collision_diagnostic": session["direction_collision_diagnostic"],
+    }
+    assert canonical_bundle_hash(build_research_bundle(with_leftovers)) == canonical_bundle_hash(
+        build_research_bundle(bundle_state)
+    )
+
+    apply_research_bundle_to_session(load_research_bundle(build_research_bundle(bundle_state)), session)
+    for key in _QI0603_CLEAR_ONLY_KEYS:
+        assert key not in session, f"{key} leftover survived apply"
+    assert session["trades"]["trade_id"].tolist() == [1]
+    assert session["display_timezone"] == "UTC"

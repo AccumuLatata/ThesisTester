@@ -175,6 +175,13 @@ _MANAGED_RESEARCH_KEYS = {
     "setup_config",
     "focused_trades",
     "focused_equity_curve",
+    # QI-06-03 / A-7: residual H1 leftovers. Clear-only (no export schema,
+    # not hashed — AH §2 item 8). Absent zip sections stay cleared.
+    "otf_validation_matrix",
+    "otf_validation_config",
+    "otf_validation_summary",
+    "skipped_signals",
+    "direction_collision_diagnostic",
     "equity_curve",
     "grid_results",
     "best_grid_result",
