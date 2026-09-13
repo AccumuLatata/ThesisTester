@@ -340,7 +340,8 @@ if run_wfo:
             help=(
                 "Reject withholds stitched equity when OOS windows overlap. "
                 "`aggregate_test_total_r` is a fold-sum of `test_total_r` and can "
-                "double-count overlapping OOS trades. first/last dedupe the stitch only."
+                "double-count overlapping OOS trades. first/last assign overlapping "
+                "stitch trades to one fold; they do not change the fold-sum."
             ),
         )
         run_matrix = fold_mode == "sessions" and st.toggle(
