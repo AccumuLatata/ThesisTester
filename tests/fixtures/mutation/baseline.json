@@ -1,0 +1,261 @@
+{
+  "gate": {
+    "backtest_adjusted_pct": 100.0,
+    "minimum_pct": 70.0,
+    "target_pct": 80.0,
+    "walk_forward_adjusted_pct": 100.0
+  },
+  "modules": {
+    "thesistester/analytics/walk_forward.py": {
+      "adjusted_pct": 100.0,
+      "killed": 12,
+      "raw_pct": 100.0,
+      "sites": [
+        {
+          "excluded": false,
+          "index": 0,
+          "killed": true,
+          "line": "if otf_history_policy == \"fold_local\":",
+          "lineno": 89,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 1,
+          "killed": true,
+          "line": "executable_entry_ownership=fold_mode == \"sessions\",",
+          "lineno": 612,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 2,
+          "killed": true,
+          "line": "executable_entry_ownership=fold_mode == \"sessions\",",
+          "lineno": 619,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 3,
+          "killed": true,
+          "line": "if fold_mode == \"sessions\":",
+          "lineno": 838,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 4,
+          "killed": true,
+          "line": "if train_expectancy > 1e-12:",
+          "lineno": 857,
+          "op": ">-><",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 5,
+          "killed": true,
+          "line": "if overlap_exists and overlap_policy == \"reject\":",
+          "lineno": 886,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 6,
+          "killed": true,
+          "line": "if not (overlap_exists and overlap_policy == \"reject\"):",
+          "lineno": 920,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 7,
+          "killed": true,
+          "line": "if otf_history_policy == \"causal_prefix\":",
+          "lineno": 91,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 8,
+          "killed": true,
+          "line": "if fold_mode == \"bars\":",
+          "lineno": 542,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 9,
+          "killed": true,
+          "line": "if train_bars <= 0:",
+          "lineno": 543,
+          "op": "<=->>=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 10,
+          "killed": true,
+          "line": "if test_bars <= 0:",
+          "lineno": 545,
+          "op": "<=->>=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 11,
+          "killed": true,
+          "line": "if step <= 0:",
+          "lineno": 548,
+          "op": "<=->>=",
+          "reason": "failed"
+        }
+      ],
+      "sites_excluded": 0,
+      "sites_raw": 12,
+      "sites_scored": 12,
+      "survived": 0,
+      "tests": [
+        "tests/test_walk_forward.py",
+        "tests/test_otf_integration.py"
+      ]
+    },
+    "thesistester/engine/backtest.py": {
+      "adjusted_pct": 100.0,
+      "killed": 12,
+      "raw_pct": 100.0,
+      "sites": [
+        {
+          "excluded": false,
+          "index": 0,
+          "killed": true,
+          "line": "\"same_bar_both_hit_pct\": (float(both_hit_count / denominator) if denominator > 0 else 0.0),",
+          "lineno": 185,
+          "op": ">-><",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 1,
+          "killed": true,
+          "line": "and entry_model == \"next_bar_open\"",
+          "lineno": 1069,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 2,
+          "killed": true,
+          "line": "elif intrabar_model == \"path_open_proximity\":",
+          "lineno": 1127,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 3,
+          "killed": true,
+          "line": "entry_model == \"next_bar_open\" and b >= entry_bar_index",
+          "lineno": 1155,
+          "op": "==->!=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 4,
+          "killed": true,
+          "line": "entry_model == \"next_bar_open\" and b >= entry_bar_index",
+          "lineno": 1155,
+          "op": ">=-><=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 5,
+          "killed": true,
+          "line": "float(trades_with_exit_mgmt_count / trade_count) if trade_count > 0 else 0.0",
+          "lineno": 221,
+          "op": ">-><",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 6,
+          "killed": true,
+          "line": "float(stop_adjustment_count / trade_count) if trade_count > 0 else 0.0",
+          "lineno": 227,
+          "op": ">-><",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 7,
+          "killed": true,
+          "line": "pair_keys = {key for key, directions in groups.items() if {\"long\", \"short\"} <= directions}",
+          "lineno": 276,
+          "op": "<=->>=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 8,
+          "killed": true,
+          "line": "float(accepted_from_pairs / trade_count) if trade_count > 0 else 0.0",
+          "lineno": 300,
+          "op": ">-><",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 9,
+          "killed": true,
+          "line": "if stop_loss_ticks <= 0:",
+          "lineno": 609,
+          "op": "<=->>=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 10,
+          "killed": true,
+          "line": "if tick_size <= 0:",
+          "lineno": 611,
+          "op": "<=->>=",
+          "reason": "failed"
+        },
+        {
+          "excluded": false,
+          "index": 11,
+          "killed": true,
+          "line": "if point_value <= 0:",
+          "lineno": 613,
+          "op": "<=->>=",
+          "reason": "failed"
+        }
+      ],
+      "sites_excluded": 0,
+      "sites_raw": 12,
+      "sites_scored": 12,
+      "survived": 0,
+      "tests": [
+        "tests/test_phase5_backtest.py",
+        "tests/test_ah1_session_flatten.py",
+        "tests/test_golden_master.py"
+      ]
+    }
+  },
+  "recipe": "QI-11 \u00a72.2 comparison-swap sample (B-4 / QI-11-04)",
+  "recorded_at_utc": "2026-09-13T20:15:57.325180+00:00",
+  "site_limit": 12,
+  "timeout_seconds": 180
+}

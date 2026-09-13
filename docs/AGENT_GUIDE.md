@@ -560,6 +560,16 @@ Every request must first parse as an `AssistantRequest`, then pass
   then hits the G-1 matrix). Do not land a bump inside a product PR.
   App/dev install is `pip install -e .` / `pip install -e ".[dev]"` against
   that lock (G-3); `pytest` lives in the `dev` extra only.
+- **Mutation baseline (B-4 / QI-11-04).** Own-file comparison-swap sample on
+  `engine/backtest.py` and `analytics/walk_forward.py` (QI-11 §2.2 / §10).
+  Recipe: `python -m tests.fixtures.mutation.mutate_sample`. Committed
+  baseline: `tests/fixtures/mutation/baseline.json`. Isolation: scratch
+  package + `--import-mode=importlib` from a neutral cwd. The walk-forward
+  sample **keeps** `tests/test_otf_integration.py` (`fold_local` already
+  lives there). Gate for C-14 / C-17 / C-19: ≥ 70 % own-file killed
+  (target 80 %). B-4 recorded adjusted rates: `backtest.py` 100 % and
+  `walk_forward.py` 100 % (12/12). Timeouts count as killed. This is **not** a
+  required CI cell. Do not add `[tool.mutmut]` here — QI-12 owns packaging.
 
 ## Regression-safety gates in CI
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request.
