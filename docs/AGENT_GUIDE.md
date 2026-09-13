@@ -581,8 +581,9 @@ Every request must first parse as an `AssistantRequest`, then pass
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:
-  - `thesistester/__main__.py` — `if __name__` guard only; CLI tests call
-    `main()` in `test_cli.py`.
+  - `thesistester/__main__.py` — `if __name__` guard only. `cli.main()` is
+    exercised from journal/study CLI tests; `test_cli.py` covers
+    argparse / `run_batch`, not the `__main__` wrapper.
   - `thesistester/assistant/voice/sidecar.py` — subprocess / network
     lifecycle. Voice tests cover bind/redact, not launch or the health loop.
   - `thesistester/assistant/voice/xai_realtime.py` — provider I/O. Evals

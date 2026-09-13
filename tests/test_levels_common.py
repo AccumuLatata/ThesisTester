@@ -26,8 +26,16 @@ def test_require_tz_aware_timestamp_rejects_naive_timestamp():
 
 
 def test_require_tz_aware_timestamp_accepts_aware_timestamp():
-    frame = pd.DataFrame({"timestamp": pd.to_datetime(["2026-05-14 09:30:00"], utc=True)})
-    require_tz_aware_timestamp(frame)
+    utc = pd.DataFrame({"timestamp": pd.to_datetime(["2026-05-14 09:30:00"], utc=True)})
+    require_tz_aware_timestamp(utc)
+    ny = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-05-14 09:30:00"]).tz_localize(
+                "America/New_York"
+            )
+        }
+    )
+    require_tz_aware_timestamp(ny)
 
 
 @pytest.mark.parametrize(
@@ -37,6 +45,7 @@ def test_require_tz_aware_timestamp_accepts_aware_timestamp():
         ("30 min", "30min"),
         (pd.Timedelta(hours=2), "2h"),
         (pd.Timedelta(hours=1), "1h"),
+        (pd.Timedelta(minutes=60), "1h"),
         (pd.Timedelta(minutes=30), "30min"),
         (pd.Timedelta(minutes=90), "90min"),
     ],

@@ -105,6 +105,8 @@ def test_load_journal_rules_rejects_bad_path_and_type(tmp_path: Path):
         load_journal_rules(bad_suffix)
     with pytest.raises(JournalIngestError, match="path, mapping, or sequence"):
         load_journal_rules(1)  # type: ignore[arg-type]
+    with pytest.raises(JournalIngestError, match="list or mapping"):
+        load_journal_rules({"rules": "bad"})
 
 
 @pytest.mark.parametrize(
@@ -122,11 +124,17 @@ def test_load_journal_rules_rejects_bad_path_and_type(tmp_path: Path):
         ({"name": "x", "declared_on": "2026-05-01", "trade_window_ny": "0930"}, "HH:MM-HH:MM"),
         ({"name": "x", "declared_on": "2026-05-01", "trade_window_ny": "9-10"}, "HH:MM"),
         ({"name": "x", "declared_on": "not-a-date"}, "invalid declared_on"),
+        ({"name": "x"}, "declared_on is required"),
     ],
 )
 def test_parse_journal_rule_validation_matrix(raw, match):
     with pytest.raises((JournalIngestError, ValueError), match=match):
         parse_journal_rule(raw)
+
+
+def test_parse_journal_rule_rejects_non_mapping():
+    with pytest.raises(JournalIngestError, match="must be a mapping"):
+        parse_journal_rule("not-a-rule")  # type: ignore[arg-type]
 
 
 def test_parse_journal_rule_window_and_optional_fields():
@@ -148,26 +156,56 @@ def test_parse_journal_rule_window_and_optional_fields():
 
 
 def test_apply_journal_rules_overnight_window_keeps_late_session_only():
+    """Overnight ``HH:MM-HH:MM`` is ``clock >= start or clock < end`` (end exclusive).
+
+    Distinct ``net_ticks`` lock *which* trades are kept. A count-only assert
+    would stay green if the wrap were inverted. Default ``exit_at`` is after
+    each entry so the fixture is a valid closed trade.
+    """
     rule = JournalRule(
         name="overnight",
         declared_on=date(2026, 5, 1),
         trade_window_ny=(time(22, 0), time(2, 0)),
     )
-    inside = _trade(
-        trade_id="jt:in:1",
-        entry="2026-05-15T02:30:00",  # 22:30 EDT
+    start_inclusive = _trade(
+        trade_id="jt:start:1",
+        entry="2026-05-15T02:00:00",  # 22:00 EDT
+        exit_at="2026-05-15T02:01:00",
         session=date(2026, 5, 14),
+        net_ticks=7.0,
     )
-    outside = _trade(
-        trade_id="jt:out:1",
+    wrap_morning = _trade(
+        trade_id="jt:morning:1",
+        entry="2026-05-15T05:00:00",  # 01:00 EDT — wrap side
+        exit_at="2026-05-15T05:01:00",
+        session=date(2026, 5, 14),
+        net_ticks=5.0,
+    )
+    midday = _trade(
+        trade_id="jt:mid:1",
         entry="2026-05-14T16:00:00",  # 12:00 EDT
+        exit_at="2026-05-14T16:01:00",
         session=date(2026, 5, 14),
+        net_ticks=3.0,
     )
-    rows = apply_journal_rules(pd.DataFrame([inside, outside]), [rule])
+    end_exclusive = _trade(
+        trade_id="jt:end:1",
+        entry="2026-05-15T06:00:00",  # 02:00 EDT
+        exit_at="2026-05-15T06:01:00",
+        session=date(2026, 5, 14),
+        net_ticks=11.0,
+    )
+    rows = apply_journal_rules(
+        pd.DataFrame([start_inclusive, wrap_morning, midday, end_exclusive]),
+        [rule],
+    )
     forward = next(row for row in rows if row["split"] == RULE_SPLIT_FORWARD)
-    assert forward["n_total"] == 2
-    assert forward["n_kept"] == 1
-    assert forward["trades_removed"] == 1
+    assert forward["n_total"] == 4
+    assert forward["n_kept"] == 2
+    assert forward["trades_removed"] == 2
+    # 7 + 5 kept; inverted wrap would keep 3+11 or drop the 01:00 side.
+    assert forward["rule_net_ticks"] == pytest.approx(12.0)
+    assert forward["baseline_net_ticks"] == pytest.approx(26.0)
 
 
 def test_apply_journal_rules_guards_and_missing_recon_status():

@@ -87,6 +87,11 @@ def test_load_live_declarations_rejects_bad_payloads(tmp_path: Path):
     with pytest.raises(JournalIngestError, match="missing live_since"):
         load_live_declarations(no_since)
 
+    not_map = tmp_path / "notmap.yaml"
+    not_map.write_text(yaml.safe_dump(["just-a-string"]), encoding="utf-8")
+    with pytest.raises(JournalIngestError, match="must be a mapping"):
+        load_live_declarations(not_map)
+
 
 def test_build_forward_ledger_empty_and_live_since_filter():
     assert build_forward_ledger(None, live_since=None, cell_expectancy_ticks=1.0) == []
@@ -115,6 +120,12 @@ def test_build_forward_ledger_counts_adherence_and_skips_null_live_net():
                 "match_class": MATCH_EXECUTED_CELL,
                 "side": MATCH_SIDE_JOURNAL,
                 "net_ticks": 4.0,
+            },
+            {
+                "session_date": "2026-05-14",
+                "match_class": MATCH_EXECUTED_CELL,
+                "side": MATCH_SIDE_JOURNAL,
+                "net_ticks": 8.0,
             },
             {
                 "session_date": "2026-05-14",
@@ -164,21 +175,40 @@ def test_build_forward_ledger_counts_adherence_and_skips_null_live_net():
     assert len(rows) == 2
     first, second = rows
     assert first["session_date"] == "2026-05-14"
-    assert first["executed_cell"] == 2
+    assert first["executed_cell"] == 3
     assert first["systematic_unfilled"] == 1
     assert first["near_level"] == 1
     assert first["discretionary_only"] == 1
     assert first["product_mismatch"] == 1
-    assert first["adherence"] == pytest.approx(2 / 3)
-    assert first["live_net_ticks"] == 4.0
-    assert first["live_expectancy_ticks"] == 4.0
+    assert first["systematic_signals"] == 5
+    assert first["adherence"] == pytest.approx(3 / 4)
+    # Two live nets (4 and 8); null live net skipped. Sum ≠ mean.
+    assert first["live_net_ticks"] == 12.0
+    assert first["live_expectancy_ticks"] == pytest.approx(6.0)
     assert first["cell_expectancy_ticks"] == 3.5
-    assert first["cumulative_n"] == 2
-    assert first["cumulative_live_expectancy_ticks"] == 4.0
+    assert first["cumulative_n"] == 3
+    assert first["cumulative_live_expectancy_ticks"] == pytest.approx(6.0)
 
     assert second["session_date"] == "2026-05-15"
     assert second["executed_cell"] == 1
     assert second["adherence"] == 1.0
-    assert second["cumulative_n"] == 3
-    assert second["cumulative_live_expectancy_ticks"] == pytest.approx(5.0)
+    assert second["live_net_ticks"] == 6.0
+    assert second["live_expectancy_ticks"] == 6.0
+    assert second["cumulative_n"] == 4
+    assert second["cumulative_live_expectancy_ticks"] == pytest.approx(6.0)
     assert second["systematic_signals"] == 1
+
+
+def test_build_forward_ledger_rejects_invalid_session_date():
+    matches = pd.DataFrame(
+        [
+            {
+                "session_date": "not-a-date",
+                "match_class": MATCH_EXECUTED_CELL,
+                "side": MATCH_SIDE_JOURNAL,
+                "net_ticks": 1.0,
+            }
+        ]
+    )
+    with pytest.raises(JournalIngestError, match="invalid session_date"):
+        build_forward_ledger(matches, live_since=None, cell_expectancy_ticks=1.0)
