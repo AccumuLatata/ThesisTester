@@ -219,8 +219,8 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   POC are tick Last×Volume and refuse without ticks. 70% value area; product day/week/month bins are 4/8/10 (desk preference).
 - **Phase 4 (confluence detection, naked levels, signal generation):** tick-based
   confluence zone detection (`detect_confluence_zones`), naked/untested level flags
-  (`flag_naked_levels`), and five trigger types — `touch`, `reject`, `break`, `reclaim`,
-  `3c` — exposed via a new **Signals** page (`pages/6_Signals.py`). Trigger timeframe
+  (`flag_naked_levels`), and seven trigger types — `touch`, `reject`, `break`, `reclaim`,
+  `3c`, `fade`, `continuation` — exposed via a new **Signals** page (`pages/6_Signals.py`). Trigger timeframe
   (`base`, `1min`, `5min`, `15min`) applies to all triggers including `3c`, defaulting
   to `base` for backward compatibility.
   For non-base simple triggers (`touch`, `reject`, `break`, `reclaim`), `bar_index`/`timestamp`

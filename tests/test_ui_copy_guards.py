@@ -110,3 +110,14 @@ def test_assistant_page_is_discuss_first_without_duplicate_nav_strip():
     assert "Debug: raw JSON & conversation audit" in text
     assert "Assistant chat" in text
     assert "Discuss results" in text
+
+
+def test_readme_phase4_trigger_list_covers_valid_triggers():
+    """QI-13-02 / QR F-2: Help-allowlisted README lists every VALID_TRIGGERS token."""
+    from thesistester.engine.signals import VALID_TRIGGERS
+
+    readme = _read(REPO_ROOT / "README.md")
+    assert "five trigger types" not in readme
+    assert "seven trigger types" in readme
+    missing = sorted(token for token in VALID_TRIGGERS if f"`{token}`" not in readme)
+    assert missing == [], f"README Phase 4 omitted VALID_TRIGGERS {missing}"
