@@ -709,6 +709,18 @@ When OTF is enabled in walk-forward:
 - Run `pytest -q tests/test_noise.py tests/test_api.py tests/test_golden_master.py`
   after R16 changes.
 
+## Locked composer forks (H7 / H10 / H15)
+
+Disclosure only — do not invert these forks (A-22 / F-6). Lock-the-fork
+tests are B-1 (H7/H15) and B-2 (H10/H11); they land in their own PRs.
+
+| Fork | Classic UI | `thesistester.api` / CLI / Study / Assistant | Lock tests |
+|---|---|---|---|
+| H7 cutoff without flatten | Backtest/Grid force `no_new_entries_after=None` when flatten is off | YAML cutoff still applies (`after_entry_cutoff`) | B-1 |
+| H15 OTF / Admit TZ | Backtest: Data-page `exchange_timezone` or instrument TZ | always `inst.exchange_tz` | B-1 |
+| H10 fatal OHLCV | Legacy 1m primary installs + warns | `load_dataset` raises `ValueError` | B-2 |
+| H11 mixed offsets | raw reject | raw reject (do not UTC-normalize) | B-2 |
+
 ## R17 ingestion research safety
 
 - Keep `dataset.format_profile` explicit in API/CLI specifications; canonical

@@ -121,6 +121,12 @@ Retention/ops for the existing levels/data cache land in
 `thesistester/persistence/execution_artifacts.py` (inspect/evict/rebind) and
 must never auto-delete user snapshots, bundles, or thesis records.
 
+## DEFAULT merge (H4 / QI-14-04)
+
+Omitted levels-family keys still merge product DEFAULT (`omit` ⇒ on).
+`cai_levels_config()` is an explicit fixture override, not a flip of that
+merge. Do not treat a missing key as disabled.
+
 ## Non-goals of CAI-0
 
 - No production cache read/write.

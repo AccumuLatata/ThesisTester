@@ -403,6 +403,18 @@ with st.sidebar:
     effective_no_new_entries_after = (
         (no_new_entries_after.strip() or None) if flat_by_session_close else None
     )
+    st.caption(
+        "Locked composer fork: this page and Grid apply `no_new_entries_after` "
+        "only when Flat by session close is on (disabled widget is forced None). "
+        "`api.run_backtest` still applies a YAML cutoff when flatten is off "
+        "(skip `after_entry_cutoff`)."
+    )
+    st.caption(
+        "Locked composer fork: OTF and Admit clocks here use Data-page "
+        "`exchange_timezone` (not this Session timezone widget) or the "
+        "instrument exchange TZ. `api.run_backtest` always passes the "
+        "instrument exchange TZ for OTF and Admit."
+    )
 
     st.subheader("Entry window (Admit)")
     st.caption(

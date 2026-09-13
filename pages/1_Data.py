@@ -1738,6 +1738,12 @@ if source == "Upload CSV":
         ),
         on_change=_on_ingestion_mode_change,
     )
+    st.caption(
+        "Locked composer fork: legacy one-minute primary still installs the "
+        "frame when validation reports fatal OHLCV codes (Loaded, then warning). "
+        "`api.load_dataset` rejects those same codes. 15s-primary parent stays "
+        "fail-closed."
+    )
 else:
     # Sample data remains the legacy one-minute fixture path.
     # Do not write data_ingestion_mode_selector here — Source defaults to

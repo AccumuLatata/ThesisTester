@@ -83,6 +83,15 @@ This engine is for **research screening**, not proof of a durable edge.
   15-second export as raw bars. Legacy one-minute primary + optional
   dual-upload remains available as an advanced path; omitting
   `dataset.ingestion_mode` in API/CLI keeps the primary contract.
+- **H10 (locked):** Data-page legacy one-minute primary still installs a frame
+  that reports fatal OHLCV codes (success, then warning). `api.load_dataset` /
+  CLI / Study / Assistant raise `ValueError` on the same codes. 15s-primary
+  parent validation is fail-closed on both composers. Store reload does not
+  re-run those fatals.
+- **H11 (parked):** mixed-offset timestamps fail raw. Do not UTC-normalize or
+  retype the reject.
+- **H9 (locked):** `compute_dataset_id` / `DataIdentity.dataset_id` omit
+  `ingestion_mode`. Binding / artifact keys include mode.
 - Derived one-minute volume is the sum of retained 15-second volumes. That
   volume, and therefore VWAP/profile levels computed from it, can differ from
   a separately exported vendor one-minute file even when timestamps overlap.
@@ -161,6 +170,16 @@ This engine is for **research screening**, not proof of a durable edge.
   - After-close ETH on that same calendar date (entry local time after the configured close) is a non-fill. With skip capture on (`return_result` / `return_skipped_signals`) the skip reason is `empty_session_close_cap`. Default `return_result=False` stays trades-only.
 - Current session-aware flattening is intended for same-calendar-day RTH-style sessions; overnight ETH session templates are not yet modeled.
 - If session-aware mode is not enabled, users can still unintentionally model overnight holds across sessions.
+- **H7 (locked):** classic Backtest/Grid apply `no_new_entries_after` only when
+  flatten is on (disabled widget → `None`). `api.run_backtest` still applies a
+  YAML cutoff when flatten is off (`after_entry_cutoff`). Classic export nulls
+  cutoff when flatten is off. Do not invert either composer.
+- **H15 (locked):** classic Backtest OTF/Admit clocks use Data-page
+  `exchange_timezone` or the instrument exchange TZ (not the Session
+  timezone widget). `api.run_backtest` always
+  passes `inst.exchange_tz`. Flatten-off still nulls simulate
+  `session_timezone` on both composers. Admission may match on a given
+  fixture; the recorded TZ wiring is the lock.
 
 ### 4) Exposure policy is explicit and configurable
 - `simulate_trades(...)` supports `exposure_policy` with:
@@ -363,7 +382,11 @@ This engine is for **research screening**, not proof of a durable edge.
   only when the column exists (15s-only / no-tick frames drop it). Do not add
   `pdVAH` / `pdVAL`. `VWAP_rolling_1h` is opt-in
   via `vwap_windows`; product defaults remain `30min` / `4h`. Assistant
-  confluence options use that closed set (DEFAULT merge, plus live / selected);
+  confluence options use that closed set (DEFAULT merge, plus live / selected).
+  **H4 (locked):** three levels planes remain (page widgets /
+  `normalize_levels_config` defaults / kwargs). Omitting a family key means
+  on; do not collapse the planes. CAI recipes that omit keys still merge
+  product DEFAULT.
   widget-only MA timeframes (`15min` / `1h` / `4h`) are not implied tokens and
   do not raise. Developing `dHigh` / `RTH_High` / `dVAH`, rolling VAH/VAL, IB,
   `OR_Mid`, and `pVWAP` are known catalog absences (not computed), not StudySpec

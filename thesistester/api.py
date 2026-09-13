@@ -1469,7 +1469,12 @@ def load_dataset(
     exchange_timezone: str | None = None,
     format_profile: str = "canonical",
 ) -> pd.DataFrame:
-    """Load an explicit vendor profile into canonical, session-tagged OHLCV."""
+    """Load an explicit vendor profile into canonical, session-tagged OHLCV.
+
+    Fatal OHLCV codes raise ``ValueError``. The Data-page legacy one-minute
+    primary path still installs the frame and warns (H10 locked fork).
+    15s-primary parent validation stays fail-closed on both composers.
+    """
     inst = _instrument(instrument)
     target_timezone = exchange_timezone or inst.exchange_tz
     data = load_ohlcv(
@@ -1866,7 +1871,15 @@ def run_backtest(
     parent_interval: pd.Timedelta | str | None = None,
     sub_interval: pd.Timedelta | str | None = None,
 ) -> BacktestResult:
-    """Run the UI backtest composition, including the shared OTF pre-filter."""
+    """Run the UI backtest composition, including the shared OTF pre-filter.
+
+    ``no_new_entries_after`` is applied even when ``flat_by_session_close`` is
+    off (H7 locked fork; classic UI/Grid force the cutoff to None). OTF and
+    Admit clocks always use ``inst.exchange_tz`` (H15 locked fork; classic
+    Backtest uses Data-page ``exchange_timezone`` or the instrument TZ, not
+    the Session timezone widget). Flatten-off still nulls simulate
+    ``session_timezone`` on both composers.
+    """
     inst = _instrument(instrument)
     settings = _merge_known(_BACKTEST_DEFAULTS, config, section="backtest")
     session_timezone = settings["session_timezone"] or inst.exchange_tz

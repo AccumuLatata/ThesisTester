@@ -182,9 +182,13 @@ page-local — do not `from viewer import` those names. Studies-scoped keys:
 
 - `normalize_levels_config(config, *, instrument)` — product defaults, instrument
   binding (inbound `instrument` keys are ignored; the parameter wins),
-  unknown-key rejection, and sorted unordered list fields; and
+  unknown-key rejection, and sorted unordered list fields. **H4 locked:** three
+  planes (page widgets / these defaults / kwargs). Omit a family key ⇒ on;
+  CAI recipes merge product DEFAULT when a key is missing.
 - frozen `DataIdentity` / `LevelsIdentity` / `ExperimentIdentity` constructors
   used by the headless API, CLI, classic page state, and bundle restore.
+  **H9 locked:** `compute_dataset_id` / `DataIdentity.dataset_id` omit
+  `ingestion_mode`. `source_binding_key` / artifact bindings include mode.
 
 `api.compute_levels` calls the shared normalizer. `run_experiment` stamps
 additive state fields `data_identity`, `levels_identity`,

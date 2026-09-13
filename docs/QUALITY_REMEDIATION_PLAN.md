@@ -382,12 +382,12 @@ Medium `Verified defect` rows proposed accepted in the same signature: QI-06-03 
 
 | Workstream | Status | PRs planned | Findings owned (open / locked residual / dup) |
 |---|---|---:|---|
-| QR-A Honesty and correctness | In progress (A-1 · A-2 · A-3 · A-4 · A-5 · A-6 · A-7 · A-8 · A-9 · A-10 · A-11 · A-12 · A-13 · A-14 · A-15 · A-16 · A-17 · A-18 · A-19 · A-20 · A-21) | 22 | 22 / 4 / 0 |
+| QR-A Honesty and correctness | In progress (A-1 · A-2 · A-3 · A-4 · A-5 · A-6 · A-7 · A-8 · A-9 · A-10 · A-11 · A-12 · A-13 · A-14 · A-15 · A-16 · A-17 · A-18 · A-19 · A-20 · A-21 · A-22) | 22 | 22 / 4 / 0 |
 | QR-B Safety net | Not started | 19 | 19 / 0 / 0 |
 | QR-C Structural refactors | Not started | 25 | 27 / 0 / 0 |
 | QR-D UI decomposition / state | Not started | 10 | 10 / 0 / 0 |
 | QR-E Application functions | Not started | 11 | 10 / 2 / 0 |
-| QR-F Documentation | In progress (F-1 · F-2 · F-3; F-4 via A-4; F-7 via A-12) | 10 (3 delivered inside QR-A PRs) | 12 / 5 / 3 |
+| QR-F Documentation | In progress (F-1 · F-2 · F-3; F-4 via A-4; F-6 via A-22; F-7 via A-12; F-8 via A-9) | 10 (4 delivered inside QR-A PRs) | 12 / 5 / 3 |
 | QR-G Dependency / supply chain | In progress (G-1 · G-2 · G-3) | 5 | 6 / 0 / 0 |
 | Closed (no workstream) | — | — | 13 wont-fix · 1 locked without residual (QI-07-10) |
 | **Total** | | **102 PR rows, 99 distinct** | **106 / 11 / 3 + 13 wont-fix + QI-07-10 = 134** |
