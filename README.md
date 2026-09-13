@@ -223,7 +223,8 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   `3c`, `fade`, `continuation` — exposed via a new **Signals** page (`pages/6_Signals.py`). Trigger timeframe
   (`base`, `1min`, `5min`, `15min`) applies to all triggers including `3c`, defaulting
   to `base` for backward compatibility.
-  For non-base simple triggers (`touch`, `reject`, `break`, `reclaim`), `bar_index`/`timestamp`
+  For non-base simple triggers (`touch`, `reject`, `break`, `reclaim`, `fade`,
+  `continuation`), `bar_index`/`timestamp`
   remain aligned to the canonical/base bar at trigger-candle end, while `trigger_timestamp`
   stores the trigger-candle completion/actionable time.
   For non-base `3c`, arrival, inside/muted candles, SFP tagging, and reversal confirmation
