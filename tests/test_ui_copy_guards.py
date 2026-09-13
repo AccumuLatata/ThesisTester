@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAGES = REPO_ROOT / "pages"
 APP = REPO_ROOT / "app.py"
+
+# QI-04-02 / QI-05-09 (H5): Policy help must name overlap + empty skip table.
+# AST-only — a file-level `help=` regex false-matches Grid Ranking metric (QI-05-09).
+_ALLOW_ALL_POLICY_HELP_NEEDLES = (
+    "allow_all",
+    "overlapping signals independently",
+    "skip table is empty by design",
+)
+_ALLOW_ALL_POLICY_CAPTION_NEEDLES = (
+    "allow_all",
+    "independent fills",
+    "empty by design",
+)
 
 # Phase 4 bullet through the next top-level Phase 5 bullet (not the later 3c
 # four-rule block, which also names `3c` as a standalone token).
@@ -24,6 +38,117 @@ _README_TRIGGER_LIST_RE = re.compile(
 
 def _read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _is_st_attr_call(node: ast.AST, attr: str) -> bool:
+    """True for ``st.attr(...)`` or ``st.sidebar.attr(...)`` only."""
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return False
+    if node.func.attr != attr:
+        return False
+    value = node.func.value
+    if isinstance(value, ast.Name) and value.id == "st":
+        return True
+    return (
+        isinstance(value, ast.Attribute)
+        and value.attr == "sidebar"
+        and isinstance(value.value, ast.Name)
+        and value.value.id == "st"
+    )
+
+
+def _literal_str(node: ast.AST) -> str | None:
+    try:
+        value = ast.literal_eval(node)
+    except (ValueError, TypeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _call_label(call: ast.Call) -> str | None:
+    if call.args:
+        return _literal_str(call.args[0])
+    return _kw_str(call, "label")
+
+
+def _selectbox_calls(source: str, label: str) -> list[ast.Call]:
+    """All ``st.selectbox`` calls whose label equals ``label`` (QI-4 H5 extract)."""
+    tree = ast.parse(source)
+    found: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not _is_st_attr_call(node, "selectbox"):
+            continue
+        if _call_label(node) == label:
+            found.append(node)
+    return found
+
+
+def _selectbox_call(source: str, label: str) -> ast.Call:
+    """Return the unique ``st.selectbox(label, …)`` call."""
+    found = _selectbox_calls(source, label)
+    if not found:
+        raise AssertionError(f"no st.selectbox({label!r}) in source")
+    if len(found) != 1:
+        raise AssertionError(f"expected exactly one st.selectbox({label!r}), got {len(found)}")
+    return found[0]
+
+
+def _kw_str(call: ast.Call, name: str) -> str | None:
+    for kw in call.keywords:
+        if kw.arg != name:
+            continue
+        value = _literal_str(kw.value)
+        if value is None:
+            raise AssertionError(f"selectbox {name}= is not a string literal")
+        return value
+    return None
+
+
+def _caption_texts(source: str) -> list[str]:
+    """Literal first-arg strings of ``st.caption(...)`` (not ``help=`` / comments)."""
+    tree = ast.parse(source)
+    texts: list[str] = []
+    for node in ast.walk(tree):
+        if not _is_st_attr_call(node, "caption") or not node.args:
+            continue
+        text = _literal_str(node.args[0])
+        if text is not None:
+            texts.append(text)
+    return texts
+
+
+def _assert_allow_all_policy_disclosure(source: str) -> None:
+    """Two-candidate overlap recipe (docs/quality/README.md; QI-4 §3) → copy only.
+
+    Probe observed allow_all N=2 / skips=0 vs single_position N=1 +
+    overlapping_position. This guard locks widget disclosure, not engine fills.
+    Caption needles are AST-bound to ``st.caption`` — a file-level search
+    false-greens when ``help=`` already names overlap (QI-05-09 class).
+    """
+    call = _selectbox_call(source, "Policy")
+    options = ast.literal_eval(call.args[1]) if len(call.args) > 1 else None
+    if options is None:
+        for kw in call.keywords:
+            if kw.arg == "options":
+                options = ast.literal_eval(kw.value)
+                break
+    assert options, "Policy selectbox has no options"
+    assert options[0] == "allow_all", "AH §2.1 default must stay allow_all (index 0)"
+    index_val = None
+    for kw in call.keywords:
+        if kw.arg == "index":
+            index_val = ast.literal_eval(kw.value)
+    assert index_val == 0, "Policy default index must stay 0 (allow_all)"
+    help_text = _kw_str(call, "help")
+    assert help_text, "Policy selectbox must have help= (QI-04-02 / QI-05-09)"
+    missing = [n for n in _ALLOW_ALL_POLICY_HELP_NEEDLES if n not in help_text]
+    assert missing == [], f"Policy help missing {missing}: {help_text!r}"
+    captions = _caption_texts(source)
+    matching = [c for c in captions if all(n in c for n in _ALLOW_ALL_POLICY_CAPTION_NEEDLES)]
+    assert matching, (
+        "Policy st.caption missing H5 needles "
+        f"{list(_ALLOW_ALL_POLICY_CAPTION_NEEDLES)}: {captions!r}"
+    )
 
 
 def _phase4_listed_triggers(readme: str) -> set[str]:
@@ -153,6 +278,93 @@ def test_readme_phase4_trigger_list_covers_valid_triggers():
     assert "**4 rules (long):**" in readme
     assert "Arrival candle must touch or pass through the key level." in readme
     assert "Reversal candle must close above the arrival candle high." in readme
+
+
+def test_backtest_policy_help_discloses_allow_all_overlap():
+    """QI-04-02 / A-1: Backtest Policy help+caption name H5 overlap + empty skips."""
+    _assert_allow_all_policy_disclosure(_read(PAGES / "7_Backtest.py"))
+
+
+def test_grid_policy_help_discloses_allow_all_overlap():
+    """QI-05-09 / A-1: Grid Policy help+caption match Backtest (AST, not file regex)."""
+    _assert_allow_all_policy_disclosure(_read(PAGES / "8_Grid_Search.py"))
+    ranking = _selectbox_call(_read(PAGES / "8_Grid_Search.py"), "Ranking metric")
+    ranking_help = _kw_str(ranking, "help")
+    assert ranking_help is not None
+    leaked = [n for n in _ALLOW_ALL_POLICY_HELP_NEEDLES if n in ranking_help]
+    assert leaked == [], f"Ranking metric help must not carry Policy H5 copy: {leaked}"
+
+
+def test_policy_help_guard_ignores_ranking_help_and_file_needles():
+    """QI-05-09: Ranking ``help=`` / comment needles must not false-green Policy."""
+    fake = (
+        "import streamlit as st\n"
+        "st.selectbox(\n"
+        '    "Policy",\n'
+        '    options=["allow_all", "single_position", "single_direction", "single_setup"],\n'
+        "    index=0,\n"
+        ")\n"
+        "st.selectbox(\n"
+        '    "Ranking metric",\n'
+        '    options=["expectancy_r"],\n'
+        "    index=0,\n"
+        '    help="allow_all overlapping signals independently skip table is empty by design",\n'
+        ")\n"
+        "# allow_all independent fills empty by design\n"
+        'st.caption("`allow_all` independent fills empty by design")\n'
+    )
+    try:
+        _assert_allow_all_policy_disclosure(fake)
+    except AssertionError as exc:
+        assert "help=" in str(exc)
+    else:
+        raise AssertionError("Policy without help= must not pass via Ranking/file needles")
+
+
+def test_policy_caption_guard_requires_st_caption_not_help_text():
+    """Caption needles inside Policy help= must not satisfy the caption assert."""
+    fake = (
+        "import streamlit as st\n"
+        "st.selectbox(\n"
+        '    "Policy",\n'
+        '    options=["allow_all", "single_position", "single_direction", "single_setup"],\n'
+        "    index=0,\n"
+        '    help="Default allow_all counts overlapping signals independently; '
+        'skip table is empty by design independent fills",\n'
+        ")\n"
+    )
+    try:
+        _assert_allow_all_policy_disclosure(fake)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc)
+    else:
+        raise AssertionError("help= caption needles must not false-green st.caption")
+
+
+def test_policy_help_guard_rejects_second_undisclosed_policy_selectbox():
+    """Exactly one Policy widget — a bare second selectbox must not hide behind the first."""
+    fake = (
+        "import streamlit as st\n"
+        "st.selectbox(\n"
+        '    "Policy",\n'
+        '    options=["allow_all", "single_position", "single_direction", "single_setup"],\n'
+        "    index=0,\n"
+        '    help="Default allow_all counts overlapping signals independently; '
+        'skip table is empty by design",\n'
+        ")\n"
+        'st.caption("`allow_all` independent fills empty by design")\n'
+        "st.selectbox(\n"
+        '    "Policy",\n'
+        '    options=["allow_all", "single_position", "single_direction", "single_setup"],\n'
+        "    index=0,\n"
+        ")\n"
+    )
+    try:
+        _assert_allow_all_policy_disclosure(fake)
+    except AssertionError as exc:
+        assert "exactly one" in str(exc)
+    else:
+        raise AssertionError("second Policy selectbox without help must fail uniqueness")
 
 
 def test_readme_phase4_list_parser_ignores_later_token_mentions():
