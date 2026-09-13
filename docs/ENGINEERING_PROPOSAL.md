@@ -156,6 +156,8 @@ The golden-master mechanism (rule 2) is the load-bearing control for the only in
 3. **Regeneration policy.** Golden outputs change only via a dedicated, reviewable PR that includes: the reason, a readable diff (CSV) of golden vs. new, and regression justification. CI blocks PRs that alter golden outputs unless an explicit `GOLDEN_REGEN` label and approval are present. Intentional new behavior always lands behind a new flag; the legacy golden is never silently regenerated.
 4. **Brittleness control.** Keep golden scope minimal (small fixture) so legitimate improvements are not blocked; scope goldens to *legacy-mode* outputs only, per §7.
 
+QR-B **B-3** (QI-11-02) adds additive default-on *branch* families (flatten-on, 3c filled/void `sl_first`, BE/trail, `same_bar_opposite_direction="legacy"`). Those families sit beside the identity gate and must not rewrite `trades_legacy.*` / `legacy_bundle_hash.txt`. The default-on branch table lives in `tests/fixtures/golden/README.md`. The `golden-master regeneration guard` job still watches only the legacy artifact set.
+
 ### 4.2 Per-milestone PR acceptance checklist
 
 Mandatory for every PR touching engine or analytics:

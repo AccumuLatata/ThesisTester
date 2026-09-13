@@ -1,0 +1,2 @@
+signal_id,bar_index,entry_bar_index,trigger,direction,skip_reason
+1,0,1,touch,long,empty_session_close_cap

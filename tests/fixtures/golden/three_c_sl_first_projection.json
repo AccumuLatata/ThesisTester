@@ -1,0 +1,19 @@
+{
+  "accepted_signal_ids": [
+    1
+  ],
+  "exit_reasons": [
+    "EOD"
+  ],
+  "family": "three_c_sl_first",
+  "filled_signal_ids": [
+    1
+  ],
+  "intrabar_model": "sl_first",
+  "theoretical_exit_prices": [
+    101.0
+  ],
+  "void_signal_ids": [
+    2
+  ]
+}

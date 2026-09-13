@@ -1,0 +1,22 @@
+{
+  "accepted_signal_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "candidate_pairs": 3,
+  "directions": [
+    "long",
+    "short",
+    "long",
+    "short",
+    "long",
+    "short"
+  ],
+  "family": "opposite_direction_legacy",
+  "policy": "legacy",
+  "same_bar_opposite_direction": "legacy"
+}
