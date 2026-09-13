@@ -190,6 +190,17 @@ def test_study_expand_cli_writes_artifacts_and_cost_hints(tmp_path: Path, capsys
     captured = capsys.readouterr().out
     assert "run_count=4" in captured
     assert "batteries:" in captured
+    # QI-07-06 / A-15: Replay line carries the AGENT_GUIDE clause.
+    assert "Replay: python -m thesistester run" in captured
+    assert "not study run" in captured
+    assert "run_batch" in captured
+    assert "expand-time file" in captured
+    experiment_text = (out / "experiment.yaml").read_text(encoding="utf-8")
+    assert experiment_text.startswith("# Replay:")
+    assert "not study run" in experiment_text.splitlines()[0]
+    payload = yaml.safe_load(experiment_text)
+    assert payload["schema_version"] == 1
+    assert "runs" in payload
 
 
 def test_study_run_requires_confirm_above_threshold(tmp_path: Path):

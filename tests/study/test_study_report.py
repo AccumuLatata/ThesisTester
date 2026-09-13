@@ -283,6 +283,10 @@ def test_markdown_includes_multiple_testing_honesty(tmp_path: Path):
     assert "multiple-testing" in (study_dir / "study.overview.md").read_text().lower() or (
         "validated edge" in (study_dir / "study.overview.md").read_text()
     )
+    # QI-07-06 / A-15: overview MD carries the AGENT_GUIDE Replay clause.
+    assert "not study run" in result.markdown
+    assert "run_batch" in result.markdown
+    assert "expand-time file" in result.markdown
 
 
 def test_multiple_testing_error_suppresses_best_cell(tmp_path: Path):

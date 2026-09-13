@@ -1,3 +1,4 @@
+# Replay: same dataset bytes when the expand-time file still exists; still run_batch — fail-fast, origin=cli, no index status — not study run
 schema_version: 1
 output_dir: results/studies/pdPOC_golden
 workers: 1

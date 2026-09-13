@@ -26,6 +26,7 @@ import pandas as pd
 import yaml
 
 from thesistester.setup import normalize_otf_filter_config
+from thesistester.study.expand import REPLAY_NOT_STUDY_RUN
 from thesistester.study.ledger import load_ledger
 from thesistester.study.schema import load_study_spec
 
@@ -808,6 +809,10 @@ def render_overview_markdown(
             f"- Cells in overview: **{len(overview)}**; ranked: **{len(ranked)}**; "
             f"low-N: **{len(low_n)}**; unresolved primary: **{len(unresolved)}**; "
             f"failed: **{len(failed)}**"
+        ),
+        (
+            "- Replay of `experiment.yaml` via `python -m thesistester run`: "
+            f"{REPLAY_NOT_STUDY_RUN}."
         ),
         "",
     ]
