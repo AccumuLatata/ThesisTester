@@ -14,6 +14,8 @@ Covers:
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -24,6 +26,7 @@ from thesistester.analytics.otf_validation import (
     _ROW_ID_COL,
     _add_train_ranking,
     _chronological_train_oos_sets,
+    _simulate,
     _train_price_split_bar,
     build_otf_matrix_configs,
     run_otf_validation_matrix,
@@ -389,6 +392,57 @@ def test_zero_trade_metrics_are_none_or_zero():
     for _, row in result.iterrows():
         assert row["train_expectancy_r"] is None
         assert row["oos_expectancy_r"] is None
+
+
+def test_simulate_empty_accepted_stays_empty_frame():
+    """QI-05-12: empty-input → empty trades frame (honest 0 trades)."""
+    from thesistester.engine.backtest import _empty_trades_df
+
+    source = _source_bars(count=30)
+    out = _simulate(source, pd.DataFrame(), TICK, PV, SL_TICKS, TP_TICKS, {})
+    assert out.empty
+    assert list(out.columns) == list(_empty_trades_df().columns)
+
+
+def test_simulate_engine_error_does_not_look_like_zero_trades(monkeypatch):
+    """QI-05-12: a raising simulate_trades must not become a 0-trade matrix row.
+
+    Removes the ``except Exception: return _empty_trades_df()`` swallow
+    (and its ``# pragma: no cover``) only together with this named test.
+    """
+    from thesistester.analytics import otf_validation as ov
+
+    source_text = Path("thesistester/analytics/otf_validation.py").read_text(encoding="utf-8")
+    tree = ast.parse(source_text)
+    simulate_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_simulate"
+    )
+    body = ast.get_source_segment(source_text, simulate_fn)
+    assert body is not None
+    assert "pragma: no cover" not in body
+    assert "except Exception" not in body
+
+    source, sigs = _source_and_signals_for_validation()
+
+    def boom(*_args, **_kwargs):
+        raise ValueError("engine boom")
+
+    monkeypatch.setattr(ov, "simulate_trades", boom)
+
+    with pytest.raises(ValueError, match="engine boom"):
+        run_otf_validation_matrix(
+            source_df=source,
+            candidate_signals=sigs,
+            tick_size=TICK,
+            point_value=PV,
+            stop_loss_ticks=SL_TICKS,
+            take_profit_ticks=TP_TICKS,
+            session_timezone=TZ,
+        )
+    with pytest.raises(ValueError, match="engine boom"):
+        _simulate(source, sigs, TICK, PV, SL_TICKS, TP_TICKS, {})
 
 
 # ---------------------------------------------------------------------------

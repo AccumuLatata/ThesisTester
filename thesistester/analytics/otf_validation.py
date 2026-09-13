@@ -44,8 +44,7 @@ from ..persistence.local_store import compute_otf_config_hash
 _ROW_ID_COL = "_otf_validation_row_id"
 
 #: Keys reserved by ``run_otf_validation_matrix`` / ``simulate_trades``; stripped
-#: from ``execution_kwargs`` so callers cannot trigger duplicate-kwarg failures
-#: that would be swallowed into empty-trade results.
+#: from ``execution_kwargs`` so callers cannot trigger duplicate-kwarg TypeError.
 _RESERVED_EXECUTION_KEYS = frozenset(
     {
         "tick_size",
@@ -240,23 +239,24 @@ def _simulate(
     take_profit_ticks: int | float,
     execution_kwargs: dict[str, Any],
 ) -> pd.DataFrame:
-    """Run ``simulate_trades`` on accepted signals; return empty df on failure."""
+    """Run ``simulate_trades`` on accepted signals.
+
+    Empty accepted input stays an empty trades frame (honest 0 trades).
+    Engine errors propagate (QI-05-12); they must not look like 0 trades.
+    """
     from ..engine.backtest import _empty_trades_df  # type: ignore[attr-defined]
 
     if accepted is None or accepted.empty:
         return _empty_trades_df()
-    try:
-        result = simulate_trades(
-            source_df,
-            accepted,
-            tick_size=tick_size,
-            point_value=point_value,
-            stop_loss_ticks=stop_loss_ticks,
-            take_profit_ticks=take_profit_ticks,
-            **execution_kwargs,
-        )
-    except Exception:  # pragma: no cover — defensive; caller controls inputs
-        return _empty_trades_df()
+    result = simulate_trades(
+        source_df,
+        accepted,
+        tick_size=tick_size,
+        point_value=point_value,
+        stop_loss_ticks=stop_loss_ticks,
+        take_profit_ticks=take_profit_ticks,
+        **execution_kwargs,
+    )
     # simulate_trades can return a tuple when return_skipped_signals=True
     if isinstance(result, tuple):
         return result[0]
@@ -347,8 +347,11 @@ def run_otf_validation_matrix(
     Raises
     ------
     ValueError
-        If ``train_fraction`` is not in ``(0.0, 1.0)``, or if any matrix
-        config fails normalization (should not occur for fixed configs).
+        If ``train_fraction`` is not in ``(0.0, 1.0)``, if any matrix
+        config fails normalization (should not occur for fixed configs),
+        or if ``simulate_trades`` raises a typed engine error (QI-05-12).
+        Empty accepted signals stay an empty trades frame; they are not
+        an error.
 
     Notes
     -----
