@@ -2,8 +2,9 @@
 
 Kept out of ``pages/7_Backtest.py`` so tests can persist a ``return_result``
 diagnostic without importing the Streamlit page. D-3 may grow this module.
-The session key is additive and unhashed (AH §2 item 8). AH4: clear-only when
-it joins ``_MANAGED_RESEARCH_KEYS`` (A-7); sticky on bundle apply until then.
+The session key is additive and unhashed (AH §2 item 8). AH4 decision landed
+in A-7 (QI-06-03): clear-only via ``_MANAGED_RESEARCH_KEYS`` on bundle apply;
+not hashed and not exported. Dataset-switch clear is A-8.
 """
 
 from __future__ import annotations

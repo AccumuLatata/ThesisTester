@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import io
 import json
 import zipfile
@@ -8,10 +9,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from thesistester.reporting import build_otf_filter_metadata
+import thesistester.research_bundle as research_bundle
+from thesistester.reporting import build_otf_filter_metadata, build_research_artifact
 from thesistester.research_bundle import (
     BUNDLE_IMPORT_OMITTED_DATA_KEY,
     DATA_PAGE_INVALIDATE_SOURCE_KEY,
+    _CANONICAL_HASH_EXCLUDED_FILES,
+    _KNOWN_FILES,
+    _MANAGED_RESEARCH_KEYS,
     apply_research_bundle_to_session,
     build_research_bundle,
     canonical_bundle_hash,
@@ -986,3 +991,249 @@ def test_ah4_p5_page_12_stays_schema_only():
     assert "canonical_bundle_hash" not in source
     assert "should_skip_dataset_bootstrap" in source
     assert "bootstrap_active_saved_dataset()" in source
+
+
+_QI0603_CLEAR_ONLY_KEYS = (
+    "otf_validation_matrix",
+    "otf_validation_config",
+    "otf_validation_summary",
+    "skipped_signals",
+    "direction_collision_diagnostic",
+)
+_RESEARCH_BUNDLE_SOURCE = Path("thesistester/research_bundle.py").read_text(encoding="utf-8")
+
+
+def _meta_key_collections() -> dict[str, object]:
+    """Every ``_*_META_KEYS`` tuple/list on the bundle module (H1 parallel lists)."""
+    return {
+        name: getattr(research_bundle, name)
+        for name in dir(research_bundle)
+        if name.endswith("_META_KEYS")
+    }
+
+
+def _json_contains_key(value: object, key: str) -> bool:
+    if isinstance(value, dict):
+        if key in value:
+            return True
+        return any(_json_contains_key(item, key) for item in value.values())
+    if isinstance(value, list):
+        return any(_json_contains_key(item, key) for item in value)
+    return False
+
+
+def _assert_qi0603_not_exported_or_hashed(bundle_bytes: bytes) -> None:
+    """QI-06-03 / A-7: residual keys are not zip members, META keys, or hashed."""
+    assert "display_timezone" not in _MANAGED_RESEARCH_KEYS
+    for key in _QI0603_CLEAR_ONLY_KEYS:
+        assert key in _MANAGED_RESEARCH_KEYS, f"{key} missing from _MANAGED_RESEARCH_KEYS"
+        for name, collection in _meta_key_collections().items():
+            assert key not in collection, f"{key} leaked into {name}"
+        assert key not in _KNOWN_FILES
+        assert f"{key}.json" not in _KNOWN_FILES
+        assert f"{key}.parquet" not in _KNOWN_FILES
+        for filename in _KNOWN_FILES:
+            assert key not in filename, f"{key} leaked into _KNOWN_FILES member {filename}"
+        for filename in _CANONICAL_HASH_EXCLUDED_FILES:
+            assert key not in filename, f"{key} hash-excluded ({filename}) can hide an export"
+        for section, required in research_bundle._SECTION_REQUIRED_FILES.items():
+            assert key not in required, f"{key} leaked into _SECTION_REQUIRED_FILES[{section}]"
+            assert all(key not in filename for filename in required)
+
+    with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as archive:
+        names = archive.namelist()
+        for key in _QI0603_CLEAR_ONLY_KEYS:
+            assert all(key not in name for name in names), f"{key} leaked into zip member names"
+        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        session_keys = manifest.get("session_keys") or []
+        for key in _QI0603_CLEAR_ONLY_KEYS:
+            assert key not in session_keys, f"{key} leaked into hashed manifest session_keys"
+        for name in names:
+            if not name.endswith(".json"):
+                continue
+            payload = json.loads(archive.read(name).decode("utf-8"))
+            for key in _QI0603_CLEAR_ONLY_KEYS:
+                assert not _json_contains_key(payload, key), f"{key} leaked into {name}"
+
+    loaded = load_research_bundle(bundle_bytes)
+    for key in _QI0603_CLEAR_ONLY_KEYS:
+        assert key not in loaded["session_values"], f"{key} restored from zip session_values"
+
+
+def _assert_qi0603_leftovers_cleared(session: dict) -> None:
+    for key in _QI0603_CLEAR_ONLY_KEYS:
+        assert key not in session, f"{key} leftover survived apply"
+    assert session["display_timezone"] == "UTC"
+
+
+def _managed_set_string_literals(source: str) -> set[str]:
+    """String literals in the ``_MANAGED_RESEARCH_KEYS`` set display (AST, not comments)."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(t, ast.Name) and t.id == "_MANAGED_RESEARCH_KEYS" for t in node.targets
+        ):
+            continue
+        if not isinstance(node.value, ast.Set):
+            raise AssertionError("_MANAGED_RESEARCH_KEYS must be a set display")
+        literals = {
+            elt.value
+            for elt in node.value.elts
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+        }
+        return literals
+    raise AssertionError("missing _MANAGED_RESEARCH_KEYS assignment")
+
+
+def _assert_qi0603_managed_set_literals(source: str) -> None:
+    """AST-bind the five residual keys to the managed-set literals.
+
+    File-level / comment needles false-green — A-1/A-6 class.
+    """
+    literals = _managed_set_string_literals(source)
+    missing = [key for key in _QI0603_CLEAR_ONLY_KEYS if key not in literals]
+    assert missing == [], f"_MANAGED_RESEARCH_KEYS set missing literals {missing}"
+    assert "display_timezone" not in literals
+
+
+def _function_def(tree: ast.AST, name: str) -> ast.FunctionDef:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"missing def {name}")
+
+
+def _assert_apply_pops_managed_set(source: str) -> None:
+    """Apply must ``pop`` keys from ``_MANAGED_RESEARCH_KEYS`` (not a comment / other set)."""
+    tree = ast.parse(source)
+    fn = _function_def(tree, "apply_research_bundle_to_session")
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.For):
+            continue
+        if not isinstance(node.iter, ast.Name) or node.iter.id != "_MANAGED_RESEARCH_KEYS":
+            continue
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Call):
+                continue
+            func = child.func
+            if isinstance(func, ast.Attribute) and func.attr == "pop":
+                return
+        raise AssertionError("apply For _MANAGED_RESEARCH_KEYS must pop each key")
+    raise AssertionError("apply_research_bundle_to_session must iterate _MANAGED_RESEARCH_KEYS")
+
+
+def test_ah4_p6_qi0603_residual_leftovers_cleared_on_zip_without_those_sections():
+    """QI-06-03 / A-7: leftover OTF-validation / skip / DA1 keys do not survive apply."""
+    leftover_trades = pd.DataFrame({"trade_id": [99], "r_multiple": [9.9]})
+    session = {
+        "otf_validation_matrix": pd.DataFrame({"train_expectancy_r": [9.9]}),
+        "otf_validation_config": {"train_fraction": 0.5, "leftover": True},
+        "otf_validation_summary": {"selected_train_config": "leftover"},
+        "skipped_signals": pd.DataFrame({"signal_id": [1], "skip_reason": ["leftover"]}),
+        "direction_collision_diagnostic": {"candidate_pairs": 99, "policy": "legacy"},
+        "trades": leftover_trades,
+        "display_timezone": "UTC",
+    }
+    bundle_state = {
+        "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
+        "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [1.0]}),
+        "trade_summary": {"trade_count": 1},
+    }
+    with_leftovers = {
+        **bundle_state,
+        "otf_validation_matrix": session["otf_validation_matrix"],
+        "otf_validation_config": session["otf_validation_config"],
+        "otf_validation_summary": session["otf_validation_summary"],
+        "skipped_signals": session["skipped_signals"],
+        "direction_collision_diagnostic": session["direction_collision_diagnostic"],
+    }
+    leftover_bundle = build_research_bundle(with_leftovers)
+    baseline_bundle = build_research_bundle(bundle_state)
+    assert canonical_bundle_hash(leftover_bundle) == canonical_bundle_hash(baseline_bundle)
+    _assert_qi0603_not_exported_or_hashed(leftover_bundle)
+    _assert_qi0603_not_exported_or_hashed(baseline_bundle)
+
+    pre_artifact = build_research_artifact(session)
+    pre_matrix = (pre_artifact.get("tables") or {}).get("otf_validation_matrix") or []
+    assert pre_matrix, "leftover probe is vacuous unless leftover matrix is on the report surface"
+    assert any(isinstance(row, dict) and row.get("train_expectancy_r") == 9.9 for row in pre_matrix)
+    assert (pre_artifact.get("otf_validation") or {}).get("available") is True
+
+    apply_research_bundle_to_session(load_research_bundle(baseline_bundle), session)
+    _assert_qi0603_leftovers_cleared(session)
+    assert session["trades"]["trade_id"].tolist() == [1]
+
+    post_artifact = build_research_artifact(session)
+    post_matrix = (post_artifact.get("tables") or {}).get("otf_validation_matrix") or []
+    assert post_matrix == []
+    assert "otf_validation" not in post_artifact
+
+
+def test_ah4_p6_managed_set_literals_and_apply_pop_are_ast_bound():
+    """QI-06-03 / A-7: comment needles must not satisfy managed-set membership or apply pop."""
+    _assert_qi0603_managed_set_literals(_RESEARCH_BUNDLE_SOURCE)
+    _assert_apply_pops_managed_set(_RESEARCH_BUNDLE_SOURCE)
+
+
+def test_ah4_p6_managed_set_guard_ignores_comment_needles():
+    """File-level / comment residual-key needles must not bind the managed set."""
+    fake = (
+        "_MANAGED_RESEARCH_KEYS = {\n"
+        '    "data",\n'
+        '    "trades",\n'
+        "    # otf_validation_matrix otf_validation_config otf_validation_summary\n"
+        "    # skipped_signals direction_collision_diagnostic\n"
+        "}\n"
+    )
+    try:
+        _assert_qi0603_managed_set_literals(fake)
+    except AssertionError as exc:
+        assert "missing literals" in str(exc)
+    else:
+        raise AssertionError("comment leftover keys must not satisfy _MANAGED_RESEARCH_KEYS")
+
+
+def test_ah4_p6_apply_guard_requires_pop_of_managed_set():
+    """Iterating another set, or iterating without pop, must fail closed."""
+    header = "def apply_research_bundle_to_session(bundle, session_state):\n    cleared_keys = []\n"
+    other_set = header + (
+        "    # _MANAGED_RESEARCH_KEYS\n"
+        '    for key in ("data", "trades"):\n'
+        "        session_state.pop(key, None)\n"
+    )
+    try:
+        _assert_apply_pops_managed_set(other_set)
+    except AssertionError as exc:
+        assert "iterate _MANAGED_RESEARCH_KEYS" in str(exc)
+    else:
+        raise AssertionError("apply pop of a different set must not pass")
+
+    no_pop = header + ("    for key in _MANAGED_RESEARCH_KEYS:\n        cleared_keys.append(key)\n")
+    try:
+        _assert_apply_pops_managed_set(no_pop)
+    except AssertionError as exc:
+        assert "must pop" in str(exc)
+    else:
+        raise AssertionError("apply For without pop must not pass")
+
+
+def test_ah4_p6_export_probe_fails_closed_when_keys_enter_session_keys():
+    """Hash-equal export that lists a residual key in session_keys must fail closed."""
+    baseline = build_research_bundle(
+        {
+            "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
+            "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [1.0]}),
+            "trade_summary": {"trade_count": 1},
+        }
+    )
+    manifest = _manifest(baseline)
+    manifest["session_keys"] = sorted({*manifest.get("session_keys", []), "otf_validation_matrix"})
+    poisoned = _rewrite_bundle_manifest(baseline, manifest)
+    try:
+        _assert_qi0603_not_exported_or_hashed(poisoned)
+    except AssertionError as exc:
+        assert "session_keys" in str(exc)
+    else:
+        raise AssertionError("hashed session_keys leak must not pass the export probe")
