@@ -27,6 +27,16 @@ def ensure_display_timezone(
     return fallback
 
 
+def reset_display_timezone(
+    session_state: MutableMapping[str, Any],
+    *,
+    exchange_timezone: str | None,
+) -> str:
+    """Drop leftover ``display_timezone`` and rebind to the current exchange TZ."""
+    session_state.pop(DISPLAY_TIMEZONE_KEY, None)
+    return ensure_display_timezone(session_state, exchange_timezone=exchange_timezone)
+
+
 def timezone_contract(session_state: MutableMapping[str, Any]) -> dict[str, str | None]:
     """Return source/canonical/display timezone contract from session state."""
     source_timezone = session_state.get("source_timezone")
