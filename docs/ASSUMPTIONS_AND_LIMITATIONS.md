@@ -1173,11 +1173,16 @@ other than the last bar in the dataset.
   `slippage_ticks` before trusting expectancy ranks.
 - Study execute does not change R18 `run_batch` semantics; overview join does
   not invent new inference.
-- **H16:** Study ranking ignores WFA OOS. `wfa_median_test_expectancy_r` is
-  stored on the study index / rollup when walk-forward ran; it is **not rankable**.
-  `study.report.primary_metric` must be one of `expectancy_r` / `total_r` /
-  `max_drawdown_r` / `trade_count` / `profit_factor`. Validate rejects the WFA
-  token. Disclosure only — the ranking allowlist and WFA math are unchanged.
+- **H16:** Study ranking ignores WFA OOS as `primary_metric`.
+  `wfa_median_test_expectancy_r` is stored on the study index / rollup when
+  walk-forward ran; it is **not rankable**. `study.report.primary_metric` must
+  be one of `expectancy_r` / `total_r` / `max_drawdown_r` / `trade_count` /
+  `profit_factor`. Validate rejects the WFA token. Default overview ranking
+  and default promote stay on that in-sample allowlist, not the stored WFA
+  column. `study promote --metric` may re-sort survivors by any overview
+  column (including stored WFA OOS) but does not make the token a valid
+  `primary_metric` on the draft spec. Disclosure only — the ranking allowlist
+  and WFA math are unchanged.
 
 ## Research Study Runner diagnostic rollup (RS-D4)
 
