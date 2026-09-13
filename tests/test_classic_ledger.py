@@ -24,6 +24,7 @@ from thesistester.classic_ledger import (
     is_classic_ledger_run,
     ledger_run_label,
     list_classic_ledger_runs,
+    render_classic_execution_ledger,
     should_record_all_executions,
 )
 from thesistester.research_identity import DataIdentity
@@ -377,3 +378,75 @@ def test_ledger_run_label_and_list_newest_first():
             return ("older", "newer")
 
     assert list_classic_ledger_runs(_Orch(), thesis_id="th" + ("a" * 32)) == ("newer", "older")
+
+
+def test_render_classic_execution_ledger_stub(monkeypatch: pytest.MonkeyPatch):
+    from tests.test_classic_context import install_classic_streamlit_stub
+
+    idle: dict = {}
+    init_classic_session_state(idle)
+    stub = install_classic_streamlit_stub(monkeypatch, idle)
+    with pytest.raises(ValueError, match="page_key"):
+        render_classic_execution_ledger(page_key=" ", session_state=idle)
+    render_classic_execution_ledger(page_key="backtest", session_state=idle)
+    assert not any(name == "subheader" for name, _args, _kwargs in stub._calls)
+
+    session: dict = {}
+    init_classic_session_state(session)
+    link_thesis(
+        session,
+        thesis_id="th" + ("a" * 32),
+        thesis_name="Ledger thesis",
+        dataset_id="ds",
+    )
+    set_recording_policy(session, "all_executions")
+
+    monkeypatch.setattr(
+        "thesistester.assistant.AssistantOrchestrator.for_local_workspace",
+        classmethod(lambda cls: (_ for _ in ()).throw(RuntimeError("workspace down"))),
+    )
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+    render_classic_execution_ledger(page_key="backtest", session_state=session)
+    assert any(
+        name == "warning" and "Unable to load thesis run ledger" in args[0]
+        for name, args, _kwargs in stub._calls
+    )
+
+    class _Empty:
+        def list_runs(self, thesis_id: str):
+            return ()
+
+    monkeypatch.setattr(
+        "thesistester.assistant.AssistantOrchestrator.for_local_workspace",
+        classmethod(lambda cls: _Empty()),
+    )
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+    render_classic_execution_ledger(page_key="backtest", session_state=session)
+    assert any(name == "info" for name, _args, _kwargs in stub._calls)
+
+    run = SimpleNamespace(
+        run_id="run_ledger1",
+        status="completed",
+        updated_at="2026-01-01T00:00:00Z",
+        request={
+            "action": CLASSIC_LEDGER_ACTION,
+            "origin_page": "backtest",
+            "classic_config_hash": "abc123def4567890",
+        },
+        provenance={"canonical_bundle_hash": "deadbeefcafebabe"},
+        error={},
+    )
+
+    class _Filled:
+        def list_runs(self, thesis_id: str):
+            return (run,)
+
+    monkeypatch.setattr(
+        "thesistester.assistant.AssistantOrchestrator.for_local_workspace",
+        classmethod(lambda cls: _Filled()),
+    )
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+    render_classic_execution_ledger(page_key="backtest", session_state=session)
+    frames = [args[0] for name, args, _kwargs in stub._calls if name == "dataframe"]
+    assert frames and frames[0][0]["Status"] == "completed"
+    assert frames[0][0]["Kind"] == "ledger:backtest"

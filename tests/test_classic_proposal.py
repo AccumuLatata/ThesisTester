@@ -20,6 +20,7 @@ from thesistester.classic_proposal import (
     apply_classic_proposal,
     clear_classic_proposal,
     get_classic_proposal,
+    render_classic_proposal_card,
     require_active_thesis_for_proposal,
     stage_classic_proposal,
     validate_classic_proposal,
@@ -193,3 +194,38 @@ def test_stage_without_navigate_clear_and_require_active_thesis():
     with pytest.raises(ValueError, match="active thesis"):
         require_active_thesis_for_proposal(empty)
     assert require_active_thesis_for_proposal(session) == session["classic_active_thesis_id"]
+
+
+def test_render_classic_proposal_card_stub(monkeypatch: pytest.MonkeyPatch):
+    from tests.test_classic_context import install_classic_streamlit_stub
+
+    session = _linked_session()
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+    render_classic_proposal_card(target_page="pages/7_Backtest.py", session_state=session)
+    assert not any(name == "info" for name, _args, _kwargs in stub._calls)
+
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 8, "take_profit_ticks": 12},
+            note="raise SL",
+            evidence_paths=["docs/note.md"],
+        ),
+        navigate=False,
+    )
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+    render_classic_proposal_card(target_page="pages/7_Backtest.py", session_state=session)
+    assert any("raise SL" in str(args) for name, args, _kwargs in stub._calls if name == "info")
+    assert any(name == "json" for name, _args, _kwargs in stub._calls)
+    assert any(name == "caption" for name, _args, _kwargs in stub._calls)
+    assert any(name == "button" for name, _args, _kwargs in stub._calls)
+
+    stub = install_classic_streamlit_stub(
+        monkeypatch,
+        session,
+        button_clicks={"classic_dismiss_proposal_pages/7_Backtest.py": True},
+    )
+    render_classic_proposal_card(target_page="pages/7_Backtest.py", session_state=session)
+    assert get_classic_proposal(session) is None
+    assert any(name == "rerun" for name, _args, _kwargs in stub._calls)

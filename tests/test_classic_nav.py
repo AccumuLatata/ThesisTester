@@ -29,6 +29,8 @@ from thesistester.classic_nav import (
     navigate_clarification_to_classic,
     open_exact_run_in_backtest,
     page_vs_run_identity_relation,
+    render_classic_nav_prefill_caption,
+    render_discuss_this_run,
     resolve_run_identities,
     set_classic_active_run,
     set_classic_focus_run,
@@ -518,3 +520,66 @@ def test_clarification_and_prefill_helpers_reject_empty_and_unknown():
     session["classic_nav_prefill"] = "not-a-mapping"
     assert consume_classic_nav_prefill(session) is None
     assert get_classic_active_run_id({"classic_active_run_id": "  "}) is None
+
+
+def test_render_discuss_this_run_and_prefill_caption_stub(monkeypatch: pytest.MonkeyPatch):
+    from tests.test_classic_context import install_classic_streamlit_stub
+
+    idle: dict = {}
+    init_classic_session_state(idle)
+    stub = install_classic_streamlit_stub(monkeypatch, idle)
+    with pytest.raises(ValueError, match="page_key"):
+        render_discuss_this_run(page_key="", session_state=idle)
+    render_discuss_this_run(page_key="backtest", session_state=idle)
+    assert not any(name == "button" for name, _args, _kwargs in stub._calls)
+
+    session: dict = {}
+    init_classic_session_state(session)
+    link_thesis(
+        session,
+        thesis_id="th" + ("a" * 32),
+        thesis_name="Discuss thesis",
+        dataset_id="ds",
+    )
+    orch = type(
+        "Orch",
+        (),
+        {"get_run": staticmethod(lambda *a, **k: (_ for _ in ()).throw(KeyError("missing")))},
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.AssistantOrchestrator.for_local_workspace",
+        classmethod(lambda cls: orch()),
+    )
+    monkeypatch.setattr(
+        "thesistester.classic_nav.latest_discussable_run",
+        lambda *a, **k: None,
+    )
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+    render_discuss_this_run(page_key="backtest", session_state=session)
+    assert any(
+        name == "button" and args == ("Discuss this run",) for name, args, _kwargs in stub._calls
+    )
+
+    stub = install_classic_streamlit_stub(
+        monkeypatch,
+        session,
+        button_clicks={"classic_discuss_run_backtest": True},
+    )
+    monkeypatch.setattr(
+        "thesistester.classic_nav.discuss_run",
+        lambda state: (_ for _ in ()).throw(ValueError("not discussable")),
+    )
+    render_discuss_this_run(page_key="backtest", session_state=session)
+    assert any(name == "error" for name, _args, _kwargs in stub._calls)
+
+    other: dict = {}
+    init_classic_session_state(other)
+    stub = install_classic_streamlit_stub(monkeypatch, other)
+    render_classic_nav_prefill_caption(target_page="pages/7_Backtest.py", session_state=other)
+    assert not any(name == "info" for name, _args, _kwargs in stub._calls)
+    set_classic_nav_prefill(other, target_page="pages/1_Data.py", note="go to data")
+    render_classic_nav_prefill_caption(target_page="pages/7_Backtest.py", session_state=other)
+    assert other["classic_nav_prefill"] is not None
+    render_classic_nav_prefill_caption(target_page="pages/1_Data.py", session_state=other)
+    assert any("go to data" in str(args) for name, args, _kwargs in stub._calls if name == "info")
+    assert consume_classic_nav_prefill(other) is None

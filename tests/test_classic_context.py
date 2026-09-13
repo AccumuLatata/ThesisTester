@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ast
+import sys
+import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -28,6 +31,7 @@ from thesistester.classic_context import (
     init_classic_session_state,
     is_research_mode,
     link_thesis,
+    render_classic_thesis_chrome,
     resolve_pending_navigation_target,
     set_classic_flash,
     set_pending_navigation,
@@ -439,3 +443,138 @@ def test_protected_classic_keys_unchanged_detects_value_and_type_drift():
     removed = {"dataset_id": "ds_a"}
     with pytest.raises(AssertionError, match="was removed"):
         assert_protected_classic_keys_unchanged(before, removed)
+
+
+def install_classic_streamlit_stub(
+    monkeypatch: pytest.MonkeyPatch,
+    session_state: dict,
+    *,
+    button_clicks: dict[str, bool] | None = None,
+) -> types.ModuleType:
+    """QI-10 §3.6 Streamlit stub for classic ``render_*`` helpers (not AppTest)."""
+    st = types.ModuleType("streamlit")
+    clicks = button_clicks or {}
+    calls: list[tuple[str, tuple, dict]] = []
+
+    class _Ctx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def _record(name: str):
+        def _fn(*args, **kwargs):
+            calls.append((name, args, kwargs))
+            return None
+
+        return _fn
+
+    def _button(label, *args, **kwargs):
+        calls.append(("button", (label,), kwargs))
+        key = kwargs.get("key")
+        return bool(clicks.get(key, False))
+
+    def _checkbox(label, *args, **kwargs):
+        calls.append(("checkbox", (label,), kwargs))
+        return bool(kwargs.get("value", False))
+
+    def _selectbox(label, options=None, *args, **kwargs):
+        calls.append(("selectbox", (label, options), kwargs))
+        choices = list(options or [])
+        index = kwargs.get("index", 0)
+        if index is None or not choices:
+            return None
+        return choices[index]
+
+    def _columns(spec, *args, **kwargs):
+        count = len(spec) if isinstance(spec, (list, tuple)) else int(spec)
+        return [_Ctx() for _ in range(count)]
+
+    def _tabs(labels, *args, **kwargs):
+        return [_Ctx() for _ in labels]
+
+    for name in (
+        "title",
+        "caption",
+        "subheader",
+        "warning",
+        "success",
+        "error",
+        "info",
+        "markdown",
+        "rerun",
+        "stop",
+        "dataframe",
+        "json",
+        "text_input",
+        "switch_page",
+    ):
+        setattr(st, name, _record(name))
+    st.button = _button  # type: ignore[assignment]
+    st.checkbox = _checkbox  # type: ignore[assignment]
+    st.selectbox = _selectbox  # type: ignore[assignment]
+    st.columns = _columns  # type: ignore[assignment]
+    st.tabs = _tabs  # type: ignore[assignment]
+    st.expander = lambda *args, **kwargs: _Ctx()  # type: ignore[assignment]
+    st.session_state = session_state  # type: ignore[assignment]
+    st._calls = calls  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+    return st
+
+
+def test_render_classic_thesis_chrome_idle_flash_nav_and_research(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session: dict = {}
+    init_classic_session_state(session)
+    stub = install_classic_streamlit_stub(monkeypatch, session)
+
+    with pytest.raises(ValueError, match="page_key"):
+        render_classic_thesis_chrome(page_key="  ")
+
+    render_classic_thesis_chrome(page_key="setup")
+    assert not any(name == "caption" for name, _args, _kwargs in stub._calls)
+
+    set_classic_flash(session, level="info", message="linked chrome")
+    render_classic_thesis_chrome(page_key="setup")
+    assert any(name == "info" and args == ("linked chrome",) for name, args, _kwargs in stub._calls)
+
+    set_pending_navigation(session, "pages/not_a_page.py")
+    render_classic_thesis_chrome(page_key="setup")
+    assert any(name == "warning" for name, _args, _kwargs in stub._calls)
+
+    set_pending_navigation(session, "pages/7_Backtest.py")
+    render_classic_thesis_chrome(page_key="setup")
+    assert any(
+        name == "switch_page" and args == ("pages/7_Backtest.py",)
+        for name, args, _kwargs in stub._calls
+    )
+
+    link_thesis(
+        session,
+        thesis_id="th" + ("a" * 32),
+        thesis_name="Chrome thesis",
+        dataset_id="ds_test_aaa",
+    )
+    stub._calls.clear()
+    render_classic_thesis_chrome(page_key="backtest")
+    captions = [args[0] for name, args, _kwargs in stub._calls if name == "caption"]
+    assert any("Research mode" in text and "Chrome thesis" in text for text in captions)
+    assert any(name == "button" for name, _args, _kwargs in stub._calls)
+    assert any(name == "selectbox" for name, _args, _kwargs in stub._calls)
+
+
+def test_render_classic_thesis_chrome_create_link_expander(monkeypatch: pytest.MonkeyPatch):
+    session: dict = {}
+    init_classic_session_state(session)
+    install_classic_streamlit_stub(monkeypatch, session)
+    orch = SimpleNamespace(
+        list_theses=lambda include_archived=False: [],
+        create_thesis=lambda name: SimpleNamespace(thesis_id="th" + ("b" * 32), name=name),
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.AssistantOrchestrator.for_local_workspace",
+        classmethod(lambda cls: orch),
+    )
+    render_classic_thesis_chrome(page_key="setup", allow_create_link=True)

@@ -5,6 +5,7 @@ import sys
 import math
 
 import pandas as pd
+import pytest
 import yaml
 
 import thesistester.api as api
@@ -17,7 +18,7 @@ from thesistester.api import (
     run_grid,
     run_validation,
 )
-from thesistester.cli import load_experiment_file, run_batch
+from thesistester.cli import load_experiment_file, main, run_batch
 from thesistester.data.loader import format_interval, validate_ohlcv
 from thesistester.persistence.local_store import compute_dataset_id
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
@@ -586,3 +587,124 @@ def test_programmatic_batch_rejects_unsafe_and_duplicate_names(tmp_path):
             assert message in str(exc)
         else:
             raise AssertionError("Expected unsafe programmatic batch to be rejected")
+
+
+def _module_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    """QI-06-12 / QI-6 §3.2: exercise ``python -m thesistester`` (__main__)."""
+    return subprocess.run(
+        [sys.executable, "-m", "thesistester", *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_module_cli_help_exits_zero():
+    """QI-6 §3.2: ``--help`` exit 0; verbs run / study / journal."""
+    top = _module_cli("--help")
+    assert top.returncode == 0, top.stderr
+    collapsed = " ".join(top.stdout.lower().split())
+    for verb in ("run", "study", "journal"):
+        assert verb in collapsed
+    run_help = _module_cli("run", "--help")
+    assert run_help.returncode == 0, run_help.stderr
+    run_blob = " ".join(run_help.stdout.lower().split())
+    assert "experiment" in run_blob
+    assert "--workers" in run_help.stdout
+    assert "--output-dir" in run_help.stdout
+
+
+def test_module_cli_run_error_paths_exit_one(tmp_path):
+    """QI-6 §3.2: missing file / invalid YAML / empty runs → exit 1 + traceback."""
+    missing = tmp_path / "missing.yaml"
+    missing_proc = _module_cli("run", str(missing))
+    assert missing_proc.returncode == 1
+    assert "Traceback" in missing_proc.stderr
+    assert "Unable to load experiment file" in missing_proc.stderr
+
+    invalid = tmp_path / "invalid.yaml"
+    invalid.write_text("[\n", encoding="utf-8")
+    invalid_proc = _module_cli("run", str(invalid))
+    assert invalid_proc.returncode == 1
+    assert "Traceback" in invalid_proc.stderr
+    assert "Unable to load experiment file" in invalid_proc.stderr
+
+    empty = tmp_path / "empty-runs.yaml"
+    empty.write_text("schema_version: 1\nruns: []\n", encoding="utf-8")
+    empty_proc = _module_cli("run", str(empty))
+    assert empty_proc.returncode == 1
+    assert "Traceback" in empty_proc.stderr
+    assert "Experiment file must define a non-empty runs list" in empty_proc.stderr
+
+
+def test_cli_main_error_paths_raise_value_error(tmp_path):
+    """QI-06-07 residual: ``cli.main`` does not catch ValueError (raw traceback)."""
+    missing = tmp_path / "missing.yaml"
+    with pytest.raises(ValueError, match="Unable to load experiment file"):
+        main(["run", str(missing)])
+
+    not_mapping = tmp_path / "list.yaml"
+    not_mapping.write_text("- just a list\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="YAML mapping"):
+        main(["run", str(not_mapping)])
+
+    empty = tmp_path / "empty-runs.yaml"
+    empty.write_text("schema_version: 1\nruns: []\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="non-empty runs list"):
+        main(["run", str(empty)])
+
+    unknown = tmp_path / "unknown-key.yaml"
+    unknown.write_text(
+        "schema_version: 1\nruns:\n  - name: x\nextra: 1\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Unknown experiment configuration keys"):
+        main(["run", str(unknown)])
+
+
+def test_cli_main_run_writes_index(tmp_path, capsys):
+    _write_dataset(tmp_path / "bars.csv")
+    yaml_path = tmp_path / "experiment.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "output_dir": "cli-main-out",
+                "workers": 1,
+                "runs": [_run("cli-main")],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    code = main(["run", str(yaml_path), "--workers", "1"])
+    assert code == 0
+    printed = capsys.readouterr().out
+    assert "Completed 1 run(s)" in printed
+    assert "results_index.csv" in printed
+    assert (tmp_path / "cli-main-out" / "results_index.csv").is_file()
+
+
+def test_cli_main_dispatches_study_and_journal(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.study.cli_study.dispatch_study",
+        lambda args: 17,
+    )
+    monkeypatch.setattr(
+        "thesistester.journal.cli.dispatch_journal",
+        lambda args: 23,
+    )
+    assert main(["study", "list"]) == 17
+    assert (
+        main(
+            [
+                "journal",
+                "report",
+                "--journal-dir",
+                "/tmp/journal",
+                "--output-dir",
+                "/tmp/out",
+            ]
+        )
+        == 23
+    )
