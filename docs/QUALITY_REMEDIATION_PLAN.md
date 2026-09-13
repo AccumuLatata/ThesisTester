@@ -243,7 +243,7 @@ Column key: **Files (expected)** = paths a reviewer should expect in the diff (f
 
 | PR | Findings | Files (expected) | Narrow change | Probe → regression test | Docs in same PR | Exit / merge gate |
 |---|---|---|---|---|---|---|
-| F-1 | QI-13-01 (H), QI-12-10 (M) — MG-13 | `docs/ENGINEERING_ROADMAP.md`, `docs/QUALITY_INVESTIGATION_PLAN.md` §8.3, `docs/AGENT_GUIDE.md` CI table, `docs/ENGINEERING_PROPOSAL.md` §4 rule 9 / §7 | QI row rewritten from the merged report set (#479–#494 + this plan); tracker filled; drop the CI-red precondition; "blocking on red" → "workflow fails; merge is not blocked until required checks are on" (reverts to "blocking" after G-1); Streamlit-minor risk row; QR status row. | Optional docs test: ROADMAP QI row names each existing `docs/quality/QI-*.md` | (this PR is docs) | link checker 0 broken |
+| F-1 | QI-13-01 (H), QI-12-10 (M) — MG-13 | `docs/ENGINEERING_ROADMAP.md`, `docs/QUALITY_INVESTIGATION_PLAN.md` §8.3, `docs/AGENT_GUIDE.md` CI table, `docs/ENGINEERING_PROPOSAL.md` §4 rule 9 / §7 | QI row rewritten from the merged report set (#479–#494 + this plan); tracker filled; drop the CI-red precondition; **"blocking on red" restored** because G-1 required checks are live (QI-12-10 / QI-13-01); Streamlit-minor risk row; QR status row. | Optional docs test: ROADMAP QI row names each existing `docs/quality/QI-*.md` | (this PR is docs) | link checker 0 broken |
 | F-2 | QI-13-02 (M) | `README.md` Phase 4 | "five trigger types" → the seven `VALID_TRIGGERS` tokens; 3c four-rule text kept; file not moved. | Copy guard: README trigger list ⊇ `VALID_TRIGGERS` | — | Help-allowlist digest updated in place |
 | F-3 | QI-13-05 (M) | `docs/README.md`, `docs/quality/README.md`, `docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` shelf pointer | Index CONFLUENCE_COMBO as contract-complete; DA/TJ/JS in exactly one shelf; list `docs/quality/` reports. | Optional link-coverage check | — | 0 orphan docs |
 | F-4 | QI-13-03 (M) — MG-06 (+ dup QI-05-11) | `docs/METRICS_GLOSSARY.md` | **Delivered inside A-4** (same PR): Phase 8 + grid-overfit rows with diagnostic caveats. | Glossary needle test for the three labels | — | closes with A-4 |
@@ -387,7 +387,7 @@ Medium `Verified defect` rows proposed accepted in the same signature: QI-06-03 
 | QR-C Structural refactors | Not started | 25 | 27 / 0 / 0 |
 | QR-D UI decomposition / state | Not started | 10 | 10 / 0 / 0 |
 | QR-E Application functions | Not started | 11 | 10 / 2 / 0 |
-| QR-F Documentation | Not started | 10 (3 delivered inside QR-A PRs) | 12 / 5 / 3 |
+| QR-F Documentation | In progress (F-1) | 10 (3 delivered inside QR-A PRs) | 12 / 5 / 3 |
 | QR-G Dependency / supply chain | In progress (G-1 · G-2 · G-3) | 5 | 6 / 0 / 0 |
 | Closed (no workstream) | — | — | 13 wont-fix · 1 locked without residual (QI-07-10) |
 | **Total** | | **102 PR rows, 99 distinct** | **106 / 11 / 3 + 13 wont-fix + QI-07-10 = 134** |

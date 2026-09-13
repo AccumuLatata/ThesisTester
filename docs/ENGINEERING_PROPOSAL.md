@@ -139,6 +139,9 @@ The repo's conventions already encode most of this framework; R9 makes it enforc
 7. **Determinism.** All randomized procedures take `random_state` seeds; all folds/splits are deterministic; no wall-clock or dict-order dependence.
 8. **Same-PR documentation.** `ASSUMPTIONS_AND_LIMITATIONS.md`, `METRICS_GLOSSARY.md`, `ARCHITECTURE.md`, and `ENGINEERING_ROADMAP.md` updated with the behavior change, per `docs/AGENT_GUIDE.md`.
 9. **CI gate.** After R9: full pytest + lint on every PR; no merge on red.
+   Enforced by GitHub required status checks on `main` (QR G-1 / QI-12-01;
+   six frozen job display names in `docs/AGENT_GUIDE.md`). A workflow failure
+   that is **not** one of those six names does not block merge.
 10. **Honesty framing.** New statistical outputs ship with the same "diagnostic, not proof of edge" caveats as Phase 8/R5.
 
 ### 4.1 Golden-master operational spec
@@ -369,7 +372,7 @@ Rationale: R9 makes every later change verifiably regression-free; R10/R11 deliv
 | Performance refactor drifts numeric outputs | R22 | Golden-masters must stay byte-identical through the refactor; accelerated paths asserted equal to the serial reference in CI |
 | Scope creep toward non-goals (replay, live trading) | All | §2.2 anti-roadmap is the standing decision record; revisit only via an explicit proposal amendment |
 | pandas/numpy major-version drift | R9 | Named CI pandas-major axis (`pytest (py3.10)` = pandas 2; py3.11/3.12 = pandas 3) + `constraints.txt` + `pyproject.toml` markers (`<3` on py3.10, `>=3,<4` on 3.11+); Dependabot updates the lock (`increase-if-necessary`) gated by the G-1 required checks (QI-12-02 / QR G-2). App install is `pip install -e .` (QI-12-03 / QR G-3; no `requirements.txt`) |
-| Streamlit minor-version drift (AppTest / widget proto) | R9 | `streamlit>=1.56,<1.64` in `pyproject.toml` (pinned 1.63.x in `constraints.txt`); next minor is a Dependabot PR that must move the pin (and the cap if needed) so the full matrix installs it (#478 / QI-12-02) |
+| Streamlit minor-version drift (AppTest / widget proto) | R9 | `streamlit>=1.56,<1.64` in `pyproject.toml` (pinned 1.63.x in `constraints.txt`); next minor is a Dependabot PR that must move the pin (and the cap if needed) so the full matrix installs it (#478 / QI-12-02 / QI-12-10). G-1 required checks block merge if that bump goes red. |
 
 ---
 

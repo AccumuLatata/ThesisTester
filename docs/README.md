@@ -30,7 +30,7 @@ research snapshots live under [`research/`](research/README.md).
 | [TRADE_JOURNAL_IMPLEMENTATION_PLAN.md](TRADE_JOURNAL_IMPLEMENTATION_PLAN.md) | TJ — TradesViz+AMP journal; **TJ9 landed**; `session_date` is CME `trading_session_date` |
 | [JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md](JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md) | JS — journal zones / trigger inference / StudySpec proposal; **JS2 landed**; Gate A can stop after JS2 |
 | [SIMULATE_PERF.md](SIMULATE_PERF.md) · [CAI_BASELINE.md](CAI_BASELINE.md) | Informational performance baselines |
-| [QUALITY_INVESTIGATION_PLAN.md](QUALITY_INVESTIGATION_PLAN.md) | QI — repo-wide code-quality + application-quality investigation in **16 slices (QI-0…QI-15)**; research-only except QI-0 harness + QI-15 `QUALITY_REMEDIATION_PLAN.md`; synthesis protocol and QR template; slice reports land under `docs/quality/` |
+| [QUALITY_INVESTIGATION_PLAN.md](QUALITY_INVESTIGATION_PLAN.md) | QI — **Completed** (16 slices QI-0…QI-15; reports under `docs/quality/`). Living status SoT is `ENGINEERING_ROADMAP.md`. Remediation: [QUALITY_REMEDIATION_PLAN.md](QUALITY_REMEDIATION_PLAN.md) |
 
 ## Normative contracts (complete — amend carefully)
 
