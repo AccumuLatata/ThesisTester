@@ -68,6 +68,7 @@ from thesistester.persistence import (
 from thesistester.persistence.local_store import get_configured_store_dir
 from thesistester.timezone_display import (
     ensure_display_timezone,
+    reset_display_timezone,
     timezone_contract_caption,
 )
 
@@ -668,6 +669,26 @@ def _clear_dataset_dependent_state() -> None:
         TICK_ROW_COUNT_KEY,
         TICK_SESSION_COUNT_KEY,
         TICK_WARNINGS_KEY,
+        # QI-10-01 / A-8: AH4 leftover set + Focus/OTF overlays that re-arm
+        # after a later Backtest/Report. A-7 residuals stay apply-clear only.
+        "focused_trades",
+        "focused_equity_curve",
+        "focus_entry_window",
+        "focused_trade_summary",
+        "focus_provenance",
+        "focused_direction_summary",
+        "otf_filter_summary",
+        "otf_filter_result",
+        "backtest_otf_filter",
+        "grid_otf_filter",
+        "otf_rejected_signals",
+        "otf_candidate_signals",
+        "otf_accepted_signals",
+        "signal_settings",
+        "signal_settings_hash",
+        "setup_config",
+        "_setup_builder_editor_config",
+        "display_timezone",
     ]:
         st.session_state.pop(key, None)
 
@@ -1356,10 +1377,18 @@ def _set_active_dataset_state(
     st.session_state["base_interval"] = base_interval
     st.session_state["source_timezone"] = source_timezone
     st.session_state["exchange_timezone"] = exchange_timezone
-    ensure_display_timezone(
-        st.session_state,
-        exchange_timezone=exchange_timezone,
-    )
+    # ensure_display_timezone does not overwrite a valid leftover TZ. Switch
+    # must reset; same-dataset / first load keeps a user-chosen display TZ.
+    if previous_dataset_id is not None and previous_dataset_id != dataset_id:
+        reset_display_timezone(
+            st.session_state,
+            exchange_timezone=exchange_timezone,
+        )
+    else:
+        ensure_display_timezone(
+            st.session_state,
+            exchange_timezone=exchange_timezone,
+        )
     st.session_state["dataset_id"] = dataset_id
     if saved_dataset_id is None:
         clear_active_dataset_id()
