@@ -1326,6 +1326,37 @@ def test_user_guide_assistant_h2_names_confirm_run_omit_means_on():
         raise AssertionError("Notes-only needles must not bind as Research Assistant H2")
 
 
+_H16_STUDIES_VIEWER_H2 = "Studies viewer (read-only)"
+_H16_STUDIES_VIEWER_NEEDLES = (
+    "Inspect",
+    "study report",
+    "study rollup",
+    "Failed",
+    "not ranked",
+)
+
+
+def test_user_guide_studies_viewer_h2_names_inspect_vs_report_failed():
+    """QI-07-04 / A-10: Studies viewer H2 names Inspect vs report Failed."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H16_STUDIES_VIEWER_H2)
+    missing = [n for n in _H16_STUDIES_VIEWER_NEEDLES if n not in body]
+    assert missing == [], f"Studies viewer H2 missing A-10 needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Studies viewer H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+    fake = (
+        "## Notes\n"
+        "Inspect study report study rollup Failed not ranked\n"
+        "## Study Observatory\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _H16_STUDIES_VIEWER_H2)
+    except AssertionError as exc:
+        assert "Studies viewer" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Studies viewer H2")
+
+
 def test_user_guide_study_runner_h2_stays_under_soft_budget():
     """A-9 H8 contrast lives on Purpose; Study Runner must stay ≤ Help chunk budget."""
     body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_STUDY_H2)

@@ -1018,6 +1018,8 @@ and robustness (honest next steps after screening).
 primary-metric cell + factor settings + best SL/TP + NY RTH bucket), ledger,
 groups, ranked / low-N, charts, and cell peek (grid + time-of-day). **Preview**
 validates YAML. **Run via CLI** spawns `study run`. **Build** emits YAML.
+Inspect already lists Failed cell errors; `study report` / `study rollup`
+emit MD **Failed** (stay in CSV/N; not ranked or promoted).
 
 **When to use it.** After a completed study, read the briefing first — then
 decide whether to constrain NY session (Admit) or promote survivors. Author
@@ -1026,8 +1028,8 @@ onto Preview (same cache-clear as Apply; draft ≠ run). CLI
 `study promote --admit-tod auto` is the same helper.
 
 **Related terms.** Studies viewer, study briefing, time of day, NY session,
-RTH segment, grid results, best SL/TP, ranked cells, low-N, study catalog,
-study list, StudyDraft
+RTH segment, grid results, best SL/TP, ranked cells, low-N, failed cells,
+study catalog, study list, StudyDraft
 
 **Key settings.**
 
@@ -1048,6 +1050,7 @@ study list, StudyDraft
 | Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |
 | Draft Admit follow-up | Child Admit YAML → Preview | Greyed out = no ranked NY segment. Red error (thin/zip/extra-root) leaves Preview unchanged |
 | Catalog `parent` | Basename from `study.lineage.parent_output_dir` | Corrupt / missing lineage → `—`; hour Admit stays CLI |
+| Failed (Inspect vs report) | Inspect table + report/rollup `## Failed` | Stay in CSV/N; not ranked/promote |
 
 **How to use.**
 

@@ -13,6 +13,8 @@ import pytest
 from thesistester.cli import main as cli_main
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.expand import expand_study_to_directory
+from thesistester.study.ledger import empty_ledger, mark_cell, save_ledger
+from thesistester.study.promote import promote_study
 from thesistester.study.report import (
     StudyReportError,
     otf_canonical_key,
@@ -161,6 +163,26 @@ def _write_report_fixture(
         )
     pd.DataFrame(rows).sort_values("run_name").to_csv(study_dir / "results_index.csv", index=False)
     return study_dir
+
+
+def _inject_failed_index_and_ledger(
+    study_dir: Path,
+    run_name: str,
+    *,
+    error: str = "ValueError: injected boom",
+) -> None:
+    """QI-7 §9 mixed ok/failed recipe: flip one index row + ledger error."""
+    index = pd.read_csv(study_dir / "results_index.csv")
+    index.loc[index["run_name"] == run_name, "status"] = "failed"
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    names = [str(name) for name in index["run_name"]]
+    ledger = empty_ledger(study_identity_hash="qi0704", run_names=names)
+    for name in names:
+        if name == run_name:
+            ledger = mark_cell(ledger, name, status="failed", error=error, finished=True)
+        else:
+            ledger = mark_cell(ledger, name, status="ok", finished=True)
+    save_ledger(study_dir, ledger)
 
 
 def test_otf_canonical_key_alias_stable():
@@ -438,3 +460,43 @@ def test_report_rank_stays_primary_metric_not_null(tmp_path: Path):
     )
     assert "expectancy_minus_null_r" in result.markdown
     assert "random_p_value_ge" in result.markdown
+
+
+def test_overview_csv_byte_identical_and_failed_zero_section(tmp_path: Path):
+    """A-10: all-ok overview CSV schema/bytes unchanged; MD still labels Failed."""
+    study_dir = _write_report_fixture(tmp_path)
+    first = report_study(study_dir)
+    assert "error" not in first.overview.columns
+    csv_bytes = (study_dir / "study.overview.csv").read_bytes()
+    second = report_study(study_dir)
+    assert (study_dir / "study.overview.csv").read_bytes() == csv_bytes
+    assert "failed: **0**" in first.markdown
+    assert "## Failed" in first.markdown
+    assert "No failed cells." in first.markdown
+    assert first.markdown == second.markdown
+
+
+def test_mixed_ok_failed_overview_failed_section_qi0704(tmp_path: Path):
+    """QI-07-04 / A-10: mixed ok/failed fixture — Failed heading + error; CSV keeps N."""
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    baseline = report_study(study_dir)
+    ranked_before = list(baseline.ranked["run_name"])
+    csv_cols_before = list(baseline.overview.columns)
+    failed_name = ranked_before[0]
+    _inject_failed_index_and_ledger(study_dir, failed_name)
+
+    result = report_study(study_dir)
+    assert len(result.overview) == 4
+    assert (result.overview["status"] == "failed").sum() == 1
+    assert list(result.overview.columns) == csv_cols_before
+    assert "error" not in result.overview.columns
+    assert failed_name not in set(result.ranked["run_name"])
+    assert list(result.ranked["run_name"]) == ranked_before[1:]
+    assert f"failed: **1**" in result.markdown
+    assert "## Failed" in result.markdown
+    assert "ValueError: injected boom" in result.markdown
+    assert failed_name in result.markdown
+
+    promoted = promote_study(study_dir, output=tmp_path / "draft.yaml", top_n=2)
+    assert failed_name not in promoted.selected_run_names
+    assert promoted.selected_run_names == list(result.ranked["run_name"])[:2]

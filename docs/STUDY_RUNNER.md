@@ -350,7 +350,7 @@ never re-sorts the ranked table.
 | File | Role |
 |---|---|
 | `study.overview.csv` | `results_index.csv` ⟕ `study.expansion.json` on `run_name` + resolved PF/win_rate + DA2 keys + DA5 null keys when present |
-| `study.overview.md` | Ranked / low-N / group summaries / OTF Δ + honesty block |
+| `study.overview.md` | Ranked / low-N / Failed / group summaries / OTF Δ + honesty block |
 | `study.otf_delta.csv` | metric(OTF variant) − metric(`report.otf_baseline`) per non-OTF factor tuple |
 | `study.direction.csv` | `run_name` + DA2 direction-split keys (`long_only` / `short_only` / `mixed` / `empty`) |
 
@@ -360,6 +360,7 @@ never re-sorts the ranked table.
 - Ranked section: `status=ok`, `factors_joined=True`, `trade_count >= min_trades`, non-null `primary_metric`.
 - Low-N section: expansion-joined ok cells below `min_trades` (excluded from ranked winners).
 - Unresolved section: expansion-joined ok cells meeting `min_trades` but with a null `primary_metric` (e.g. missing PF).
+- **Failed** section: `status=failed` cells with error text from `study.ledger.json`. They stay in `study.overview.csv` and rollup N (`AUDIT_FINAL` §5.1 item 34) and are excluded from ranked / promote.
 - Index-only orphan rows (`factors_joined=False`) stay in `study.overview.csv` but are excluded from ranked / low-N / unresolved / group summaries / crowning.
 - Sort: higher-is-better for `expectancy_r` / `total_r` / `profit_factor` / `trade_count`; lower-is-better for `max_drawdown_r`.
 - `multiple_testing: error` suppresses best-cell crowning in Markdown (ranked table still emitted as descriptive).
@@ -571,6 +572,7 @@ index WFA columns and bundle members (`walk_forward_meta.json`,
 | Missing batteries | `*_battery=not_run` and null metrics (default study emission) |
 | Overfitting density | Needs grid cell trade sequences + `validation.enabled: true` + `validation.overfitting.enabled: true` |
 | Honesty | Descriptive rollup ≠ validated edge |
+| Failed | `failed=N` + `## Failed` (ledger error); stay in rollup N; not ranked/promote |
 
 **Survivor-stage opt-in (docs only; not auto-applied):** after promote, set
 explicit `walk_forward.enabled: true` and/or `grid.enabled: true` **with**
