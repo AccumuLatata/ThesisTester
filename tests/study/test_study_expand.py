@@ -10,7 +10,12 @@ import pytest
 import yaml
 
 from thesistester.api import validate_run_spec
-from thesistester.cli import _RUN_NAME_RE
+from thesistester.cli import _RUN_NAME_RE, load_experiment_file
+from thesistester.study.apoc_provenance import (
+    APOC_OBJECT_TICK_LAST_VOLUME,
+    RECORDED_EXPLICIT,
+    RECORDED_INFERRED,
+)
 from thesistester.study.expand import (
     _build_setup_for_cell,
     expand_study,
@@ -18,11 +23,7 @@ from thesistester.study.expand import (
     study_identity_hash,
     write_expansion_artifacts,
 )
-from thesistester.study.apoc_provenance import (
-    APOC_OBJECT_TICK_LAST_VOLUME,
-    RECORDED_EXPLICIT,
-    RECORDED_INFERRED,
-)
+from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.schema import (
     STUDY_SCHEMA_VERSION,
     StudySpecError,
@@ -148,6 +149,11 @@ def test_golden_expansion_byte_stable(tmp_path: Path):
         actual = (tmp_path / name).read_text(encoding="utf-8")
         expected = (GOLDEN_DIR / name).read_text(encoding="utf-8")
         assert actual == expected, f"Golden mismatch for {name}"
+    golden_experiment = (GOLDEN_DIR / "experiment.yaml").read_text(encoding="utf-8")
+    assert golden_experiment.splitlines()[0] == f"# Replay: {REPLAY_NOT_STUDY_RUN}"
+    loaded = load_experiment_file(GOLDEN_DIR / "experiment.yaml")
+    assert loaded == expansion.experiment
+    assert loaded == yaml.safe_load(golden_experiment)
 
 
 def test_every_expanded_run_passes_validate_run_spec():

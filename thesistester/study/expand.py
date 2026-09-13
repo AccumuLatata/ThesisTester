@@ -21,6 +21,7 @@ from thesistester.study.apoc_provenance import (
     should_write_apoc_provenance,
 )
 from thesistester.study.naming import build_run_name
+from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.schema import (
     RUN_NAME_RE,
     StudySpecError,
@@ -32,6 +33,8 @@ from thesistester.study.schema import (
 # Omitting them previously invented silent defaults (touch / base / global_cluster).
 _REQUIRED_CELL_AXES = ("confluence_mode", "trigger", "trigger_timeframe")
 _DATASET_PATH_KEYS = ("path", "subtimeframe_path")
+# QI-07-06 / QR A-15: prefix only. Clause SoT is ``REPLAY_NOT_STUDY_RUN``.
+_EXPERIMENT_YAML_REPLAY_COMMENT = f"# Replay: {REPLAY_NOT_STUDY_RUN}\n"
 
 
 def coerce_source_spec_parent(raw: str | Path | None) -> Path | None:
@@ -482,7 +485,11 @@ def write_expansion_artifacts(
     expansion: ExpansionResult,
     source_spec_parent: str | Path | None = None,
 ) -> dict[str, Path]:
-    """Write study.spec.yaml, study.expansion.json, and experiment.yaml."""
+    """Write study.spec.yaml, study.expansion.json, and experiment.yaml.
+
+    ``experiment.yaml`` is prefixed with the AGENT_GUIDE Replay clause
+    (QI-07-06). The R18 payload after the comment is unchanged.
+    """
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
 
@@ -517,7 +524,10 @@ def write_expansion_artifacts(
         json.dumps(expansion_payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    experiment_path.write_text(_dump_yaml(expansion.experiment), encoding="utf-8")
+    experiment_path.write_text(
+        _EXPERIMENT_YAML_REPLAY_COMMENT + _dump_yaml(expansion.experiment),
+        encoding="utf-8",
+    )
     return {
         "study.spec.yaml": spec_path,
         "study.expansion.json": expansion_path,

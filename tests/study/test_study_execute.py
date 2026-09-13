@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from thesistester.cli import main as cli_main
+from thesistester.cli import load_experiment_file, main as cli_main
 from thesistester.research_bundle import canonical_bundle_hash
 from thesistester.research_identity import normalize_execution_origin
 from thesistester.study.execute import (
@@ -35,6 +35,7 @@ from thesistester.study.execute import (
     run_study,
 )
 from thesistester.study.ledger import load_ledger
+from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.schema import STUDY_SCHEMA_VERSION, StudySpecError
 
 
@@ -190,6 +191,21 @@ def test_study_expand_cli_writes_artifacts_and_cost_hints(tmp_path: Path, capsys
     captured = capsys.readouterr().out
     assert "run_count=4" in captured
     assert "batteries:" in captured
+    # QI-07-06 / A-15: Replay *line* carries the shared clause; ``#`` is copy-paste safe.
+    replay_lines = [line for line in captured.splitlines() if line.startswith("Replay:")]
+    assert replay_lines == [
+        f"Replay: python -m thesistester run {out / 'experiment.yaml'}  # {REPLAY_NOT_STUDY_RUN}"
+    ]
+    command, sep, disclosure = replay_lines[0].partition("  # ")
+    assert sep == "  # "
+    assert command == f"Replay: python -m thesistester run {out / 'experiment.yaml'}"
+    assert disclosure == REPLAY_NOT_STUDY_RUN
+    experiment_text = (out / "experiment.yaml").read_text(encoding="utf-8")
+    assert experiment_text.splitlines()[0] == f"# Replay: {REPLAY_NOT_STUDY_RUN}"
+    payload = load_experiment_file(out / "experiment.yaml")
+    assert payload["schema_version"] == 1
+    assert "runs" in payload
+    assert payload == yaml.safe_load(experiment_text)
 
 
 def test_study_run_requires_confirm_above_threshold(tmp_path: Path):
