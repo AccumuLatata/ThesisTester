@@ -23,7 +23,10 @@ edge, or place live trades. Performance questions belong in **Discuss results**
 runs treat an omitted battery `enabled` key as **on** for grid / walk-forward /
 validation. Study expand still emits explicit `enabled: false`. Nested OTF
 validation matrix is default-off. Bare `{}` in R18 YAML arms batteries. The
-default is unchanged (AH §2 item 9 / H8).
+default is unchanged (AH §2 item 9 / H8). Backtest, Grid Search, Time Analysis,
+and Research Bundles caption
+`Diagnostic only — not proof of edge.` The Data page names the 400 MB
+Streamlit websocket cap (`server.maxMessageSize`) in-app, not host RAM.
 
 ## Classic workflow overview
 

@@ -112,6 +112,7 @@ from thesistester.visualization import (
 )
 
 st.title("📊 Backtest")
+st.caption("Diagnostic only — not proof of edge.")
 bootstrap_active_saved_dataset()
 render_classic_thesis_chrome(
     page_key="backtest",

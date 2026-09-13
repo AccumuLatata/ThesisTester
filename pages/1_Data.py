@@ -1608,6 +1608,11 @@ st.caption(
     "Optional Quantower Tick–Tick–Last files sit beside that 15s clock for prior VA only: "
     "no ticks → no `pdVA*` columns."
 )
+st.caption(
+    "`MessageSizeError` is Streamlit's frontend websocket cap "
+    "(`server.maxMessageSize`, repo default 400 MB), not host RAM. "
+    "Upload cap (`maxUploadSize` 350 MB) is separate."
+)
 render_classic_nav_prefill_caption(target_page="pages/1_Data.py")
 
 if not _preserve_dataset_less_bundle():
