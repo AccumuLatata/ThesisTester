@@ -14,19 +14,26 @@ from typing import Any
 DIRECTION_COLLISION_SESSION_KEY = "direction_collision_diagnostic"
 
 
+def _as_diagnostic_mapping(source: Any) -> Mapping[str, Any]:
+    """Prefer ``.direction_collision_diagnostic`` / nested key over ``source``."""
+    attr = getattr(source, "direction_collision_diagnostic", None)
+    if isinstance(attr, Mapping):
+        return attr
+    if isinstance(source, Mapping):
+        nested = source.get(DIRECTION_COLLISION_SESSION_KEY)
+        if isinstance(nested, Mapping):
+            return nested
+        if "candidate_pairs" in source:
+            return source
+    return {}
+
+
 def persist_direction_collision_diagnostic(
     session_state: MutableMapping[str, Any],
     source: Any,
 ) -> dict[str, Any]:
     """Store DA1 ``direction_collision_diagnostic`` after a ``return_result`` run."""
-    raw: Any
-    if hasattr(source, "direction_collision_diagnostic"):
-        raw = source.direction_collision_diagnostic
-    elif isinstance(source, Mapping):
-        raw = source
-    else:
-        raw = {}
-    diagnostic = dict(raw) if isinstance(raw, Mapping) else {}
+    diagnostic = dict(_as_diagnostic_mapping(source))
     session_state[DIRECTION_COLLISION_SESSION_KEY] = diagnostic
     return diagnostic
 
@@ -46,6 +53,8 @@ def format_direction_collision_caption(diagnostic: Mapping[str, Any] | None) -> 
         f"{diagnostic.get('resolved_none', 0)} · "
         f"accepted-trade share from pairs: {share} · "
         f"policy `{policy}`. "
-        "Counts overlapping `allow_all` fills even when the skip table is empty. "
+        "Same-bar opposite-direction counts only — not an admission gate "
+        "and not proof of fill quality. "
+        "Visible under `allow_all` even when the skip table is empty. "
         "Diagnostic only — not a hashed bundle member."
     )
