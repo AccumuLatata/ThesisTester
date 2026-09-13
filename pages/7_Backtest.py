@@ -1601,6 +1601,10 @@ if _display_has_trades:
 # Full trade table
 if _display_has_trades:
     st.subheader("Trade table")
+    st.caption(
+        "`pnl_points` is the gross alias of `gross_pnl_points` (same value). "
+        "KPIs use net R (`r_multiple`), not a sum of `pnl_points`."
+    )
     display_cols = [
         c
         for c in [

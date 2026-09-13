@@ -286,6 +286,7 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 | `Cooldown bars after exit` | See **Exposure policy** | `0` = no post-exit spacing |
 | `Constrain entries to time window` (Admit) | See **Focus vs Admit** | Re-sim only — not Time Analysis Focus |
 | `Exit management (break-even / trailing)` | See **Exit management (break-even and trailing)** | Stops update after completed bars |
+| Trade table `pnl_points` | Gross alias of `gross_pnl_points` (same value). KPIs use net R. | Do not sum `pnl_points` against Total R when costs > 0 |
 
 **How to use.**
 
