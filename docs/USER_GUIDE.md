@@ -951,7 +951,7 @@ study-owned ledger, then report an honest overview (and optionally roll up
 per-cell WFA/validation/overfitting diagnostics). Distinct from in-trade
 confluence-combo attribution on Backtest. Optional default-off assistant
 `STUDY.expand` / `STUDY.run` / `STUDY.report` / `STUDY.promote` wrap those CLI
-surfaces; `study rollup` remains CLI-only (no `STUDY.rollup` tool).
+surfaces; `study rollup` remains CLI-only.
 
 **When to use it.** When you want a stage-first factorial screen (e.g. pdPOC ×
 MA partners × modes × OTF) without driving classic Streamlit research pages,
@@ -972,7 +972,7 @@ overview ranking, OTF delta, Research Study Runner
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
 | `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
 | `dataset.tick_paths` | Optional Tick–Tick–Last list for prior VA, APOC, and rolling POC | Named VA / APOC / rolling POC without this refuse (`requires ticks`). New drafts omit it |
-| Battery `enabled` | Study emit is explicit `false` | Classic `thesistester run` / `api.run_experiment` omit means **on** (H8). Bare `{}` on a Study cell is the R18 default-on trap |
+| Battery `enabled` | Study emit explicit `false` | `thesistester run` omit means **on** (H8). Bare `{}` in R18 YAML arms batteries |
 
 **How to use.**
 

@@ -1141,42 +1141,219 @@ def test_policy_help_guard_rejects_second_undisclosed_policy_selectbox():
         raise AssertionError("second Policy selectbox without help must fail uniqueness")
 
 
+_H8_CONFIRM_RUN_BUTTON = "Run confirmed research"
 _H8_CONFIRM_RUN_CAPTION_NEEDLES = (
     "omitted battery enabled means on",
     "grid / walk_forward / validation",
     "study emit stays explicit false",
     "otf matrix is default-off",
 )
+_H8_PURPOSE_H2 = "Purpose and honesty"
+_H8_ASSISTANT_H2 = "Research Assistant (draft, Discuss, Help)"
+_H8_STUDY_H2 = "Research Study Runner (headless)"
+_USER_GUIDE_H2_SOFT_BUDGET = 4500
+
+
+def _assert_h8_confirm_run_caption(source: str) -> None:
+    """AST-bind H8 caption as a sibling immediately before the confirm-run button.
+
+    File-level ``st.caption`` / ``help=`` / comments false-green (A-1 / A-5 class).
+    Caption after the button, or on a different ``if`` than the button, fails closed.
+    """
+    tree = ast.parse(source)
+    buttons = [
+        call for call in _st_calls(tree, "button") if _call_label(call) == _H8_CONFIRM_RUN_BUTTON
+    ]
+    if len(buttons) != 1:
+        raise AssertionError(
+            f"expected exactly one st.button({_H8_CONFIRM_RUN_BUTTON!r}), got {len(buttons)}"
+        )
+    button_lineno = buttons[0].lineno
+    bound: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        caption_text: str | None = None
+        caption_lineno: int | None = None
+        has_button = False
+        for stmt in node.body:
+            if isinstance(stmt, ast.Expr) and _is_st_attr_call(stmt.value, "caption"):
+                text = _first_arg_text(stmt.value)
+                if text and all(n in text.lower() for n in _H8_CONFIRM_RUN_CAPTION_NEEDLES):
+                    caption_text = text
+                    caption_lineno = stmt.lineno
+            if (
+                isinstance(stmt, ast.If)
+                and isinstance(stmt.test, ast.Call)
+                and _is_st_attr_call(stmt.test, "button")
+                and _call_label(stmt.test) == _H8_CONFIRM_RUN_BUTTON
+            ):
+                has_button = True
+        if has_button and caption_text is not None:
+            if caption_lineno is None or caption_lineno >= button_lineno:
+                raise AssertionError("H8 st.caption must precede Run confirmed research")
+            bound.append(caption_text)
+    if not bound:
+        raise AssertionError(
+            "Run confirmed research must have an H8 omit-means-on st.caption "
+            "immediately before the button"
+        )
 
 
 def test_assistant_confirm_run_caption_discloses_omit_means_on():
     """QI-06-08 / A-9: confirm-run ``st.caption`` (comment / help= fail-closed)."""
-    source = _read(PAGES / "14_Research_Assistant.py")
-    captions = _caption_texts(source)
-    matched = [
-        text
-        for text in captions
-        if all(needle in text.lower() for needle in _H8_CONFIRM_RUN_CAPTION_NEEDLES)
-    ]
-    assert matched, "Run confirmed research must have an H8 omit-means-on st.caption"
+    _assert_h8_confirm_run_caption(_read(PAGES / "14_Research_Assistant.py"))
 
 
 def test_assistant_confirm_run_caption_ignores_comment_and_help_needles():
     """File-level / help= H8 needles must not satisfy the confirm-run caption."""
     fake = (
+        "import streamlit as st\n"
         "# omitted battery enabled means on grid / walk_forward / validation\n"
         "# study emit stays explicit false otf matrix is default-off\n"
         'st.selectbox("x", options=["a"], help="omitted battery enabled means on '
         "grid / walk_forward / validation study emit stays explicit false "
         'otf matrix is default-off")\n'
+        "if True:\n"
+        f'    if st.button("{_H8_CONFIRM_RUN_BUTTON}"):\n'
+        "        pass\n"
     )
-    captions = _caption_texts(fake)
-    matched = [
-        text
-        for text in captions
-        if all(needle in text.lower() for needle in _H8_CONFIRM_RUN_CAPTION_NEEDLES)
+    try:
+        _assert_h8_confirm_run_caption(fake)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc) or "immediately before" in str(exc)
+    else:
+        raise AssertionError("help=/comment H8 needles must not false-green st.caption")
+
+
+def test_assistant_confirm_run_caption_guard_requires_caption_before_button():
+    """Caption after the button, or on another if, must fail closed."""
+    needles = (
+        "Omitted battery enabled means on grid / walk_forward / validation "
+        "study emit stays explicit false otf matrix is default-off"
+    )
+    after_button = (
+        "import streamlit as st\n"
+        "if True:\n"
+        f'    if st.button("{_H8_CONFIRM_RUN_BUTTON}"):\n'
+        "        pass\n"
+        f'    st.caption("{needles}")\n'
+    )
+    try:
+        _assert_h8_confirm_run_caption(after_button)
+    except AssertionError as exc:
+        assert "precede" in str(exc) or "immediately before" in str(exc)
+    else:
+        raise AssertionError("caption after Run confirmed research must not pass")
+
+    other_if = (
+        "import streamlit as st\n"
+        "if False:\n"
+        f'    st.caption("{needles}")\n'
+        "if True:\n"
+        f'    if st.button("{_H8_CONFIRM_RUN_BUTTON}"):\n'
+        "        pass\n"
+    )
+    try:
+        _assert_h8_confirm_run_caption(other_if)
+    except AssertionError as exc:
+        assert "immediately before" in str(exc)
+    else:
+        raise AssertionError("off-block H8 caption must not bind to the confirm-run button")
+
+
+def test_user_guide_purpose_h2_names_classic_headless_omit_means_on():
+    """QI-13-09 / A-9: Purpose H2 (Help-allowlisted) names classic omit-means-on."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_PURPOSE_H2)
+    missing = [
+        n
+        for n in (
+            "python -m thesistester run",
+            "omitted battery `enabled`",
+            "Study expand still emits explicit `enabled: false`",
+            "Nested OTF",
+            "default-off",
+        )
+        if n not in body
     ]
-    assert matched == [], "help=/comment H8 needles must not false-green st.caption"
+    assert missing == [], f"Purpose and honesty H2 missing H8 needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Purpose and honesty H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+    fake = (
+        "## Notes\n"
+        "python -m thesistester run omitted battery `enabled` "
+        "Study expand still emits explicit `enabled: false` Nested OTF default-off\n"
+        "## Classic workflow overview\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _H8_PURPOSE_H2)
+    except AssertionError as exc:
+        assert "Purpose" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Purpose and honesty H2")
+
+
+def test_user_guide_assistant_h2_names_confirm_run_omit_means_on():
+    """USER_GUIDE Assistant H2 names confirm-run omit-means-on; Notes-only must not bind."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_ASSISTANT_H2)
+    missing = [
+        n
+        for n in (
+            "Run confirmed research",
+            "omitted battery `enabled`",
+            "Nested OTF",
+            "default-off",
+        )
+        if n not in body
+    ]
+    assert missing == [], f"Research Assistant H2 missing H8 needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Research Assistant H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+    fake = (
+        "## Notes\n"
+        "Run confirmed research omitted battery `enabled` Nested OTF default-off\n"
+        "## Research mode on classic pages\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _H8_ASSISTANT_H2)
+    except AssertionError as exc:
+        assert "Research Assistant" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Research Assistant H2")
+
+
+def test_user_guide_study_runner_h2_contrasts_emit_false():
+    """USER_GUIDE Study Runner H2 contrasts emit-false vs classic omit-on."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_STUDY_H2)
+    missing = [
+        n
+        for n in (
+            "Study emit explicit `false`",
+            "thesistester run",
+            "omit means **on**",
+            "Bare `{}` in R18 YAML",
+        )
+        if n not in body
+    ]
+    assert missing == [], f"Research Study Runner H2 missing H8 needles {missing}"
+    assert "Study cell" not in body
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Research Study Runner H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+    fake = (
+        "## Notes\n"
+        "Study emit explicit `false` thesistester run omit means **on** "
+        "Bare `{}` in R18 YAML\n"
+        "## Studies viewer (read-only)\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _H8_STUDY_H2)
+    except AssertionError as exc:
+        assert "Research Study Runner" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Research Study Runner H2")
 
 
 def test_readme_phase4_list_parser_ignores_later_token_mentions():
