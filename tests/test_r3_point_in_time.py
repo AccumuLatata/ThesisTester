@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 
 from datetime import date
+from pathlib import Path
 
 from thesistester.config import INSTRUMENTS
 from thesistester.data.quantower_ticks import TickChunk
@@ -25,7 +26,14 @@ from thesistester.engine.anchor_confluence import detect_anchor_confluence_zones
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
 from thesistester.engine.signals import generate_signals
-from thesistester.levels import compute_indicator_levels, compute_profile_levels
+from thesistester.levels import compute_all_levels, compute_indicator_levels, compute_profile_levels
+from thesistester.levels.catalog import (
+    APOC_LEVEL_NAMES,
+    PRIOR_PROFILE_LEVEL_NAMES,
+    SESSION_STRUCTURAL_LEVEL_NAMES,
+    SESSION_VWAP_LEVEL_NAMES,
+    SINGLE_PRINT_LEVEL_NAMES,
+)
 from thesistester.levels.rolling_poc_tick import compute_rolling_poc_from_ticks
 from thesistester.levels.session_date import trading_session_date
 from thesistester.levels.sessions import compute_session_levels
@@ -1044,3 +1052,231 @@ def test_3c_signals_before_T_unchanged_after_future_bars():
             assert sigs_b[col].tolist() == sigs_a[col].tolist(), (
                 f"3c column {col!r} changed after future shock"
             )
+
+
+# ---------------------------------------------------------------------------
+# B-5 / QI-02-02 — generated append-future-shock over every emitted column
+# ---------------------------------------------------------------------------
+
+# QI-2 §9 / §10 probe set (59 emitted columns under the golden-style kwargs).
+# §5.5 named gaps: dOpen/wOpen/mOpen, prevSettlement, pw*, pm*, pmVA*.
+# trading_session_date arithmetic is not re-audited here.
+_QI02_DYNAMIC_COLUMNS: tuple[str, ...] = (
+    "POC_rolling_30min",
+    "SMA_5_1min",
+    "EMA_5_1min",
+    "VWAP_rolling_30min",
+    "Pivot_1m_High",
+    "Pivot_1m_Low",
+    "prev30mVWAP",
+    "prev30mVWAP_2",
+    "prev30mVWAP_hit_m1",
+    "prev30mVWAP_hit_m5",
+)
+QI02_EMITTED_LEVEL_COLUMNS: tuple[str, ...] = (
+    *SESSION_STRUCTURAL_LEVEL_NAMES,
+    *PRIOR_PROFILE_LEVEL_NAMES,
+    *SESSION_VWAP_LEVEL_NAMES,
+    *SINGLE_PRINT_LEVEL_NAMES,
+    *APOC_LEVEL_NAMES,
+    *_QI02_DYNAMIC_COLUMNS,
+)
+SECTION_55_LEVEL_COLUMNS: tuple[str, ...] = (
+    "dOpen",
+    "wOpen",
+    "mOpen",
+    "prevSettlement",
+    "pwHigh",
+    "pwLow",
+    "pwOpen",
+    "pwEQ",
+    "pmHigh",
+    "pmLow",
+    "pmOpen",
+    "pmEQ",
+    "pmVAH",
+    "pmVAL",
+    "pmPOC",
+)
+
+_PROBE_LEVEL_KWARGS: dict = {
+    "instrument": "ES",
+    "opening_range_minutes": 15,
+    "sma_lengths": [5],
+    "ema_lengths": [5],
+    "sma_timeframes": ["1min"],
+    "ema_timeframes": ["1min"],
+    "vwap_windows": ["30min"],
+    "poc_windows": ["30min"],
+    "value_area_pct": 0.70,
+    "prior_day_aggregation_ticks": 4,
+    "prior_week_aggregation_ticks": 8,
+    "prior_month_aggregation_ticks": 10,
+    "pivots_enabled": True,
+    "pivot_timeframes": ["1min"],
+    "pivot_left": 2,
+    "pivot_right": 2,
+    "session_vwap_enabled": True,
+    "session_vwap_anchor": "RTH",
+    "single_prints_enabled": True,
+    "apoc_enabled": True,
+    "prev30m_vwap_enabled": True,
+    "prev30m_vwap_validity_periods": 2,
+}
+
+
+def _eth_rth_session_bars(
+    session_date: str,
+    *,
+    eth: int,
+    overnight: int,
+    rth: int,
+    base_price: float,
+) -> list[dict]:
+    """Sparse ETH + overnight + RTH sample for one exchange session date."""
+    session = pd.Timestamp(session_date, tz=TZ)
+    eth_start = (session - pd.Timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
+    overnight_start = session.replace(hour=2, minute=0, second=0, microsecond=0)
+    rth_start = session.replace(hour=9, minute=30, second=0, microsecond=0)
+    bars: list[dict] = []
+    price = base_price
+    for start, count in (
+        (eth_start, eth),
+        (overnight_start, overnight),
+        (rth_start, rth),
+    ):
+        for i in range(count):
+            p = price + i * 0.25
+            ts = start + pd.Timedelta(minutes=i)
+            bars.append(_ohlcv_bar(ts, p, p + 0.25, p - 0.25, p + 0.10, 100.0 + i))
+        price += count * 0.25
+    return bars
+
+
+def _golden_style_r3_bars() -> pd.DataFrame:
+    """QI-2 §10 May 29 + June 2–3 2026 ETH+RTH fixture (138 rows)."""
+    bars = (
+        _eth_rth_session_bars("2026-05-29", eth=10, overnight=10, rth=26, base_price=4000.0)
+        + _eth_rth_session_bars("2026-06-02", eth=10, overnight=10, rth=26, base_price=4100.0)
+        + _eth_rth_session_bars("2026-06-03", eth=10, overnight=10, rth=26, base_price=4200.0)
+    )
+    return tag_session(_build_df(bars), "ES")
+
+
+def _dst_week_r3_bars() -> pd.DataFrame:
+    """QI-2 §10 DST week 2026-03-06 / 03-09 / 03-10 (123 rows; pm* vacuous)."""
+    bars = (
+        _eth_rth_session_bars("2026-03-06", eth=10, overnight=5, rth=26, base_price=4000.0)
+        + _eth_rth_session_bars("2026-03-09", eth=10, overnight=5, rth=26, base_price=4050.0)
+        + _eth_rth_session_bars("2026-03-10", eth=10, overnight=5, rth=26, base_price=4100.0)
+    )
+    return tag_session(_build_df(bars), "ES")
+
+
+def _write_close_as_tick_csv(path: Path, df: pd.DataFrame) -> Path:
+    """Quantower Tick–Tick–Last CSV: one Last×Volume print per bar close (QI-2 §10)."""
+    lines = ["Aggressor flag;Price;Volume;Time left;"]
+    for row in df.itertuples(index=False):
+        stamp = pd.Timestamp(row.timestamp).tz_convert("UTC").strftime("%Y-%m-%d %H:%M:%S.000")
+        lines.append(f";{float(row.close)};{float(row.volume)};{stamp};")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _assert_prefix_identical(
+    base: pd.DataFrame, extended: pd.DataFrame, columns: tuple[str, ...]
+) -> None:
+    cutoff = base["timestamp"].max()
+    prefix = extended.loc[extended["timestamp"] <= cutoff].reset_index(drop=True)
+    assert len(prefix) == len(base)
+    for column in columns:
+        assert column in base.columns, f"emitted column missing on base: {column}"
+        assert column in prefix.columns, f"emitted column missing after shock: {column}"
+        pd.testing.assert_series_equal(
+            pd.Series(base[column].to_numpy()),
+            pd.Series(prefix[column].to_numpy()),
+            check_names=False,
+            check_dtype=False,
+        )
+
+
+def _compute_probe_levels(df: pd.DataFrame, tick_path: Path) -> pd.DataFrame:
+    return compute_all_levels(
+        df,
+        prior_profile_table=_tick_table_from_bars(df),
+        tick_paths=[tick_path],
+        **_PROBE_LEVEL_KWARGS,
+    )
+
+
+def test_qi02_emitted_level_column_census_is_59() -> None:
+    """Exit gate: the QI-2 §9 emitted set is exactly 59 columns."""
+    assert len(QI02_EMITTED_LEVEL_COLUMNS) == 59
+    assert len(set(QI02_EMITTED_LEVEL_COLUMNS)) == 59
+    assert set(SECTION_55_LEVEL_COLUMNS).issubset(QI02_EMITTED_LEVEL_COLUMNS)
+
+
+def test_generated_append_future_shock_all_emitted_columns_golden(tmp_path: Path) -> None:
+    """59/59 prefix-identical on the QI-2 May/June R3 fixture (append 8 extreme bars)."""
+    base = _golden_style_r3_bars()
+    assert len(base) == 138
+    tick_base = _write_close_as_tick_csv(tmp_path / "golden_base.csv", base)
+    computed = _compute_probe_levels(base, tick_base)
+    missing = [col for col in QI02_EMITTED_LEVEL_COLUMNS if col not in computed.columns]
+    assert missing == [], f"golden fixture did not emit {missing}"
+
+    cutoff = base["timestamp"].max()
+    extended = pd.concat(
+        [base, pd.DataFrame(_extreme_future_bars(cutoff, n=8))],
+        ignore_index=True,
+    )
+    extended = tag_session(extended, "ES")
+    tick_ext = _write_close_as_tick_csv(tmp_path / "golden_ext.csv", extended)
+    shocked = _compute_probe_levels(extended, tick_ext)
+    _assert_prefix_identical(computed, shocked, QI02_EMITTED_LEVEL_COLUMNS)
+    for column in ("dOpen", "wOpen", "mOpen", "prevSettlement", "pwHigh", "pmHigh", "pmPOC"):
+        assert computed[column].notna().any(), f"{column} should be finite on the May/June fixture"
+
+
+def test_generated_append_future_shock_all_emitted_columns_dst(tmp_path: Path) -> None:
+    """59/59 prefix-identical on the QI-2 DST-week fixture (pm* vacuous)."""
+    base = _dst_week_r3_bars()
+    assert len(base) == 123
+    tick_base = _write_close_as_tick_csv(tmp_path / "dst_base.csv", base)
+    computed = _compute_probe_levels(base, tick_base)
+    missing = [col for col in QI02_EMITTED_LEVEL_COLUMNS if col not in computed.columns]
+    assert missing == [], f"DST fixture did not emit {missing}"
+
+    cutoff = base["timestamp"].max()
+    extended = pd.concat(
+        [base, pd.DataFrame(_extreme_future_bars(cutoff, n=8))],
+        ignore_index=True,
+    )
+    extended = tag_session(extended, "ES")
+    tick_ext = _write_close_as_tick_csv(tmp_path / "dst_ext.csv", extended)
+    shocked = _compute_probe_levels(extended, tick_ext)
+    _assert_prefix_identical(computed, shocked, QI02_EMITTED_LEVEL_COLUMNS)
+    for column in ("pmHigh", "pmLow", "pmOpen", "pmEQ", "pmVAH", "pmVAL", "pmPOC"):
+        assert computed[column].isna().all(), (
+            f"{column} should stay vacuous on the March DST fixture"
+        )
+
+
+def test_generated_append_future_shock_structural_only_omits_va(tmp_path: Path) -> None:
+    """TV3 omit: without a tick table, pmVA* (and other VA) columns are absent."""
+    base = _golden_style_r3_bars()
+    kwargs = dict(_PROBE_LEVEL_KWARGS)
+    kwargs["apoc_enabled"] = False
+    kwargs["poc_windows"] = []
+    computed = compute_all_levels(base, **kwargs)
+    for column in PRIOR_PROFILE_LEVEL_NAMES:
+        assert column not in computed.columns
+    structural = tuple(col for col in QI02_EMITTED_LEVEL_COLUMNS if col in computed.columns)
+    cutoff = base["timestamp"].max()
+    extended = tag_session(
+        pd.concat([base, pd.DataFrame(_extreme_future_bars(cutoff, n=8))], ignore_index=True),
+        "ES",
+    )
+    shocked = compute_all_levels(extended, **kwargs)
+    _assert_prefix_identical(computed, shocked, structural)
+    assert "dOpen" in structural and "prevSettlement" in structural
