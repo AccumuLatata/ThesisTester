@@ -403,6 +403,53 @@ _PHASE8_GLOSSARY_NEEDLES = (
 )
 
 
+_WFA_OVERLAP_HELP_NEEDLES = (
+    "aggregate_test_total_r",
+    "fold-sum",
+    "stitched equity",
+)
+_WFA_AGGREGATE_CAPTION_NEEDLES = (
+    "aggregate_test_total_r",
+    "fold-sum",
+    "double-count",
+)
+
+
+def test_wfa_overlap_help_and_aggregate_caption_name_fold_sum():
+    """QI-05-07 / M9: overlap help + caption name fold-sum, not stitch-only."""
+    text = _read(PAGES / "10_Validation.py")
+    call = _selectbox_call(text, "Overlapping OOS ownership")
+    help_text = _kw_str(call, "help")
+    assert help_text, "Overlapping OOS ownership selectbox must have help="
+    missing_help = [n for n in _WFA_OVERLAP_HELP_NEEDLES if n not in help_text]
+    assert missing_help == [], f"overlap help missing {missing_help}: {help_text!r}"
+    captions = _caption_texts(text)
+    matching = [c for c in captions if all(n in c for n in _WFA_AGGREGATE_CAPTION_NEEDLES)]
+    assert matching, (
+        "WFA st.caption missing aggregate fold-sum needles "
+        f"{list(_WFA_AGGREGATE_CAPTION_NEEDLES)}: {captions!r}"
+    )
+
+
+def test_wfa_aggregate_caption_guard_requires_st_caption_not_help_text():
+    """Caption needles inside overlap help= must not satisfy the caption assert."""
+    fake = (
+        "import streamlit as st\n"
+        "st.selectbox(\n"
+        '    "Overlapping OOS ownership",\n'
+        '    options=["reject", "first", "last"],\n'
+        '    help="Reject withholds stitched equity. `aggregate_test_total_r` is a '
+        'fold-sum and can double-count overlapping OOS trades.",\n'
+        ")\n"
+    )
+    call = _selectbox_call(fake, "Overlapping OOS ownership")
+    help_text = _kw_str(call, "help")
+    assert help_text and all(n in help_text for n in _WFA_OVERLAP_HELP_NEEDLES)
+    captions = _caption_texts(fake)
+    matching = [c for c in captions if all(n in c for n in _WFA_AGGREGATE_CAPTION_NEEDLES)]
+    assert matching == []
+
+
 def test_phase8_permutation_copy_is_diagnostic_not_confirmatory():
     """QI-05-05 / H13: no success chrome on permutation p; no confirmatory P(mean R > 0)."""
     _assert_phase8_permutation_copy(_read(PAGES / "10_Validation.py"))

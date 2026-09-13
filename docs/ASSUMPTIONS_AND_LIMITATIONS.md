@@ -753,6 +753,11 @@ other than the last bar in the dataset.
 - Stitched OOS equity concatenates test-window trades only. Overlapping test
   windows default to `overlap_policy="reject"`; `first`/`last` explicitly
   assign duplicate executable entries to one fold.
+- **M9.** `aggregate_test_total_r` is a fold-sum of per-fold `test_total_r`.
+  When OOS windows overlap, that sum can double-count the same trade R.
+  `overlap_policy="reject"` withholds stitched equity; it does not change the
+  fold-sum. Fold boundaries stay S5. Validation captions this next to the
+  WFA summary.
 - Stitched OOS equity is a sequence of fold-local OOS segments, not a single
   continuous portfolio simulation across parameter-change boundaries.
 - The WFA matrix is a robustness surface across train/test session lengths,

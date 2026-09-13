@@ -337,7 +337,11 @@ if run_wfo:
         overlap_policy = st.selectbox(
             "Overlapping OOS ownership",
             options=["reject", "first", "last"],
-            help="Reject avoids double-counting by withholding stitched equity.",
+            help=(
+                "Reject withholds stitched equity when OOS windows overlap. "
+                "`aggregate_test_total_r` is a fold-sum of `test_total_r` and can "
+                "double-count overlapping OOS trades. first/last dedupe the stitch only."
+            ),
         )
         run_matrix = fold_mode == "sessions" and st.toggle(
             "Also run WFA matrix",
@@ -725,6 +729,16 @@ if isinstance(wfo_summary, dict):
     s2.metric("Valid OOS folds", wfo_summary.get("valid_fold_count", 0))
     s3.metric("OOS profitable rate", _fmt_value(wfo_summary.get("oos_profitable_fold_rate"), ".1%"))
     s4.metric("Median test expectancy", _fmt_value(wfo_summary.get("median_test_expectancy_r")))
+    a1, _ = st.columns(2)
+    a1.metric(
+        "Aggregate test total R",
+        _fmt_value(wfo_summary.get("aggregate_test_total_r")),
+    )
+    st.caption(
+        "`aggregate_test_total_r` is a fold-sum of per-fold `test_total_r`. "
+        "Overlapping OOS windows can double-count the same trade R. "
+        "`reject` withholds stitched equity; it does not deduplicate this sum (M9)."
+    )
 if hasattr(wfo_results, "empty") and not wfo_results.empty:
     st.dataframe(wfo_results, width="stretch", hide_index=True)
 for warning in st.session_state.get("walk_forward_warnings", []):
