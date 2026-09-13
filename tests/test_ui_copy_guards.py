@@ -466,6 +466,54 @@ def _assert_wfa_m9_copy(source: str) -> None:
     )
 
 
+_GRID_RANKING_HELP_NEEDLES = (
+    "In-sample",
+    "Does not prove",
+    "Do not treat ranking",
+)
+_WFA_HEATMAP_CAPTION_NEEDLES = (
+    "do not pick",
+    "greenest cell",
+)
+
+
+def test_grid_ranking_help_is_diagnostic_not_contest():
+    """QI-05-08 / M10: Ranking metric help is in-sample sort, not a proven best."""
+    text = _read(PAGES / "8_Grid_Search.py")
+    call = _selectbox_call(text, "Ranking metric")
+    help_text = _kw_str(call, "help")
+    assert help_text, "Ranking metric selectbox must have help="
+    missing = [n for n in _GRID_RANKING_HELP_NEEDLES if n not in help_text]
+    assert missing == [], f"Ranking help missing {missing}: {help_text!r}"
+    assert "best SL/TP" not in help_text
+
+
+def test_wfa_heatmap_caption_and_otf_trophy_are_not_contest():
+    """QI-05-08 / M10: WFA heatmap caption + no OTF trophy prefix."""
+    text = _read(PAGES / "10_Validation.py")
+    captions = _caption_texts(text)
+    matching = [c for c in captions if all(n in c for n in _WFA_HEATMAP_CAPTION_NEEDLES)]
+    assert matching, (
+        "WFA st.caption missing greenest-cell needles "
+        f"{list(_WFA_HEATMAP_CAPTION_NEEDLES)}: {captions!r}"
+    )
+    assert "🏆" not in text
+    assert "not a contest win" in text
+
+
+def test_wfa_heatmap_caption_guard_requires_st_caption_not_comment():
+    """Comment / help= 'greenest' needles must not satisfy the heatmap caption."""
+    fake = (
+        "import streamlit as st\n"
+        "# do not pick the greenest cell\n"
+        'st.selectbox("x", options=["a"], help="do not pick the greenest cell")\n'
+        "st.plotly_chart(None)\n"
+    )
+    captions = _caption_texts(fake)
+    matching = [c for c in captions if all(n in c for n in _WFA_HEATMAP_CAPTION_NEEDLES)]
+    assert matching == []
+
+
 def test_wfa_overlap_help_and_aggregate_caption_name_fold_sum():
     """QI-05-07 / M9: overlap help + caption name fold-sum, not stitch-only."""
     _assert_wfa_m9_copy(_read(PAGES / "10_Validation.py"))

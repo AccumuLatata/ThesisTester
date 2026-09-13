@@ -516,7 +516,7 @@ directional ranking, IS selection
 | Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
 | `Policy` (exposure) | Same four names as Backtest; default `allow_all` | Overlapping fills inflate every cell N; skip table empty by design (overlap not recorded) |
 | Inherited `entry_window` (Admit) | Fixed constraint from Backtest/Promote | Not a swept axis — all cells share it |
-| `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | Best cell is in-sample under that metric |
+| `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | In-sample sort only — not a proven live SL/TP; do not treat the top/greenest cell as production (M10) |
 | `Min trade count` | Drop thin cells before ranking | Too low → noisy “winners” |
 | **Enable directional ranking** | When on, ranks by **Directional ranking metric** instead of `Ranking metric` | Extra selection degrees of freedom |
 | `Directional ranking metric` / `Min long trades` / `Min short trades` | Shown when directional ranking is enabled | Side-specific mins can empty the ranked set |
@@ -666,7 +666,7 @@ OTF validation matrix, diagnostic only
 | Control / battery | Meaning | Common pitfall |
 |---|---|---|
 | **Run Validation** | Bootstrap CI, sign-flip permutation, trade-count, grid-overfit checks | CI including zero ≠ “confirmed edge” |
-| Walk-forward / OOS (+ optional WFA matrix) | Folded train/test diagnostics | Walk-forward can still overfit. `aggregate_test_total_r` is a fold-sum (can double-count overlapping OOS); `reject` withholds stitch only (M9) |
+| Walk-forward / OOS (+ optional WFA matrix) | Folded train/test diagnostics | Walk-forward can still overfit. `aggregate_test_total_r` is a fold-sum (can double-count overlapping OOS); `reject` withholds stitch only (M9). WFA heatmap is diagnostic — do not pick the greenest cell (M10) |
 | Overfitting-detection battery | CSCV/PBO, deflated Sharpe, vs-random | Quantifies selection risk, not future profit |
 | Price-series noise test | Local input sensitivity | Not a live-edge certificate |
 | Parameter sensitivity | One-at-a-time local flatness | Flat ≠ durable |
