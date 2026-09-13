@@ -273,8 +273,11 @@ def test_overlapping_oos_windows_require_explicit_ownership_policy():
     assert rejected.summary["stitched_oos_status"] == "overlapping_oos_windows"
     assert omitted.summary["stitched_oos_status"] == "overlapping_oos_windows"
     assert rejected.stitched_equity.empty
+    assert omitted.stitched_equity.empty
     assert rejected.summary["stitched_oos_trade_count"] == 0
+    assert omitted.summary["stitched_oos_trade_count"] == 0
     assert not rejected.oos_trades.empty
+    assert not omitted.oos_trades.empty
     assert "test_start_session_date" in rejected.oos_trades.columns
     assert not rejected.oos_trades["trade_id"].duplicated().any()
     assert (
@@ -861,3 +864,75 @@ def test_session_fold_uses_executable_entry_ownership(monkeypatch):
     )
     assert seen
     assert not any(seen)
+
+
+def test_overlap_first_oos_trades_follow_exit_timestamp_sort():
+    """Overlapping first/last copy exit-sorted stitch into ``oos_trades``.
+
+    The session fixture keeps entry-bar order == exit-timestamp order, so
+    swapping ``overlap_policy == "reject"`` on the post-sort copy (line 920)
+    survives. Crossed holds fail-close that invert.
+    """
+    timestamps = pd.date_range("2026-01-02 09:30", periods=12, freq="min", tz=TZ)
+    rows = []
+    for i, ts in enumerate(timestamps):
+        price = 100.0
+        high, low = price + 0.1, price - 0.1
+        if i == 1:
+            high = 103.0
+        elif i == 7:
+            high = 103.0
+        rows.append(
+            {
+                "timestamp": ts,
+                "open": price,
+                "high": high,
+                "low": low,
+                "close": price,
+                "volume": 100.0,
+            }
+        )
+    df = pd.DataFrame(rows)
+    signals = _signal_df(
+        _touch_signal(1, 0, "long"),
+        _touch_signal(10, 3, "short"),
+        _touch_signal(20, 6, "long"),
+    )
+    common = dict(
+        df=df,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[40],
+        take_profit_ticks_values=[8],
+        train_bars=3,
+        test_bars=6,
+        step_bars=3,
+        fold_mode="bars",
+        return_result=True,
+    )
+    first = run_walk_forward_sl_tp(**common, overlap_policy="first")
+    last = run_walk_forward_sl_tp(**common, overlap_policy="last")
+    rejected = run_walk_forward_sl_tp(**common, overlap_policy="reject")
+    assert first.summary["stitched_oos_status"] == "ok"
+    assert last.summary["stitched_oos_status"] == "ok"
+    assert rejected.summary["stitched_oos_status"] == "overlapping_oos_windows"
+    assert rejected.stitched_equity.empty
+    assert rejected.summary["stitched_oos_trade_count"] == 0
+    assert not rejected.oos_trades.empty
+    for owned in (first, last):
+        assert len(owned.oos_trades) >= 2
+        entry_order = list(
+            owned.oos_trades.sort_values(
+                ["global_entry_bar_index", "signal_id"],
+                kind="mergesort",
+            )["signal_id"]
+        )
+        exit_sorted = owned.oos_trades.sort_values(
+            ["exit_timestamp", "entry_timestamp", "signal_id", "fold_id"],
+            kind="mergesort",
+        )
+        exit_order = list(exit_sorted["signal_id"])
+        assert entry_order != exit_order
+        assert list(owned.oos_trades["signal_id"]) == exit_order
+        assert owned.summary["stitched_oos_trade_count"] == len(owned.oos_trades)

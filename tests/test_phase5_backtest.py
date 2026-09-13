@@ -1131,6 +1131,33 @@ def test_breakeven_arms_on_entry_bar_close_when_same_bar_exit_allowed():
     assert result.exit_management_diagnostic["average_stop_adjustments_per_trade"] >= 1.0
 
 
+def test_breakeven_arms_on_later_bar_when_same_bar_exit_disabled():
+    """BE may arm after the entry bar (``b >= entry_bar_index``, not ``<=``)."""
+    df = _df(
+        _bar("2026-01-05 09:30", 100.0, 100.0, 100.0, 100.0),
+        _bar("2026-01-05 09:31", 100.0, 100.5, 99.5, 100.2),
+        _bar("2026-01-05 09:32", 100.2, 102.0, 100.1, 101.5),
+        _bar("2026-01-05 09:33", 101.5, 101.6, 100.0, 100.5),
+    )
+    result = simulate_trades(
+        df,
+        _signal(bar_index=0, trigger="touch", direction="long"),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=8,
+        breakeven_after_r=1.0,
+        allow_same_bar_exit=False,
+        return_result=True,
+    )
+    assert isinstance(result, SimulationResult)
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "BE"
+    assert int(trade["breakeven_activated_bar_index"]) == 2
+    assert int(trade["exit_bar_index"]) == 3
+    assert result.exit_management_diagnostic["be_exit_count"] == 1
+
+
 def test_path_open_proximity_labels_exit_reason():
     """``path_open_proximity`` stamps ``{SL|TP}_intrabar_path``, not bare SL/TP."""
     parent = _df(
