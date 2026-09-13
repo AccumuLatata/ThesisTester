@@ -492,7 +492,7 @@ def test_mixed_ok_failed_overview_failed_section_qi0704(tmp_path: Path):
     assert "error" not in result.overview.columns
     assert failed_name not in set(result.ranked["run_name"])
     assert list(result.ranked["run_name"]) == ranked_before[1:]
-    assert f"failed: **1**" in result.markdown
+    assert "failed: **1**" in result.markdown
     assert "## Failed" in result.markdown
     assert "ValueError: injected boom" in result.markdown
     assert failed_name in result.markdown
