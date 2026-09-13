@@ -37,7 +37,10 @@ tested here.
 ## Level and signal family audit table
 
 Rows with `—` in the Tests column were verified by code inspection rather than by a
-dedicated future-shock regression test. Overall, audited behavior here is verified by
+dedicated future-shock regression test. QR B-5 (QI-02-02) commits a generated
+append-future-shock over all **59** emitted columns on the QI-2 R3 May/June and
+DST-week fixtures (`tests/test_r3_point_in_time.py`). `trading_session_date`
+arithmetic is not re-audited. Overall, audited behavior here is verified by
 future-shock tests and/or code inspection.
 
 ### Session levels — `levels/sessions.py`
@@ -45,16 +48,16 @@ future-shock tests and/or code inspection.
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
 | `pdHigh/pdLow/pdOpen/pdEQ` | `_period_levels` with `session_date` key | **Yes** | First bar of the new trading day (via `shift(1)` on per-day aggregate) | None | `test_r3_point_in_time.py::test_prior_session_levels_future_shock` |
-| `pwHigh/pwLow/pwOpen/pwEQ` | `_period_levels` with `week_key` | **Yes** | First bar of the new week | None | Same |
-| `pmHigh/pmLow/pmOpen/pmEQ` | `_period_levels` with `month_key` | **Yes** | First bar of the new month | None | Same |
-| `dOpen/wOpen/mOpen` | `_current_opens` via `transform("first")` | **Yes** | Available from the very first bar of the current period | These reflect the current (incomplete) period open, not a "prior" level | — |
+| `pwHigh/pwLow/pwOpen/pwEQ` | `_period_levels` with `week_key` | **Yes** | First bar of the new week | None | `test_r3_point_in_time.py::test_generated_append_future_shock_all_emitted_columns_golden` (QI-02-02; not the `pd*` named test) |
+| `pmHigh/pmLow/pmOpen/pmEQ` | `_period_levels` with `month_key` | **Yes** | First bar of the new month | None | Same generated append-FS (`test_generated_append_future_shock_all_emitted_columns_dst`: vacuous, still prefix-identical) |
+| `dOpen/wOpen/mOpen` | `_current_opens` via `transform("first")` | **Yes** | Available from the very first bar of the current period | These reflect the current (incomplete) period open, not a "prior" level | `test_r3_point_in_time.py::test_generated_append_future_shock_all_emitted_columns_golden` |
 | `RTH_Open` | `_rth_open` | **Yes** | Gated by `df["timestamp"] >= first_rth_ts`; NaN until the first RTH bar arrives | None | `test_r3_point_in_time.py::test_rth_open_not_visible_before_rth` |
 | `ONH / ONL` | `_overnight_high_low` | **Yes** | Gated by the first RTH bar timestamp; NaN during ETH | Overnight is computed across all ETH bars of the session; ONH/ONL is the completed overnight high/low, gated until RTH begins | `test_r3_point_in_time.py::test_overnight_levels_gated` |
 | `AsiaHigh / AsiaLow` | `_asia_high_low` → `_session_window_high_low` | **Yes** | Gated by clock time at Asia close (`asia_end` on the Asia session key date); NaN during the Asia window | Default window `20:00–00:00` ET (instrument `asia_start`/`asia_end`); ETH bars only; not rolling; distinct from ONH/ONL. Empty `asia_start`/`asia_end` → all-NaN. Empty `eth_start` remaps evening bars onto the next calendar day (ONH-style). Wrapping Asia requires `asia_end < eth_start <= asia_start` (or empty `eth_start`) | `tests/test_session_levels.py` Asia suite + `test_r3_point_in_time.py::test_asia_levels_gated_until_close` |
 | `LondonHigh / LondonLow` | `_london_high_low` → `_session_window_high_low` | **Yes** | Gated by clock time at London close (`london_end` on the session key date); NaN during the London window | Default window `02:00–05:00` ET (instrument `london_start`/`london_end`); ETH bars only; not rolling; distinct from Asia and ONH/ONL. Empty `london_start`/`london_end` → all-NaN. Non-wrapping London requires `eth_start > london_end` (or empty `eth_start`); `eth_start <= london_end` fails closed | `tests/test_session_levels.py` London suite + `test_r3_point_in_time.py::test_london_levels_gated_until_close` |
 | `pONH / pONL / pRTH_Open / pRTH_High / pRTH_Low` | `_previous_session_references` | **Yes** | All bars of the next session, via `shift(1)` on per-session aggregates | `pRTH_High`/`pRTH_Low` use RTH bars only (≠ `pdHigh`/`pdLow`); NaN when prior session has no RTH | `tests/test_session_levels.py` previous-session suite + `test_r3_point_in_time.py::test_prth_high_low_future_shock` |
 | `OR_High / OR_Low` | `_opening_range` | **Yes** | Gated by clock time: `start_minute + opening_range_minutes` after session midnight in exchange timezone | OR availability depends on the clock gate, not on whether OR bars exist | `test_r3_point_in_time.py::test_opening_range_not_visible_before_or_end` |
-| `prevSettlement` | `_prev_settlement` | **Yes** | First bar of the new day, via `shift(1)` | Falls back to prior-day final close when no `settlement` column present | — |
+| `prevSettlement` | `_prev_settlement` | **Yes** | First bar of the new day, via `shift(1)` | Falls back to prior-day final close when no `settlement` column present | `test_r3_point_in_time.py::test_generated_append_future_shock_all_emitted_columns_golden` |
 
 ### Prior profile levels — `levels/profile.py`
 
@@ -62,7 +65,7 @@ future-shock tests and/or code inspection.
 |---|---|---|---|---|---|
 | `pdVAH / pdVAL / pdPOC` | `map_shifted_prior_profile` on tick `PriorProfileTable` (day keys) | **Yes** | First bar of the new trading session when a tick table is present; **columns absent** without ticks | Tick Last×Volume VAP, 70% expander; `shift(1)` is on 1m unique session keys (not table-present rows). Session T+1 looks up session T in the table (`NaN` if that session has no ticks). Current incomplete session is never the prior. 1m truncation does not recompute VA | `test_r3_point_in_time.py::test_prior_day_profile_future_shock`, `tests/test_tick_vap_cutover.py` |
 | `pwVAH / pwVAL / pwPOC` | `map_shifted_prior_profile` (week keys `W-SUN`) | **Yes** | First bar of the new trading week when a tick table is present; **columns absent** without ticks | Same shift guarantee; week histogram is merged day histograms, not a second tick pass | `test_r3_point_in_time.py::test_prior_week_profile_future_shock` |
-| `pmVAH / pmVAL / pmPOC` | `map_shifted_prior_profile` (month keys `M`) | **Yes** | First bar of the new trading month when a tick table is present; **columns absent** without ticks | Same | `tests/test_tick_vap.py` month family |
+| `pmVAH / pmVAL / pmPOC` | `map_shifted_prior_profile` (month keys `M`) | **Yes** | First bar of the new trading month when a tick table is present; **columns absent** without ticks | Same | `test_r3_point_in_time.py::test_generated_append_future_shock_all_emitted_columns_golden` + `test_generated_append_future_shock_structural_only_omits_va` (TV3 omit); `tests/test_tick_vap.py` month family |
 | `POC_rolling_*` | `rolling_poc_tick` two-pointer Last×Volume | **Yes** | Prints with `ts < now+1min` only; window `[now-W+1min, now+1min)` | Missing/empty `tick_paths` refuse when windows are in play (`rolling POC requires ticks`). Unsound prints → per-bar NaN. No typical fallback. `_rolling_poc` body retained but is not the product path | `test_r3_point_in_time.py::test_rolling_poc_future_shock`; `tests/test_rolling_poc_tick_source.py` |
 
 ### Rolling indicators — `levels/indicators.py`

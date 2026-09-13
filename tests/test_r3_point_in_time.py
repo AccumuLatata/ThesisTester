@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 
 from datetime import date
+from pathlib import Path
 
 from thesistester.config import INSTRUMENTS
 from thesistester.data.quantower_ticks import TickChunk
@@ -25,7 +26,14 @@ from thesistester.engine.anchor_confluence import detect_anchor_confluence_zones
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
 from thesistester.engine.signals import generate_signals
-from thesistester.levels import compute_indicator_levels, compute_profile_levels
+from thesistester.levels import compute_all_levels, compute_indicator_levels, compute_profile_levels
+from thesistester.levels.catalog import (
+    APOC_LEVEL_NAMES,
+    PRIOR_PROFILE_LEVEL_NAMES,
+    SESSION_STRUCTURAL_LEVEL_NAMES,
+    SESSION_VWAP_LEVEL_NAMES,
+    SINGLE_PRINT_LEVEL_NAMES,
+)
 from thesistester.levels.rolling_poc_tick import compute_rolling_poc_from_ticks
 from thesistester.levels.session_date import trading_session_date
 from thesistester.levels.sessions import compute_session_levels
@@ -1044,3 +1052,287 @@ def test_3c_signals_before_T_unchanged_after_future_bars():
             assert sigs_b[col].tolist() == sigs_a[col].tolist(), (
                 f"3c column {col!r} changed after future shock"
             )
+
+
+# ---------------------------------------------------------------------------
+# B-5 / QI-02-02 — generated append-future-shock over every emitted column
+# ---------------------------------------------------------------------------
+
+# QI-2 §9 / §10 probe set (59 emitted columns under the golden-style kwargs).
+# §5.5 named gaps: dOpen/wOpen/mOpen, prevSettlement, pw*, pm*, pmVA*.
+# trading_session_date arithmetic is not re-audited here.
+_QI02_DYNAMIC_COLUMNS: tuple[str, ...] = (
+    "POC_rolling_30min",
+    "SMA_5_1min",
+    "EMA_5_1min",
+    "VWAP_rolling_30min",
+    "Pivot_1m_High",
+    "Pivot_1m_Low",
+    "prev30mVWAP",
+    "prev30mVWAP_2",
+    "prev30mVWAP_hit_m1",
+    "prev30mVWAP_hit_m5",
+)
+QI02_EMITTED_LEVEL_COLUMNS: tuple[str, ...] = (
+    *SESSION_STRUCTURAL_LEVEL_NAMES,
+    *PRIOR_PROFILE_LEVEL_NAMES,
+    *SESSION_VWAP_LEVEL_NAMES,
+    *SINGLE_PRINT_LEVEL_NAMES,
+    *APOC_LEVEL_NAMES,
+    *_QI02_DYNAMIC_COLUMNS,
+)
+SECTION_55_LEVEL_COLUMNS: tuple[str, ...] = (
+    "dOpen",
+    "wOpen",
+    "mOpen",
+    "prevSettlement",
+    "pwHigh",
+    "pwLow",
+    "pwOpen",
+    "pwEQ",
+    "pmHigh",
+    "pmLow",
+    "pmOpen",
+    "pmEQ",
+    "pmVAH",
+    "pmVAL",
+    "pmPOC",
+)
+
+_PROBE_LEVEL_KWARGS: dict = {
+    "instrument": "ES",
+    "opening_range_minutes": 15,
+    "sma_lengths": [5],
+    "ema_lengths": [5],
+    "sma_timeframes": ["1min"],
+    "ema_timeframes": ["1min"],
+    "vwap_windows": ["30min"],
+    "poc_windows": ["30min"],
+    "value_area_pct": 0.70,
+    "prior_day_aggregation_ticks": 4,
+    "prior_week_aggregation_ticks": 8,
+    "prior_month_aggregation_ticks": 10,
+    "pivots_enabled": True,
+    "pivot_timeframes": ["1min"],
+    "pivot_left": 2,
+    "pivot_right": 2,
+    "session_vwap_enabled": True,
+    "session_vwap_anchor": "RTH",
+    "single_prints_enabled": True,
+    "apoc_enabled": True,
+    "prev30m_vwap_enabled": True,
+    "prev30m_vwap_validity_periods": 2,
+}
+
+
+def _eth_rth_session_bars(
+    session_date: str,
+    *,
+    eth: int,
+    overnight: int,
+    rth: int,
+    base_price: float,
+) -> list[dict]:
+    """Sparse ETH + overnight + RTH sample for one exchange session date.
+
+    Wall-clock stamps are localized per calendar date. Do not build ETH as
+    ``tz-aware midnight - Timedelta(days=1)`` then ``replace(hour=18)``: across
+    a US spring-forward that lands Monday's ETH on Saturday 18:00 (orphan
+    Sunday session) instead of Sunday 18:00 after the 02:00→03:00 jump.
+    ``trading_session_date`` math is not re-audited here.
+    """
+    prev = (pd.Timestamp(session_date) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    eth_start = _rth_ts(prev, "18:00:00")
+    overnight_start = _rth_ts(session_date, "02:00:00")
+    rth_start = _rth_ts(session_date, "09:30:00")
+    bars: list[dict] = []
+    price = base_price
+    for start, count in (
+        (eth_start, eth),
+        (overnight_start, overnight),
+        (rth_start, rth),
+    ):
+        for i in range(count):
+            p = price + i * 0.25
+            ts = start + pd.Timedelta(minutes=i)
+            bars.append(_ohlcv_bar(ts, p, p + 0.25, p - 0.25, p + 0.10, 100.0 + i))
+        price += count * 0.25
+    return bars
+
+
+def _golden_style_r3_bars() -> pd.DataFrame:
+    """QI-2 §10 May 29 + June 2–3 2026 ETH+RTH fixture (138 rows)."""
+    bars = (
+        _eth_rth_session_bars("2026-05-29", eth=10, overnight=10, rth=26, base_price=4000.0)
+        + _eth_rth_session_bars("2026-06-02", eth=10, overnight=10, rth=26, base_price=4100.0)
+        + _eth_rth_session_bars("2026-06-03", eth=10, overnight=10, rth=26, base_price=4200.0)
+    )
+    return tag_session(_build_df(bars), "ES")
+
+
+def _dst_week_r3_bars() -> pd.DataFrame:
+    """QI-2 §10 DST week 2026-03-06 / 03-09 / 03-10 (123 rows; pm* vacuous).
+
+    Monday 2026-03-09 ETH must open Sunday 2026-03-08 18:00 EDT (after the
+    2026-03-08 02:00 EST → 03:00 EDT spring-forward), not Saturday 18:00.
+    """
+    bars = (
+        _eth_rth_session_bars("2026-03-06", eth=10, overnight=5, rth=26, base_price=4000.0)
+        + _eth_rth_session_bars("2026-03-09", eth=10, overnight=5, rth=26, base_price=4050.0)
+        + _eth_rth_session_bars("2026-03-10", eth=10, overnight=5, rth=26, base_price=4100.0)
+    )
+    return tag_session(_build_df(bars), "ES")
+
+
+def _write_close_as_tick_csv(path: Path, df: pd.DataFrame) -> Path:
+    """Quantower Tick–Tick–Last CSV: one Last×Volume print per bar close (QI-2 §10)."""
+    lines = ["Aggressor flag;Price;Volume;Time left;"]
+    for row in df.itertuples(index=False):
+        stamp = pd.Timestamp(row.timestamp).tz_convert("UTC").strftime("%Y-%m-%d %H:%M:%S.000")
+        lines.append(f";{float(row.close)};{float(row.volume)};{stamp};")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+_BASE_FRAME_COLUMNS: frozenset[str] = frozenset(
+    {"timestamp", "open", "high", "low", "close", "volume", "session"}
+)
+_SECTION_55_PM_COLUMNS: frozenset[str] = frozenset(
+    {"pmHigh", "pmLow", "pmOpen", "pmEQ", "pmVAH", "pmVAL", "pmPOC"}
+)
+
+
+def _assert_prefix_identical(
+    base: pd.DataFrame, extended: pd.DataFrame, columns: tuple[str, ...]
+) -> None:
+    cutoff = base["timestamp"].max()
+    prefix = extended.loc[extended["timestamp"] <= cutoff].reset_index(drop=True)
+    assert len(prefix) == len(base)
+    pd.testing.assert_series_equal(
+        pd.Series(base["timestamp"].to_numpy()),
+        pd.Series(prefix["timestamp"].to_numpy()),
+        check_names=False,
+    )
+    for column in columns:
+        assert column in base.columns, f"emitted column missing on base: {column}"
+        assert column in prefix.columns, f"emitted column missing after shock: {column}"
+        pd.testing.assert_series_equal(
+            pd.Series(base[column].to_numpy()),
+            pd.Series(prefix[column].to_numpy()),
+            check_names=False,
+            check_dtype=False,
+        )
+
+
+def _emitted_level_columns(df: pd.DataFrame) -> set[str]:
+    return {column for column in df.columns if column not in _BASE_FRAME_COLUMNS}
+
+
+def _compute_probe_levels(df: pd.DataFrame, tick_path: Path) -> pd.DataFrame:
+    return compute_all_levels(
+        df,
+        prior_profile_table=_tick_table_from_bars(df),
+        tick_paths=[tick_path],
+        **_PROBE_LEVEL_KWARGS,
+    )
+
+
+def test_qi02_emitted_level_column_census_is_59() -> None:
+    """Exit gate: the QI-2 §9 emitted set is exactly 59 columns."""
+    assert len(QI02_EMITTED_LEVEL_COLUMNS) == 59
+    assert len(set(QI02_EMITTED_LEVEL_COLUMNS)) == 59
+    assert set(SECTION_55_LEVEL_COLUMNS).issubset(QI02_EMITTED_LEVEL_COLUMNS)
+
+
+def test_qi02_dst_week_monday_eth_opens_sunday_after_spring_forward() -> None:
+    """Fixture contract: 2026-03-09 ETH is Sunday 18:00 EDT, not Saturday 18:00 EST."""
+    bars = _eth_rth_session_bars("2026-03-09", eth=1, overnight=1, rth=1, base_price=4000.0)
+    assert bars[0]["timestamp"] == pd.Timestamp("2026-03-08 18:00:00", tz=TZ)
+    assert bars[1]["timestamp"] == pd.Timestamp("2026-03-09 02:00:00", tz=TZ)
+    assert bars[2]["timestamp"] == pd.Timestamp("2026-03-09 09:30:00", tz=TZ)
+
+
+def test_generated_append_future_shock_all_emitted_columns_golden(tmp_path: Path) -> None:
+    """59/59 prefix-identical on the QI-2 May/June R3 fixture (append 8 extreme bars)."""
+    base = _golden_style_r3_bars()
+    assert len(base) == 138
+    tick_base = _write_close_as_tick_csv(tmp_path / "golden_base.csv", base)
+    computed = _compute_probe_levels(base, tick_base)
+    missing = [col for col in QI02_EMITTED_LEVEL_COLUMNS if col not in computed.columns]
+    assert missing == [], f"golden fixture did not emit {missing}"
+    assert _emitted_level_columns(computed) == set(QI02_EMITTED_LEVEL_COLUMNS)
+
+    cutoff = base["timestamp"].max()
+    extended = pd.concat(
+        [base, pd.DataFrame(_extreme_future_bars(cutoff, n=8))],
+        ignore_index=True,
+    )
+    extended = tag_session(extended, "ES")
+    tick_ext = _write_close_as_tick_csv(tmp_path / "golden_ext.csv", extended)
+    shocked = _compute_probe_levels(extended, tick_ext)
+    _assert_prefix_identical(computed, shocked, QI02_EMITTED_LEVEL_COLUMNS)
+    for column in SECTION_55_LEVEL_COLUMNS:
+        assert computed[column].notna().any(), f"{column} should be finite on the May/June fixture"
+
+
+def test_generated_append_future_shock_all_emitted_columns_dst(tmp_path: Path) -> None:
+    """59/59 prefix-identical on the QI-2 DST-week fixture (pm* vacuous)."""
+    base = _dst_week_r3_bars()
+    assert len(base) == 123
+    tick_base = _write_close_as_tick_csv(tmp_path / "dst_base.csv", base)
+    computed = _compute_probe_levels(base, tick_base)
+    missing = [col for col in QI02_EMITTED_LEVEL_COLUMNS if col not in computed.columns]
+    assert missing == [], f"DST fixture did not emit {missing}"
+    assert _emitted_level_columns(computed) == set(QI02_EMITTED_LEVEL_COLUMNS)
+    session_dates = set(
+        trading_session_date(base["timestamp"].dt.tz_convert(TZ), INSTRUMENTS["ES"].eth_start)
+    )
+    assert session_dates == {date(2026, 3, 6), date(2026, 3, 9), date(2026, 3, 10)}, (
+        "DST week must keep Friday/Monday/Tuesday sessions; Saturday 18:00 ETH "
+        "creates an orphan Sunday session and drops the post-spring-forward open"
+    )
+    assert pd.Timestamp("2026-03-08 18:00:00", tz=TZ) in set(base["timestamp"]), (
+        "Monday session ETH must start Sunday 18:00 EDT after the spring-forward"
+    )
+
+    cutoff = base["timestamp"].max()
+    extended = pd.concat(
+        [base, pd.DataFrame(_extreme_future_bars(cutoff, n=8))],
+        ignore_index=True,
+    )
+    extended = tag_session(extended, "ES")
+    tick_ext = _write_close_as_tick_csv(tmp_path / "dst_ext.csv", extended)
+    shocked = _compute_probe_levels(extended, tick_ext)
+    _assert_prefix_identical(computed, shocked, QI02_EMITTED_LEVEL_COLUMNS)
+    for column in SECTION_55_LEVEL_COLUMNS:
+        if column in _SECTION_55_PM_COLUMNS:
+            assert computed[column].isna().all(), (
+                f"{column} should stay vacuous on the March DST fixture"
+            )
+        else:
+            assert computed[column].notna().any(), (
+                f"{column} should be finite on the DST-week fixture"
+            )
+
+
+def test_generated_append_future_shock_structural_only_omits_va() -> None:
+    """TV3 omit: without a tick table, pmVA* (and other VA) columns are absent."""
+    base = _golden_style_r3_bars()
+    kwargs = dict(_PROBE_LEVEL_KWARGS)
+    kwargs["apoc_enabled"] = False
+    kwargs["poc_windows"] = []
+    computed = compute_all_levels(base, **kwargs)
+    for column in PRIOR_PROFILE_LEVEL_NAMES:
+        assert column not in computed.columns
+    structural = tuple(col for col in QI02_EMITTED_LEVEL_COLUMNS if col in computed.columns)
+    section_structural = tuple(
+        col for col in SECTION_55_LEVEL_COLUMNS if col not in PRIOR_PROFILE_LEVEL_NAMES
+    )
+    assert set(section_structural) <= set(structural)
+    cutoff = base["timestamp"].max()
+    extended = tag_session(
+        pd.concat([base, pd.DataFrame(_extreme_future_bars(cutoff, n=8))], ignore_index=True),
+        "ES",
+    )
+    shocked = compute_all_levels(extended, **kwargs)
+    _assert_prefix_identical(computed, shocked, structural)
