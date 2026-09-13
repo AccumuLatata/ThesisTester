@@ -996,3 +996,66 @@ def test_random_baseline_invalid_values_fail(block, match):
     raw["study"]["report"]["random_baseline"] = block
     with pytest.raises(StudySpecError, match=match):
         validate_study_spec(normalize_study_spec(raw))
+
+
+_WFA_OOS_METRIC = "wfa_median_test_expectancy_r"
+_RANKABLE_PRIMARY_METRICS = frozenset(
+    {"expectancy_r", "total_r", "max_drawdown_r", "trade_count", "profit_factor"}
+)
+_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "thesistester" / "study" / "schema.py"
+
+
+def _index_primary_metrics_literals() -> frozenset[str]:
+    """AST-bind `_INDEX_PRIMARY_METRICS` string literals (comment needles fail-closed)."""
+    tree = ast.parse(_SCHEMA_PATH.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == "_INDEX_PRIMARY_METRICS"
+            for target in node.targets
+        ):
+            continue
+        call = node.value
+        if (
+            not isinstance(call, ast.Call)
+            or not isinstance(call.func, ast.Name)
+            or call.func.id != "frozenset"
+            or len(call.args) != 1
+            or not isinstance(call.args[0], ast.Set)
+        ):
+            raise AssertionError("_INDEX_PRIMARY_METRICS must be a frozenset({...}) literal")
+        tokens: set[str] = set()
+        for elt in call.args[0].elts:
+            if not isinstance(elt, ast.Constant) or not isinstance(elt.value, str):
+                raise AssertionError("_INDEX_PRIMARY_METRICS members must be string literals")
+            tokens.add(elt.value)
+        return frozenset(tokens)
+    raise AssertionError("missing _INDEX_PRIMARY_METRICS assignment")
+
+
+def test_index_primary_metrics_allowlist_excludes_wfa_oos_token():
+    """QI-05-06 / A-11 document path: ranking allowlist stays in-sample."""
+    literals = _index_primary_metrics_literals()
+    assert literals == _RANKABLE_PRIMARY_METRICS
+    assert _WFA_OOS_METRIC not in literals
+
+
+@pytest.mark.parametrize("metric", sorted(_RANKABLE_PRIMARY_METRICS))
+def test_rankable_primary_metric_accepted(metric):
+    raw = _minimal_study()
+    raw["study"]["report"]["primary_metric"] = metric
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["report"]["primary_metric"] == metric
+
+
+def test_wfa_median_test_expectancy_r_not_rankable_primary_metric():
+    """QI-05-06 / A-11: stored WFA OOS token is rejected as primary_metric."""
+    raw = _minimal_study()
+    raw["study"]["report"]["primary_metric"] = _WFA_OOS_METRIC
+    with pytest.raises(StudySpecError, match="primary_metric must be one of") as excinfo:
+        validate_study_spec(normalize_study_spec(raw))
+    message = str(excinfo.value)
+    assert _WFA_OOS_METRIC in message
+    for token in sorted(_RANKABLE_PRIMARY_METRICS):
+        assert token in message

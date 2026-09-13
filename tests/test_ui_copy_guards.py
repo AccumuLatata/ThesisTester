@@ -1357,6 +1357,83 @@ def test_user_guide_studies_viewer_h2_names_inspect_vs_report_failed():
         raise AssertionError("Notes-only needles must not bind as Studies viewer H2")
 
 
+_H16_RANKING_ASSUMPTIONS_H2 = "Research Study Runner ranking (RS4)"
+_H16_RANKING_STUDY_RUNNER_H2 = "RS4 — Overview report"
+_H16_RANKING_RS1_H2 = "RS1 — StudySpec schema (`schema_version: 1`)"
+_H16_RANKING_NEEDLES = (
+    "H16",
+    "wfa_median_test_expectancy_r",
+    "not rankable",
+    "primary_metric",
+)
+
+
+def test_assumptions_rs4_h2_names_wfa_oos_not_rankable():
+    """QI-05-06 / A-11: ASSUMPTIONS RS4 H2 names H16 stored-not-rankable."""
+    body = _md_h2_body(
+        _read(REPO_ROOT / "docs" / "ASSUMPTIONS_AND_LIMITATIONS.md"),
+        _H16_RANKING_ASSUMPTIONS_H2,
+    )
+    missing = [n for n in _H16_RANKING_NEEDLES if n not in body]
+    assert missing == [], f"ASSUMPTIONS RS4 H2 missing A-11 needles {missing}"
+    fake = (
+        "## Notes\n"
+        "H16 wfa_median_test_expectancy_r not rankable primary_metric\n"
+        "## Research Study Runner diagnostic rollup (RS-D4)\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _H16_RANKING_ASSUMPTIONS_H2)
+    except AssertionError as exc:
+        assert "Research Study Runner ranking" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as ASSUMPTIONS RS4 H2")
+
+
+def test_study_runner_rs1_h2_names_primary_metric_allowlist():
+    """STUDY_RUNNER RS1 H2 names in-sample primary_metric; WFA token not rankable."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "STUDY_RUNNER.md"), _H16_RANKING_RS1_H2)
+    missing = [
+        n
+        for n in (
+            "primary_metric",
+            "wfa_median_test_expectancy_r",
+            "not rankable",
+            "H16",
+        )
+        if n not in body
+    ]
+    assert missing == [], f"STUDY_RUNNER RS1 H2 missing A-11 needles {missing}"
+    fake = (
+        "## Notes\n"
+        "primary_metric wfa_median_test_expectancy_r not rankable H16\n"
+        "## RS2 — Deterministic expansion\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _H16_RANKING_RS1_H2)
+    except AssertionError as exc:
+        assert "RS1" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as STUDY_RUNNER RS1 H2")
+
+
+def test_study_runner_rs4_h2_names_h16_wfa_not_rankable():
+    """STUDY_RUNNER RS4 H2 names H16 stored-not-rankable ranking."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "STUDY_RUNNER.md"), _H16_RANKING_STUDY_RUNNER_H2)
+    missing = [n for n in _H16_RANKING_NEEDLES if n not in body]
+    assert missing == [], f"STUDY_RUNNER RS4 H2 missing A-11 needles {missing}"
+    fake = (
+        "## Notes\n"
+        "H16 wfa_median_test_expectancy_r not rankable primary_metric\n"
+        "## RS5 — Promote + stage-first examples\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _H16_RANKING_STUDY_RUNNER_H2)
+    except AssertionError as exc:
+        assert "RS4" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as STUDY_RUNNER RS4 H2")
+
+
 def test_user_guide_study_runner_h2_stays_under_soft_budget():
     """A-9 H8 contrast lives on Purpose; Study Runner must stay ≤ Help chunk budget."""
     body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_STUDY_H2)
