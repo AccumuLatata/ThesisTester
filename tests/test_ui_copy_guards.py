@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAGES = REPO_ROOT / "pages"
 APP = REPO_ROOT / "app.py"
+
+# QI-04-02 / QI-05-09 (H5): Policy help must name overlap + empty skip table.
+# AST-only — a file-level `help=` regex false-matches Grid Ranking metric (QI-05-09).
+_ALLOW_ALL_POLICY_HELP_NEEDLES = (
+    "allow_all",
+    "overlapping signals independently",
+    "skip table is empty by design",
+)
+_ALLOW_ALL_POLICY_CAPTION_NEEDLES = (
+    "allow_all",
+    "independent fills",
+    "empty by design",
+)
 
 # Phase 4 bullet through the next top-level Phase 5 bullet (not the later 3c
 # four-rule block, which also names `3c` as a standalone token).
@@ -24,6 +38,65 @@ _README_TRIGGER_LIST_RE = re.compile(
 
 def _read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _selectbox_call(source: str, label: str) -> ast.Call:
+    """Return the `st.selectbox(label, …)` call; QI-4 H5 probe used this extract."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "selectbox"):
+            continue
+        if not node.args:
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and first.value == label:
+            return node
+    raise AssertionError(f"no st.selectbox({label!r}) in source")
+
+
+def _kw_str(call: ast.Call, name: str) -> str | None:
+    for kw in call.keywords:
+        if kw.arg != name:
+            continue
+        try:
+            value = ast.literal_eval(kw.value)
+        except (ValueError, TypeError) as exc:
+            raise AssertionError(f"selectbox {name}= is not a string literal") from exc
+        if not isinstance(value, str):
+            raise AssertionError(f"selectbox {name}= must be a str, got {type(value)}")
+        return value
+    return None
+
+
+def _assert_allow_all_policy_disclosure(source: str) -> None:
+    """Two-candidate overlap recipe (docs/quality/README.md; QI-4 §3) → copy only.
+
+    Probe observed allow_all N=2 / skips=0 vs single_position N=1 +
+    overlapping_position. This guard locks widget disclosure, not engine fills.
+    """
+    call = _selectbox_call(source, "Policy")
+    options = ast.literal_eval(call.args[1]) if len(call.args) > 1 else None
+    if options is None:
+        for kw in call.keywords:
+            if kw.arg == "options":
+                options = ast.literal_eval(kw.value)
+                break
+    assert options, "Policy selectbox has no options"
+    assert options[0] == "allow_all", "AH §2.1 default must stay allow_all (index 0)"
+    index_val = None
+    for kw in call.keywords:
+        if kw.arg == "index":
+            index_val = ast.literal_eval(kw.value)
+    assert index_val == 0, "Policy default index must stay 0 (allow_all)"
+    help_text = _kw_str(call, "help")
+    assert help_text, "Policy selectbox must have help= (QI-04-02 / QI-05-09)"
+    missing = [n for n in _ALLOW_ALL_POLICY_HELP_NEEDLES if n not in help_text]
+    assert missing == [], f"Policy help missing {missing}: {help_text!r}"
+    missing_cap = [n for n in _ALLOW_ALL_POLICY_CAPTION_NEEDLES if n not in source]
+    assert missing_cap == [], f"Policy caption missing {missing_cap}"
 
 
 def _phase4_listed_triggers(readme: str) -> set[str]:
@@ -153,6 +226,20 @@ def test_readme_phase4_trigger_list_covers_valid_triggers():
     assert "**4 rules (long):**" in readme
     assert "Arrival candle must touch or pass through the key level." in readme
     assert "Reversal candle must close above the arrival candle high." in readme
+
+
+def test_backtest_policy_help_discloses_allow_all_overlap():
+    """QI-04-02 / A-1: Backtest Policy help+caption name H5 overlap + empty skips."""
+    _assert_allow_all_policy_disclosure(_read(PAGES / "7_Backtest.py"))
+
+
+def test_grid_policy_help_discloses_allow_all_overlap():
+    """QI-05-09 / A-1: Grid Policy help+caption match Backtest (AST, not file regex)."""
+    _assert_allow_all_policy_disclosure(_read(PAGES / "8_Grid_Search.py"))
+    ranking = _selectbox_call(_read(PAGES / "8_Grid_Search.py"), "Ranking metric")
+    ranking_help = _kw_str(ranking, "help")
+    assert ranking_help is not None
+    assert "skip table is empty by design" not in ranking_help
 
 
 def test_readme_phase4_list_parser_ignores_later_token_mentions():

@@ -275,7 +275,7 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 | `Slippage (ticks per side)` | Adverse ticks at entry and exit (`slippage_ticks`) | Same — optimistic fills if 0 |
 | `Intrabar resolution` | See **Intrabar resolution** | Paths are assumptions, not tick truth |
 | `Flat by session close` + close time/TZ | See **Session close and entry cutoff** | Display TZ ≠ engine session TZ |
-| `Policy` (exposure) | See **Exposure policy** | Skips ≠ OTF rejects ≠ 3c voids |
+| `Policy` (exposure) | See **Exposure policy** | `allow_all` inflates N; skip table empty by design; skips ≠ OTF rejects ≠ 3c voids |
 | `Cooldown bars after exit` | See **Exposure policy** | `0` = no post-exit spacing |
 | `Constrain entries to time window` (Admit) | See **Focus vs Admit** | Re-sim only — not Time Analysis Focus |
 | `Exit management (break-even / trailing)` | See **Exit management (break-even and trailing)** | Stops update after completed bars |
@@ -305,11 +305,11 @@ cutoff**; **Focus vs Admit**; Grid Search; Research Assistant **Discuss runs**.
 
 ## Exposure policy
 
-**What it is.** Exposure policy is the Backtest (and Portfolio) admission gate
-that decides whether an otherwise-executable signal may open a new trade while
-other trades are still open — or during an optional cooldown after exit. On the
-**Backtest** page the control is labeled **Policy** under the **Exposure policy**
-subheader; the engine field is `exposure_policy`.
+**What it is.** Exposure policy is the Backtest, Grid Search, and Portfolio
+admission gate: whether an otherwise-executable signal may open while other
+trades are open, or during optional cooldown after exit. **Backtest** and
+**Grid Search** label the control **Policy** under **Exposure policy**
+(`exposure_policy`).
 
 **When to use it.** Use restrictive policies when you want path KPIs that
 respect “one book / one direction / one setup at a time.” Keep `allow_all` when
@@ -325,7 +325,7 @@ exposure_group_key
 
 | Control / value | Meaning | Common pitfall |
 |---|---|---|
-| `allow_all` (default) | Every executable signal may trade; overlapping signals are independent | Inflates trade count vs a real one-position book; cooldown is a no-op here |
+| `allow_all` (default) | Every executable signal may trade; overlapping signals are independent | Inflates N vs a one-position book; skip table empty by design; cooldown is a no-op |
 | `single_position` | At most one open trade at a time (any direction/setup) | Later signals skip as `overlapping_position`. **`touch` + `direction: both` is long-only** — the same-bar short is always skipped (`docs/ASSUMPTIONS_AND_LIMITATIONS.md` §4b) |
 | `single_direction` | At most one open trade per direction (`long` / `short`) | Opposite side can still overlap; `touch` + `both` still opens a hedged pair on the same bar |
 | `single_setup` | At most one open trade per setup group. Backtest key order: `setup_name` → `zone_id` → `level_source_label` → `level_names` → else `trigger\|direction` | Shared `level_names` can collide even when zone labels differ; skip reason is `overlapping_setup`. Same `touch`+`both` long-only artefact when the group key is shared; the fallback key includes direction and would hedge |
@@ -514,6 +514,7 @@ directional ranking, IS selection
 | `SL start` / `SL stop` / `SL step` | Stop-loss sweep in ticks | Huge grids are slow and easy to overfit |
 | `TP start` / `TP stop` / `TP step` | Take-profit sweep in ticks | Same |
 | Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
+| `Policy` (exposure) | Same four names as Backtest; default `allow_all` | Overlapping fills inflate every cell N; skip table empty by design |
 | Inherited `entry_window` (Admit) | Fixed constraint from Backtest/Promote | Not a swept axis — all cells share it |
 | `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | Best cell is in-sample under that metric |
 | `Min trade count` | Drop thin cells before ranking | Too low → noisy “winners” |

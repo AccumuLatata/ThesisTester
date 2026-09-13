@@ -485,6 +485,15 @@ with st.sidebar:
         ],
         index=0,
         key="backtest_exposure_policy",
+        help=(
+            "Default `allow_all` counts overlapping signals independently, so "
+            "trade count can exceed a one-position book. Under `allow_all` the "
+            "skip table is empty by design — overlap is not recorded as skips."
+        ),
+    )
+    st.caption(
+        "`allow_all` (default) treats overlapping signals as independent fills. "
+        "Skip table stays empty by design — not a sign that nothing overlapped."
     )
     cooldown_bars_after_exit = int(
         st.number_input(
