@@ -719,7 +719,7 @@ are B-1; H10/H11 lock tests are B-2.
 | H7 cutoff without flatten | Backtest/Grid force `no_new_entries_after=None` when flatten is off | YAML cutoff still applies (`after_entry_cutoff`) | `tests/test_ah8_cutoff_without_flatten.py` |
 | H15 OTF / Admit TZ | Backtest: Data-page `exchange_timezone` or instrument TZ | always `inst.exchange_tz` | `tests/test_ah8_otf_tz_ui_vs_api.py` |
 | H10 fatal OHLCV | Legacy 1m primary installs + warns | `load_dataset` raises `ValueError` | `tests/test_data_page_helpers.py` (`test_h10_*`) |
-| H11 mixed offsets | raw reject | raw reject (do not UTC-normalize) | `tests/test_loader.py` (`test_h11_*`) |
+| H11 mixed offsets | raw reject (pandas 3 `ValueError`; pandas 2 `.dt` `AttributeError`; not `DataValidationError`) | same (do not UTC-normalize) | `tests/test_loader.py` (`test_h11_*`) |
 
 ## R17 ingestion research safety
 

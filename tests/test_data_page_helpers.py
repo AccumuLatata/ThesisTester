@@ -1517,36 +1517,277 @@ def test_tv4_honesty_docs_lock_suggested_pdpoc_and_readme_object():
     assert "under cwd or the local store (same as Studies launch)" in user_guide
 
 
-def test_h10_legacy_primary_installs_fatal_ohlcv_api_rejects(tmp_path, monkeypatch):
+_H10_DUPLICATE_PRIMARY_CSV = (
+    "timestamp,open,high,low,close,volume\n"
+    "2026-06-02 09:30:00,100,101,99,100.5,10\n"
+    "2026-06-02 09:30:00,100,101,99,100.5,11\n"
+    "2026-06-02 09:31:00,100.5,102,100,101.5,20\n"
+)
+_H10_FATAL_GATE_NAMES = frozenset(
+    {
+        "FATAL_OHLCV_CODES",
+        "_fatal_validation_messages",
+        "fatal_codes",
+        "fatal_messages",
+        "parent_fatal",
+    }
+)
+
+
+def _call_func_name(call: ast.Call) -> str | None:
+    func = call.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _tree_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name):
+            names.add(child.id)
+        elif isinstance(child, ast.Attribute):
+            names.add(child.attr)
+    return names
+
+
+def _literal_str_set(node: ast.AST) -> set[str] | None:
+    if isinstance(node, ast.Call) and _call_func_name(node) == "frozenset" and node.args:
+        node = node.args[0]
+    if not isinstance(node, (ast.Set, ast.List, ast.Tuple)):
+        return None
+    values = [elt.value for elt in node.elts if isinstance(elt, ast.Constant)]
+    if len(values) != len(node.elts) or not all(isinstance(v, str) for v in values):
+        return None
+    return set(values)
+
+
+def _assign_target_names(node: ast.Assign) -> set[str]:
+    return {t.id for t in node.targets if isinstance(t, ast.Name)}
+
+
+def _is_15s_primary_mode_if(node: ast.If) -> bool:
+    test = node.test
+    if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+        return False
+    if not isinstance(test.ops[0], ast.Eq):
+        return False
+    ids = {expr.id for expr in (test.left, test.comparators[0]) if isinstance(expr, ast.Name)}
+    return "ingestion_mode" in ids and "INGESTION_MODE_15S_PRIMARY_DERIVE_1M" in ids
+
+
+def _legacy_primary_else_body(source: str) -> list[ast.stmt]:
+    """Else-body of the Upload-CSV 15s-vs-legacy fork that tags ``raw_df``."""
+    tree = ast.parse(source)
+    matches: list[list[ast.stmt]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If) or not _is_15s_primary_mode_if(node) or not node.orelse:
+            continue
+        wrapper = ast.Module(body=node.orelse, type_ignores=[])
+        if any(
+            isinstance(child, ast.Call) and _call_func_name(child) == "tag_session"
+            for child in ast.walk(wrapper)
+        ):
+            matches.append(node.orelse)
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected one legacy-primary else with tag_session, found {len(matches)}"
+        )
+    return matches[0]
+
+
+def _has_tag_session_raw_df(body: list[ast.stmt]) -> bool:
+    wrapper = ast.Module(body=body, type_ignores=[])
+    for child in ast.walk(wrapper):
+        if not isinstance(child, ast.Call) or _call_func_name(child) != "tag_session":
+            continue
+        if child.args and isinstance(child.args[0], ast.Name) and child.args[0].id == "raw_df":
+            return True
+    return False
+
+
+def _body_calls(body: list[ast.stmt], name: str) -> bool:
+    wrapper = ast.Module(body=body, type_ignores=[])
+    return any(
+        isinstance(child, ast.Call) and _call_func_name(child) == name
+        for child in ast.walk(wrapper)
+    )
+
+
+def assert_h10_legacy_primary_installs_without_fatal_abort(source: str) -> None:
+    """Legacy primary validates then ``tag_session(raw_df)`` with no fatal raise."""
+    body = _legacy_primary_else_body(source)
+    if not _body_calls(body, "validate_ohlcv"):
+        raise AssertionError("legacy primary else must call validate_ohlcv")
+    if not _has_tag_session_raw_df(body):
+        raise AssertionError("legacy primary else must tag_session(raw_df, ...)")
+    if not _body_calls(body, "_set_active_dataset_state"):
+        raise AssertionError("legacy primary else must _set_active_dataset_state")
+    wrapper = ast.Module(body=body, type_ignores=[])
+    for child in ast.walk(wrapper):
+        if not isinstance(child, ast.If):
+            continue
+        if not (_tree_names(child.test) & _H10_FATAL_GATE_NAMES):
+            continue
+        if any(isinstance(inner, ast.Raise) for inner in ast.walk(child)):
+            raise AssertionError(
+                "legacy primary else must not raise on FATAL_OHLCV_CODES / "
+                "_fatal_validation_messages (H10 UI-installs side)"
+            )
+
+
+def assert_h10_15s_parent_fail_closed(source: str) -> None:
+    """15s-primary parent stays abort-on-fatal (do not invert with H10)."""
+    fn = _module_function_def(source, "_prepare_15s_primary_dataset")
+    assigned_from_helper = False
+    raises_on_parent_fatal = False
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Assign) and "parent_fatal" in _assign_target_names(node):
+            value = node.value
+            if (
+                isinstance(value, ast.Call)
+                and _call_func_name(value) == "_fatal_validation_messages"
+                and value.args
+                and isinstance(value.args[0], ast.Name)
+                and value.args[0].id == "parent_report"
+            ):
+                assigned_from_helper = True
+        if isinstance(node, ast.If) and "parent_fatal" in _tree_names(node.test):
+            if any(isinstance(inner, ast.Raise) for inner in ast.walk(node)):
+                raises_on_parent_fatal = True
+    if not assigned_from_helper or not raises_on_parent_fatal:
+        raise AssertionError(
+            "_prepare_15s_primary_dataset must raise when "
+            "_fatal_validation_messages(parent_report) is non-empty"
+        )
+
+
+def _page_fatal_ohlcv_codes(source: str) -> set[str]:
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if "FATAL_OHLCV_CODES" not in _assign_target_names(node):
+            continue
+        codes = _literal_str_set(node.value)
+        if codes:
+            return codes
+    raise AssertionError("pages/1_Data.py must assign FATAL_OHLCV_CODES to a string set")
+
+
+def _api_load_dataset_fatal_codes(source: str) -> set[str]:
+    fn = _module_function_def(source, "load_dataset")
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Assign):
+            continue
+        if "fatal_codes" not in _assign_target_names(node):
+            continue
+        codes = _literal_str_set(node.value)
+        if codes:
+            return codes
+    raise AssertionError("api.load_dataset must assign fatal_codes = {...}")
+
+
+def test_h10_legacy_primary_installs_fatal_ohlcv_api_rejects(tmp_path):
     """QI-01-03 / B-2: lock H10 — UI helper installs; api.load_dataset rejects."""
     from thesistester.api import load_dataset
     from thesistester.data.loader import load_ohlcv, validate_ohlcv
     from thesistester.data.sessions import tag_session
 
     path = tmp_path / "dup_primary.csv"
-    path.write_text(
-        "timestamp,open,high,low,close,volume\n"
-        "2026-06-02 09:30:00,100,101,99,100.5,10\n"
-        "2026-06-02 09:30:00,100,101,99,100.5,11\n"
-        "2026-06-02 09:31:00,100.5,102,100,101.5,20\n",
-        encoding="utf-8",
-    )
+    path.write_text(_H10_DUPLICATE_PRIMARY_CSV, encoding="utf-8")
     raw = load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
     report = validate_ohlcv(raw)
     data_page = _import_data_page_module({})
+    assert data_page.FATAL_OHLCV_CODES == _page_fatal_ohlcv_codes(_DATA_PAGE_SOURCE)
     fatals = [issue.code for issue in report.issues if issue.code in data_page.FATAL_OHLCV_CODES]
     assert "duplicate_timestamps" in fatals
     installed = tag_session(raw, "ES")
     assert len(installed) == 3
-    with pytest.raises(ValueError, match="Dataset validation failed"):
+    with pytest.raises(ValueError, match=r"Dataset validation failed: 1 duplicate timestamps"):
         load_dataset(path, instrument="ES", source_timezone="America/New_York")
 
-    source = (
-        pathlib.Path(__file__)
-        .resolve()
-        .parents[1]
-        .joinpath("pages", "1_Data.py")
-        .read_text(encoding="utf-8")
+    api_source = pathlib.Path("thesistester/api.py").read_text(encoding="utf-8")
+    assert _page_fatal_ohlcv_codes(_DATA_PAGE_SOURCE) == _api_load_dataset_fatal_codes(api_source)
+    assert_h10_legacy_primary_installs_without_fatal_abort(_DATA_PAGE_SOURCE)
+    assert_h10_15s_parent_fail_closed(_DATA_PAGE_SOURCE)
+
+
+def test_h10_wiring_guard_rejects_inverted_legacy_fatal_abort():
+    """Comment / unused needle / added fatal raise must not false-green H10."""
+    inverted = (
+        "if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:\n"
+        "    prepared = _prepare_15s_primary_dataset(file)\n"
+        "else:\n"
+        "    raw_df, captured_raw = load_ohlcv(file, return_raw=True)\n"
+        "    report = validate_ohlcv(raw_df)\n"
+        "    fatal_messages = _fatal_validation_messages(report)\n"
+        "    if fatal_messages:\n"
+        "        raise ValueError('Dataset validation failed')\n"
+        "    df = tag_session(raw_df, inst)\n"
+        "    _set_active_dataset_state(df)\n"
     )
-    assert "_fatal_validation_messages(parent_report)" in source
-    assert "tag_session(raw_df, inst)" in source
+    try:
+        assert_h10_legacy_primary_installs_without_fatal_abort(inverted)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("legacy fatal abort before tag_session must invert H10")
+
+    comment_only = (
+        "if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:\n"
+        "    prepared = _prepare_15s_primary_dataset(file)\n"
+        "else:\n"
+        "    raw_df, captured_raw = load_ohlcv(file, return_raw=True)\n"
+        "    report = validate_ohlcv(raw_df)\n"
+        "    # _fatal_validation_messages(report); tag_session(raw_df, inst)\n"
+        "    df = tag_session(raw_df, inst)\n"
+        "    _set_active_dataset_state(df)\n"
+    )
+    assert_h10_legacy_primary_installs_without_fatal_abort(comment_only)
+
+    skipped_tag = (
+        "if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:\n"
+        "    prepared = _prepare_15s_primary_dataset(file)\n"
+        "else:\n"
+        "    report = validate_ohlcv(raw_df)\n"
+        "    df = tag_session(filtered_df, inst)\n"
+        "    _set_active_dataset_state(df)\n"
+    )
+    try:
+        assert_h10_legacy_primary_installs_without_fatal_abort(skipped_tag)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("tag_session(filtered_df) must not bind H10 raw_df install")
+
+
+def test_h10_wiring_guard_rejects_inverted_15s_parent_fail_closed():
+    """15s parent fail-closed is AST-bound (comment / unused helper fail-closed)."""
+    comment_only = (
+        "def _prepare_15s_primary_dataset(uploaded_file):\n"
+        "    parent_report = validate_ohlcv(derived.parent_data)\n"
+        "    # parent_fatal = _fatal_validation_messages(parent_report)\n"
+        "    parent_df = tag_session(derived.parent_data, instrument)\n"
+    )
+    try:
+        assert_h10_15s_parent_fail_closed(comment_only)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("comment-only _fatal_validation_messages must not bind 15s abort")
+
+    unused_helper = (
+        "def _prepare_15s_primary_dataset(uploaded_file):\n"
+        "    parent_report = validate_ohlcv(derived.parent_data)\n"
+        "    parent_fatal = _fatal_validation_messages(parent_report)\n"
+        "    parent_df = tag_session(derived.parent_data, instrument)\n"
+    )
+    try:
+        assert_h10_15s_parent_fail_closed(unused_helper)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("unused parent_fatal must not bind 15s fail-closed")
