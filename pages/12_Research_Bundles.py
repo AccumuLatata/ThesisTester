@@ -24,6 +24,7 @@ from thesistester.research_bundle import (
 )
 
 st.title("🧳 Research Bundles")
+st.caption("Diagnostic only — not proof of edge.")
 st.caption("Export and import portable research state snapshots for this session.")
 if not should_skip_dataset_bootstrap(st.session_state):
     bootstrap_active_saved_dataset()

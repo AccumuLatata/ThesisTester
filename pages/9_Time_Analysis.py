@@ -43,6 +43,7 @@ from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.timezone_display import ensure_display_timezone
 
 st.title("🕐 Time Analysis")
+st.caption("Diagnostic only — not proof of edge.")
 st.caption(
     "Descriptive time-of-day and session-window breakdown of completed trades. "
     "No trade re-simulation is performed."

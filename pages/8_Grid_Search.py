@@ -29,6 +29,7 @@ from thesistester.persistence import (
 )
 
 st.title("🔲 SL/TP Grid Search")
+st.caption("Diagnostic only — not proof of edge.")
 bootstrap_active_saved_dataset()
 
 # ── Require signals ──────────────────────────────────────────────────────────

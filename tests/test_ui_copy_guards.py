@@ -162,6 +162,12 @@ def _subheader_lineno(tree: ast.AST, title: str) -> int | None:
     return None
 
 
+def _title_lineno(tree: ast.AST) -> int | None:
+    for call in _st_calls(tree, "title"):
+        return call.lineno
+    return None
+
+
 def _md_h2_body(markdown: str, title: str) -> str:
     """Body of an ATX H2 through the next H2 (A-3 / QI-13-03 section bind)."""
     marker = f"## {title}\n"
@@ -1289,6 +1295,141 @@ def test_user_guide_backtest_h2_names_pnl_points_gross_alias():
         if n.casefold() in _md_h2_body(empty_then_notes, _BACKTEST_USER_GUIDE_H2).casefold()
     ]
     assert leaked == [], f"Notes-only needles must not bind as Backtest H2: {leaked}"
+
+
+# QI-10-04 / A-21: Validation one-liner on KPI pages; Data captions the 400 MB cap.
+_DIAGNOSTIC_NOT_PROOF = "Diagnostic only — not proof of edge."
+_A21_KPI_PAGES = (
+    "7_Backtest.py",
+    "8_Grid_Search.py",
+    "9_Time_Analysis.py",
+    "12_Research_Bundles.py",
+)
+_DATA_WEBSOCKET_CAP_NEEDLES = (
+    "MessageSizeError",
+    "400 MB",
+    "websocket",
+    "maxMessageSize",
+)
+
+
+def _assert_title_caption_contains(source: str, *, needle: str) -> None:
+    """AST-bind ``needle`` to ``st.caption`` after ``st.title``.
+
+    File-level / ``help=`` / comments false-green (A-1 / A-20 class).
+    """
+    tree = ast.parse(source)
+    title_at = _title_lineno(tree)
+    if title_at is None:
+        raise AssertionError("missing st.title")
+    matching = [
+        call.lineno
+        for call in _st_calls(tree, "caption")
+        if (text := _first_arg_text(call)) is not None and needle in text
+    ]
+    if not matching:
+        raise AssertionError(f"st.caption missing {needle!r}")
+    if min(matching) <= title_at:
+        raise AssertionError("st.caption must follow st.title")
+
+
+def _assert_data_websocket_cap_caption(source: str) -> None:
+    tree = ast.parse(source)
+    title_at = _title_lineno(tree)
+    if title_at is None:
+        raise AssertionError("missing st.title")
+    matching = []
+    for call in _st_calls(tree, "caption"):
+        text = _first_arg_text(call)
+        if text is None:
+            continue
+        if all(needle in text for needle in _DATA_WEBSOCKET_CAP_NEEDLES):
+            matching.append(call.lineno)
+    if not matching:
+        raise AssertionError(f"Data st.caption missing {_DATA_WEBSOCKET_CAP_NEEDLES}")
+    if min(matching) <= title_at:
+        raise AssertionError("Data websocket-cap st.caption must follow st.title")
+
+
+def test_kpi_pages_reuse_validation_diagnostic_not_proof():
+    """QI-10-04 / A-21: Backtest / Grid / Time / Bundles reuse Validation one-liner."""
+    for name in _A21_KPI_PAGES:
+        _assert_title_caption_contains(_read(PAGES / name), needle=_DIAGNOSTIC_NOT_PROOF)
+    _assert_title_caption_contains(_read(PAGES / "10_Validation.py"), needle=_DIAGNOSTIC_NOT_PROOF)
+
+
+def test_diagnostic_not_proof_guard_requires_st_caption_not_help():
+    """Comment / help= needles must not satisfy the diagnostic caption."""
+    fake = (
+        "import streamlit as st\n"
+        'st.title("Backtest")\n'
+        "st.selectbox(\n"
+        '    "Policy",\n'
+        f'    options=["allow_all"],\n'
+        f'    help="{_DIAGNOSTIC_NOT_PROOF}",\n'
+        ")\n"
+        f"# {_DIAGNOSTIC_NOT_PROOF}\n"
+    )
+    try:
+        _assert_title_caption_contains(fake, needle=_DIAGNOSTIC_NOT_PROOF)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc)
+    else:
+        raise AssertionError("help=/comment diagnostic needles must not false-green st.caption")
+
+
+def test_data_page_captions_400mb_websocket_cap():
+    """QI-10-04 / A-21: Data captions the 400 MB websocket cap (cap unchanged)."""
+    _assert_data_websocket_cap_caption(_read(PAGES / "1_Data.py"))
+
+
+def test_data_websocket_cap_guard_requires_st_caption_not_help():
+    """Comment / help= 400 MB needles must not satisfy the Data caption."""
+    fake = (
+        "import streamlit as st\n"
+        'st.title("Data")\n'
+        "st.selectbox(\n"
+        '    "Instrument",\n'
+        '    options=["ES"],\n'
+        '    help="MessageSizeError is the 400 MB websocket maxMessageSize cap",\n'
+        ")\n"
+        "# MessageSizeError 400 MB websocket maxMessageSize\n"
+    )
+    try:
+        _assert_data_websocket_cap_caption(fake)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc)
+    else:
+        raise AssertionError("help=/comment websocket-cap needles must not false-green st.caption")
+
+
+def test_user_guide_honesty_names_diagnostic_not_proof_and_data_cap():
+    """QI-10-04 / A-21: Purpose and honesty + Data H2 name the shared caveats."""
+    honesty = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), "Purpose and honesty")
+    missing_honesty = [
+        n for n in (_DIAGNOSTIC_NOT_PROOF, "400 MB", "websocket", "Data") if n not in honesty
+    ]
+    assert missing_honesty == [], f"Purpose and honesty missing A-21 needles {missing_honesty}"
+    assert len(honesty) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Purpose and honesty H2 exceeds USER_GUIDE soft budget: {len(honesty)}"
+    )
+    data = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), "Data")
+    missing_data = [n for n in ("MessageSizeError", "400 MB", "websocket") if n not in data]
+    assert missing_data == [], f"Data H2 missing cap needles {missing_data}"
+    assert len(data) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Data H2 exceeds USER_GUIDE soft budget: {len(data)}"
+    )
+    fake = (
+        "## Notes\n"
+        f"{_DIAGNOSTIC_NOT_PROOF} 400 MB websocket Data\n"
+        "## Classic workflow overview\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, "Purpose and honesty")
+    except AssertionError as exc:
+        assert "Purpose and honesty" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Purpose and honesty H2")
 
 
 def test_grid_policy_help_discloses_allow_all_overlap():
