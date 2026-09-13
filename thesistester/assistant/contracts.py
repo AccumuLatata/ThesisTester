@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
 
+from thesistester.assistant.redact import redact_for_logs
+
 ASSISTANT_CONTRACT_SCHEMA_VERSION = 1
 _CAPABILITY_ID_RE = re.compile(r"^[A-Z][A-Z0-9_]*(?:\.[a-z][a-z0-9_]*)+$")
 
@@ -228,12 +230,10 @@ class AssistantRequest:
         """Return a JSON-safe persist representation.
 
         Secret-shaped payload keys are replaced with ``[redacted]`` via
-        ``sidecar.redact_for_logs`` (QI-09-06). Live ``payload`` on this
-        instance is not mutated; dispatch and handlers keep the original
-        values.
+        ``redact_for_logs`` (QI-09-06; same helper as
+        ``sidecar.redact_for_logs``). Live ``payload`` on this instance is
+        not mutated; dispatch and handlers keep the original values.
         """
-        from thesistester.assistant.voice.sidecar import redact_for_logs
-
         return {
             "schema_version": self.schema_version,
             "capability_id": self.capability_id,

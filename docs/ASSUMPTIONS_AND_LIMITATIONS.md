@@ -1024,12 +1024,14 @@ other than the last bar in the dataset.
   (`provider`, `model`, retries, history trim, `evidence_only`) live in
   `config/assistant.toml`.
 - Audit persist (QI-09-06 / AUDIT_FINAL L10): caller-controlled
-  `AssistantRequest.payload` keys that match `sidecar.redact_for_logs`
+  `AssistantRequest.payload` keys that match `redact_for_logs`
   (`api_key`, `authorization`, `token`, `secret`, `client_secret`,
   `xai_api_key`, `value`) are stored as `[redacted]` in `tool_transcript`
-  and conversation JSON. `_record_audit` scrubs the tool entry before
-  `append_conversation_message`. Live `request.payload` used by dispatch
-  and handlers is not mutated; confirmation gating is unchanged. Default
+  and conversation JSON. `_record_audit` and `AssistantRequest.to_dict`
+  share `thesistester.assistant.redact.redact_for_logs` (re-exported as
+  `sidecar.redact_for_logs`). Live `request.payload` used by dispatch
+  and handlers is not mutated; confirmation gating is unchanged. If
+  redaction does not return a mapping, persist fails closed. Default
   UI does not inject keys; this is the residual for agent/library callers
   that put secret-shaped fields in capability payloads.
 - Provider timeouts retry per `max_retries`; exhaustion surfaces as a provider

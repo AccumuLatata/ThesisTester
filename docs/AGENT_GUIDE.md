@@ -332,10 +332,14 @@ Every request must first parse as an `AssistantRequest`, then pass
 
 - **Audit-payload rule (QI-09-06):** `_record_audit` and
   `AssistantRequest.to_dict` must run persist surfaces through
-  `sidecar.redact_for_logs` before `append_conversation_message`. Do not
-  write plaintext `api_key` (or other secret-shaped keys) into
-  `tool_transcript` / conversation JSON. Dispatch confirmation still
-  reads live `request.payload`. Keep the orchestrator audit-scrub probe
+  `thesistester.assistant.redact.redact_for_logs` (re-exported as
+  `sidecar.redact_for_logs`; do not fork the key list) before
+  `append_conversation_message`. Do not write plaintext `api_key` (or
+  other secret-shaped keys) into `tool_transcript` / conversation JSON.
+  `to_dict` must not import the voice sidecar / engine stack. Dispatch
+  confirmation still reads live `request.payload`. If redaction does not
+  return a mapping, persist must fail closed (skip/raise), never write
+  the unredacted tool entry. Keep the orchestrator audit-scrub probe
   and AIA registry tests green when changing audit persist.
 - Unknown request keys and unknown capability IDs fail closed.
 - Capability IDs classified as `unsupported` cannot be executed; their

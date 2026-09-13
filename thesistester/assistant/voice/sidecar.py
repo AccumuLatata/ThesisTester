@@ -29,6 +29,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlencode
 
+from thesistester.assistant.redact import redact_for_logs
 from thesistester.assistant.repository import LocalThesisRepository
 from thesistester.assistant.tools import AssistantTools
 from thesistester.assistant.voice.contracts import GroundingVerdict, VoiceTranscriptTurn
@@ -63,17 +64,6 @@ DEFAULT_SIDECAR_HOST = "127.0.0.1"
 DEFAULT_SIDECAR_PORT = 8765
 DEFAULT_HEALTH_TIMEOUT_SECONDS = 1.5
 DEFAULT_LAUNCH_READY_SECONDS = 4.0
-_FORBIDDEN_LOG_KEYS = frozenset(
-    {
-        "authorization",
-        "api_key",
-        "xai_api_key",
-        "client_secret",
-        "token",
-        "value",
-        "secret",
-    }
-)
 _TRANSCRIPT_EVENT_TYPES = frozenset(
     {
         "conversation.item.input_audio_transcription.completed",
@@ -366,24 +356,6 @@ def ensure_local_sidecar(
         "`python -m thesistester.assistant.voice.sidecar --host 127.0.0.1 "
         f"--port {port}`."
     )
-
-
-def redact_for_logs(payload: Any) -> Any:
-    """Return a JSON-safe structure with secret-bearing keys removed."""
-    if isinstance(payload, Mapping):
-        out: dict[str, Any] = {}
-        for key, value in payload.items():
-            key_text = str(key)
-            if key_text.lower() in _FORBIDDEN_LOG_KEYS:
-                out[key_text] = "[redacted]"
-                continue
-            out[key_text] = redact_for_logs(value)
-        return out
-    if isinstance(payload, list):
-        return [redact_for_logs(item) for item in payload]
-    if isinstance(payload, tuple):
-        return [redact_for_logs(item) for item in payload]
-    return payload
 
 
 def build_realtime_session_update(
