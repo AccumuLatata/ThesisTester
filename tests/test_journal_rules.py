@@ -107,6 +107,10 @@ def test_load_journal_rules_rejects_bad_path_and_type(tmp_path: Path):
         load_journal_rules(1)  # type: ignore[arg-type]
     with pytest.raises(JournalIngestError, match="list or mapping"):
         load_journal_rules({"rules": "bad"})
+    scalar = tmp_path / "scalar.yaml"
+    scalar.write_text("42\n", encoding="utf-8")
+    with pytest.raises(JournalIngestError, match="list or mapping"):
+        load_journal_rules(scalar)
 
 
 @pytest.mark.parametrize(
@@ -206,6 +210,35 @@ def test_apply_journal_rules_overnight_window_keeps_late_session_only():
     # 7 + 5 kept; inverted wrap would keep 3+11 or drop the 01:00 side.
     assert forward["rule_net_ticks"] == pytest.approx(12.0)
     assert forward["baseline_net_ticks"] == pytest.approx(26.0)
+
+
+def test_apply_journal_rules_same_day_window_end_exclusive_and_in_sample():
+    rule = JournalRule(
+        name="rth",
+        declared_on=date(2026, 5, 14),
+        trade_window_ny=(time(9, 30), time(11, 0)),
+    )
+    inside = _trade(
+        trade_id="jt:rth:1",
+        entry="2026-05-13T14:30:00",  # 10:30 EDT, session before declared_on
+        exit_at="2026-05-13T14:31:00",
+        session=date(2026, 5, 13),
+        net_ticks=4.0,
+    )
+    at_end = _trade(
+        trade_id="jt:end:1",
+        entry="2026-05-13T15:00:00",  # 11:00 EDT exclusive
+        exit_at="2026-05-13T15:01:00",
+        session=date(2026, 5, 13),
+        net_ticks=9.0,
+    )
+    rows = apply_journal_rules(pd.DataFrame([inside, at_end]), [rule])
+    in_sample = next(row for row in rows if row["split"] == RULE_SPLIT_IN_SAMPLE)
+    forward = next(row for row in rows if row["split"] == RULE_SPLIT_FORWARD)
+    assert in_sample["n_total"] == 2
+    assert in_sample["n_kept"] == 1
+    assert in_sample["rule_net_ticks"] == pytest.approx(4.0)
+    assert forward["n_total"] == 0
 
 
 def test_apply_journal_rules_guards_and_missing_recon_status():

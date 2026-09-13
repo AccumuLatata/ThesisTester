@@ -92,6 +92,11 @@ def test_load_live_declarations_rejects_bad_payloads(tmp_path: Path):
     with pytest.raises(JournalIngestError, match="must be a mapping"):
         load_live_declarations(not_map)
 
+    scalar = tmp_path / "scalar.yaml"
+    scalar.write_text("42\n", encoding="utf-8")
+    with pytest.raises(JournalIngestError, match="list or mapping"):
+        load_live_declarations(scalar)
+
 
 def test_build_forward_ledger_empty_and_live_since_filter():
     assert build_forward_ledger(None, live_since=None, cell_expectancy_ticks=1.0) == []
@@ -169,11 +174,35 @@ def test_build_forward_ledger_counts_adherence_and_skips_null_live_net():
                 "side": MATCH_SIDE_JOURNAL,
                 "net_ticks": 6.0,
             },
+            {
+                "session_date": "2026-05-16",
+                "match_class": MATCH_SYSTEMATIC_UNFILLED,
+                "side": MATCH_SIDE_SYSTEMATIC,
+                "net_ticks": None,
+            },
+            {
+                "session_date": "2026-05-16",
+                "match_class": MATCH_EXECUTED_CELL,
+                "side": MATCH_SIDE_JOURNAL,
+                "net_ticks": float("nan"),
+            },
+            {
+                "session_date": "2026-05-16",
+                "match_class": MATCH_EXECUTED_CELL,
+                "side": MATCH_SIDE_JOURNAL,
+                "net_ticks": float("inf"),
+            },
+            {
+                "session_date": "2026-05-16",
+                "match_class": MATCH_EXECUTED_CELL,
+                "side": MATCH_SIDE_JOURNAL,
+                "net_ticks": "x",
+            },
         ]
     )
     rows = build_forward_ledger(matches, live_since=None, cell_expectancy_ticks=3.5)
-    assert len(rows) == 2
-    first, second = rows
+    assert len(rows) == 3
+    first, second, third = rows
     assert first["session_date"] == "2026-05-14"
     assert first["executed_cell"] == 3
     assert first["systematic_unfilled"] == 1
@@ -197,6 +226,15 @@ def test_build_forward_ledger_counts_adherence_and_skips_null_live_net():
     assert second["cumulative_n"] == 4
     assert second["cumulative_live_expectancy_ticks"] == pytest.approx(6.0)
     assert second["systematic_signals"] == 1
+
+    assert third["session_date"] == "2026-05-16"
+    assert third["executed_cell"] == 3
+    assert third["systematic_unfilled"] == 1
+    assert third["adherence"] == pytest.approx(3 / 4)
+    assert third["live_net_ticks"] is None
+    assert third["live_expectancy_ticks"] is None
+    assert third["cumulative_n"] == 7
+    assert third["cumulative_live_expectancy_ticks"] == pytest.approx(6.0)
 
 
 def test_build_forward_ledger_rejects_invalid_session_date():
