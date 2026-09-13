@@ -116,22 +116,28 @@ else:
 
 _focus_window = st.session_state.get("focus_entry_window") or {}
 _focus_prov = st.session_state.get("focus_provenance") or {}
-_has_focus = bool(isinstance(_focus_window, dict) and _focus_window.get("enabled"))
+_focus_summary = st.session_state.get("focused_trade_summary")
+# Same session predicate as Time Analysis / Backtest — enabled window alone is leftover-prone.
+_has_focus = bool(
+    isinstance(_focus_summary, dict)
+    and isinstance(_focus_window, dict)
+    and _focus_window.get("enabled")
+)
 if _has_focus:
     st.caption(f"**{FOCUS_STATUS_BADGE}**")
     st.warning(FOCUS_HONESTY_BANNER)
     # QI-05-04 / A-3: consumer-only H12 sentence. Do not edit FOCUS_HONESTY_BANNER.
     st.caption(
         "Under `single_position`, Focus fills may differ from an Admit re-sim "
-        "(occupancy can substitute which `signal_id` fills). Focus N is not an Admit N."
+        "(occupancy can substitute which `signal_id` fills). Focus N is not an Admit N "
+        "(counts may match while fill sets differ)."
     )
     if isinstance(_focus_prov, dict) and _focus_prov:
         st.caption(
             f"Focus provenance in session: "
             f"{_focus_prov.get('trade_count_after', 0)} / "
-            f"{_focus_prov.get('trade_count_before', 0)} trades. "
-            "Validation batteries still use the all-day `trades` frame unless you "
-            "re-run Admit; Focus KPIs are not Admit KPIs."
+            f"{_focus_prov.get('trade_count_before', 0)} trades "
+            "(post-hoc subset — not Validation battery input)."
         )
 
 # ── Optional grid results ─────────────────────────────────────────────────────

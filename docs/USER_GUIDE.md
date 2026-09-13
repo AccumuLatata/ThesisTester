@@ -637,7 +637,8 @@ constrained re-simulation, RTH segments, clock range, outside_entry_window
 - Grid / WFA inherit a fixed enabled Admit window when present — not a swept
   axis. Under `allow_all` + zero cooldown, Focus and Admit can share the same
   `signal_id` set (C7). Under `single_position`, occupancy can substitute
-  which `signal_id` fills — Focus N is not an Admit N (H12 / AH §2 item 5).
+  which `signal_id` fills — Focus N is not an Admit N (counts may match;
+  H12 / AH §2 item 5).
 - Study briefing NY buckets are Focus-family. `study promote --admit-tod auto`
   and Inspect **Draft Admit follow-up** stamp engine Admit (`backtest`/`grid`
   `entry_window`) onto a child spec; they do not `study run`. Hour/30min

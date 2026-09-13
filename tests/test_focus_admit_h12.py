@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from thesistester.analytics.entry_window import (
     FOCUS_HONESTY_BANNER,
-    filter_trades_by_entry_window,
     normalize_entry_window,
+    summarize_focused_trades,
 )
 from thesistester.engine.backtest import simulate_trades
 
@@ -106,15 +108,68 @@ def _sim(df: pd.DataFrame, signals: pd.DataFrame, **overrides) -> pd.DataFrame:
     return simulate_trades(df, signals, **kwargs)
 
 
+def _is_st_attr_call(node: ast.AST, attr: str) -> bool:
+    """True for ``st.attr(...)`` or ``st.sidebar.attr(...)`` only."""
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return False
+    if node.func.attr != attr:
+        return False
+    value = node.func.value
+    if isinstance(value, ast.Name) and value.id == "st":
+        return True
+    return (
+        isinstance(value, ast.Attribute)
+        and value.attr == "sidebar"
+        and isinstance(value.value, ast.Name)
+        and value.value.id == "st"
+    )
+
+
+def _literal_str(node: ast.AST) -> str | None:
+    try:
+        value = ast.literal_eval(node)
+    except (ValueError, TypeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _assert_h12_page_caption(source: str) -> None:
+    """AST-bind H12 copy to ``st.caption`` after ``st.warning(FOCUS_HONESTY_BANNER)``.
+
+    File-level search false-greens on the A-3 comment (``Do not edit
+    FOCUS_HONESTY_BANNER``) and on ``help=`` / docstring needles — same class as
+    QI-05-09 / A-1 Policy caption.
+    """
+    tree = ast.parse(source)
+    warning_lines: list[int] = []
+    caption_lines: list[int] = []
+    for node in ast.walk(tree):
+        if _is_st_attr_call(node, "warning") and node.args:
+            arg = node.args[0]
+            if isinstance(arg, ast.Name) and arg.id == "FOCUS_HONESTY_BANNER":
+                warning_lines.append(node.lineno)
+        if _is_st_attr_call(node, "caption") and node.args:
+            text = _literal_str(node.args[0])
+            if text is None:
+                continue
+            if H12_CAPTION_NEEDLE in text and H12_N_NEEDLE in text:
+                caption_lines.append(node.lineno)
+    assert warning_lines, "must st.warning(FOCUS_HONESTY_BANNER)"
+    assert caption_lines, f"must st.caption H12 needles {H12_CAPTION_NEEDLE!r} and {H12_N_NEEDLE!r}"
+    assert min(caption_lines) > min(warning_lines), (
+        "H12 st.caption must follow st.warning(FOCUS_HONESTY_BANNER)"
+    )
+
+
 def test_h12_single_position_focus_fill_set_differs_from_admit():
     """QI-5 §3: occupancy substitution — Focus {3} vs Admit {2}; all-day {1,3}."""
     df = _h12_bars()
     signals = _h12_signals(df)
     window = _h12_window()
     all_day = _sim(df, signals, exposure_policy="single_position")
-    focused = filter_trades_by_entry_window(
+    focused = summarize_focused_trades(
         all_day, window, exchange_tz=TZ, timestamp_col="entry_timestamp"
-    )
+    )["focused_trades"]
     admit = _sim(df, signals, exposure_policy="single_position", entry_window=window)
     all_ids = set(all_day["signal_id"].astype(int))
     focus_ids = set(focused["signal_id"].astype(int))
@@ -132,9 +187,9 @@ def test_h12_c7_identity_under_allow_all_zero_cooldown():
     signals = _h12_signals(df)
     window = _h12_window()
     all_day = _sim(df, signals, exposure_policy="allow_all", cooldown_bars_after_exit=0)
-    focused = filter_trades_by_entry_window(
+    focused = summarize_focused_trades(
         all_day, window, exchange_tz=TZ, timestamp_col="entry_timestamp"
-    )
+    )["focused_trades"]
     admit = _sim(
         df,
         signals,
@@ -157,6 +212,61 @@ def test_h12_pages_caption_admit_divergence_without_editing_banner_constant():
     assert H12_CAPTION_NEEDLE not in source
     for name in ("9_Time_Analysis.py", "10_Validation.py"):
         text = (PAGES / name).read_text(encoding="utf-8")
-        assert "FOCUS_HONESTY_BANNER" in text
-        assert H12_CAPTION_NEEDLE in text
-        assert H12_N_NEEDLE in text
+        _assert_h12_page_caption(text)
+    validation = (PAGES / "10_Validation.py").read_text(encoding="utf-8")
+    assert "focused_trade_summary" in validation
+    assert "all-day `trades` frame unless you" not in validation
+    assert "re-run Admit" not in validation
+
+
+def test_h12_caption_guard_ignores_comment_and_help_needles():
+    """File-level / comment / help= needles must not false-green caption presence."""
+    fake = (
+        "import streamlit as st\n"
+        "from thesistester.analytics.entry_window import FOCUS_HONESTY_BANNER\n"
+        "st.warning(FOCUS_HONESTY_BANNER)\n"
+        "# QI-05-04 / A-3: consumer-only H12 sentence. Do not edit FOCUS_HONESTY_BANNER.\n"
+        "# Focus fills may differ from an Admit re-sim. Focus N is not an Admit N.\n"
+        'st.selectbox("Policy", options=["allow_all"], help="'
+        "Focus fills may differ from an Admit re-sim. Focus N is not an Admit N."
+        '")\n'
+    )
+    with pytest.raises(AssertionError, match="st.caption"):
+        _assert_h12_page_caption(fake)
+
+
+def test_h12_caption_guard_requires_honesty_warning_before_caption():
+    """Caption without ``st.warning(FOCUS_HONESTY_BANNER)`` (or after it) fails."""
+    caption_only = (
+        "import streamlit as st\n"
+        "st.caption(\n"
+        '    "Under `single_position`, Focus fills may differ from an Admit re-sim. '
+        'Focus N is not an Admit N."\n'
+        ")\n"
+    )
+    with pytest.raises(AssertionError, match="FOCUS_HONESTY_BANNER"):
+        _assert_h12_page_caption(caption_only)
+
+    reversed_order = (
+        "import streamlit as st\n"
+        "from thesistester.analytics.entry_window import FOCUS_HONESTY_BANNER\n"
+        "st.caption(\n"
+        '    "Under `single_position`, Focus fills may differ from an Admit re-sim. '
+        'Focus N is not an Admit N."\n'
+        ")\n"
+        "st.warning(FOCUS_HONESTY_BANNER)\n"
+    )
+    with pytest.raises(AssertionError, match="must follow"):
+        _assert_h12_page_caption(reversed_order)
+
+
+def test_h12_caption_guard_fails_closed_when_caption_removed():
+    """Removing the consumer caption (leaving the A-3 comment) must fail."""
+    fake = (
+        "import streamlit as st\n"
+        "from thesistester.analytics.entry_window import FOCUS_HONESTY_BANNER\n"
+        "st.warning(FOCUS_HONESTY_BANNER)\n"
+        "# QI-05-04 / A-3: consumer-only H12 sentence. Do not edit FOCUS_HONESTY_BANNER.\n"
+    )
+    with pytest.raises(AssertionError, match="st.caption"):
+        _assert_h12_page_caption(fake)

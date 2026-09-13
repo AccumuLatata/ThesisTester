@@ -433,7 +433,8 @@ if _has_focus:
     # QI-05-04 / A-3: consumer-only H12 sentence. Do not edit FOCUS_HONESTY_BANNER.
     st.caption(
         "Under `single_position`, Focus fills may differ from an Admit re-sim "
-        "(occupancy can substitute which `signal_id` fills). Focus N is not an Admit N."
+        "(occupancy can substitute which `signal_id` fills). Focus N is not an Admit N "
+        "(counts may match while fill sets differ)."
     )
     st.info(FOCUS_EQUITY_CAVEAT)
     st.caption(
