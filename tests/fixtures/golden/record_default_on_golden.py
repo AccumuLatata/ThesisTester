@@ -213,7 +213,7 @@ def main() -> int:
     if not args.confirm_regenerate:
         parser.error(
             "refusing to write default-on golden artifacts without --confirm-regenerate; "
-            "see tests/fixtures/golden/README.md"
+            "see docs/ENGINEERING_PROPOSAL.md §4.1"
         )
     record()
     print(f"Recorded default-on golden families in {FIXTURE_DIR}")
