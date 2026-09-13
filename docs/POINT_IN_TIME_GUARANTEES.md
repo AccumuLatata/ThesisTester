@@ -49,7 +49,7 @@ future-shock tests and/or code inspection.
 |---|---|---|---|---|---|
 | `pdHigh/pdLow/pdOpen/pdEQ` | `_period_levels` with `session_date` key | **Yes** | First bar of the new trading day (via `shift(1)` on per-day aggregate) | None | `test_r3_point_in_time.py::test_prior_session_levels_future_shock` |
 | `pwHigh/pwLow/pwOpen/pwEQ` | `_period_levels` with `week_key` | **Yes** | First bar of the new week | None | `test_r3_point_in_time.py::test_generated_append_future_shock_all_emitted_columns_golden` (QI-02-02; not the `pd*` named test) |
-| `pmHigh/pmLow/pmOpen/pmEQ` | `_period_levels` with `month_key` | **Yes** | First bar of the new month | None | Same generated append-FS (DST week: vacuous, still prefix-identical) |
+| `pmHigh/pmLow/pmOpen/pmEQ` | `_period_levels` with `month_key` | **Yes** | First bar of the new month | None | Same generated append-FS (`test_generated_append_future_shock_all_emitted_columns_dst`: vacuous, still prefix-identical) |
 | `dOpen/wOpen/mOpen` | `_current_opens` via `transform("first")` | **Yes** | Available from the very first bar of the current period | These reflect the current (incomplete) period open, not a "prior" level | `test_r3_point_in_time.py::test_generated_append_future_shock_all_emitted_columns_golden` |
 | `RTH_Open` | `_rth_open` | **Yes** | Gated by `df["timestamp"] >= first_rth_ts`; NaN until the first RTH bar arrives | None | `test_r3_point_in_time.py::test_rth_open_not_visible_before_rth` |
 | `ONH / ONL` | `_overnight_high_low` | **Yes** | Gated by the first RTH bar timestamp; NaN during ETH | Overnight is computed across all ETH bars of the session; ONH/ONL is the completed overnight high/low, gated until RTH begins | `test_r3_point_in_time.py::test_overnight_levels_gated` |
