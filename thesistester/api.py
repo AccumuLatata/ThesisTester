@@ -1876,8 +1876,9 @@ def run_backtest(
     ``no_new_entries_after`` is applied even when ``flat_by_session_close`` is
     off (H7 locked fork; classic UI/Grid force the cutoff to None). OTF and
     Admit clocks always use ``inst.exchange_tz`` (H15 locked fork; classic
-    Backtest uses session ``exchange_timezone`` or the instrument TZ).
-    Flatten-off still nulls simulate ``session_timezone`` on both composers.
+    Backtest uses Data-page ``exchange_timezone`` or the instrument TZ, not
+    the Session timezone widget). Flatten-off still nulls simulate
+    ``session_timezone`` on both composers.
     """
     inst = _instrument(instrument)
     settings = _merge_known(_BACKTEST_DEFAULTS, config, section="backtest")

@@ -174,8 +174,9 @@ This engine is for **research screening**, not proof of a durable edge.
   flatten is on (disabled widget → `None`). `api.run_backtest` still applies a
   YAML cutoff when flatten is off (`after_entry_cutoff`). Classic export nulls
   cutoff when flatten is off. Do not invert either composer.
-- **H15 (locked):** classic Backtest OTF/Admit clocks use session
-  `exchange_timezone` or the instrument exchange TZ. `api.run_backtest` always
+- **H15 (locked):** classic Backtest OTF/Admit clocks use Data-page
+  `exchange_timezone` or the instrument exchange TZ (not the Session
+  timezone widget). `api.run_backtest` always
   passes `inst.exchange_tz`. Flatten-off still nulls simulate
   `session_timezone` on both composers. Admission may match on a given
   fixture; the recorded TZ wiring is the lock.

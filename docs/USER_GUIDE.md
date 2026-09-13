@@ -502,10 +502,11 @@ after_entry_cutoff, session exit policy
 - Not overnight ETH session templates (same-calendar-day RTH-style only today).
 - Not Admit Focus/Promote windows — cutoff clocks ≠ entry-window membership TZ
   rules (`session_timezone` vs exchange TZ for RTH segments).
-- Locked fork: with flatten off, this page and Grid force
+- Locked fork: with flatten off, Backtest and Grid force
   `no_new_entries_after` to None. Headless `api.run_backtest` still applies a
-  YAML cutoff (`after_entry_cutoff`). OTF/Admit TZ: UI uses session
-  `exchange_timezone` or the instrument TZ; API always uses the instrument TZ.
+  YAML cutoff (`after_entry_cutoff`). OTF/Admit TZ: Backtest uses Data-page
+  `exchange_timezone` (not Session timezone) or the instrument TZ; API always
+  uses the instrument TZ.
 
 **Related pages.** Backtest; **Focus vs Admit**; **Exposure policy**.
 

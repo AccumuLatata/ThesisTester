@@ -1536,6 +1536,7 @@ _H7_CAPTION_NEEDLES = (
 )
 _H15_CAPTION_NEEDLES = (
     "OTF",
+    "Data-page",
     "exchange_timezone",
     "api.run_backtest",
     "instrument exchange TZ",
@@ -1545,8 +1546,19 @@ _SESSION_CLOSE_F6_NEEDLES = (
     "no_new_entries_after",
     "api.run_backtest",
     "after_entry_cutoff",
+    "Backtest and Grid",
+    "Data-page",
     "exchange_timezone",
 )
+_LEVELS_F6_NEEDLES = (
+    "normalize_levels_config",
+    "Omit a family key",
+)
+_GRID_F6_NEEDLES = (
+    "flatten-gate",
+    "cutoff is None",
+)
+_ADMIT_SUBHEADER = "Entry window (Admit)"
 
 
 def _ingestion_mode_radio_lineno(source: str) -> int:
@@ -1558,70 +1570,173 @@ def _ingestion_mode_radio_lineno(source: str) -> int:
     raise AssertionError("Data page missing st.radio('Ingestion mode')")
 
 
+def _module_function_docstring(source: str, name: str) -> str:
+    """Docstring of a module-level ``def name`` (not comments / other defs)."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            doc = ast.get_docstring(node)
+            if not doc:
+                raise AssertionError(f"{name} missing docstring")
+            return doc
+    raise AssertionError(f"missing module-level def {name}")
+
+
+def _captions_between(tree: ast.AST, start: int, end: int) -> list[tuple[int, str]]:
+    found: list[tuple[int, str]] = []
+    for call in _st_calls(tree, "caption"):
+        if start < call.lineno < end:
+            text = _first_arg_text(call)
+            if text:
+                found.append((call.lineno, text))
+    return found
+
+
 def test_data_page_captions_h10_legacy_primary_fork():
-    """QI-01-03 / A-22: caption after Ingestion mode names the locked fatal fork.
+    """QI-01-03 / A-22: first caption after Ingestion mode names the fatal fork.
 
     Not title-chrome: A-21 binds chrome captions to ``st.title``. H10 sits
-    next to the legacy-primary radio (plan: legacy-primary caption).
+    next to the legacy-primary radio (plan: legacy-primary caption). A later
+    matching caption must not false-green this bind.
     """
     source = _read(PAGES / "1_Data.py")
     radio_line = _ingestion_mode_radio_lineno(source)
     tree = ast.parse(source)
-    matching = [
+    after = [
         (call.lineno, text)
         for call in _st_calls(tree, "caption")
-        if (text := _first_arg_text(call)) and all(n in text for n in _H10_CAPTION_NEEDLES)
+        if call.lineno > radio_line
+        for text in (_first_arg_text(call),)
+        if text
     ]
-    assert matching, f"Data st.caption missing H10 needles {_H10_CAPTION_NEEDLES}"
-    assert min(lineno for lineno, _ in matching) > radio_line, (
-        "H10 caption must follow st.radio('Ingestion mode'), not title chrome"
+    assert after, "Data page has no st.caption after st.radio('Ingestion mode')"
+    first_lineno, first_text = min(after, key=lambda item: item[0])
+    missing = [n for n in _H10_CAPTION_NEEDLES if n not in first_text]
+    assert missing == [], (
+        f"first caption after Ingestion mode (L{first_lineno}) missing H10 "
+        f"needles {missing}"
     )
 
 
+def test_h10_caption_guard_requires_first_after_radio():
+    """A later H10 caption must not bind as the Ingestion-mode disclosure."""
+    fake = (
+        "import streamlit as st\n"
+        'st.title("Data")\n'
+        'st.caption("title chrome")\n'
+        'st.radio("Ingestion mode", options=["a"])\n'
+        'st.caption("unrelated mode help")\n'
+        'st.caption("legacy one-minute primary fatal OHLCV api.load_dataset fail-closed")\n'
+    )
+    radio_line = _ingestion_mode_radio_lineno(fake)
+    tree = ast.parse(fake)
+    after = [
+        (call.lineno, text)
+        for call in _st_calls(tree, "caption")
+        if call.lineno > radio_line
+        for text in (_first_arg_text(call),)
+        if text
+    ]
+    first_text = min(after, key=lambda item: item[0])[1]
+    leaked = [n for n in _H10_CAPTION_NEEDLES if n in first_text]
+    assert leaked == [], f"later H10 caption must not bind as first-after-radio: {leaked}"
+
+
 def test_backtest_captions_h7_and_h15_locked_forks():
-    """QI-04-03 / QI-04-04 / A-22: cutoff + OTF TZ captions after Session exit."""
+    """QI-04-03 / QI-04-04 / A-22: cutoff + OTF TZ captions in Session exit."""
     source = _read(PAGES / "7_Backtest.py")
     tree = ast.parse(source)
     session_at = _subheader_lineno(tree, "Session exit policy")
+    admit_at = _subheader_lineno(tree, _ADMIT_SUBHEADER)
     assert session_at is not None
-    h7 = [
-        (call.lineno, text)
-        for call in _st_calls(tree, "caption")
-        if (text := _first_arg_text(call)) and all(n in text for n in _H7_CAPTION_NEEDLES)
-    ]
-    h15 = [
-        (call.lineno, text)
-        for call in _st_calls(tree, "caption")
-        if (text := _first_arg_text(call)) and all(n in text for n in _H15_CAPTION_NEEDLES)
-    ]
-    assert h7, f"Backtest st.caption missing H7 needles {_H7_CAPTION_NEEDLES}"
-    assert h15, f"Backtest st.caption missing H15 needles {_H15_CAPTION_NEEDLES}"
-    assert min(lineno for lineno, _ in h7) > session_at
-    assert min(lineno for lineno, _ in h15) > session_at
+    assert admit_at is not None
+    window = _captions_between(tree, session_at, admit_at)
+    h7 = [item for item in window if all(n in item[1] for n in _H7_CAPTION_NEEDLES)]
+    h15 = [item for item in window if all(n in item[1] for n in _H15_CAPTION_NEEDLES)]
+    assert h7, f"Session exit st.caption missing H7 needles {_H7_CAPTION_NEEDLES}"
+    assert h15, f"Session exit st.caption missing H15 needles {_H15_CAPTION_NEEDLES}"
+
+
+def test_h7_h15_caption_guard_ignores_later_sidebar_captions():
+    """Needles after Admit must not satisfy the Session-exit cutoff bind."""
+    fake = (
+        "import streamlit as st\n"
+        'st.subheader("Session exit policy")\n'
+        'st.caption("unrelated flatten help")\n'
+        'st.subheader("Entry window (Admit)")\n'
+        'st.caption("no_new_entries_after forced None api.run_backtest after_entry_cutoff")\n'
+        'st.caption("OTF Data-page exchange_timezone api.run_backtest instrument exchange TZ")\n'
+    )
+    tree = ast.parse(fake)
+    session_at = _subheader_lineno(tree, "Session exit policy")
+    admit_at = _subheader_lineno(tree, _ADMIT_SUBHEADER)
+    window = _captions_between(tree, session_at, admit_at)
+    assert not any(all(n in text for n in _H7_CAPTION_NEEDLES) for _, text in window)
+    assert not any(all(n in text for n in _H15_CAPTION_NEEDLES) for _, text in window)
 
 
 def test_api_docstrings_name_h7_h10_h15():
-    """A-22 composer B: api.load_dataset / run_backtest docstrings name the forks."""
+    """A-22 composer B: bind forks to load_dataset / run_backtest docstrings."""
     api = _read(REPO_ROOT / "thesistester" / "api.py")
-    assert "H10 locked fork" in api
-    assert "H7 locked fork" in api
-    assert "H15 locked fork" in api
+    load_ds = _module_function_docstring(api, "load_dataset")
+    run_bt = _module_function_docstring(api, "run_backtest")
+    assert "H10 locked fork" in load_ds
+    assert "H7 locked fork" in run_bt
+    assert "H15 locked fork" in run_bt
+    assert "Data-page" in run_bt
+
+
+def test_api_docstring_guard_ignores_comments_and_other_defs():
+    """File-level / comment / other-function needles must not bind A-22 docs."""
+    fake = (
+        "def load_dataset():\n"
+        '    """Load an explicit vendor profile."""\n'
+        "    pass\n"
+        "def run_backtest():\n"
+        '    """Run the UI backtest composition."""\n'
+        "    # H10 locked fork H7 locked fork H15 locked fork Data-page\n"
+        "    pass\n"
+        "def run_grid():\n"
+        '    """H10 locked fork H7 locked fork H15 locked fork Data-page."""\n'
+        "    pass\n"
+    )
+    load_ds = _module_function_docstring(fake, "load_dataset")
+    run_bt = _module_function_docstring(fake, "run_backtest")
+    assert "H10 locked fork" not in load_ds
+    assert "H7 locked fork" not in run_bt
+    assert "H15 locked fork" not in run_bt
 
 
 def test_user_guide_session_close_names_h7_h15_forks():
     """QI-13-07 / F-6: Session close H2 names the locked UI vs API cutoff/TZ fork."""
-    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _SESSION_CLOSE_H2)
+    guide = _read(REPO_ROOT / "docs" / "USER_GUIDE.md")
+    body = _md_h2_body(guide, _SESSION_CLOSE_H2)
     missing = [n for n in _SESSION_CLOSE_F6_NEEDLES if n not in body]
     assert missing == [], f"Session close H2 missing F-6 needles {missing}"
     assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
         f"Session close H2 exceeds USER_GUIDE soft budget: {len(body)}"
     )
-    data = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), "Data")
+    data = _md_h2_body(guide, "Data")
     for needle in ("fatal OHLCV", "dataset_id", "Mixed-offset"):
         assert needle in data, f"Data H2 missing A-22/F-6 needle {needle!r}"
     assert len(data) <= _USER_GUIDE_H2_SOFT_BUDGET, (
         f"Data H2 exceeds USER_GUIDE soft budget: {len(data)}"
     )
+    levels = _md_h2_body(guide, "Levels")
+    missing_levels = [n for n in _LEVELS_F6_NEEDLES if n not in levels]
+    assert missing_levels == [], f"Levels H2 missing F-6 needles {missing_levels}"
+    grid = _md_h2_body(guide, "Grid Search")
+    missing_grid = [n for n in _GRID_F6_NEEDLES if n not in grid]
+    assert missing_grid == [], f"Grid Search H2 missing F-6 needles {missing_grid}"
+    fake = (
+        f"## {_SESSION_CLOSE_H2}\n"
+        "unrelated flatten copy without the fork needles\n"
+        "## Notes\n"
+        f"{' '.join(_SESSION_CLOSE_F6_NEEDLES)}\n"
+        "## Grid Search\nunrelated\n"
+    )
+    leaked = [n for n in _SESSION_CLOSE_F6_NEEDLES if n in _md_h2_body(fake, _SESSION_CLOSE_H2)]
+    assert leaked == [], f"Notes-only needles must not bind as Session close H2: {leaked}"
 
 
 def test_grid_policy_help_discloses_allow_all_overlap():

@@ -717,7 +717,7 @@ tests are B-1 (H7/H15) and B-2 (H10/H11); they land in their own PRs.
 | Fork | Classic UI | `thesistester.api` / CLI / Study / Assistant | Lock tests |
 |---|---|---|---|
 | H7 cutoff without flatten | Backtest/Grid force `no_new_entries_after=None` when flatten is off | YAML cutoff still applies (`after_entry_cutoff`) | B-1 |
-| H15 OTF / Admit TZ | `exchange_timezone` or instrument TZ | always `inst.exchange_tz` | B-1 |
+| H15 OTF / Admit TZ | Backtest: Data-page `exchange_timezone` or instrument TZ | always `inst.exchange_tz` | B-1 |
 | H10 fatal OHLCV | Legacy 1m primary installs + warns | `load_dataset` raises `ValueError` | B-2 |
 | H11 mixed offsets | raw reject | raw reject (do not UTC-normalize) | B-2 |
 
