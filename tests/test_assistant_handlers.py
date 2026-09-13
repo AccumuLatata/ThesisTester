@@ -31,7 +31,8 @@ _ZERO_MENTION_IDS = (
 )
 
 
-def _orchestrator(tmp_path: Path) -> tuple[AssistantOrchestrator, AssistantTools]:
+def _orchestrator(tmp_path: Path, monkeypatch) -> tuple[AssistantOrchestrator, AssistantTools]:
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
     tools = AssistantTools(data_roots=(tmp_path,))
     repository = LocalThesisRepository(tmp_path / "assistant")
     orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
@@ -59,8 +60,8 @@ def test_zero_mention_ids_have_named_dispatch_payload_probes():
         assert needle in source, f"{capability_id} has no named dispatch probe"
 
 
-def test_zero_mention_ids_dispatch_is_not_unavailable(tmp_path):
-    orchestrator, _tools = _orchestrator(tmp_path)
+def test_zero_mention_ids_dispatch_is_not_unavailable(tmp_path, monkeypatch):
+    orchestrator, _tools = _orchestrator(tmp_path, monkeypatch)
     for capability_id in _ZERO_MENTION_IDS:
         result = orchestrator.dispatch(AssistantRequest(capability_id=capability_id, payload={}))
         assert result.capability_id == capability_id
@@ -83,8 +84,8 @@ def test_tool_limits_from_envelope_projects_or_keeps_defaults():
     assert projected.max_walk_forward_matrix_cells == 3
 
 
-def test_home_workflow_guide_dispatch_returns_guide(tmp_path):
-    orchestrator, _tools = _orchestrator(tmp_path)
+def test_home_workflow_guide_dispatch_returns_guide(tmp_path, monkeypatch):
+    orchestrator, _tools = _orchestrator(tmp_path, monkeypatch)
     result = orchestrator.dispatch(
         AssistantRequest(capability_id="HOME.workflow_guide", payload={})
     )
@@ -96,7 +97,7 @@ def test_home_workflow_guide_dispatch_returns_guide(tmp_path):
 
 
 def test_data_inspect_dataset_dispatch_and_payload(tmp_path, monkeypatch):
-    orchestrator, tools = _orchestrator(tmp_path)
+    orchestrator, tools = _orchestrator(tmp_path, monkeypatch)
     monkeypatch.setattr(
         tools, "describe_local_dataset", lambda dataset_id: {"dataset_id": dataset_id}
     )
@@ -114,7 +115,7 @@ def test_data_inspect_dataset_dispatch_and_payload(tmp_path, monkeypatch):
 
 
 def test_data_manage_saved_datasets_list_describe_and_unknown(tmp_path, monkeypatch):
-    orchestrator, tools = _orchestrator(tmp_path)
+    orchestrator, tools = _orchestrator(tmp_path, monkeypatch)
     monkeypatch.setattr(tools, "list_local_datasets", lambda: [{"dataset_id": "ds_a"}])
     monkeypatch.setattr(
         tools, "describe_local_dataset", lambda dataset_id: {"dataset_id": dataset_id}
@@ -155,7 +156,7 @@ def test_data_manage_saved_datasets_list_describe_and_unknown(tmp_path, monkeypa
 
 
 def test_data_preview_resampled_timeframes_dispatch(tmp_path, monkeypatch):
-    orchestrator, tools = _orchestrator(tmp_path)
+    orchestrator, tools = _orchestrator(tmp_path, monkeypatch)
     calls: list[tuple[str, str, int]] = []
 
     def _preview(bundle_path, *, timeframe, max_rows):
@@ -192,7 +193,7 @@ def test_data_preview_resampled_timeframes_dispatch(tmp_path, monkeypatch):
 
 
 def test_data_configure_roll_assumptions_dispatch(tmp_path, monkeypatch):
-    orchestrator, tools = _orchestrator(tmp_path)
+    orchestrator, tools = _orchestrator(tmp_path, monkeypatch)
     monkeypatch.setattr(
         tools,
         "validate_bundle_roll_assumptions",
@@ -222,7 +223,7 @@ def test_data_configure_roll_assumptions_dispatch(tmp_path, monkeypatch):
 
 
 def test_backtest_manage_execution_defaults_get_save_clear(tmp_path, monkeypatch):
-    orchestrator, tools = _orchestrator(tmp_path)
+    orchestrator, tools = _orchestrator(tmp_path, monkeypatch)
     store = {"backtest": {"stop_loss_ticks": 8}}
     monkeypatch.setattr(
         tools, "get_execution_defaults", lambda: {"backtest": store["backtest"], "grid": {}}
@@ -287,7 +288,7 @@ def test_backtest_manage_execution_defaults_get_save_clear(tmp_path, monkeypatch
 
 
 def test_grid_manage_execution_defaults_get_save_clear(tmp_path, monkeypatch):
-    orchestrator, tools = _orchestrator(tmp_path)
+    orchestrator, tools = _orchestrator(tmp_path, monkeypatch)
     store = {"grid": {"metric": "expectancy"}}
     monkeypatch.setattr(
         tools, "get_execution_defaults", lambda: {"backtest": {}, "grid": store["grid"]}
@@ -344,7 +345,7 @@ def test_grid_manage_execution_defaults_get_save_clear(tmp_path, monkeypatch):
 
 
 def test_validation_run_otf_matrix_dispatch(tmp_path, monkeypatch):
-    orchestrator, tools = _orchestrator(tmp_path)
+    orchestrator, tools = _orchestrator(tmp_path, monkeypatch)
     monkeypatch.setattr(
         tools,
         "run_bundle_otf_validation",
@@ -402,8 +403,8 @@ def test_validation_run_otf_matrix_dispatch(tmp_path, monkeypatch):
     assert "bundle_path" in missing_path.payload["error"]["message"]
 
 
-def test_classic_propose_page_change_validates_without_staging(tmp_path):
-    orchestrator, _tools = _orchestrator(tmp_path)
+def test_classic_propose_page_change_validates_without_staging(tmp_path, monkeypatch):
+    orchestrator, _tools = _orchestrator(tmp_path, monkeypatch)
     result = orchestrator.dispatch(
         AssistantRequest(
             capability_id="CLASSIC.propose_page_change",
@@ -434,7 +435,7 @@ def test_classic_propose_page_change_validates_without_staging(tmp_path):
 
 def test_time_analyze_and_pipeline_run_experiment_payloads(tmp_path, monkeypatch):
     """Adjacent routed handlers so ``handlers.py`` clears the B-8 ≥ 70% gate."""
-    orchestrator, tools = _orchestrator(tmp_path)
+    orchestrator, tools = _orchestrator(tmp_path, monkeypatch)
     monkeypatch.setattr(
         tools,
         "summarize_bundle_time_analysis",
