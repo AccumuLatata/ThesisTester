@@ -18,7 +18,11 @@ ThesisTester is a research-screening backtester for futures day-trading
 workflows (levels → setups → signals → backtest / grid / validation). Help
 answers from allowlisted docs only; it does not invent run metrics, prove OOS
 edge, or place live trades. Performance questions belong in **Discuss results**
-(Research Assistant mode **Discuss runs**).
+(Research Assistant mode **Discuss runs**). Classic headless
+(`python -m thesistester run` / `api.run_experiment`) and Assistant confirmed
+runs treat an omitted battery `enabled` key as **on** for grid / walk-forward /
+validation. Study expand still emits explicit `enabled: false`. Nested OTF
+validation matrix is default-off. The default is unchanged (AH §2 item 9 / H8).
 
 ## Classic workflow overview
 
@@ -850,7 +854,7 @@ version
 | `Advanced: draft, runs & compare` | Optional draft → validate → confirm → run path | Classic pages remain the primary workflow |
 | `Draft research plan` (optional) | Persists an immutable specification version | `Apply` controls only stage the session draft |
 | `Validate executable RunSpec` → `Confirm validated RunSpec` | Confirmation-/schema-gated | Confirm appears only after Validate succeeds **and** clarifications are clear |
-| `Run confirmed research` | Executes only a **Confirmed** spec version | Apply/Draft alone never start compute |
+| `Run confirmed research` | Executes only a **Confirmed** spec version | Apply/Draft alone never start compute. Omitted battery `enabled` means **on** (same as api/CLI); set `enabled: false` to skip. Nested OTF matrix stays default-off |
 
 **How to use (Assistant confirm/run path).**
 
@@ -968,6 +972,7 @@ overview ranking, OTF delta, Research Study Runner
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
 | `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
 | `dataset.tick_paths` | Optional Tick–Tick–Last list for prior VA, APOC, and rolling POC | Named VA / APOC / rolling POC without this refuse (`requires ticks`). New drafts omit it |
+| Battery `enabled` | Study emit is explicit `false` | Classic `thesistester run` / `api.run_experiment` omit means **on** (H8). Bare `{}` on a Study cell is the R18 default-on trap |
 
 **How to use.**
 

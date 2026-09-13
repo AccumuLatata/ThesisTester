@@ -518,6 +518,55 @@ def test_study_report_rebuild_direction_flag():
     assert default.rebuild_direction is False
 
 
+def _cli_help_blob() -> str:
+    import argparse
+
+    from thesistester.cli import _parser
+
+    parser = _parser()
+    texts = [parser.format_help()]
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            texts.append(action.choices["run"].format_help())
+    return "\n".join(texts)
+
+
+def test_cli_help_discloses_omitted_battery_enabled_means_on():
+    """QI-06-08 / A-9: ``--help`` must name omit-means-on (not a comment needle)."""
+    blob = _cli_help_blob()
+    lowered = blob.lower()
+    assert "omitted battery enabled means on" in lowered
+    assert "study emit stays explicit false" in lowered
+    assert "otf" in lowered and "default-off" in lowered
+
+
+def test_omitted_grid_enabled_still_runs_qi0608(tmp_path):
+    """QI-06-08 / A-9: omitted ``grid.enabled`` still runs (locked H8). Do not flip."""
+    _write_dataset(tmp_path / "bars.csv")
+    omitted = _run("omit-enabled")
+    assert "enabled" not in omitted["grid"]
+    on_state = api.run_experiment(omitted, base_directory=tmp_path)
+    assert on_state.get("grid_results") is not None
+    assert not on_state["grid_results"].empty
+
+    off = _run("explicit-false")
+    off["grid"] = {**off["grid"], "enabled": False}
+    off_state = api.run_experiment(off, base_directory=tmp_path)
+    assert "grid_results" not in off_state
+
+
+def test_user_guide_discloses_classic_headless_omit_means_on():
+    """QI-13-09 / A-9: USER_GUIDE classic headless + Assistant confirm-run."""
+    from pathlib import Path
+
+    text = Path("docs/USER_GUIDE.md").read_text(encoding="utf-8")
+    assert "python -m thesistester run" in text
+    assert "omitted battery `enabled`" in text
+    assert "Study expand still emits explicit `enabled: false`" in text
+    assert "Nested OTF" in text
+    assert "Run confirmed research" in text
+
+
 def test_programmatic_batch_rejects_unsafe_and_duplicate_names(tmp_path):
     _write_dataset(tmp_path / "bars.csv")
     for runs, message in (

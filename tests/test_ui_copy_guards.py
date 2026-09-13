@@ -1141,6 +1141,44 @@ def test_policy_help_guard_rejects_second_undisclosed_policy_selectbox():
         raise AssertionError("second Policy selectbox without help must fail uniqueness")
 
 
+_H8_CONFIRM_RUN_CAPTION_NEEDLES = (
+    "omitted battery enabled means on",
+    "grid / walk_forward / validation",
+    "study emit stays explicit false",
+    "otf matrix is default-off",
+)
+
+
+def test_assistant_confirm_run_caption_discloses_omit_means_on():
+    """QI-06-08 / A-9: confirm-run ``st.caption`` (comment / help= fail-closed)."""
+    source = _read(PAGES / "14_Research_Assistant.py")
+    captions = _caption_texts(source)
+    matched = [
+        text
+        for text in captions
+        if all(needle in text.lower() for needle in _H8_CONFIRM_RUN_CAPTION_NEEDLES)
+    ]
+    assert matched, "Run confirmed research must have an H8 omit-means-on st.caption"
+
+
+def test_assistant_confirm_run_caption_ignores_comment_and_help_needles():
+    """File-level / help= H8 needles must not satisfy the confirm-run caption."""
+    fake = (
+        "# omitted battery enabled means on grid / walk_forward / validation\n"
+        "# study emit stays explicit false otf matrix is default-off\n"
+        'st.selectbox("x", options=["a"], help="omitted battery enabled means on '
+        "grid / walk_forward / validation study emit stays explicit false "
+        'otf matrix is default-off")\n'
+    )
+    captions = _caption_texts(fake)
+    matched = [
+        text
+        for text in captions
+        if all(needle in text.lower() for needle in _H8_CONFIRM_RUN_CAPTION_NEEDLES)
+    ]
+    assert matched == [], "help=/comment H8 needles must not false-green st.caption"
+
+
 def test_readme_phase4_list_parser_ignores_later_token_mentions():
     """List ⊇ VALID_TRIGGERS; later `` `3c` `` / `` `fade` `` must not hide a drop."""
     fake = (
