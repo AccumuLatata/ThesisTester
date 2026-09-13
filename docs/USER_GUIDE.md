@@ -612,7 +612,7 @@ constrained re-simulation, RTH segments, clock range, outside_entry_window
 
 | Control / surface | Meaning | Common pitfall |
 |---|---|---|
-| Time Analysis `Focus summary` | Filters completed trades by **entry** bucket; recomputes KPIs/equity | Does **not** call `simulate_trades`; no exposure/cooldown re-run |
+| Time Analysis `Focus summary` | Filters completed trades by **entry** bucket; recomputes KPIs/equity | Does **not** call `simulate_trades`; no exposure/cooldown re-run. Under `single_position`, Focus fills may ≠ Admit (H12) |
 | `Timestamp basis` on charts | May be entry or exit for display | Focus/Promote membership always uses **entry** timestamps (C2) |
 | `Promote to Admit` | Arms Backtest `entry_window` from Focus/selected bucket | Does **not** auto-run; thin samples need confirm |
 | Backtest `Constrain entries to time window` | Opt-in Admit re-sim (`entry_window`) | Default off = legacy all-day admission |
@@ -636,7 +636,8 @@ constrained re-simulation, RTH segments, clock range, outside_entry_window
 - Promote is not proof of edge; Focus alone must not be treated as deployable.
 - Grid / WFA inherit a fixed enabled Admit window when present — not a swept
   axis. Under `allow_all` + zero cooldown, Focus and Admit can share the same
-  `signal_id` set (C7); restrictive exposure can diverge.
+  `signal_id` set (C7). Under `single_position`, occupancy can substitute
+  which `signal_id` fills — Focus N is not an Admit N (H12 / AH §2 item 5).
 - Study briefing NY buckets are Focus-family. `study promote --admit-tod auto`
   and Inspect **Draft Admit follow-up** stamp engine Admit (`backtest`/`grid`
   `entry_window`) onto a child spec; they do not `study run`. Hour/30min
