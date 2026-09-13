@@ -18,9 +18,13 @@ from thesistester.study.rollup import (
     ROLLUP_COLUMNS,
     StudyRollupError,
     build_rollup_frame,
+    render_rollup_markdown,
     rollup_study,
 )
-from tests.study.test_study_report import _write_report_fixture
+from tests.study.test_study_report import (
+    _inject_failed_index_and_ledger,
+    _write_report_fixture,
+)
 
 
 def _inject_bundle_json(study_dir: Path, run_name: str, members: dict[str, dict]) -> None:
@@ -52,6 +56,9 @@ def test_default_fixture_batteries_are_not_run(tmp_path: Path):
     assert "cross-cell" in result.markdown.lower()
     assert "validation.enabled: true" in result.markdown
     assert "validation.overfitting.enabled: true" in result.markdown
+    assert "failed=0" in result.markdown
+    assert "## Failed" in result.markdown.splitlines()
+    assert "No failed cells." in result.markdown
     assert (study_dir / "study.rollup.csv").is_file()
     assert (study_dir / "study.rollup.md").is_file()
 
@@ -181,6 +188,58 @@ def test_cli_study_rollup(tmp_path: Path, capsys):
     assert "Study rollup" in captured
     assert "not_run" in captured
     assert (study_dir / "study.rollup.csv").is_file()
+
+
+def test_mixed_ok_failed_rollup_failed_section_qi0704(tmp_path: Path):
+    """QI-07-04 / A-10: rollup N includes failed; MD has Failed heading + error."""
+    study_dir = _write_report_fixture(tmp_path)
+    index = pd.read_csv(study_dir / "results_index.csv")
+    failed_name = str(index.iloc[0]["run_name"])
+    _inject_failed_index_and_ledger(study_dir, failed_name, error="OSError: disk full")
+    result = rollup_study(study_dir)
+    assert result.cell_count == 4
+    assert (result.frame["status"] == "failed").sum() == 1
+    assert "failed=1" in result.markdown
+    assert "## Failed" in result.markdown.splitlines()
+    assert "OSError: disk full" in result.markdown
+    assert failed_name in result.markdown
+    csv_text = (study_dir / "study.rollup.csv").read_text(encoding="utf-8")
+    assert failed_name in csv_text
+    assert "error" not in list(result.frame.columns)
+
+
+def test_render_rollup_markdown_failed_heading_is_ast_literal():
+    """Comment-only ## Failed must not satisfy the rollup heading emit."""
+    source = Path("thesistester/study/rollup.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    constants: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "render_rollup_markdown":
+            for child in ast.walk(node):
+                if isinstance(child, ast.Constant) and isinstance(child.value, str):
+                    constants.add(child.value)
+            break
+    else:
+        raise AssertionError("missing render_rollup_markdown")
+    assert "## Failed" in constants
+    assert "- failed=" in constants
+
+
+def test_rollup_failed_section_sorts_by_run_name():
+    frame = pd.DataFrame(
+        {
+            "run_name": ["z_cell", "a_cell"],
+            "status": ["failed", "failed"],
+            "bundle_path": [None, None],
+            "wfa_battery": [NOT_RUN, NOT_RUN],
+            "validation_battery": [NOT_RUN, NOT_RUN],
+            "overfitting_battery": [NOT_RUN, NOT_RUN],
+        }
+    )
+    markdown = render_rollup_markdown(study_name="sort", frame=frame)
+    assert "## Failed" in markdown.splitlines()
+    failed_block = markdown.split("## Failed", 1)[1].split("## Per-cell table", 1)[0]
+    assert failed_block.index("a_cell") < failed_block.index("z_cell")
 
 
 def test_rollup_missing_index_fails(tmp_path: Path):

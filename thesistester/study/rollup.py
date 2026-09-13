@@ -1,7 +1,9 @@
 """RS-D4 per-cell diagnostic rollup (compose-only).
 
 Aggregates existing walk-forward / validation / overfitting fields from the
-study ``results_index`` and per-cell research bundles. Does **not** invent
+study ``results_index`` and per-cell research bundles. Markdown labels
+``status=failed`` under ``## Failed`` (count + ledger error); those rows stay
+in rollup N. Does **not** invent
 cross-cell PBO/DSR/CSCV, and never enables batteries.
 """
 
@@ -15,7 +17,12 @@ from typing import Any, Mapping
 
 import pandas as pd
 
-from thesistester.study.report import _bundle_path_within_study
+from thesistester.study.report import (
+    _bundle_path_within_study,
+    _failed_display_frame,
+    failed_overview_rows,
+    ledger_failed_errors,
+)
 
 RESULTS_INDEX = "results_index.csv"
 ROLLUP_CSV = "study.rollup.csv"
@@ -284,11 +291,14 @@ def render_rollup_markdown(
     *,
     study_name: str,
     frame: pd.DataFrame,
+    failed_errors: Mapping[str, str] | None = None,
 ) -> str:
     """Human/agent markdown with honesty caveats (no proof-of-edge language)."""
     wfa_n = int((frame["wfa_battery"] == PRESENT).sum()) if not frame.empty else 0
     val_n = int((frame["validation_battery"] == PRESENT).sum()) if not frame.empty else 0
     of_n = int((frame["overfitting_battery"] == PRESENT).sum()) if not frame.empty else 0
+    failed = failed_overview_rows(frame)
+    failed_n = int(len(failed))
     lines = [
         f"# Study diagnostic rollup — {study_name}",
         "",
@@ -309,13 +319,37 @@ def render_rollup_markdown(
         "## Battery coverage",
         "",
         f"- cells={len(frame)}",
+        f"- failed={failed_n}",
         f"- wfa_battery=present: {wfa_n}",
         f"- validation_battery=present: {val_n}",
         f"- overfitting_battery=present: {of_n}",
         "",
-        "## Per-cell table",
+        "## Failed",
+        "",
+        "Cells with `status=failed` stay in rollup N (AUDIT_FINAL §5.1 item 34) "
+        "and are not ranked or promoted. Error text from `study.ledger.json` "
+        "when present.",
         "",
     ]
+    failed_display = _failed_display_frame(failed, errors=failed_errors or {})
+    if failed_display.empty:
+        lines.append("No failed cells.")
+        lines.append("")
+    else:
+        header = "| run_name | error |"
+        sep = "| --- | --- |"
+        lines.extend([header, sep])
+        for record in failed_display.to_dict(orient="records"):
+            name = str(record.get("run_name") or "").replace("|", "\\|")
+            error = str(record.get("error") or "").replace("|", "\\|")
+            lines.append(f"| {name} | {error} |")
+        lines.append("")
+    lines.extend(
+        [
+            "## Per-cell table",
+            "",
+        ]
+    )
     display_cols = [
         "run_name",
         "status",
@@ -354,7 +388,11 @@ def rollup_study(study_dir: str | Path) -> StudyRollupResult:
     root = Path(study_dir)
     frame = build_rollup_frame(root)
     study_name = _read_study_name(root)
-    markdown = render_rollup_markdown(study_name=study_name, frame=frame)
+    markdown = render_rollup_markdown(
+        study_name=study_name,
+        frame=frame,
+        failed_errors=ledger_failed_errors(root),
+    )
     csv_path = root / ROLLUP_CSV
     md_path = root / ROLLUP_MD
     frame.to_csv(csv_path, index=False)

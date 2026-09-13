@@ -2,7 +2,7 @@
 
 Joins ``results_index.csv`` ⟕ ``study.expansion.json`` on ``run_name``, resolves
 ``profit_factor`` / ``win_rate`` from bundle ``trade_summary`` when absent from
-the index, and emits ranked / low-N / group / OTF-Δ views with honesty text.
+the index, and emits ranked / low-N / Failed / group / OTF-Δ views with honesty text.
 DA2 also writes ``study.direction.csv`` from index direction-split keys when
 present (nulls on older indexes). This module does not rewrite the index.
 
@@ -26,6 +26,7 @@ import pandas as pd
 import yaml
 
 from thesistester.setup import normalize_otf_filter_config
+from thesistester.study.ledger import load_ledger
 from thesistester.study.schema import load_study_spec
 
 OVERVIEW_CSV = "study.overview.csv"
@@ -395,6 +396,68 @@ def build_overview_frame(
     return frame.loc[:, ordered].sort_values("run_name", kind="mergesort").reset_index(drop=True)
 
 
+def failed_overview_rows(overview: pd.DataFrame) -> pd.DataFrame:
+    """``status=failed`` cells for the MD Failed section (CSV/ranking unchanged)."""
+    if overview.empty or "status" not in overview.columns:
+        return overview.iloc[0:0].copy()
+    failed = overview.loc[overview["status"].astype(str).eq("failed")]
+    if "run_name" in failed.columns:
+        failed = failed.sort_values("run_name", kind="mergesort")
+    return failed.reset_index(drop=True)
+
+
+def ledger_failed_errors(study_dir: str | Path) -> dict[str, str]:
+    """Map ``run_name`` → ledger error for failed cells (MD only; not a CSV column)."""
+    try:
+        ledger = load_ledger(study_dir)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+    if not ledger:
+        return {}
+    cells = ledger.get("cells")
+    if not isinstance(cells, Mapping):
+        return {}
+    errors: dict[str, str] = {}
+    for name, cell in cells.items():
+        if not isinstance(cell, Mapping):
+            continue
+        if str(cell.get("status") or "") != "failed":
+            continue
+        error = cell.get("error")
+        errors[str(name)] = "unknown error" if error is None or str(error) == "" else str(error)
+    return errors
+
+
+def _scalar_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _display_error_text(raw: Any, *, fallback: str) -> str:
+    """Single-line MD cell: ledger/index error, else ``unknown error``."""
+    if _scalar_missing(raw) or str(raw).strip() == "":
+        raw = fallback
+    collapsed = " ".join(str(raw).splitlines()).strip()
+    return collapsed or "unknown error"
+
+
+def _failed_display_frame(failed: pd.DataFrame, *, errors: Mapping[str, str]) -> pd.DataFrame:
+    if failed.empty:
+        return pd.DataFrame(columns=["run_name", "error"])
+    rows = []
+    for record in failed.to_dict(orient="records"):
+        raw_name = record.get("run_name")
+        name = "" if _scalar_missing(raw_name) else str(raw_name)
+        raw = record.get("error") if "error" in failed.columns else None
+        text = _display_error_text(raw, fallback=errors.get(name, "unknown error"))
+        rows.append({"run_name": name, "error": text})
+    return pd.DataFrame(rows, columns=["run_name", "error"])
+
+
 def _metric_sort_ascending(primary_metric: str) -> bool:
     if primary_metric in _LOWER_IS_BETTER:
         return True
@@ -676,16 +739,16 @@ def _fmt_num(value: Any) -> str:
     return f"{number:.6g}"
 
 
-def _md_table(frame: pd.DataFrame, columns: list[str], *, limit: int = 50) -> list[str]:
+def _md_table(frame: pd.DataFrame, columns: list[str], *, limit: int | None = 50) -> list[str]:
     cols = [c for c in columns if c in frame.columns]
     if not cols or frame.empty:
         return ["_(none)_", ""]
-    head = frame.loc[:, cols].head(limit)
+    view = frame.loc[:, cols] if limit is None else frame.loc[:, cols].head(limit)
     lines = [
         "| " + " | ".join(cols) + " |",
         "| " + " | ".join("---" for _ in cols) + " |",
     ]
-    for _, row in head.iterrows():
+    for _, row in view.iterrows():
         cells: list[str] = []
         for col in cols:
             val = row[col]
@@ -707,7 +770,7 @@ def _md_table(frame: pd.DataFrame, columns: list[str], *, limit: int = 50) -> li
                 text = "—" if pd.isna(val) else str(val)
                 cells.append(text.replace("|", "\\|"))
         lines.append("| " + " | ".join(cells) + " |")
-    if len(frame) > limit:
+    if limit is not None and len(frame) > limit:
         lines.append(f"_… {len(frame) - limit} more row(s)_")
     lines.append("")
     return lines
@@ -724,11 +787,14 @@ def render_overview_markdown(
     group_summaries: Mapping[str, pd.DataFrame],
     otf_delta: pd.DataFrame,
     best_cell_suppressed: bool,
+    failed_errors: Mapping[str, str] | None = None,
 ) -> str:
     """Human/agent summary with honesty caveats (deterministic)."""
     primary = str(report["primary_metric"])
     min_trades = int(report["min_trades"])
     multiple_testing = str(report["multiple_testing"])
+    failed = failed_overview_rows(overview)
+    failed_display = _failed_display_frame(failed, errors=failed_errors or {})
     lines: list[str] = [
         f"# Study overview: {study_name}",
         "",
@@ -740,7 +806,8 @@ def render_overview_markdown(
         f"- `multiple_testing` mode: **{multiple_testing}**",
         (
             f"- Cells in overview: **{len(overview)}**; ranked: **{len(ranked)}**; "
-            f"low-N: **{len(low_n)}**; unresolved primary: **{len(unresolved)}**"
+            f"low-N: **{len(low_n)}**; unresolved primary: **{len(unresolved)}**; "
+            f"failed: **{len(failed)}**"
         ),
         "",
     ]
@@ -805,6 +872,21 @@ def render_overview_markdown(
             ["run_name", "trade_count", primary, "profit_factor", "profit_factor_source"],
         )
     )
+
+    # QI-07-04 / A-10: labeled Failed section. Rows stay in overview CSV / N.
+    lines.extend(["## Failed", ""])
+    lines.append(
+        "Cells with `status=failed` (included in overview CSV and rollup N; "
+        "excluded from ranked / promote). Error text from `study.ledger.json` "
+        "when present."
+    )
+    lines.append("")
+    if failed_display.empty:
+        lines.append("No failed cells.")
+        lines.append("")
+    else:
+        # Honesty: list every failed cell (do not inherit ranked-table cap=50).
+        lines.extend(_md_table(failed_display, ["run_name", "error"], limit=None))
 
     lines.extend(["## Group summaries", ""])
     if not group_summaries:
@@ -871,6 +953,8 @@ def render_overview_markdown(
             "(`profit_factor_source` tracks PF only: `index` | `bundle` | `missing`).",
             "- Ranked / low-N / unresolved / group summaries require `factors_joined=True` "
             "(index-only orphans stay in the overview CSV).",
+            "- Failed cells stay in the overview CSV (AUDIT_FINAL §5.1 item 34) and are "
+            "listed under the Failed heading; they are not ranked or promoted.",
             "- Group summaries use the same ranked-eligible gate (min_trades + "
             "non-null primary) so `cell_count` matches the mean/median population.",
             "",
@@ -935,6 +1019,7 @@ def report_study(
         group_summaries=group_summaries,
         otf_delta=otf_delta,
         best_cell_suppressed=best_cell_suppressed,
+        failed_errors=ledger_failed_errors(root),
     )
 
     overview_path = root / OVERVIEW_CSV
