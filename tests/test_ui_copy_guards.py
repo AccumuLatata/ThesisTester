@@ -1273,6 +1273,7 @@ def test_user_guide_purpose_h2_names_classic_headless_omit_means_on():
             "Study expand still emits explicit `enabled: false`",
             "Nested OTF",
             "default-off",
+            "Bare `{}` in R18 YAML",
         )
         if n not in body
     ]
@@ -1283,7 +1284,8 @@ def test_user_guide_purpose_h2_names_classic_headless_omit_means_on():
     fake = (
         "## Notes\n"
         "python -m thesistester run omitted battery `enabled` "
-        "Study expand still emits explicit `enabled: false` Nested OTF default-off\n"
+        "Study expand still emits explicit `enabled: false` Nested OTF default-off "
+        "Bare `{}` in R18 YAML\n"
         "## Classic workflow overview\nunrelated\n"
     )
     try:
@@ -1324,20 +1326,9 @@ def test_user_guide_assistant_h2_names_confirm_run_omit_means_on():
         raise AssertionError("Notes-only needles must not bind as Research Assistant H2")
 
 
-def test_user_guide_study_runner_h2_contrasts_emit_false():
-    """USER_GUIDE Study Runner H2 contrasts emit-false vs classic omit-on."""
+def test_user_guide_study_runner_h2_stays_under_soft_budget():
+    """A-9 H8 contrast lives on Purpose; Study Runner must stay ≤ Help chunk budget."""
     body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_STUDY_H2)
-    missing = [
-        n
-        for n in (
-            "Study emit explicit `false`",
-            "thesistester run",
-            "omit means **on**",
-            "Bare `{}` in R18 YAML",
-        )
-        if n not in body
-    ]
-    assert missing == [], f"Research Study Runner H2 missing H8 needles {missing}"
     assert "Study cell" not in body
     assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
         f"Research Study Runner H2 exceeds USER_GUIDE soft budget: {len(body)}"

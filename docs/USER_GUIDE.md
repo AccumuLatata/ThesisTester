@@ -22,7 +22,8 @@ edge, or place live trades. Performance questions belong in **Discuss results**
 (`python -m thesistester run` / `api.run_experiment`) and Assistant confirmed
 runs treat an omitted battery `enabled` key as **on** for grid / walk-forward /
 validation. Study expand still emits explicit `enabled: false`. Nested OTF
-validation matrix is default-off. The default is unchanged (AH §2 item 9 / H8).
+validation matrix is default-off. Bare `{}` in R18 YAML arms batteries. The
+default is unchanged (AH §2 item 9 / H8).
 
 ## Classic workflow overview
 
@@ -972,7 +973,6 @@ overview ranking, OTF delta, Research Study Runner
 | `study rollup` | Compose-only per-cell WFA/validation/overfitting table | Missing batteries stay `not_run`; not a cross-cell PBO |
 | `dataset.ingestion_mode` | New studies emit `15s_primary_derive_1m`; omit stays `primary` | Same 15s Quantower file without the mode is decision-TF 15s, not Data-page R12 |
 | `dataset.tick_paths` | Optional Tick–Tick–Last list for prior VA, APOC, and rolling POC | Named VA / APOC / rolling POC without this refuse (`requires ticks`). New drafts omit it |
-| Battery `enabled` | Study emit explicit `false` | `thesistester run` omit means **on** (H8). Bare `{}` in R18 YAML arms batteries |
 
 **How to use.**
 
