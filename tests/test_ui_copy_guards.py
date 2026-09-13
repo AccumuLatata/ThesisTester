@@ -10,7 +10,7 @@ PAGES = REPO_ROOT / "pages"
 APP = REPO_ROOT / "app.py"
 
 # Phase 4 bullet through the next top-level Phase 5 bullet (not the later 3c
-# four-rule block, which also back-ticks `3c` / `3c_long`).
+# four-rule block, which also names `3c` as a standalone token).
 _README_PHASE4_RE = re.compile(
     r"^- \*\*Phase 4\b.*?(?=^- \*\*Phase 5\b)",
     flags=re.MULTILINE | re.DOTALL,
@@ -137,9 +137,9 @@ def test_assistant_page_is_discuss_first_without_duplicate_nav_strip():
 def test_readme_phase4_trigger_list_covers_valid_triggers():
     """QI-13-02 / QR F-2: Help-allowlisted README lists every VALID_TRIGGERS token.
 
-    Scope the enumerated Phase 4 list (not the whole README). A whole-file
-    `` `3c` `` substring matches `` `3c_long` `` in the four-rule block, so
-    that check cannot fail closed.
+    Parse the Phase 4 enumerated list, not any later `` `token` `` mention.
+    Whole-file / whole-bullet search still passes if Phase 4 drops `3c` from
+    the list but keeps "including `3c`" or the four-rule block.
     """
     from thesistester.engine.signals import VALID_TRIGGERS
 
@@ -155,14 +155,18 @@ def test_readme_phase4_trigger_list_covers_valid_triggers():
     assert "Reversal candle must close above the arrival candle high." in readme
 
 
-def test_readme_phase4_list_parser_does_not_treat_3c_variant_as_3c():
-    """`` `3c` `` is not a substring of `` `3c_long` `` for this guard."""
+def test_readme_phase4_list_parser_ignores_later_token_mentions():
+    """List ⊇ VALID_TRIGGERS; later `` `3c` `` / `` `fade` `` must not hide a drop."""
     fake = (
         "- **Phase 4 (x):** seven trigger types — `touch`, `reject`, `break`, "
-        "`reclaim`, `fade`, `continuation` — exposed\n"
-        "  later prose names `3c_long` only.\n"
+        "`reclaim`, `fade`, `continuation` — exposed via Signals. "
+        "Trigger timeframe applies to all triggers including `3c`. "
+        "For non-base simple triggers (`touch`, `reject`, `break`, `reclaim`, "
+        "`fade`, `continuation`), timestamps stay base-aligned.\n"
         "- **Phase 5 (y):**\n"
+        "- **3c trigger — authoritative 4-rule / 8-variant model:**\n"
+        "  The `3c` trigger. Variants: `3c_long`.\n"
     )
     listed = _phase4_listed_triggers(fake)
     assert "3c" not in listed
-    assert "`3c`" in fake  # whole-file substring would false-pass on `3c_long`
+    assert "`3c`" in fake  # whole-file `` `3c` `` would false-pass
