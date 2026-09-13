@@ -1101,12 +1101,23 @@ _TRADE_TABLE_DISPLAY_COL_CANDIDATES = (
 _BACKTEST_USER_GUIDE_H2 = "Backtest"
 
 
-def _trade_table_display_col_candidates(source: str) -> tuple[str, ...]:
-    """Literal column candidates in ``display_cols`` after Trade table."""
-    tree = ast.parse(source)
-    trade_at = _subheader_lineno(tree, "Trade table")
-    if trade_at is None:
+def _trade_table_subheader_lineno(tree: ast.AST) -> int:
+    """Earliest ``Trade table`` subheader (source order, not ``ast.walk``)."""
+    lines = [
+        call.lineno
+        for call in _st_calls(tree, "subheader")
+        if call.args and _literal_str(call.args[0]) == "Trade table"
+    ]
+    if not lines:
         raise AssertionError("missing st.subheader('Trade table')")
+    return min(lines)
+
+
+def _trade_table_display_cols_assignment(
+    tree: ast.AST, trade_at: int
+) -> tuple[int, tuple[str, ...]]:
+    """Earliest ``display_cols`` list-comp after Trade table (source order)."""
+    found: list[tuple[int, tuple[str, ...]]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign) or node.lineno < trade_at:
             continue
@@ -1126,33 +1137,56 @@ def _trade_table_display_col_candidates(source: str) -> tuple[str, ...]:
             if text is None:
                 raise AssertionError("display_cols candidate is not a string literal")
             cols.append(text)
-        return tuple(cols)
-    raise AssertionError("display_cols assignment not found after Trade table")
+        found.append((node.lineno, tuple(cols)))
+    if not found:
+        raise AssertionError("display_cols assignment not found after Trade table")
+    found.sort(key=lambda item: item[0])
+    return found[0]
+
+
+def _fake_trade_table_display_cols() -> str:
+    return (
+        "display_cols = [c for c in [\n"
+        + ",\n".join(f'    "{col}"' for col in _TRADE_TABLE_DISPLAY_COL_CANDIDATES)
+        + "\n] if True]\n"
+    )
+
+
+def _fake_pnl_points_caption() -> str:
+    return (
+        "st.caption(\n"
+        '    "`pnl_points` is the gross alias of `gross_pnl_points`. KPIs use net R."\n'
+        ")\n"
+    )
 
 
 def _assert_backtest_pnl_points_caption(source: str) -> None:
-    """AST-bind QI-04-10 caption after ``Trade table``; columns stay identity.
+    """AST-bind QI-04-10 caption between ``Trade table`` and ``display_cols``.
 
-    File-level / ``help=`` / comments false-green (A-1 / A-5 class). A caption
-    before the Trade table subheader fails closed.
+    File-level / ``help=`` / comments false-green (A-1 / A-5 class). A matching
+    caption before the Trade table subheader or after ``display_cols`` fails
+    closed. An earlier page-level match must not hide a window caption.
     """
     tree = ast.parse(source)
-    trade_at = _subheader_lineno(tree, "Trade table")
-    if trade_at is None:
-        raise AssertionError("missing st.subheader('Trade table')")
+    trade_at = _trade_table_subheader_lineno(tree)
+    cols_at, cols = _trade_table_display_cols_assignment(tree, trade_at)
     matching: list[tuple[int, str]] = []
+    in_window: list[tuple[int, str]] = []
     for call in _st_calls(tree, "caption"):
         text = _first_arg_text(call)
         if text is None:
             continue
         if all(needle in text for needle in _PNL_POINTS_CAPTION_NEEDLES):
             matching.append((call.lineno, text))
+            if trade_at < call.lineno < cols_at:
+                in_window.append((call.lineno, text))
     if not matching:
         raise AssertionError(f"Trade table st.caption missing {_PNL_POINTS_CAPTION_NEEDLES}")
-    caption_at = min(lineno for lineno, _ in matching)
-    if caption_at <= trade_at:
-        raise AssertionError("pnl_points st.caption must follow Trade table subheader")
-    assert _trade_table_display_col_candidates(source) == _TRADE_TABLE_DISPLAY_COL_CANDIDATES
+    if not in_window:
+        raise AssertionError(
+            "pnl_points st.caption must follow Trade table subheader (before display_cols)"
+        )
+    assert cols == _TRADE_TABLE_DISPLAY_COL_CANDIDATES
 
 
 def test_backtest_trade_table_captions_pnl_points_gross_alias():
@@ -1170,10 +1204,7 @@ def test_backtest_pnl_points_caption_guard_requires_st_caption_not_help():
         '    options=["allow_all"],\n'
         '    help="pnl_points is the gross alias of gross_pnl_points; KPIs use net R",\n'
         ")\n"
-        "# pnl_points gross alias of gross_pnl_points net R\n"
-        "display_cols = [c for c in [\n"
-        + ",\n".join(f'    "{col}"' for col in _TRADE_TABLE_DISPLAY_COL_CANDIDATES)
-        + "\n] if True]\n"
+        "# pnl_points gross alias of gross_pnl_points net R\n" + _fake_trade_table_display_cols()
     )
     try:
         _assert_backtest_pnl_points_caption(fake)
@@ -1185,23 +1216,43 @@ def test_backtest_pnl_points_caption_guard_requires_st_caption_not_help():
 
 def test_backtest_pnl_points_caption_guard_requires_caption_after_subheader():
     """A matching caption before Trade table must not bind."""
-    caption = (
-        "st.caption(\n"
-        '    "`pnl_points` is the gross alias of `gross_pnl_points`. KPIs use net R."\n'
-        ")\n"
+    before = (
+        _fake_pnl_points_caption()
+        + 'st.subheader("Trade table")\n'
+        + _fake_trade_table_display_cols()
     )
-    cols = (
-        "display_cols = [c for c in [\n"
-        + ",\n".join(f'    "{col}"' for col in _TRADE_TABLE_DISPLAY_COL_CANDIDATES)
-        + "\n] if True]\n"
-    )
-    before = caption + 'st.subheader("Trade table")\n' + cols
     try:
         _assert_backtest_pnl_points_caption(before)
     except AssertionError as exc:
         assert "must follow" in str(exc)
     else:
         raise AssertionError("caption before Trade table subheader must not pass")
+
+
+def test_backtest_pnl_points_caption_guard_requires_caption_before_display_cols():
+    """A matching caption after display_cols must not bind as the Trade table caption."""
+    after = (
+        'st.subheader("Trade table")\n'
+        + _fake_trade_table_display_cols()
+        + _fake_pnl_points_caption()
+    )
+    try:
+        _assert_backtest_pnl_points_caption(after)
+    except AssertionError as exc:
+        assert "must follow" in str(exc) and "display_cols" in str(exc)
+    else:
+        raise AssertionError("caption after display_cols must not bind as Trade table caption")
+
+
+def test_backtest_pnl_points_caption_guard_ignores_earlier_matching_caption():
+    """A page-level matching caption must not hide the Trade table window caption."""
+    source = (
+        _fake_pnl_points_caption()
+        + 'st.subheader("Trade table")\n'
+        + _fake_pnl_points_caption()
+        + _fake_trade_table_display_cols()
+    )
+    _assert_backtest_pnl_points_caption(source)
 
 
 def test_user_guide_backtest_h2_names_pnl_points_gross_alias():
@@ -1224,6 +1275,20 @@ def test_user_guide_backtest_h2_names_pnl_points_gross_alias():
         assert "Backtest" in str(exc)
     else:
         raise AssertionError("Notes-only needles must not bind as Backtest H2")
+
+    empty_then_notes = (
+        "## Backtest\n"
+        "unrelated backtest copy without the alias contract\n"
+        "## Notes\n"
+        "| Trade table `pnl_points` | Gross alias of `gross_pnl_points`. KPIs use net R. |\n"
+        "## Grid Search\nunrelated\n"
+    )
+    leaked = [
+        n
+        for n in _PNL_POINTS_CAPTION_NEEDLES
+        if n.casefold() in _md_h2_body(empty_then_notes, _BACKTEST_USER_GUIDE_H2).casefold()
+    ]
+    assert leaked == [], f"Notes-only needles must not bind as Backtest H2: {leaked}"
 
 
 def test_grid_policy_help_discloses_allow_all_overlap():
