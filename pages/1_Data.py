@@ -89,6 +89,8 @@ INGESTION_MODE_LABELS = {
     ),
     INGESTION_MODE_PRIMARY: "Legacy: one-minute primary (advanced)",
 }
+
+
 def _bind_loader_profile_allow_list(loader_module, name, fallback):
     """R17 type-checked getattr; stale or mistyped loader names keep the page up."""
     value = getattr(loader_module, name, None)
