@@ -64,8 +64,10 @@ the CI lock (G-2). App install is `pip install -e .`; tooling (`pytest`,
 (pandas 3), not a third install path:
 
 - Image: `mcr.microsoft.com/devcontainers/python:1-3.12-bookworm`
-- Install: `pip install -e '.[dev]' -c constraints.txt` (no extra `streamlit`
-  install; no `requirements.txt`; no `packages.txt`)
+- Interpreter: `/usr/local/bin/python` (image 3.12; not Debian bookworm 3.11)
+- Install: `/usr/local/bin/python -m pip install --user -e '.[dev]'
+  -c constraints.txt` (no extra `streamlit` install; no `requirements.txt`;
+  no `packages.txt`)
 - Attach: `streamlit run app.py` on port 8501. XSRF and CORS stay at Streamlit
   defaults (on). Do **not** pass `--server.enableCORS false` or
   `--server.enableXsrfProtection false`.
