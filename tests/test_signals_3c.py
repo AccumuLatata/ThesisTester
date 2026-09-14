@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import ast
+import subprocess
+import sys
+import types
+from pathlib import Path
+
 import pandas as pd
 
 from thesistester.engine.candidate_level import CandidateLevel
@@ -448,3 +454,93 @@ def test_short_arrival_exact_touch_qualifies():
     )
     assert len(setups) == 1, "exact-touch short candle must qualify as arrival"
     assert setups[0]["status"] == "filled"
+
+
+def _origin_main_signals_3c():
+    """Load 3c detectors from the PR base (origin/main).
+
+    Hex digests are computed live in-process. Do not freeze them as CI goldens.
+    """
+    from tests.test_journal_triggers import _regression_base_ref
+
+    name = "thesistester.engine._signals_3c_origin_main"
+    cached = sys.modules.get(name)
+    if cached is not None:
+        return cached
+    ref = _regression_base_ref()
+    src = subprocess.check_output(
+        ["git", "show", f"{ref}:thesistester/engine/signals_3c.py"],
+        text=True,
+    )
+    module = types.ModuleType(name)
+    module.__file__ = f"<{ref} thesistester/engine/signals_3c.py>"
+    module.__package__ = "thesistester.engine"
+    sys.modules[name] = module
+    exec(compile(src, module.__file__, "exec"), module.__dict__)
+    return module
+
+
+def test_c16_detectors_share_scan_and_merge_helpers():
+    tree = ast.parse(Path("thesistester/engine/signals_3c.py").read_text())
+    needed = {"detect_3c_setups", "detect_3c_setups_with_trigger_timeframe"}
+    found = {name: False for name in needed}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in needed:
+            calls = {
+                child.func.id
+                for child in ast.walk(node)
+                if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+            }
+            assert "_merge_3c_setup_rows" in calls, node.name
+            assert "_scan_inside_and_reversal" in calls, node.name
+            assert "_3c_arrival_ok" in calls, node.name
+            found[node.name] = True
+    assert all(found.values())
+
+
+def test_c16_detect_3c_setups_identity_vs_origin_main():
+    """Live vs origin/main — S3 math must stay byte-identical after the extract."""
+    baseline = _origin_main_signals_3c().detect_3c_setups
+    cases = [
+        [
+            {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+            {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},
+            {"open": 101.0, "high": 101.1, "low": 100.5, "close": 100.9},
+        ],
+        [
+            {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+            {"open": 100.5, "high": 100.9, "low": 100.1, "close": 100.4},
+            {"open": 100.4, "high": 101.3, "low": 100.2, "close": 101.1},
+            {"open": 101.0, "high": 101.1, "low": 100.5, "close": 100.9},
+        ],
+        [
+            {"open": 99.0, "high": 100.0, "low": 99.0, "close": 99.5},
+            {"open": 99.4, "high": 99.8, "low": 98.7, "close": 98.9},
+            {"open": 99.0, "high": 99.5, "low": 98.8, "close": 99.1},
+        ],
+        [
+            {"open": 99.0, "high": 99.75, "low": 99.0, "close": 99.5},
+            {"open": 99.4, "high": 99.8, "low": 98.7, "close": 98.9},
+            {"open": 99.0, "high": 99.5, "low": 98.8, "close": 99.1},
+        ],
+    ]
+    params = {"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3}
+    for rows, direction in (
+        (cases[0], "long"),
+        (cases[1], "long"),
+        (cases[2], "short"),
+        (cases[3], "short"),
+    ):
+        current = detect_3c_setups(
+            _df(rows),
+            [_candidate(direction=direction)],
+            tick_size=TICK,
+            trigger_params=params,
+        )
+        expected = baseline(
+            _df(rows),
+            [_candidate(direction=direction)],
+            tick_size=TICK,
+            trigger_params=params,
+        )
+        assert current == expected

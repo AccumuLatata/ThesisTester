@@ -1327,6 +1327,8 @@ class TestGenerateSignalsPhases:
             "_prepare_generate_trigger_frame",
             "_admit_zones_for_signals",
             "_generate_3c_signals",
+            "_map_3c_setup_to_signal",
+            "_zone_and_naked_for_3c_setup",
             "_project_zones_to_trigger_df",
             "_dispatch_simple_triggers",
             "_dispatch_approach_side_triggers",
@@ -1606,3 +1608,27 @@ class TestGenerateSignalsPhases:
                 assert len(current) == 120
             if label == "empty df 3c HTF naked_flags":
                 assert len(current) == 0
+
+    def test_c16_generate_3c_uses_shared_mapper(self):
+        import ast
+        from pathlib import Path
+
+        tree = ast.parse(Path("thesistester/engine/signals.py").read_text())
+        generate_calls: set[str] = set()
+        mapper_make = 0
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "_generate_3c_signals":
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
+                        generate_calls.add(child.func.id)
+            if isinstance(node, ast.FunctionDef) and node.name == "_map_3c_setup_to_signal":
+                for child in ast.walk(node):
+                    if (
+                        isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Name)
+                        and child.func.id == "_make_signal"
+                    ):
+                        mapper_make += 1
+        assert "_map_3c_setup_to_signal" in generate_calls
+        assert "_make_signal" not in generate_calls
+        assert mapper_make == 1
