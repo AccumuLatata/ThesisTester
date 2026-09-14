@@ -70,7 +70,9 @@ load `engine.backtest`. C-10 (QI-08-01) is one qty-scaled P&L helper
 extracts execution-artifact verify/publish/evict helpers behind containment
 guards. C-12 (QI-01-02) extracts raw/subtf sidecar policy helpers from
 `save_dataset` (preserve/conflict and derive-without-subtf refusal
-unchanged). Next: C-13.
+unchanged). C-13 (QI-05-03) splits pair/trigger summarizers into
+`confluence_pair_trigger.py`; public combo helpers stay on
+`confluence_attribution`. Next: C-14.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -236,7 +238,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    helpers from `execution_artifacts.py` (containment guards unchanged).
    C-12 (QI-01-02) extracts `_apply_raw_sidecar_policy` /
    `_apply_subtf_sidecar_policy` from `save_dataset` (S1 preserve/conflict
-   and derive-without-subtf refusal unchanged). Next: C-13.
+   and derive-without-subtf refusal unchanged). C-13 (QI-05-03) splits
+   pair/trigger summarizers into `confluence_pair_trigger.py` (public
+   combo helpers still imported from `confluence_attribution`). Next: C-14.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`

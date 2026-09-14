@@ -9,17 +9,31 @@ Pure helpers for Backtest research views:
 - optional exact-combo / pair × ``trigger_variant`` cross-views (PR 3)
 - Backtest directed Exact + directed PR 3 cross-views (PR 6: trade ``direction``)
 
+Pair / trigger-variant summarizers live in ``confluence_pair_trigger.py``
+(C-13 / QI-05-03) and are re-exported here so public combo helpers do not
+move. Display-facing dataclass assembly
+(``confluence_attribution_summary``, ``prepare_exact_combo_display``) stays
+in this module.
+
 No zone / signal / fill engine changes. Summaries return **all** groups with
 ``sample_warning``; UI owns hide-below-``min_trades`` presentation filtering.
 """
 
 from __future__ import annotations
 
-from itertools import combinations
 from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
+
+from thesistester.analytics import confluence_pair_trigger as _pair_trigger
+
+pair_keys_for_tokens = _pair_trigger.pair_keys_for_tokens
+summarize_by_exact_combo_and_trigger_variant = (
+    _pair_trigger.summarize_by_exact_combo_and_trigger_variant
+)
+summarize_by_level_pairs = _pair_trigger.summarize_by_level_pairs
+summarize_by_pair_and_trigger_variant = _pair_trigger.summarize_by_pair_and_trigger_variant
 
 
 EMPTY_LEVEL_NAMES_KEY = "__empty__"
@@ -701,278 +715,6 @@ def summarize_by_level_count(
         return empty
 
     return _summarize_r(analyzable, LEVEL_COUNT_BUCKET_COL, min_trades)
-
-
-def pair_keys_for_tokens(
-    tokens: list[str] | tuple[str, ...] | set[str],
-    *,
-    anchor_level: str | None = None,
-) -> list[str]:
-    """Return soft pair keys for one trade's distinct level tokens.
-
-    If ``anchor_level`` is present in the token set, emit anchor-partner keys
-    ``anchor|support`` for each non-anchor support. Otherwise emit all unordered
-    generic pairs as canonical sorted ``A|B`` keys. Never guesses an anchor.
-    """
-    uniq = parse_level_names(list(tokens))
-    if len(uniq) < 2:
-        return []
-
-    anchor = str(anchor_level).strip() if anchor_level is not None else ""
-    if anchor and anchor in set(uniq):
-        partners = sorted(token for token in uniq if token != anchor)
-        return [f"{anchor}|{partner}" for partner in partners]
-
-    return ["|".join(pair) for pair in combinations(sorted(uniq), 2)]
-
-
-def summarize_by_level_pairs(
-    trades: pd.DataFrame,
-    *,
-    min_trades: int = 10,
-    anchor_level: str | None = None,
-    confluence_mode: str | None = None,
-) -> pd.DataFrame:
-    """Soft pairwise R attribution (double-counts across pairs).
-
-    Anchor-partner mode is used only when ``confluence_mode == "anchor_rules"``
-    and ``anchor_level`` is a non-empty string. For each trade, if that anchor is
-    present in the trade tokens, emit ``anchor|support`` pairs; otherwise fall
-    back to generic unordered pairs for that trade. Global / unknown mode always
-    uses generic pairs. Trades with fewer than two distinct tokens contribute no
-    pair rows.
-    """
-    empty = _empty_group_frame(PAIR_KEY_COL, [PAIR_MODE_COL])
-    if trades is None or not isinstance(trades, pd.DataFrame):
-        return empty
-    if trades.empty or "level_names" not in trades.columns:
-        return empty
-    if "r_multiple" not in trades.columns:
-        return empty
-
-    attached = attach_combo_columns(trades)
-    analyzable = attached.dropna(subset=["r_multiple"]).copy()
-    if analyzable.empty:
-        return empty
-
-    analyzable = analyzable.loc[analyzable[LEVEL_TOKEN_COUNT_COL] >= 2].copy()
-    if analyzable.empty:
-        return empty
-
-    use_anchor = None
-    if confluence_mode == "anchor_rules" and anchor_level is not None:
-        candidate = str(anchor_level).strip()
-        if candidate:
-            use_anchor = candidate
-
-    pair_rows: list[dict[str, Any]] = []
-    for _, row in analyzable.iterrows():
-        tokens = parse_level_names(row.get("level_names"))
-        if use_anchor and use_anchor in set(tokens):
-            keys = pair_keys_for_tokens(tokens, anchor_level=use_anchor)
-            mode = PAIR_MODE_ANCHOR_PARTNER
-        else:
-            keys = pair_keys_for_tokens(tokens, anchor_level=None)
-            mode = PAIR_MODE_GENERIC
-        if not keys:
-            continue
-        r_multiple = row.get("r_multiple")
-        for key in keys:
-            pair_rows.append(
-                {
-                    PAIR_KEY_COL: key,
-                    PAIR_MODE_COL: mode,
-                    "r_multiple": r_multiple,
-                }
-            )
-
-    if not pair_rows:
-        return empty
-
-    exploded = pd.DataFrame(pair_rows)
-    summarized = _summarize_r(exploded, PAIR_KEY_COL, min_trades)
-    if summarized.empty:
-        return empty
-
-    # pair_mode can mix if some trades lacked the anchor; prefer anchor_partner.
-    mode_by_key = (
-        exploded.groupby(PAIR_KEY_COL, sort=False)[PAIR_MODE_COL]
-        .agg(
-            lambda values: (
-                PAIR_MODE_ANCHOR_PARTNER
-                if PAIR_MODE_ANCHOR_PARTNER in set(values.astype(str))
-                else PAIR_MODE_GENERIC
-            )
-        )
-        .reset_index()
-    )
-    merged = summarized.merge(mode_by_key, on=PAIR_KEY_COL, how="left")
-    return merged[[PAIR_KEY_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]]
-
-
-def summarize_by_exact_combo_and_trigger_variant(
-    trades: pd.DataFrame,
-    *,
-    min_trades: int = 10,
-) -> pd.DataFrame:
-    """Group analyzable trades by ``exact_combo_key × direction × trigger_variant``.
-
-    Returns all groups plus ``sample_warning``. Does not drop thin samples.
-    Pre-filters null/empty (strip) ``trigger_variant`` and unusable ``direction``
-    before grouping. Missing ``trigger_variant`` or ``direction`` column → empty
-    frame.
-    """
-    empty = _empty_multi_group_frame([EXACT_COMBO_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL])
-    if trades is None or not isinstance(trades, pd.DataFrame):
-        return empty
-    if trades.empty or "level_names" not in trades.columns:
-        return empty
-    if "r_multiple" not in trades.columns:
-        return empty
-    if TRIGGER_VARIANT_COL not in trades.columns:
-        return empty
-    if DIRECTION_COL not in trades.columns:
-        return empty
-
-    attached = attach_combo_columns(trades)
-    analyzable = attached.dropna(subset=["r_multiple"]).copy()
-    if analyzable.empty:
-        return empty
-
-    usable = _filter_usable_trigger_variant(analyzable)
-    if usable.empty:
-        return empty
-    usable = _filter_usable_direction(usable)
-    if usable.empty:
-        return empty
-    # Cross-view answers "which combination × variant"; empty-name sentinel rows
-    # are not combinations (they remain visible on the Exact combo tab).
-    usable = usable.loc[usable[EXACT_COMBO_KEY_COL] != EMPTY_LEVEL_NAMES_KEY].copy()
-    if usable.empty:
-        return empty
-
-    return _summarize_r_multi(
-        usable,
-        [EXACT_COMBO_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL],
-        min_trades,
-    )
-
-
-def summarize_by_pair_and_trigger_variant(
-    trades: pd.DataFrame,
-    *,
-    min_trades: int = 10,
-    anchor_level: str | None = None,
-    confluence_mode: str | None = None,
-) -> pd.DataFrame:
-    """Soft pair_key × direction × trigger_variant attribution (PR 4 locks).
-
-    Anchor-partner mode only when ``confluence_mode == "anchor_rules"`` with a
-    known non-empty ``anchor_level``. Pre-filters null/empty variants and
-    unusable ``direction`` before explode/groupby. Missing ``trigger_variant``
-    or ``direction`` column → empty frame.
-    """
-    empty = pd.DataFrame(
-        columns=[
-            PAIR_KEY_COL,
-            DIRECTION_COL,
-            TRIGGER_VARIANT_COL,
-            PAIR_MODE_COL,
-            *_GROUP_METRIC_COLS,
-        ]
-    )
-    if trades is None or not isinstance(trades, pd.DataFrame):
-        return empty
-    if trades.empty or "level_names" not in trades.columns:
-        return empty
-    if "r_multiple" not in trades.columns:
-        return empty
-    if TRIGGER_VARIANT_COL not in trades.columns:
-        return empty
-    if DIRECTION_COL not in trades.columns:
-        return empty
-
-    attached = attach_combo_columns(trades)
-    analyzable = attached.dropna(subset=["r_multiple"]).copy()
-    if analyzable.empty:
-        return empty
-
-    usable = _filter_usable_trigger_variant(analyzable)
-    if usable.empty:
-        return empty
-    usable = _filter_usable_direction(usable)
-    if usable.empty:
-        return empty
-
-    usable = usable.loc[usable[LEVEL_TOKEN_COUNT_COL] >= 2].copy()
-    if usable.empty:
-        return empty
-
-    use_anchor = None
-    if confluence_mode == "anchor_rules" and anchor_level is not None:
-        candidate = str(anchor_level).strip()
-        if candidate:
-            use_anchor = candidate
-
-    pair_rows: list[dict[str, Any]] = []
-    for _, row in usable.iterrows():
-        tokens = parse_level_names(row.get("level_names"))
-        if use_anchor and use_anchor in set(tokens):
-            keys = pair_keys_for_tokens(tokens, anchor_level=use_anchor)
-            mode = PAIR_MODE_ANCHOR_PARTNER
-        else:
-            keys = pair_keys_for_tokens(tokens, anchor_level=None)
-            mode = PAIR_MODE_GENERIC
-        if not keys:
-            continue
-        variant = str(row.get(TRIGGER_VARIANT_COL)).strip()
-        direction = str(row.get(DIRECTION_COL)).strip().lower()
-        r_multiple = row.get("r_multiple")
-        for key in keys:
-            pair_rows.append(
-                {
-                    PAIR_KEY_COL: key,
-                    DIRECTION_COL: direction,
-                    TRIGGER_VARIANT_COL: variant,
-                    PAIR_MODE_COL: mode,
-                    "r_multiple": r_multiple,
-                }
-            )
-
-    if not pair_rows:
-        return empty
-
-    exploded = pd.DataFrame(pair_rows)
-    summarized = _summarize_r_multi(
-        exploded,
-        [PAIR_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL],
-        min_trades,
-    )
-    if summarized.empty:
-        return empty
-
-    mode_by_key = (
-        exploded.groupby(
-            [PAIR_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL],
-            sort=False,
-        )[PAIR_MODE_COL]
-        .agg(
-            lambda values: (
-                PAIR_MODE_ANCHOR_PARTNER
-                if PAIR_MODE_ANCHOR_PARTNER in set(values.astype(str))
-                else PAIR_MODE_GENERIC
-            )
-        )
-        .reset_index()
-    )
-    merged = summarized.merge(
-        mode_by_key,
-        on=[PAIR_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL],
-        how="left",
-    )
-    return merged[
-        [PAIR_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]
-    ]
 
 
 def _empty_summary(min_trades: int = 10) -> dict[str, Any]:

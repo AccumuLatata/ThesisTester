@@ -56,6 +56,7 @@ from thesistester.analytics.confluence_attribution import (
     time_analysis_combo_group_caption,
 )
 from thesistester.analytics.entry_window import FOCUSABLE_GROUP_COLS
+from thesistester.persistence.local_store import hash_dataframe
 
 
 def _plan_fixture_trades() -> pd.DataFrame:
@@ -1078,3 +1079,51 @@ def test_summarize_exact_combo_and_direction_keeps_empty_name_sentinel():
     assert EMPTY_LEVEL_NAMES_KEY not in set(cross[EXACT_COMBO_KEY_COL])
     assert len(cross) == 1
     assert cross.iloc[0][EXACT_COMBO_KEY_COL] == "A|B"
+
+
+# C-13 / QI-05-03: combo tables byte-identical after pair/trigger extract.
+# Hashes frozen on origin/main @ 5278316 before the split.
+_COMBO_TABLE_HASHES = {
+    "exact": "765a21e5412187777424c53a2dc5772c85be11ac72e6c454b2513d3663f45761",
+    "membership": "25ea1459dde3eb174e846f8253dac857aed79b778f2163689d14550fd16e3321",
+    "level_count": "d4c3f06431ab6e91692b330653d66cf9306e0860629146b6820be5e686113f36",
+    "pairs_generic": "093dd732f900f89f40902ab043314e5841222ca2050b322dfabebf9a1bf2f93c",
+    "pairs_anchor": "3ff58136c1f15153615f4446daa78956d64f442cdd262b1b0f6da8298ca06864",
+    "summary_exact": "765a21e5412187777424c53a2dc5772c85be11ac72e6c454b2513d3663f45761",
+    "summary_pairs": "3ff58136c1f15153615f4446daa78956d64f442cdd262b1b0f6da8298ca06864",
+    "exact_x_dir": "dd5b7680043c3e5cfed64909bf816b361d889517fd6e35324fee0e95aa998777",
+    "exact_x_var": "a3ed2819bab8b8e8f197ea64305bfd1e0c3e2da9a75d147936a530b88871e005",
+    "pair_x_var": "21794cd94eec7b82a06950e087835016196bb6062b3c93f9168760f3bfa38136",
+}
+
+
+def test_combo_tables_remain_byte_identical_after_summarizer_split():
+    trades = _plan_fixture_trades()
+    cross = trades.copy()
+    cross["direction"] = ["long", "short", "long", "long", "short"]
+    cross["trigger_variant"] = ["touch", "touch", "3c_a", "touch", "3c_a"]
+    summary = confluence_attribution_summary(
+        trades,
+        min_trades=1,
+        anchor_level="pdHigh",
+        confluence_mode="anchor_rules",
+    )
+    frames = {
+        "exact": summarize_by_exact_combo(trades, min_trades=1),
+        "membership": summarize_by_level_membership(trades, min_trades=1),
+        "level_count": summarize_by_level_count(trades, min_trades=1),
+        "pairs_generic": summarize_by_level_pairs(trades, min_trades=1),
+        "pairs_anchor": summarize_by_level_pairs(
+            trades,
+            min_trades=1,
+            anchor_level="pdHigh",
+            confluence_mode="anchor_rules",
+        ),
+        "summary_exact": summary["by_exact_combo"],
+        "summary_pairs": summary["by_pairs"],
+        "exact_x_dir": summarize_by_exact_combo_and_direction(cross, min_trades=1),
+        "exact_x_var": summarize_by_exact_combo_and_trigger_variant(cross, min_trades=1),
+        "pair_x_var": summarize_by_pair_and_trigger_variant(cross, min_trades=1),
+    }
+    for name, expected in _COMBO_TABLE_HASHES.items():
+        assert hash_dataframe(frames[name]) == expected, name
