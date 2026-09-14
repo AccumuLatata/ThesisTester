@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
 import io
 import json
 import math
@@ -9,6 +11,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -22,9 +25,15 @@ from thesistester.study.execute import (
     DA_RANDOM_INDEX_KEYS,
     R18_INDEX_METRIC_KEYS,
     STUDY_INDEX_KEYS,
+    _assert_study_identity,
     _cell_execution_kwargs,
     _failed_index_row,
+    _finalize_running_cells,
     _index_row_from_existing_bundle,
+    _init_study_ledger,
+    _pending_cell,
+    _require_study_confirm,
+    _scope_study_index,
     _study_dir_lock,
     build_index_row_from_state,
     direction_index_fields,
@@ -34,7 +43,7 @@ from thesistester.study.execute import (
     rebuild_direction_index,
     run_study,
 )
-from thesistester.study.ledger import load_ledger
+from thesistester.study.ledger import load_ledger, save_ledger
 from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.schema import STUDY_SCHEMA_VERSION, StudySpecError
 
@@ -490,6 +499,31 @@ def test_soft_resume_requeues_missing_bundle(tmp_path: Path):
     second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
     assert second["executed"] == 1
     assert zip_path.is_file()
+
+
+def test_leftover_running_requeues_missing_bundle(tmp_path: Path):
+    """QI-7 §9: leftover ``running`` + missing zip is re-queued without ``--force``."""
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    first = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert first["executed"] == 4
+    name = first["run_names"][0]
+    zip_path = out / f"{name}.research.zip"
+    assert zip_path.is_file()
+    zip_path.unlink()
+    ledger = load_ledger(out)
+    assert ledger is not None
+    cells = dict(ledger.get("cells") or {})
+    cell = dict(cells.get(name) or {})
+    cell["status"] = "running"
+    cells[name] = cell
+    ledger["cells"] = cells
+    save_ledger(out, ledger)
+    second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 1
+    assert zip_path.is_file()
+    resumed = load_ledger(out) or {}
+    assert (resumed.get("cells") or {}).get(name, {}).get("status") == "ok"
 
 
 def test_soft_resume_rehydrates_metrics_when_index_row_missing(tmp_path: Path):
@@ -1337,3 +1371,192 @@ def test_random_baseline_fields_real_vs_random_is_available():
     assert fields["random_p_value_ge"] is not None
     assert 0.0 < float(fields["random_p_value_ge"]) <= 1.0
     assert "replica_expectancies" not in fields
+
+
+_C23_RUN_STUDY_HELPERS = (
+    "_require_study_confirm",
+    "_assert_study_identity",
+    "_init_study_ledger",
+    "_scope_study_index",
+    "_build_study_tasks",
+    "_dispatch_study_cells",
+    "_finalize_running_cells",
+    "_finalize_study_index",
+    "_study_run_result",
+)
+
+
+def _called_func_names(fn_src: str) -> set[str]:
+    tree = ast.parse(fn_src)
+    return {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+
+
+def test_c23_run_study_is_phase_facade():
+    """QI-07-02: public ``run_study`` Call-binds confirm / lock / ledger / finalize."""
+    from thesistester.study import execute as execute_mod
+
+    calls = _called_func_names(inspect.getsource(execute_mod.run_study))
+    defined = {
+        name
+        for name, obj in vars(execute_mod).items()
+        if inspect.isfunction(obj) and getattr(obj, "__module__", "") == execute_mod.__name__
+    }
+    for name in _C23_RUN_STUDY_HELPERS:
+        assert name in defined, name
+        assert name in calls, name
+    sig = inspect.signature(execute_mod.run_study)
+    assert list(sig.parameters) == [
+        "study_path",
+        "output_dir",
+        "workers",
+        "confirm",
+        "force",
+        "cell_executor",
+    ]
+
+
+def test_c23_facade_comment_needles_do_not_bind():
+    """Comment / docstring helper names must not satisfy the C-23 Call probe."""
+    leftover = (
+        "def run_study():\n"
+        "    # _require_study_confirm _assert_study_identity _init_study_ledger\n"
+        "    '''_dispatch_study_cells _finalize_study_index _study_run_result'''\n"
+        "    return None\n"
+    )
+    calls = _called_func_names(leftover)
+    leaked = set(_C23_RUN_STUDY_HELPERS) & calls
+    assert leaked == set(), leaked
+
+
+def test_pending_cell_template_is_not_shared():
+    first = _pending_cell()
+    second = _pending_cell()
+    first["status"] = "ok"
+    first["bundle_path"] = "mutated.zip"
+    assert second["status"] == "pending"
+    assert second["bundle_path"] is None
+    assert first is not second
+
+
+def test_require_study_confirm_threshold_and_flag():
+    expansion = SimpleNamespace(run_count=2)
+    _require_study_confirm(expansion, {"confirm_above_runs": 3}, confirm=False)
+    with pytest.raises(StudySpecError, match="confirm_above_runs"):
+        _require_study_confirm(expansion, {"confirm_above_runs": 2}, confirm=False)
+    _require_study_confirm(expansion, {"confirm_above_runs": 2}, confirm=True)
+    _require_study_confirm(expansion, {}, confirm=False)
+
+
+def test_assert_study_identity_mismatch_requires_force():
+    expansion = SimpleNamespace(study_identity_hash="new")
+    _assert_study_identity(None, expansion, force=False)
+    _assert_study_identity({"study_identity_hash": "new"}, expansion, force=False)
+    with pytest.raises(StudySpecError, match="identity hash"):
+        _assert_study_identity({"study_identity_hash": "old"}, expansion, force=False)
+    _assert_study_identity({"study_identity_hash": "old"}, expansion, force=True)
+
+
+def test_init_study_ledger_fresh_merge_force_and_identity_swap():
+    expansion = SimpleNamespace(study_identity_hash="new")
+    fresh = _init_study_ledger(None, expansion, ["a"], force=False)
+    assert fresh["study_identity_hash"] == "new"
+    assert fresh["cells"]["a"]["status"] == "pending"
+    assert fresh["confirm"] is None
+
+    existing = {
+        "study_identity_hash": "new",
+        "confirm": {"confirmed": True, "run_count": 1},
+        "cells": {
+            "a": {
+                "status": "ok",
+                "started_at": "t0",
+                "finished_at": "t1",
+                "error": None,
+                "bundle_path": "a.research.zip",
+            }
+        },
+    }
+    merged = _init_study_ledger(existing, expansion, ["a", "b"], force=False)
+    assert merged["confirm"]["confirmed"] is True
+    assert merged["cells"]["a"]["status"] == "ok"
+    assert merged["cells"]["a"]["bundle_path"] == "a.research.zip"
+    assert merged["cells"]["b"]["status"] == "pending"
+    assert merged["cells"]["b"]["bundle_path"] is None
+
+    forced = _init_study_ledger(existing, expansion, ["a"], force=True)
+    assert forced["confirm"]["confirmed"] is True
+    assert forced["cells"]["a"]["status"] == "pending"
+    assert forced["cells"]["a"]["bundle_path"] is None
+
+    swapped = _init_study_ledger(
+        {"study_identity_hash": "old", "confirm": {"confirmed": True}, "cells": {"orphan": {}}},
+        expansion,
+        ["a"],
+        force=True,
+    )
+    assert swapped["confirm"] is None
+    assert set(swapped["cells"]) == {"a"}
+    assert swapped["cells"]["a"]["status"] == "pending"
+
+
+def test_scope_study_index_drops_orphans_and_force_clears_current():
+    index = {
+        "keep": {"status": "ok"},
+        "orphan": {"status": "failed"},
+    }
+    scoped = _scope_study_index(index, ["keep"], force=False)
+    assert set(scoped) == {"keep"}
+    forced = _scope_study_index(index, ["keep"], force=True)
+    assert forced == {}
+
+
+def test_finalize_running_cells_marks_todo_running_failed(tmp_path: Path):
+    from thesistester.study.ledger import empty_ledger, mark_cell
+
+    out = tmp_path / "out"
+    out.mkdir()
+    ledger = empty_ledger(study_identity_hash="h", run_names=["a", "b"])
+    ledger = mark_cell(ledger, "a", status="running", started=True)
+    save_ledger(out, ledger)
+    index_by_name: dict[str, dict] = {}
+    _finalize_running_cells(
+        out,
+        todo=["a"],
+        run_names=["a", "b"],
+        index_by_name=index_by_name,
+        error="WorkerInterrupted: cell left running after study loop exit",
+    )
+    resumed = load_ledger(out) or {}
+    assert (resumed.get("cells") or {}).get("a", {}).get("status") == "failed"
+    assert "WorkerInterrupted" in str((resumed.get("cells") or {}).get("a", {}).get("error"))
+    assert (resumed.get("cells") or {}).get("b", {}).get("status") == "pending"
+    assert index_by_name["a"]["status"] == "failed"
+
+
+def test_inprocess_dispatch_exception_marks_leftover_running_failed(tmp_path: Path):
+    """RS3: in-process helper raise still runs leftover-running → failed finalize."""
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    _spec, expansion, _o, _b = prepare_study_expansion(study, output_dir=out)
+    names = [run["name"] for run in expansion.experiment["runs"]]
+    ok_executor = _fake_executor_factory()
+
+    def executor(task):
+        name = str(task[0]["name"])
+        if name == names[1]:
+            raise RuntimeError("boom")
+        return ok_executor(task)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        run_study(study, output_dir=out, cell_executor=executor)
+    ledger = load_ledger(out)
+    assert ledger is not None
+    assert ledger["cells"][names[0]]["status"] == "ok"
+    for name in names[1:]:
+        cell = ledger["cells"][name]
+        assert cell["status"] == "failed"
+        assert "WorkerInterrupted" in (cell["error"] or "")

@@ -3,6 +3,7 @@
 Uses ``run_experiment`` + ``build_research_bundle`` like ``cli._execute_run``,
 but writes bundles/index/ledger incrementally and continues after per-cell
 failures. Does **not** call ``run_batch``.
+C-23 extracts confirm / lock / ledger-init / finalize helpers from ``run_study``.
 """
 
 from __future__ import annotations
@@ -1087,6 +1088,243 @@ def _finalize_running_cells(
         _write_results_index(output_dir, index_by_name, run_names)
 
 
+def _pending_cell() -> dict[str, Any]:
+    """Fresh pending cell. A shared module dict would leak mutations across cells."""
+    return {
+        "status": "pending",
+        "started_at": None,
+        "finished_at": None,
+        "error": None,
+        "bundle_path": None,
+    }
+
+
+def _require_study_confirm(expansion: Any, study: Mapping[str, Any], *, confirm: bool) -> None:
+    confirm_above = int(study.get("confirm_above_runs", 200))
+    if expansion.run_count >= confirm_above and not confirm:
+        raise StudySpecError(
+            f"Expansion has {expansion.run_count} run(s) >= confirm_above_runs="
+            f"{confirm_above}; re-run with --confirm"
+        )
+
+
+def _assert_study_identity(
+    existing: Mapping[str, Any] | None, expansion: Any, *, force: bool
+) -> None:
+    if existing is None:
+        return
+    prior_hash = existing.get("study_identity_hash")
+    if prior_hash != expansion.study_identity_hash and not force:
+        raise StudySpecError(
+            "Existing study.ledger.json identity hash does not match this "
+            "StudySpec expansion; pass --force to re-run, or use a new output_dir"
+        )
+
+
+def _init_study_ledger(
+    existing: Mapping[str, Any] | None,
+    expansion: Any,
+    run_names: list[str],
+    *,
+    force: bool,
+) -> dict[str, Any]:
+    prior_hash = existing.get("study_identity_hash") if existing is not None else None
+    identity_changed = existing is not None and prior_hash != expansion.study_identity_hash
+    if existing is None or (force and identity_changed):
+        # Fresh ledger, or forced identity swap → drop orphan cells.
+        return empty_ledger(
+            study_identity_hash=expansion.study_identity_hash,
+            run_names=run_names,
+        )
+    ledger = dict(existing)
+    ledger["study_identity_hash"] = expansion.study_identity_hash
+    prior_cells = dict(ledger.get("cells") or {})
+    cells: dict[str, Any] = {}
+    for name in run_names:
+        cell = dict(prior_cells.get(name) or _pending_cell())
+        if force:
+            cell.update(_pending_cell())
+        cells[name] = cell
+    ledger["cells"] = cells
+    return ledger
+
+
+def _scope_study_index(
+    index_by_name: dict[str, dict[str, Any]],
+    run_names: list[str],
+    *,
+    force: bool,
+) -> dict[str, dict[str, Any]]:
+    scoped = {name: row for name, row in index_by_name.items() if name in set(run_names)}
+    if force:
+        for name in run_names:
+            scoped.pop(name, None)
+    return scoped
+
+
+def _build_study_tasks(
+    spec: Mapping[str, Any],
+    expansion: Any,
+    todo: list[str],
+    base_directory: Path,
+) -> list[tuple[dict[str, Any], str]]:
+    runs_by_name = {str(run["name"]): dict(run) for run in expansion.experiment["runs"]}
+    report_cfg = (
+        spec.get("study", {}).get("report") if isinstance(spec.get("study"), Mapping) else None
+    )
+    baseline_cfg = _random_baseline_cfg(
+        report_cfg.get("random_baseline") if isinstance(report_cfg, Mapping) else None
+    )
+    tasks: list[tuple[dict[str, Any], str]] = []
+    for name in todo:
+        task_spec = dict(runs_by_name[name])
+        task_spec[_DA5_RANDOM_BASELINE_KEY] = baseline_cfg
+        tasks.append((task_spec, str(base_directory)))
+    return tasks
+
+
+def _dispatch_study_cells(
+    out: Path,
+    *,
+    tasks: list[tuple[dict[str, Any], str]],
+    todo: list[str],
+    run_names: list[str],
+    index_by_name: dict[str, dict[str, Any]],
+    workers_n: int,
+    cell_executor: Callable[[tuple[dict[str, Any], str]], dict[str, Any]] | None,
+) -> None:
+    executor_fn = cell_executor or execute_study_cell
+    # Pool only the picklable module-level default executor. Injected
+    # cell_executor callables (tests) always run in-process.
+    use_pool = (
+        workers_n > 1
+        and len(tasks) > 1
+        and cell_executor is None
+        and executor_fn is execute_study_cell
+    )
+    if not use_pool:
+        for task in tasks:
+            _apply_cell_result(
+                out,
+                run_names=run_names,
+                index_by_name=index_by_name,
+                payload=executor_fn(task),
+            )
+        return
+    with ProcessPoolExecutor(
+        max_workers=min(workers_n, len(tasks)),
+        mp_context=multiprocessing.get_context("spawn"),
+    ) as pool:
+        future_to_name = {
+            pool.submit(execute_study_cell, task): todo[index] for index, task in enumerate(tasks)
+        }
+        for future in as_completed(future_to_name):
+            name = future_to_name[future]
+            try:
+                payload = future.result()
+            except Exception as exc:  # noqa: BLE001 — keep study loop alive
+                payload = {
+                    "status": "failed",
+                    "name": name,
+                    "bundle": None,
+                    "index_row": _failed_index_row(name),
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            _apply_cell_result(
+                out,
+                run_names=run_names,
+                index_by_name=index_by_name,
+                payload=payload,
+            )
+
+
+def _sync_study_index_row(
+    name: str,
+    cell: Mapping[str, Any],
+    index_by_name: dict[str, dict[str, Any]],
+    out: Path,
+) -> None:
+    status = cell.get("status", "pending")
+    bundle_rel = cell.get("bundle_path")
+    if name not in index_by_name:
+        if status == "ok" and isinstance(bundle_rel, str) and bundle_rel:
+            index_by_name[name] = _index_row_from_existing_bundle(
+                name, output_dir=out, bundle_rel=bundle_rel
+            )
+            return
+        row = _failed_index_row(name)
+        row["status"] = status
+        row["bundle_path"] = bundle_rel
+        # Failed/pending must never carry PF/WR (RS-D7).
+        row["profit_factor"] = None
+        row["win_rate"] = None
+        index_by_name[name] = row
+        return
+
+    row = dict(index_by_name[name])
+    row["status"] = status
+    bundle_rel = cell.get("bundle_path") or row.get("bundle_path")
+    if status == "ok" and isinstance(bundle_rel, str) and bundle_rel:
+        # Repair historically poisoned soft-resume rows (ok + zip, null metrics).
+        if _metric_missing(row.get("trade_count")) and _metric_missing(row.get("expectancy_r")):
+            index_by_name[name] = _index_row_from_existing_bundle(
+                name,
+                output_dir=out,
+                bundle_rel=bundle_rel,
+                prior_row=row,
+            )
+            return
+        if _metric_missing(row.get("profit_factor")) or _metric_missing(row.get("win_rate")):
+            # Pre-D7 ok rows often have trade metrics but lack PF/WR columns.
+            index_by_name[name] = _backfill_pf_wr_from_bundle(
+                row, output_dir=out, bundle_rel=bundle_rel
+            )
+            return
+        index_by_name[name] = row
+        return
+    # Status sync to failed/pending must not retain stale ok PF/WR.
+    row["profit_factor"] = None
+    row["win_rate"] = None
+    if "bundle_path" in cell:
+        row["bundle_path"] = cell.get("bundle_path")
+    index_by_name[name] = row
+
+
+def _finalize_study_index(
+    out: Path,
+    ledger: Mapping[str, Any],
+    run_names: list[str],
+    index_by_name: dict[str, dict[str, Any]],
+) -> Path:
+    cells = ledger.get("cells") or {}
+    for name in run_names:
+        _sync_study_index_row(name, cells.get(name) or {}, index_by_name, out)
+    return _write_results_index(out, index_by_name, run_names)
+
+
+def _study_run_result(
+    *,
+    out: Path,
+    expansion: Any,
+    todo: list[str],
+    workers_n: int,
+    index_path: Path,
+    run_names: list[str],
+) -> dict[str, Any]:
+    return {
+        "output_dir": str(out),
+        "run_count": expansion.run_count,
+        "executed": len(todo),
+        "workers": workers_n,
+        "ledger_path": str(out / "study.ledger.json"),
+        "results_index_path": str(index_path),
+        "study_identity_hash": expansion.study_identity_hash,
+        "ledger": load_ledger(out),
+        "run_names": list(run_names),
+        "cost_hints": cost_hint_lines(expansion, workers=workers_n),
+    }
+
+
 def run_study(
     study_path: str | Path,
     *,
@@ -1100,6 +1338,9 @@ def run_study(
 
     Gates run **before** writing expansion artifacts so refuse paths cannot drift
     on-disk ``study.spec.yaml`` / factor maps relative to an existing ledger.
+
+    C-23 (QI-07-02): confirm / lock / ledger-init / finalize are helpers.
+    Public signature and RS3 abort semantics are unchanged.
     """
     # Expand in memory first — no artifact writes until gates pass.
     spec, expansion, out, base_directory = prepare_study_expansion(
@@ -1111,34 +1352,14 @@ def run_study(
     workers_n = int(workers if workers is not None else study.get("workers", 1))
     if workers_n < 1:
         raise StudySpecError("workers must be >= 1")
-
-    confirm_above = int(study.get("confirm_above_runs", 200))
-    if expansion.run_count >= confirm_above and not confirm:
-        raise StudySpecError(
-            f"Expansion has {expansion.run_count} run(s) >= confirm_above_runs="
-            f"{confirm_above}; re-run with --confirm"
-        )
-
+    _require_study_confirm(expansion, study, confirm=confirm)
     run_names = [str(run["name"]) for run in expansion.experiment["runs"]]
-    existing = load_ledger(out)
-    prior_hash = existing.get("study_identity_hash") if existing is not None else None
-    if existing is not None:
-        if prior_hash != expansion.study_identity_hash and not force:
-            raise StudySpecError(
-                "Existing study.ledger.json identity hash does not match this "
-                "StudySpec expansion; pass --force to re-run, or use a new output_dir"
-            )
+    _assert_study_identity(load_ledger(out), expansion, force=force)
 
     with _study_dir_lock(out):
         # Re-check identity under the lock (another process may have written).
         existing = load_ledger(out)
-        prior_hash = existing.get("study_identity_hash") if existing is not None else None
-        if existing is not None:
-            if prior_hash != expansion.study_identity_hash and not force:
-                raise StudySpecError(
-                    "Existing study.ledger.json identity hash does not match this "
-                    "StudySpec expansion; pass --force to re-run, or use a new output_dir"
-                )
+        _assert_study_identity(existing, expansion, force=force)
 
         # Gates passed — build the prior-profile table once, then persist
         # expansion artifacts so workers receive the parquet path.
@@ -1156,72 +1377,19 @@ def run_study(
             source_spec_parent=base_directory,
         )
 
-        identity_changed = existing is not None and prior_hash != expansion.study_identity_hash
-        if existing is None or (force and identity_changed):
-            # Fresh ledger, or forced identity swap → drop orphan cells.
-            ledger = empty_ledger(
-                study_identity_hash=expansion.study_identity_hash,
-                run_names=run_names,
-            )
-        else:
-            ledger = dict(existing)
-            ledger["study_identity_hash"] = expansion.study_identity_hash
-            prior_cells = dict(ledger.get("cells") or {})
-            cells: dict[str, Any] = {}
-            for name in run_names:
-                cell = dict(
-                    prior_cells.get(name)
-                    or {
-                        "status": "pending",
-                        "started_at": None,
-                        "finished_at": None,
-                        "error": None,
-                        "bundle_path": None,
-                    }
-                )
-                if force:
-                    cell.update(
-                        {
-                            "status": "pending",
-                            "started_at": None,
-                            "finished_at": None,
-                            "error": None,
-                            "bundle_path": None,
-                        }
-                    )
-                cells[name] = cell
-            ledger["cells"] = cells
-
+        ledger = _init_study_ledger(existing, expansion, run_names, force=force)
         if confirm:
             ledger = record_confirmation(ledger, run_count=expansion.run_count)
         save_ledger(out, ledger)
 
-        index_by_name = _load_existing_index_rows(out)
-        # Scope index to current expansion names only (drop orphans).
-        index_by_name = {name: row for name, row in index_by_name.items() if name in set(run_names)}
-        if force:
-            for name in run_names:
-                index_by_name.pop(name, None)
-
+        index_by_name = _scope_study_index(_load_existing_index_rows(out), run_names, force=force)
         todo = cells_to_run(
             load_ledger(out) or ledger,
             run_names,
             force=force,
             output_dir=out,
         )
-        runs_by_name = {str(run["name"]): dict(run) for run in expansion.experiment["runs"]}
-        executor_fn = cell_executor or execute_study_cell
-        report_cfg = (
-            spec.get("study", {}).get("report") if isinstance(spec.get("study"), Mapping) else None
-        )
-        baseline_cfg = _random_baseline_cfg(
-            report_cfg.get("random_baseline") if isinstance(report_cfg, Mapping) else None
-        )
-        tasks = []
-        for name in todo:
-            task_spec = dict(runs_by_name[name])
-            task_spec[_DA5_RANDOM_BASELINE_KEY] = baseline_cfg
-            tasks.append((task_spec, str(base_directory)))
+        tasks = _build_study_tasks(spec, expansion, todo, Path(base_directory))
 
         # Mark running before dispatch.
         ledger = load_ledger(out) or ledger
@@ -1229,51 +1397,16 @@ def run_study(
             ledger = mark_cell(ledger, name, status="running", started=True)
         save_ledger(out, ledger)
 
-        # Pool only the picklable module-level default executor. Injected
-        # cell_executor callables (tests) always run in-process.
-        use_pool = (
-            workers_n > 1
-            and len(tasks) > 1
-            and cell_executor is None
-            and executor_fn is execute_study_cell
-        )
         try:
-            if not use_pool:
-                for task in tasks:
-                    payload = executor_fn(task)
-                    _apply_cell_result(
-                        out,
-                        run_names=run_names,
-                        index_by_name=index_by_name,
-                        payload=payload,
-                    )
-            else:
-                with ProcessPoolExecutor(
-                    max_workers=min(workers_n, len(tasks)),
-                    mp_context=multiprocessing.get_context("spawn"),
-                ) as pool:
-                    future_to_name = {
-                        pool.submit(execute_study_cell, task): todo[index]
-                        for index, task in enumerate(tasks)
-                    }
-                    for future in as_completed(future_to_name):
-                        name = future_to_name[future]
-                        try:
-                            payload = future.result()
-                        except Exception as exc:  # noqa: BLE001 — keep study loop alive
-                            payload = {
-                                "status": "failed",
-                                "name": name,
-                                "bundle": None,
-                                "index_row": _failed_index_row(name),
-                                "error": f"{type(exc).__name__}: {exc}",
-                            }
-                        _apply_cell_result(
-                            out,
-                            run_names=run_names,
-                            index_by_name=index_by_name,
-                            payload=payload,
-                        )
+            _dispatch_study_cells(
+                out,
+                tasks=tasks,
+                todo=todo,
+                run_names=run_names,
+                index_by_name=index_by_name,
+                workers_n=workers_n,
+                cell_executor=cell_executor,
+            )
         finally:
             _finalize_running_cells(
                 out,
@@ -1285,69 +1418,12 @@ def run_study(
 
         # Final ordered index (includes soft-resumed ok rows).
         ledger = load_ledger(out) or ledger
-        cells = ledger.get("cells") or {}
-
-        for name in run_names:
-            cell = cells.get(name) or {}
-            status = cell.get("status", "pending")
-            bundle_rel = cell.get("bundle_path")
-            if name not in index_by_name:
-                if status == "ok" and isinstance(bundle_rel, str) and bundle_rel:
-                    index_by_name[name] = _index_row_from_existing_bundle(
-                        name, output_dir=out, bundle_rel=bundle_rel
-                    )
-                else:
-                    row = _failed_index_row(name)
-                    row["status"] = status
-                    row["bundle_path"] = bundle_rel
-                    # Failed/pending must never carry PF/WR (RS-D7).
-                    row["profit_factor"] = None
-                    row["win_rate"] = None
-                    index_by_name[name] = row
-                continue
-
-            row = dict(index_by_name[name])
-            row["status"] = status
-            bundle_rel = cell.get("bundle_path") or row.get("bundle_path")
-            if status == "ok" and isinstance(bundle_rel, str) and bundle_rel:
-                # Repair historically poisoned soft-resume rows (ok + zip, null metrics).
-                if _metric_missing(row.get("trade_count")) and _metric_missing(
-                    row.get("expectancy_r")
-                ):
-                    index_by_name[name] = _index_row_from_existing_bundle(
-                        name,
-                        output_dir=out,
-                        bundle_rel=bundle_rel,
-                        prior_row=row,
-                    )
-                elif _metric_missing(row.get("profit_factor")) or _metric_missing(
-                    row.get("win_rate")
-                ):
-                    # Pre-D7 ok rows often have trade metrics but lack PF/WR columns.
-                    index_by_name[name] = _backfill_pf_wr_from_bundle(
-                        row, output_dir=out, bundle_rel=bundle_rel
-                    )
-                else:
-                    index_by_name[name] = row
-            else:
-                # Status sync to failed/pending must not retain stale ok PF/WR.
-                row["profit_factor"] = None
-                row["win_rate"] = None
-                if "bundle_path" in cell:
-                    row["bundle_path"] = cell.get("bundle_path")
-                index_by_name[name] = row
-
-        index_path = _write_results_index(out, index_by_name, run_names)
-        final_ledger = load_ledger(out)
-        return {
-            "output_dir": str(out),
-            "run_count": expansion.run_count,
-            "executed": len(todo),
-            "workers": workers_n,
-            "ledger_path": str(out / "study.ledger.json"),
-            "results_index_path": str(index_path),
-            "study_identity_hash": expansion.study_identity_hash,
-            "ledger": final_ledger,
-            "run_names": list(run_names),
-            "cost_hints": cost_hint_lines(expansion, workers=workers_n),
-        }
+        index_path = _finalize_study_index(out, ledger, run_names, index_by_name)
+        return _study_run_result(
+            out=out,
+            expansion=expansion,
+            todo=todo,
+            workers_n=workers_n,
+            index_path=index_path,
+            run_names=run_names,
+        )

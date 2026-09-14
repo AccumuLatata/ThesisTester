@@ -100,7 +100,9 @@ unchanged. C-21 (QI-09-01) tables claim-format + intent→builder in
 `results_overview.py`; auditor-safe strings and DI/RI/DX contracts
 unchanged. C-22 (QI-09-02) tables `_derive_caveats` and
 `score_corpus_chunk` and splits `handle_results_turn` phases;
-RQ/HC/DI channel contracts unchanged. Next: C-23.
+RQ/HC/DI channel contracts unchanged. C-23 (QI-07-02) extracts
+`run_study` confirm / lock / ledger-init / finalize helpers; public
+signature and RS3 abort semantics unchanged. Next: C-24.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -297,7 +299,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    returns Python floats. C-21 (QI-09-01) tables claim-format +
    intent→builder in `results_overview.py`; auditor-safe strings
    unchanged. C-22 (QI-09-02) tables caveats + Help scoring and
-   splits `handle_results_turn` phases. Next: C-23.
+   splits `handle_results_turn` phases. C-23 (QI-07-02) extracts
+   `run_study` confirm / lock / ledger-init / finalize helpers.
+   Next: C-24.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
