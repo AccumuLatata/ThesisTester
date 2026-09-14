@@ -112,8 +112,7 @@ def _module_pytestmark_is_serial(tree: ast.Module) -> bool:
         if not isinstance(node, ast.Assign):
             continue
         if not any(
-            isinstance(target, ast.Name) and target.id == "pytestmark"
-            for target in node.targets
+            isinstance(target, ast.Name) and target.id == "pytestmark" for target in node.targets
         ):
             continue
         return _is_serial_mark(node.value)
@@ -130,7 +129,7 @@ def _function_has_serial(tree: ast.Module, name: str) -> bool:
 def test_discovered_apptest_files_include_page14_and_page16() -> None:
     discovered = _discover_apptest_files()
     missing = [path for path in REQUIRED_APPTEST_FILES if path not in discovered]
-    assert missing == [], f"AppTest discovery missed { [p.name for p in missing] }"
+    assert missing == [], f"AppTest discovery missed {[p.name for p in missing]}"
     assert set(discovered) >= set(REQUIRED_APPTEST_FILES)
 
 
