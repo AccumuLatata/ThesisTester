@@ -252,6 +252,35 @@ are cleared on import and not restored from the identity member).
 / golden projections stay hash-stable); when an older bundle omits it there,
 restore falls back to `data_identity.format_profile`.
 
+**Bundle key registry (C-7 / QI-06-04).** `BUNDLE_KEY_REGISTRY` is the single
+table: section → files → session keys → managed? → hashed?. It generates
+`_MANAGED_RESEARCH_KEYS`, `_*_META_KEYS`, `_KNOWN_FILES`,
+`_SECTION_REQUIRED_FILES`, and `_CANONICAL_HASH_EXCLUDED_FILES`.
+`build_research_bundle` / `load_research_bundle` walk `BUNDLE_SECTION_IO`.
+A-7 residuals stay `clear_only` (apply-clear, not hashed, not zip members).
+D-1 still owns dataset-clear / thesis-clear / widget flags.
+
+Known zip members (plus always-written `manifest.json`):
+
+| Section | Required files | Optional / sibling files |
+|---|---|---|
+| `dataset` | `dataset.parquet`, `dataset_meta.json` | `subtimeframe_data.parquet`, `subtimeframe_meta.json` |
+| `levels` | `levels.parquet`, `session_levels.parquet`, `levels_meta.json` | — |
+| `signals` | `signals.parquet`, `confluence_zones.parquet`, `naked_flags.parquet`, `signals_meta.json` | — |
+| `backtest` | `trades.parquet`, `trade_summary.json`, `equity_curve.parquet` | — |
+| `grid` | `grid_results.parquet`, `best_grid_result.json` | — |
+| `validation` | `validation_summary.json` | — |
+| `walk_forward` | `walk_forward_results.parquet`, `walk_forward_meta.json` | `walk_forward_oos_trades.parquet`, `walk_forward_stitched_equity.parquet`, `wfa_matrix.parquet` |
+| `excursion` | `excursion_summary.json` | `excursion_grouped_summary.parquet`, `excursion_calibration_grid.parquet`, `excursion_quadrant_summary.parquet` |
+| `monte_carlo` | `monte_carlo_summary.json` | — |
+| `noise` | `noise_summary.json` | — |
+| `overfitting` | `overfitting_summary.json` | — |
+| `sensitivity` | `sensitivity_summary.json` | — |
+| `portfolio` | `portfolio_summary.json`, `portfolio_trades.parquet` | `portfolio_skipped_trades.parquet`, `portfolio_equity_curve.parquet`, `portfolio_correlation.parquet`, `portfolio_drawdown_correlation.parquet`, `portfolio_marginal_contribution.parquet` |
+| `confluence_combo` | `confluence_combo_summary.json` (hash-excluded) | four `confluence_by_*.parquet` (hash-excluded) |
+| `identity` | — | `research_identity.json` |
+| `clear_only` | — | no zip members |
+
 **Bundle trust boundary (QI-06-09 / A-18).** Untrusted zip import
 (`load_research_bundle`) rejects an upload over `MAX_BUNDLE_UPLOAD_BYTES`
 (declared `.size` / path `st_size` before the bytes copy; measured length
@@ -1003,7 +1032,8 @@ hashed (AH §2 item 8). DA1 is not an admission gate. AH4 decision **landed
 in A-7 (QI-06-03):** `direction_collision_diagnostic` is **clear-only** in
 `_MANAGED_RESEARCH_KEYS` — leftover values are popped on bundle apply and
 are not restored (no export schema, not hashed). A-8 dataset-switch does
-**not** pop this A-7 residual (apply-clear only; registry unification is D-1).
+**not** pop this A-7 residual (apply-clear only). C-7 landed the bundle key
+registry; D-1 still owns dataset-clear / thesis-clear flags.
 DA3 reports the active
 `same_bar_opposite_direction` token in `policy`. `skip_both` collisions
 appear as `resolved_none` without a second pass; conflicted candidates stay

@@ -57,7 +57,10 @@ C-5 is reporting (`build_markdown_report` section table; walker AST-bound).
 C-6 (QI-05-14 / QI-06-11 / MG-29) promotes `directional_grid_metrics`,
 `SIMULATION_KWARGS`, `default_otf_filter_config` (copy of
 `DEFAULT_OTF_FILTER_CONFIG`), `hash_dataframe`, and `dash_if_none`
-(private aliases kept). `_empty_trades_df` stays a QI-4 handoff. Next: C-7.
+(private aliases kept). `_empty_trades_df` stays a QI-4 handoff.
+C-7 (QI-06-04) generates managed/known/required/hash-exclusion lists from
+`BUNDLE_KEY_REGISTRY`; `build_research_bundle` / `load_research_bundle`
+walk `BUNDLE_SECTION_IO`. Next: C-8.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -209,7 +212,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    kwargs set); OTF default is `default_otf_filter_config` (copy of
    `DEFAULT_OTF_FILTER_CONFIG`); bundle parquet
    projection is `hash_dataframe`; Report captions use `dash_if_none`.
-   Private `_` aliases remain for same-module callers. Next: C-7.
+   Private `_` aliases remain for same-module callers. C-7 (QI-06-04)
+   is the bundle key registry (`BUNDLE_KEY_REGISTRY` / `BUNDLE_SECTION_IO`).
+   Next: C-8.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`

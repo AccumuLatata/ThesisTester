@@ -8,7 +8,8 @@ import json
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from collections.abc import Callable
+from typing import Any, Mapping, NamedTuple
 
 import pandas as pd
 
@@ -38,74 +39,21 @@ BUNDLE_IMPORT_OMITTED_DATA_KEY = "bundle_import_omitted_data"
 MAX_BUNDLE_UPLOAD_BYTES = 256 * 1024 * 1024
 MAX_BUNDLE_MEMBER_BYTES = 256 * 1024 * 1024
 
-_DATASET_META_KEYS = (
-    "dataset_id",
-    "instrument",
-    "base_interval",
-    "source_timezone",
-    "exchange_timezone",
-    # Additive parser provenance; restored so exporters match imported identity.
-    "format_profile",
-)
-_LEVELS_META_KEYS = ("levels_settings", "levels_data_fingerprint")
-_SIGNALS_META_KEYS = (
-    "signal_context",
-    "last_signal_setup",
-    "signal_settings",
-    "signal_settings_hash",
-)
-# Backtest page builds Admit from these Streamlit widget keys (not session
-# ``entry_window`` alone). Cleared + rehydrated on bundle import (SW6).
-_BACKTEST_ENTRY_WINDOW_WIDGET_KEYS = (
-    "backtest_entry_window_enabled",
-    "backtest_entry_window_mode",
-    "backtest_entry_window_rth_segments",
-    "backtest_entry_window_start_time",
-    "backtest_entry_window_end_time",
-    "backtest_entry_window_timezone",
-)
-_BACKTEST_META_KEYS = (
-    "trade_summary",
-    "backtest_intrabar_policy",
-    "backtest_intrabar_diagnostic",
-    "backtest_exit_management_policy",
-    "backtest_exit_management_diagnostic",
-    # CAI-9 page summaries need costs/exposure/config from hash-verified bundles.
-    "backtest_execution_costs",
-    "exposure_policy",
-    "backtest_session_exit_policy",
-    "backtest_config",
-    # SW6: Admit / Focus provenance (dicts only; focused frames stay session-local).
-    "entry_window",
-    "entry_window_armed",
-    "entry_window_promote_provenance",
-    "focus_entry_window",
-    "focus_provenance",
-    "focused_trade_summary",
-)
-_GRID_META_KEYS = (
-    "best_grid_result",
-    "grid_intrabar_policy",
-    "grid_exit_management_policy",
-    "grid_entry_window",
-)
-_VALIDATION_META_KEYS = ("validation_summary",)
-_WFA_META_KEYS = (
-    "walk_forward_summary",
-    "walk_forward_config",
-    "walk_forward_otf_filter",
-    "walk_forward_warnings",
-    "wfa_matrix_config",
-)
-_EXCURSION_META_KEYS = ("excursion_summary", "excursion_config")
-_MONTE_CARLO_META_KEYS = ("monte_carlo_summary", "monte_carlo_config")
-_NOISE_META_KEYS = ("noise_summary", "noise_config")
-_OVERFITTING_META_KEYS = ("overfitting_summary", "overfitting_config")
-_SENSITIVITY_META_KEYS = ("sensitivity_summary", "sensitivity_config")
-_PORTFOLIO_META_KEYS = ("portfolio_summary", "portfolio_config", "portfolio_setup_inputs")
-# Optional managed research keys for confluence combo (PR 5c). Restored on
-# import for preview/report reuse; cleared when the section is absent. These
-# are NOT Backtest producer keys — export recomputes from session trades.
+
+class BundleKeySpec(NamedTuple):
+    """One bundle section: session keys, files, managed/hashed flags."""
+
+    section: str
+    meta_attr: str
+    meta_keys: tuple[str, ...]
+    session_keys: tuple[str, ...]
+    required_files: tuple[str, ...]
+    known_files: tuple[str, ...]
+    managed: bool
+    hashed: bool
+    hash_exclude_files: tuple[str, ...]
+
+
 _CONFLUENCE_COMBO_SUMMARY_KEY = "confluence_combo_summary"
 _CONFLUENCE_COMBO_FRAME_KEYS = (
     "confluence_by_exact_combo",
@@ -125,192 +73,418 @@ _CONFLUENCE_COMBO_FRAME_FROM_ARTIFACT = {
     "membership": "confluence_by_membership",
     "pairs": "confluence_by_pairs",
 }
-_MANAGED_RESEARCH_KEYS = {
-    "data",
-    "subtimeframe_data",
-    "subtimeframe_interval",
-    "subtimeframe_format_profile",
-    "subtimeframe_fallback_parent_bars",
-    "ingestion_provenance",
-    "dataset_id",
-    "instrument",
-    "base_interval",
-    "source_timezone",
-    "exchange_timezone",
-    "format_profile",
-    "levels",
-    "session_levels",
-    "levels_settings",
-    "levels_data_fingerprint",
-    "signals",
-    "confluence_zones",
-    "naked_flags",
-    "signal_context",
-    "last_signal_setup",
-    "signal_settings",
-    "signal_settings_hash",
-    "trades",
-    "trade_summary",
-    "backtest_intrabar_policy",
-    "backtest_intrabar_diagnostic",
-    "backtest_exit_management_policy",
-    "backtest_exit_management_diagnostic",
-    "backtest_execution_costs",
-    "exposure_policy",
-    "backtest_session_exit_policy",
-    "backtest_config",
-    "entry_window",
-    "entry_window_armed",
-    "entry_window_promote_provenance",
-    "focus_entry_window",
-    "focus_provenance",
-    "focused_trade_summary",
-    # AH4: leftover research keys that nonce invalidation does not clear.
-    # Clear-only (no export schema bump). grid_otf_filter is Report's
-    # fallback primary after backtest keys are gone; rejected/candidate
-    # frames and focused equity are the leftover OTF/Focus overlays.
-    "otf_filter_summary",
-    "otf_filter_result",
-    "backtest_otf_filter",
-    "grid_otf_filter",
-    "otf_rejected_signals",
-    "otf_candidate_signals",
-    "otf_accepted_signals",
-    "setup_config",
-    "focused_trades",
-    "focused_equity_curve",
-    # QI-06-03 / A-7: residual H1 leftovers. Clear-only (no export schema,
-    # not hashed — AH §2 item 8). Absent zip sections stay cleared.
-    "otf_validation_matrix",
-    "otf_validation_config",
-    "otf_validation_summary",
-    "skipped_signals",
-    "direction_collision_diagnostic",
-    # QI-10-01 / A-8: leftover display TZ is clear-only (not hashed). Apply
-    # resets it to the restored exchange TZ via reset_display_timezone.
-    "display_timezone",
-    "equity_curve",
-    "grid_results",
-    "best_grid_result",
-    "grid_intrabar_policy",
-    "grid_exit_management_policy",
-    "grid_entry_window",
-    "time_bucketed_trades",
-    "time_grouped_summary",
-    "validation_summary",
-    "walk_forward_results",
-    "walk_forward_summary",
-    "walk_forward_config",
-    "walk_forward_otf_filter",
-    "walk_forward_oos_trades",
-    "walk_forward_stitched_equity",
-    "walk_forward_warnings",
-    "wfa_matrix",
-    "wfa_matrix_config",
-    "excursion_summary",
-    "excursion_config",
-    "excursion_grouped_summary",
-    "excursion_calibration_grid",
-    "excursion_quadrant_summary",
-    "monte_carlo_summary",
-    "monte_carlo_config",
-    "noise_summary",
-    "noise_config",
-    "overfitting_summary",
-    "overfitting_config",
-    "sensitivity_summary",
-    "sensitivity_config",
-    "portfolio_summary",
-    "portfolio_config",
-    "portfolio_setup_inputs",
-    "portfolio_trades",
-    "portfolio_skipped_trades",
-    "portfolio_equity_curve",
-    "portfolio_correlation",
-    "portfolio_drawdown_correlation",
-    "portfolio_marginal_contribution",
-    # CAI-1 additive identity fields (optional; absent on pre-CAI-1 bundles).
-    "data_identity",
-    "levels_identity",
-    # Run-state/provenance only — cleared on import; not restored from
-    # research_identity.json until path-canonical RunSpec hashing lands.
-    "experiment_identity",
-    "execution_origin",
-    # CAI-3 cache status is provenance-only and must not enter bundle hashes.
-    "cache_provenance",
-    # PR 5c optional confluence combo siblings (on-export recompute).
-    _CONFLUENCE_COMBO_SUMMARY_KEY,
-    *_CONFLUENCE_COMBO_FRAME_KEYS,
-}
 
+# Backtest page builds Admit from these Streamlit widget keys (not session
+# ``entry_window`` alone). Cleared + rehydrated on bundle import (SW6).
+_BACKTEST_ENTRY_WINDOW_WIDGET_KEYS = (
+    "backtest_entry_window_enabled",
+    "backtest_entry_window_mode",
+    "backtest_entry_window_rth_segments",
+    "backtest_entry_window_start_time",
+    "backtest_entry_window_end_time",
+    "backtest_entry_window_timezone",
+)
+
+BUNDLE_KEY_REGISTRY: tuple[BundleKeySpec, ...] = (
+    BundleKeySpec(
+        section="dataset",
+        meta_attr="_DATASET_META_KEYS",
+        meta_keys=(
+            "dataset_id",
+            "instrument",
+            "base_interval",
+            "source_timezone",
+            "exchange_timezone",
+            "format_profile",
+        ),
+        session_keys=(
+            "data",
+            "subtimeframe_data",
+            "subtimeframe_interval",
+            "subtimeframe_format_profile",
+            "subtimeframe_fallback_parent_bars",
+            "ingestion_provenance",
+            "dataset_id",
+            "instrument",
+            "base_interval",
+            "source_timezone",
+            "exchange_timezone",
+            "format_profile",
+        ),
+        required_files=("dataset.parquet", "dataset_meta.json"),
+        known_files=(
+            "dataset.parquet",
+            "dataset_meta.json",
+            "subtimeframe_data.parquet",
+            "subtimeframe_meta.json",
+        ),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="levels",
+        meta_attr="_LEVELS_META_KEYS",
+        meta_keys=("levels_settings", "levels_data_fingerprint"),
+        session_keys=("levels", "session_levels", "levels_settings", "levels_data_fingerprint"),
+        required_files=("levels.parquet", "session_levels.parquet", "levels_meta.json"),
+        known_files=("levels.parquet", "session_levels.parquet", "levels_meta.json"),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="signals",
+        meta_attr="_SIGNALS_META_KEYS",
+        meta_keys=(
+            "signal_context",
+            "last_signal_setup",
+            "signal_settings",
+            "signal_settings_hash",
+        ),
+        session_keys=(
+            "signals",
+            "confluence_zones",
+            "naked_flags",
+            "signal_context",
+            "last_signal_setup",
+            "signal_settings",
+            "signal_settings_hash",
+        ),
+        required_files=(
+            "signals.parquet",
+            "confluence_zones.parquet",
+            "naked_flags.parquet",
+            "signals_meta.json",
+        ),
+        known_files=(
+            "signals.parquet",
+            "confluence_zones.parquet",
+            "naked_flags.parquet",
+            "signals_meta.json",
+        ),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="backtest",
+        meta_attr="_BACKTEST_META_KEYS",
+        meta_keys=(
+            "trade_summary",
+            "backtest_intrabar_policy",
+            "backtest_intrabar_diagnostic",
+            "backtest_exit_management_policy",
+            "backtest_exit_management_diagnostic",
+            "backtest_execution_costs",
+            "exposure_policy",
+            "backtest_session_exit_policy",
+            "backtest_config",
+            "entry_window",
+            "entry_window_armed",
+            "entry_window_promote_provenance",
+            "focus_entry_window",
+            "focus_provenance",
+            "focused_trade_summary",
+        ),
+        session_keys=(
+            "trades",
+            "equity_curve",
+            "trade_summary",
+            "backtest_intrabar_policy",
+            "backtest_intrabar_diagnostic",
+            "backtest_exit_management_policy",
+            "backtest_exit_management_diagnostic",
+            "backtest_execution_costs",
+            "exposure_policy",
+            "backtest_session_exit_policy",
+            "backtest_config",
+            "entry_window",
+            "entry_window_armed",
+            "entry_window_promote_provenance",
+            "focus_entry_window",
+            "focus_provenance",
+            "focused_trade_summary",
+        ),
+        required_files=("trades.parquet", "trade_summary.json", "equity_curve.parquet"),
+        known_files=("trades.parquet", "trade_summary.json", "equity_curve.parquet"),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="grid",
+        meta_attr="_GRID_META_KEYS",
+        meta_keys=(
+            "best_grid_result",
+            "grid_intrabar_policy",
+            "grid_exit_management_policy",
+            "grid_entry_window",
+        ),
+        session_keys=(
+            "grid_results",
+            "best_grid_result",
+            "grid_intrabar_policy",
+            "grid_exit_management_policy",
+            "grid_entry_window",
+        ),
+        required_files=("grid_results.parquet", "best_grid_result.json"),
+        known_files=("grid_results.parquet", "best_grid_result.json"),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="validation",
+        meta_attr="_VALIDATION_META_KEYS",
+        meta_keys=("validation_summary",),
+        session_keys=("validation_summary",),
+        required_files=("validation_summary.json",),
+        known_files=("validation_summary.json",),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="walk_forward",
+        meta_attr="_WFA_META_KEYS",
+        meta_keys=(
+            "walk_forward_summary",
+            "walk_forward_config",
+            "walk_forward_otf_filter",
+            "walk_forward_warnings",
+            "wfa_matrix_config",
+        ),
+        session_keys=(
+            "walk_forward_results",
+            "walk_forward_summary",
+            "walk_forward_config",
+            "walk_forward_otf_filter",
+            "walk_forward_oos_trades",
+            "walk_forward_stitched_equity",
+            "walk_forward_warnings",
+            "wfa_matrix",
+            "wfa_matrix_config",
+        ),
+        required_files=("walk_forward_results.parquet", "walk_forward_meta.json"),
+        known_files=(
+            "walk_forward_results.parquet",
+            "walk_forward_oos_trades.parquet",
+            "walk_forward_stitched_equity.parquet",
+            "wfa_matrix.parquet",
+            "walk_forward_meta.json",
+        ),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="excursion",
+        meta_attr="_EXCURSION_META_KEYS",
+        meta_keys=("excursion_summary", "excursion_config"),
+        session_keys=(
+            "excursion_summary",
+            "excursion_config",
+            "excursion_grouped_summary",
+            "excursion_calibration_grid",
+            "excursion_quadrant_summary",
+        ),
+        required_files=("excursion_summary.json",),
+        known_files=(
+            "excursion_summary.json",
+            "excursion_grouped_summary.parquet",
+            "excursion_calibration_grid.parquet",
+            "excursion_quadrant_summary.parquet",
+        ),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="monte_carlo",
+        meta_attr="_MONTE_CARLO_META_KEYS",
+        meta_keys=("monte_carlo_summary", "monte_carlo_config"),
+        session_keys=("monte_carlo_summary", "monte_carlo_config"),
+        required_files=("monte_carlo_summary.json",),
+        known_files=("monte_carlo_summary.json",),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="noise",
+        meta_attr="_NOISE_META_KEYS",
+        meta_keys=("noise_summary", "noise_config"),
+        session_keys=("noise_summary", "noise_config"),
+        required_files=("noise_summary.json",),
+        known_files=("noise_summary.json",),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="overfitting",
+        meta_attr="_OVERFITTING_META_KEYS",
+        meta_keys=("overfitting_summary", "overfitting_config"),
+        session_keys=("overfitting_summary", "overfitting_config"),
+        required_files=("overfitting_summary.json",),
+        known_files=("overfitting_summary.json",),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="sensitivity",
+        meta_attr="_SENSITIVITY_META_KEYS",
+        meta_keys=("sensitivity_summary", "sensitivity_config"),
+        session_keys=("sensitivity_summary", "sensitivity_config"),
+        required_files=("sensitivity_summary.json",),
+        known_files=("sensitivity_summary.json",),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="portfolio",
+        meta_attr="_PORTFOLIO_META_KEYS",
+        meta_keys=("portfolio_summary", "portfolio_config", "portfolio_setup_inputs"),
+        session_keys=(
+            "portfolio_summary",
+            "portfolio_config",
+            "portfolio_setup_inputs",
+            "portfolio_trades",
+            "portfolio_skipped_trades",
+            "portfolio_equity_curve",
+            "portfolio_correlation",
+            "portfolio_drawdown_correlation",
+            "portfolio_marginal_contribution",
+        ),
+        required_files=("portfolio_summary.json", "portfolio_trades.parquet"),
+        known_files=(
+            "portfolio_summary.json",
+            "portfolio_trades.parquet",
+            "portfolio_skipped_trades.parquet",
+            "portfolio_equity_curve.parquet",
+            "portfolio_correlation.parquet",
+            "portfolio_drawdown_correlation.parquet",
+            "portfolio_marginal_contribution.parquet",
+        ),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="confluence_combo",
+        meta_attr="",
+        meta_keys=(),
+        session_keys=(_CONFLUENCE_COMBO_SUMMARY_KEY, *_CONFLUENCE_COMBO_FRAME_KEYS),
+        required_files=("confluence_combo_summary.json",),
+        known_files=(
+            "confluence_combo_summary.json",
+            "confluence_by_exact_combo.parquet",
+            "confluence_by_level_count.parquet",
+            "confluence_by_membership.parquet",
+            "confluence_by_pairs.parquet",
+        ),
+        managed=True,
+        hashed=False,
+        hash_exclude_files=(
+            "confluence_combo_summary.json",
+            "confluence_by_exact_combo.parquet",
+            "confluence_by_level_count.parquet",
+            "confluence_by_membership.parquet",
+            "confluence_by_pairs.parquet",
+        ),
+    ),
+    BundleKeySpec(
+        section="identity",
+        meta_attr="",
+        meta_keys=(),
+        session_keys=("data_identity", "levels_identity"),
+        required_files=(),
+        known_files=(IDENTITY_META_FILENAME,),
+        managed=True,
+        hashed=True,
+        hash_exclude_files=(),
+    ),
+    BundleKeySpec(
+        section="clear_only",
+        meta_attr="",
+        meta_keys=(),
+        session_keys=(
+            "otf_filter_summary",
+            "otf_filter_result",
+            "backtest_otf_filter",
+            "grid_otf_filter",
+            "otf_rejected_signals",
+            "otf_candidate_signals",
+            "otf_accepted_signals",
+            "setup_config",
+            "focused_trades",
+            "focused_equity_curve",
+            "otf_validation_matrix",
+            "otf_validation_config",
+            "otf_validation_summary",
+            "skipped_signals",
+            "direction_collision_diagnostic",
+            "display_timezone",
+            "time_bucketed_trades",
+            "time_grouped_summary",
+            "experiment_identity",
+            "execution_origin",
+            "cache_provenance",
+        ),
+        required_files=(),
+        known_files=(),
+        managed=True,
+        hashed=False,
+        hash_exclude_files=(),
+    ),
+)
+BUNDLE_KEY_REGISTRY_NAMES: tuple[str, ...] = tuple(spec.section for spec in BUNDLE_KEY_REGISTRY)
+
+
+def _spec_meta(attr: str) -> tuple[str, ...]:
+    if not attr:
+        raise ValueError("BUNDLE_KEY_REGISTRY meta_attr must be non-empty")
+    matches = [spec.meta_keys for spec in BUNDLE_KEY_REGISTRY if spec.meta_attr == attr]
+    if len(matches) != 1:
+        raise ValueError(f"BUNDLE_KEY_REGISTRY meta_attr {attr!r} must name exactly one spec")
+    return matches[0]
+
+
+_DATASET_META_KEYS = _spec_meta("_DATASET_META_KEYS")
+_LEVELS_META_KEYS = _spec_meta("_LEVELS_META_KEYS")
+_SIGNALS_META_KEYS = _spec_meta("_SIGNALS_META_KEYS")
+_BACKTEST_META_KEYS = _spec_meta("_BACKTEST_META_KEYS")
+_GRID_META_KEYS = _spec_meta("_GRID_META_KEYS")
+_VALIDATION_META_KEYS = _spec_meta("_VALIDATION_META_KEYS")
+_WFA_META_KEYS = _spec_meta("_WFA_META_KEYS")
+_EXCURSION_META_KEYS = _spec_meta("_EXCURSION_META_KEYS")
+_MONTE_CARLO_META_KEYS = _spec_meta("_MONTE_CARLO_META_KEYS")
+_NOISE_META_KEYS = _spec_meta("_NOISE_META_KEYS")
+_OVERFITTING_META_KEYS = _spec_meta("_OVERFITTING_META_KEYS")
+_SENSITIVITY_META_KEYS = _spec_meta("_SENSITIVITY_META_KEYS")
+_PORTFOLIO_META_KEYS = _spec_meta("_PORTFOLIO_META_KEYS")
+
+_MANAGED_RESEARCH_KEYS = {
+    key for spec in BUNDLE_KEY_REGISTRY if spec.managed for key in spec.session_keys
+}
 _KNOWN_FILES = {
     MANIFEST_FILENAME,
-    "dataset.parquet",
-    "dataset_meta.json",
-    "subtimeframe_data.parquet",
-    "subtimeframe_meta.json",
-    "levels.parquet",
-    "session_levels.parquet",
-    "levels_meta.json",
-    IDENTITY_META_FILENAME,
-    "signals.parquet",
-    "confluence_zones.parquet",
-    "naked_flags.parquet",
-    "signals_meta.json",
-    "trades.parquet",
-    "trade_summary.json",
-    "equity_curve.parquet",
-    "grid_results.parquet",
-    "best_grid_result.json",
-    "validation_summary.json",
-    "walk_forward_results.parquet",
-    "walk_forward_oos_trades.parquet",
-    "walk_forward_stitched_equity.parquet",
-    "wfa_matrix.parquet",
-    "walk_forward_meta.json",
-    "excursion_summary.json",
-    "excursion_grouped_summary.parquet",
-    "excursion_calibration_grid.parquet",
-    "excursion_quadrant_summary.parquet",
-    "monte_carlo_summary.json",
-    "noise_summary.json",
-    "overfitting_summary.json",
-    "sensitivity_summary.json",
-    "portfolio_summary.json",
-    "portfolio_trades.parquet",
-    "portfolio_skipped_trades.parquet",
-    "portfolio_equity_curve.parquet",
-    "portfolio_correlation.parquet",
-    "portfolio_drawdown_correlation.parquet",
-    "portfolio_marginal_contribution.parquet",
-    "confluence_combo_summary.json",
-    "confluence_by_exact_combo.parquet",
-    "confluence_by_level_count.parquet",
-    "confluence_by_membership.parquet",
-    "confluence_by_pairs.parquet",
+    *(name for spec in BUNDLE_KEY_REGISTRY for name in spec.known_files),
 }
-
 _SECTION_REQUIRED_FILES = {
-    "dataset": ("dataset.parquet", "dataset_meta.json"),
-    "levels": ("levels.parquet", "session_levels.parquet", "levels_meta.json"),
-    "signals": (
-        "signals.parquet",
-        "confluence_zones.parquet",
-        "naked_flags.parquet",
-        "signals_meta.json",
-    ),
-    "backtest": ("trades.parquet", "trade_summary.json", "equity_curve.parquet"),
-    "grid": ("grid_results.parquet", "best_grid_result.json"),
-    "validation": ("validation_summary.json",),
-    "walk_forward": ("walk_forward_results.parquet", "walk_forward_meta.json"),
-    "excursion": ("excursion_summary.json",),
-    "monte_carlo": ("monte_carlo_summary.json",),
-    "noise": ("noise_summary.json",),
-    "overfitting": ("overfitting_summary.json",),
-    "sensitivity": ("sensitivity_summary.json",),
-    "portfolio": ("portfolio_summary.json", "portfolio_trades.parquet"),
-    "confluence_combo": ("confluence_combo_summary.json",),
+    spec.section: spec.required_files for spec in BUNDLE_KEY_REGISTRY if spec.required_files
 }
+# Optional confluence combo siblings are deterministic projections of trades (+
+# signal-run identity). Exclude them from the canonical hash so legacy golden
+# bundle hashes stay stable without a GOLDEN_REGEN, while still shipping the
+# optional files for import/preview. Manifest ``included.confluence_combo`` is
+# also stripped from the hashed manifest projection for the same reason.
+_CANONICAL_HASH_EXCLUDED_FILES = frozenset(
+    name for spec in BUNDLE_KEY_REGISTRY for name in spec.hash_exclude_files
+)
 
 
 def _utcnow_iso() -> str:
@@ -409,19 +583,6 @@ def _parquet_safe_frame(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-# Optional confluence combo siblings are deterministic projections of trades (+
-# signal-run identity). Exclude them from the canonical hash so legacy golden
-# bundle hashes stay stable without a GOLDEN_REGEN, while still shipping the
-# optional files for import/preview. Manifest ``included.confluence_combo`` is
-# also stripped from the hashed manifest projection for the same reason.
-_CANONICAL_HASH_EXCLUDED_FILES = frozenset(
-    {
-        "confluence_combo_summary.json",
-        *_CONFLUENCE_COMBO_PARQUET_FILES.values(),
-    }
-)
-
-
 def canonical_bundle_hash(bundle_bytes: bytes) -> str:
     """Hash logical bundle contents while excluding archive/time metadata.
 
@@ -499,231 +660,589 @@ def _manifest_base() -> dict[str, Any]:
     }
 
 
-def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
-    """Build a zip bundle for supported research artifacts from session_state."""
-    manifest = _manifest_base()
-    included_keys: set[str] = set()
-    files: dict[str, bytes] = {}
+class _BundleBuildCtx:
+    __slots__ = ("session_state", "files", "manifest", "included_keys")
 
+    def __init__(self, session_state: Mapping[str, Any]) -> None:
+        self.session_state = session_state
+        self.files: dict[str, bytes] = {}
+        self.manifest = _manifest_base()
+        self.included_keys: set[str] = set()
+
+
+class _BundleLoadCtx:
+    __slots__ = ("zf", "names", "included", "session_values")
+
+    def __init__(
+        self,
+        zf: zipfile.ZipFile,
+        names: set[str],
+        included: Mapping[str, Any],
+    ) -> None:
+        self.zf = zf
+        self.names = names
+        self.included = included
+        self.session_values: dict[str, Any] = {}
+
+
+class BundleSectionIO(NamedTuple):
+    """Build/load pair for one exportable bundle section."""
+
+    section: str
+    build: Callable[[_BundleBuildCtx], None]
+    load: Callable[[_BundleLoadCtx], None]
+
+
+def _mark_included(ctx: _BundleBuildCtx, section: str) -> None:
+    ctx.manifest["included"][section] = True
+
+
+def _copy_present_meta(session_state: Mapping[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    return {key: session_state.get(key) for key in keys if key in session_state}
+
+
+def _restore_present_meta(
+    session_values: dict[str, Any], meta: Mapping[str, Any], keys: tuple[str, ...]
+) -> None:
+    for key in keys:
+        if key in meta:
+            session_values[key] = meta[key]
+
+
+def _build_dataset_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
     data = session_state.get("data")
-    if _is_dataframe(data):
-        files["dataset.parquet"] = _to_parquet_bytes(data)
-        # format_profile is additive: omit when absent so pre-CAI-1 / golden
-        # dataset_meta projections (and their canonical hashes) stay unchanged.
-        dataset_meta = {
-            key: session_state.get(key)
-            for key in _DATASET_META_KEYS
-            if key != "format_profile" or session_state.get("format_profile") is not None
+    if not _is_dataframe(data):
+        return
+    ctx.files["dataset.parquet"] = _to_parquet_bytes(data)
+    # format_profile is additive: omit when absent so pre-CAI-1 / golden
+    # dataset_meta projections (and their canonical hashes) stay unchanged.
+    dataset_meta = {
+        key: session_state.get(key)
+        for key in _DATASET_META_KEYS
+        if key != "format_profile" or session_state.get("format_profile") is not None
+    }
+    ctx.files["dataset_meta.json"] = _to_json_bytes(dataset_meta)
+    _mark_included(ctx, "dataset")
+    ctx.included_keys.update({"data", *dataset_meta.keys()})
+    subtimeframe_data = session_state.get("subtimeframe_data")
+    if not _is_dataframe(subtimeframe_data):
+        return
+    ctx.files["subtimeframe_data.parquet"] = _to_parquet_bytes(subtimeframe_data)
+    subtimeframe_meta: dict[str, Any] = {
+        "subtimeframe_interval": session_state.get("subtimeframe_interval"),
+        "subtimeframe_fallback_parent_bars": session_state.get("subtimeframe_fallback_parent_bars"),
+        "subtimeframe_duplicate_resolution": session_state.get("subtimeframe_duplicate_resolution"),
+    }
+    if session_state.get("subtimeframe_format_profile") is not None:
+        subtimeframe_meta["subtimeframe_format_profile"] = session_state.get(
+            "subtimeframe_format_profile"
+        )
+    provenance = session_state.get("ingestion_provenance")
+    if isinstance(provenance, Mapping):
+        subtimeframe_meta["ingestion_provenance"] = dict(provenance)
+    ctx.files["subtimeframe_meta.json"] = _to_json_bytes(subtimeframe_meta)
+    ctx.included_keys.update(
+        {
+            "subtimeframe_data",
+            "subtimeframe_interval",
+            "subtimeframe_format_profile",
+            "ingestion_provenance",
         }
-        files["dataset_meta.json"] = _to_json_bytes(dataset_meta)
-        manifest["included"]["dataset"] = True
-        included_keys.update({"data", *dataset_meta.keys()})
-        subtimeframe_data = session_state.get("subtimeframe_data")
-        if _is_dataframe(subtimeframe_data):
-            files["subtimeframe_data.parquet"] = _to_parquet_bytes(subtimeframe_data)
-            subtimeframe_meta: dict[str, Any] = {
-                "subtimeframe_interval": session_state.get("subtimeframe_interval"),
-                "subtimeframe_fallback_parent_bars": session_state.get(
-                    "subtimeframe_fallback_parent_bars"
-                ),
-                "subtimeframe_duplicate_resolution": session_state.get(
-                    "subtimeframe_duplicate_resolution"
-                ),
-            }
-            if session_state.get("subtimeframe_format_profile") is not None:
-                subtimeframe_meta["subtimeframe_format_profile"] = session_state.get(
-                    "subtimeframe_format_profile"
-                )
-            provenance = session_state.get("ingestion_provenance")
-            if isinstance(provenance, Mapping):
-                subtimeframe_meta["ingestion_provenance"] = dict(provenance)
-            files["subtimeframe_meta.json"] = _to_json_bytes(subtimeframe_meta)
-            included_keys.update(
-                {
-                    "subtimeframe_data",
-                    "subtimeframe_interval",
-                    "subtimeframe_format_profile",
-                    "ingestion_provenance",
-                }
-            )
+    )
 
+
+def _load_dataset_section(ctx: _BundleLoadCtx) -> None:
+    session_values = ctx.session_values
+    session_values["data"] = _read_parquet_from_zip(ctx.zf, "dataset.parquet")
+    dataset_meta = _read_json_from_zip(ctx.zf, "dataset_meta.json")
+    _restore_present_meta(session_values, dataset_meta, _DATASET_META_KEYS)
+    if "subtimeframe_data.parquet" not in ctx.names:
+        return
+    session_values["subtimeframe_data"] = _read_parquet_from_zip(
+        ctx.zf, "subtimeframe_data.parquet"
+    )
+    subtimeframe_meta = _read_json_from_zip(ctx.zf, "subtimeframe_meta.json")
+    if "subtimeframe_interval" in subtimeframe_meta:
+        session_values["subtimeframe_interval"] = subtimeframe_meta["subtimeframe_interval"]
+    if "subtimeframe_fallback_parent_bars" in subtimeframe_meta:
+        session_values["subtimeframe_fallback_parent_bars"] = subtimeframe_meta[
+            "subtimeframe_fallback_parent_bars"
+        ]
+    if "subtimeframe_duplicate_resolution" in subtimeframe_meta:
+        session_values["subtimeframe_duplicate_resolution"] = subtimeframe_meta[
+            "subtimeframe_duplicate_resolution"
+        ]
+    if "subtimeframe_format_profile" in subtimeframe_meta:
+        session_values["subtimeframe_format_profile"] = subtimeframe_meta[
+            "subtimeframe_format_profile"
+        ]
+    provenance = subtimeframe_meta.get("ingestion_provenance")
+    if isinstance(provenance, Mapping):
+        session_values["ingestion_provenance"] = dict(provenance)
+
+
+def _build_levels_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
     levels = session_state.get("levels")
     session_levels = session_state.get("session_levels")
-    if _is_dataframe(levels) and _is_dataframe(session_levels):
-        files["levels.parquet"] = _to_parquet_bytes(levels)
-        files["session_levels.parquet"] = _to_parquet_bytes(session_levels)
-        files["levels_meta.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _LEVELS_META_KEYS}
-        )
-        manifest["included"]["levels"] = True
-        included_keys.update({"levels", "session_levels", *_LEVELS_META_KEYS})
+    if not (_is_dataframe(levels) and _is_dataframe(session_levels)):
+        return
+    ctx.files["levels.parquet"] = _to_parquet_bytes(levels)
+    ctx.files["session_levels.parquet"] = _to_parquet_bytes(session_levels)
+    ctx.files["levels_meta.json"] = _to_json_bytes(
+        {key: session_state.get(key) for key in _LEVELS_META_KEYS}
+    )
+    _mark_included(ctx, "levels")
+    ctx.included_keys.update({"levels", "session_levels", *_LEVELS_META_KEYS})
 
+
+def _load_levels_section(ctx: _BundleLoadCtx) -> None:
+    ctx.session_values["levels"] = _read_parquet_from_zip(ctx.zf, "levels.parquet")
+    ctx.session_values["session_levels"] = _read_parquet_from_zip(ctx.zf, "session_levels.parquet")
+    levels_meta = _read_json_from_zip(ctx.zf, "levels_meta.json")
+    _restore_present_meta(ctx.session_values, levels_meta, _LEVELS_META_KEYS)
+
+
+def _build_signals_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
     signals = session_state.get("signals")
     confluence_zones = session_state.get("confluence_zones")
     naked_flags = session_state.get("naked_flags")
-    if _is_dataframe(signals) and _is_dataframe(confluence_zones) and _is_dataframe(naked_flags):
-        files["signals.parquet"] = _to_parquet_bytes(signals)
-        files["confluence_zones.parquet"] = _to_parquet_bytes(confluence_zones)
-        files["naked_flags.parquet"] = _to_parquet_bytes(naked_flags)
-        files["signals_meta.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _SIGNALS_META_KEYS}
-        )
-        manifest["included"]["signals"] = True
-        included_keys.update({"signals", "confluence_zones", "naked_flags", *_SIGNALS_META_KEYS})
+    if not (
+        _is_dataframe(signals) and _is_dataframe(confluence_zones) and _is_dataframe(naked_flags)
+    ):
+        return
+    ctx.files["signals.parquet"] = _to_parquet_bytes(signals)
+    ctx.files["confluence_zones.parquet"] = _to_parquet_bytes(confluence_zones)
+    ctx.files["naked_flags.parquet"] = _to_parquet_bytes(naked_flags)
+    ctx.files["signals_meta.json"] = _to_json_bytes(
+        {key: session_state.get(key) for key in _SIGNALS_META_KEYS}
+    )
+    _mark_included(ctx, "signals")
+    ctx.included_keys.update({"signals", "confluence_zones", "naked_flags", *_SIGNALS_META_KEYS})
 
+
+def _load_signals_section(ctx: _BundleLoadCtx) -> None:
+    ctx.session_values["signals"] = _read_parquet_from_zip(ctx.zf, "signals.parquet")
+    ctx.session_values["confluence_zones"] = _read_parquet_from_zip(
+        ctx.zf, "confluence_zones.parquet"
+    )
+    ctx.session_values["naked_flags"] = _read_parquet_from_zip(ctx.zf, "naked_flags.parquet")
+    signals_meta = _read_json_from_zip(ctx.zf, "signals_meta.json")
+    _restore_present_meta(ctx.session_values, signals_meta, _SIGNALS_META_KEYS)
+
+
+def _build_backtest_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
     trades = session_state.get("trades")
     equity_curve = session_state.get("equity_curve")
-    if _is_dataframe(trades) and _is_dataframe(equity_curve):
-        files["trades.parquet"] = _to_parquet_bytes(trades)
-        files["equity_curve.parquet"] = _to_parquet_bytes(equity_curve)
-        files["trade_summary.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _BACKTEST_META_KEYS if key in session_state}
-        )
-        manifest["included"]["backtest"] = True
-        included_keys.update({"trades", "equity_curve"})
-        included_keys.update(key for key in _BACKTEST_META_KEYS if key in session_state)
+    if not (_is_dataframe(trades) and _is_dataframe(equity_curve)):
+        return
+    ctx.files["trades.parquet"] = _to_parquet_bytes(trades)
+    ctx.files["equity_curve.parquet"] = _to_parquet_bytes(equity_curve)
+    ctx.files["trade_summary.json"] = _to_json_bytes(
+        _copy_present_meta(session_state, _BACKTEST_META_KEYS)
+    )
+    _mark_included(ctx, "backtest")
+    ctx.included_keys.update({"trades", "equity_curve"})
+    ctx.included_keys.update(key for key in _BACKTEST_META_KEYS if key in session_state)
 
+
+def _load_backtest_section(ctx: _BundleLoadCtx) -> None:
+    ctx.session_values["trades"] = _read_parquet_from_zip(ctx.zf, "trades.parquet")
+    ctx.session_values["equity_curve"] = _read_parquet_from_zip(ctx.zf, "equity_curve.parquet")
+    backtest_meta = _read_json_from_zip(ctx.zf, "trade_summary.json")
+    _restore_present_meta(ctx.session_values, backtest_meta, _BACKTEST_META_KEYS)
+
+
+def _build_grid_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
     grid_results = session_state.get("grid_results")
-    if _is_dataframe(grid_results):
-        files["grid_results.parquet"] = _to_parquet_bytes(grid_results)
-        files["best_grid_result.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _GRID_META_KEYS if key in session_state}
-        )
-        manifest["included"]["grid"] = True
-        included_keys.add("grid_results")
-        included_keys.update(key for key in _GRID_META_KEYS if key in session_state)
+    if not _is_dataframe(grid_results):
+        return
+    ctx.files["grid_results.parquet"] = _to_parquet_bytes(grid_results)
+    ctx.files["best_grid_result.json"] = _to_json_bytes(
+        _copy_present_meta(session_state, _GRID_META_KEYS)
+    )
+    _mark_included(ctx, "grid")
+    ctx.included_keys.add("grid_results")
+    ctx.included_keys.update(key for key in _GRID_META_KEYS if key in session_state)
 
-    if session_state.get("validation_summary") is not None:
-        files["validation_summary.json"] = _to_json_bytes(
-            {"validation_summary": session_state.get("validation_summary")}
-        )
-        manifest["included"]["validation"] = True
-        included_keys.update(_VALIDATION_META_KEYS)
 
+def _load_grid_section(ctx: _BundleLoadCtx) -> None:
+    ctx.session_values["grid_results"] = _read_parquet_from_zip(ctx.zf, "grid_results.parquet")
+    grid_meta = _read_json_from_zip(ctx.zf, "best_grid_result.json")
+    _restore_present_meta(ctx.session_values, grid_meta, _GRID_META_KEYS)
+
+
+def _build_validation_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
+    if session_state.get("validation_summary") is None:
+        return
+    ctx.files["validation_summary.json"] = _to_json_bytes(
+        {"validation_summary": session_state.get("validation_summary")}
+    )
+    _mark_included(ctx, "validation")
+    ctx.included_keys.update(_VALIDATION_META_KEYS)
+
+
+def _load_validation_section(ctx: _BundleLoadCtx) -> None:
+    validation_meta = _read_json_from_zip(ctx.zf, "validation_summary.json")
+    if "validation_summary" in validation_meta:
+        ctx.session_values["validation_summary"] = validation_meta["validation_summary"]
+
+
+def _build_walk_forward_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
     walk_forward_results = session_state.get("walk_forward_results")
-    if _is_dataframe(walk_forward_results):
-        files["walk_forward_results.parquet"] = _to_parquet_bytes(walk_forward_results)
-        files["walk_forward_meta.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _WFA_META_KEYS if key in session_state}
-        )
-        for key, filename in (
-            ("walk_forward_oos_trades", "walk_forward_oos_trades.parquet"),
-            (
-                "walk_forward_stitched_equity",
-                "walk_forward_stitched_equity.parquet",
-            ),
-            ("wfa_matrix", "wfa_matrix.parquet"),
-        ):
-            value = session_state.get(key)
-            if _is_dataframe(value):
-                files[filename] = _to_parquet_bytes(value)
-                included_keys.add(key)
-        manifest["included"]["walk_forward"] = True
-        included_keys.add("walk_forward_results")
-        included_keys.update(key for key in _WFA_META_KEYS if key in session_state)
+    if not _is_dataframe(walk_forward_results):
+        return
+    ctx.files["walk_forward_results.parquet"] = _to_parquet_bytes(walk_forward_results)
+    ctx.files["walk_forward_meta.json"] = _to_json_bytes(
+        _copy_present_meta(session_state, _WFA_META_KEYS)
+    )
+    for key, filename in (
+        ("walk_forward_oos_trades", "walk_forward_oos_trades.parquet"),
+        (
+            "walk_forward_stitched_equity",
+            "walk_forward_stitched_equity.parquet",
+        ),
+        ("wfa_matrix", "wfa_matrix.parquet"),
+    ):
+        value = session_state.get(key)
+        if _is_dataframe(value):
+            ctx.files[filename] = _to_parquet_bytes(value)
+            ctx.included_keys.add(key)
+    _mark_included(ctx, "walk_forward")
+    ctx.included_keys.add("walk_forward_results")
+    ctx.included_keys.update(key for key in _WFA_META_KEYS if key in session_state)
 
-    if session_state.get("excursion_summary") is not None:
-        files["excursion_summary.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _EXCURSION_META_KEYS}
-        )
-        excursion_grouped = session_state.get("excursion_grouped_summary")
-        if _is_dataframe(excursion_grouped):
-            files["excursion_grouped_summary.parquet"] = _to_parquet_bytes(excursion_grouped)
-            included_keys.add("excursion_grouped_summary")
-        excursion_calibration = session_state.get("excursion_calibration_grid")
-        if _is_dataframe(excursion_calibration):
-            files["excursion_calibration_grid.parquet"] = _to_parquet_bytes(excursion_calibration)
-            included_keys.add("excursion_calibration_grid")
-        excursion_quadrants = session_state.get("excursion_quadrant_summary")
-        if _is_dataframe(excursion_quadrants):
-            files["excursion_quadrant_summary.parquet"] = _to_parquet_bytes(excursion_quadrants)
-            included_keys.add("excursion_quadrant_summary")
-        manifest["included"]["excursion"] = True
-        included_keys.update(_EXCURSION_META_KEYS)
 
-    if session_state.get("monte_carlo_summary") is not None:
-        files["monte_carlo_summary.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _MONTE_CARLO_META_KEYS}
-        )
-        manifest["included"]["monte_carlo"] = True
-        included_keys.update(_MONTE_CARLO_META_KEYS)
+def _load_walk_forward_section(ctx: _BundleLoadCtx) -> None:
+    ctx.session_values["walk_forward_results"] = _read_parquet_from_zip(
+        ctx.zf, "walk_forward_results.parquet"
+    )
+    walk_forward_meta = _read_json_from_zip(ctx.zf, "walk_forward_meta.json")
+    _restore_present_meta(ctx.session_values, walk_forward_meta, _WFA_META_KEYS)
+    for key, filename in (
+        ("walk_forward_oos_trades", "walk_forward_oos_trades.parquet"),
+        (
+            "walk_forward_stitched_equity",
+            "walk_forward_stitched_equity.parquet",
+        ),
+        ("wfa_matrix", "wfa_matrix.parquet"),
+    ):
+        if filename in ctx.names:
+            ctx.session_values[key] = _read_parquet_from_zip(ctx.zf, filename)
 
-    if session_state.get("noise_summary") is not None:
-        files["noise_summary.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _NOISE_META_KEYS}
-        )
-        manifest["included"]["noise"] = True
-        included_keys.update(_NOISE_META_KEYS)
 
-    if session_state.get("overfitting_summary") is not None:
-        files["overfitting_summary.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _OVERFITTING_META_KEYS}
-        )
-        manifest["included"]["overfitting"] = True
-        included_keys.update(_OVERFITTING_META_KEYS)
+def _build_excursion_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
+    if session_state.get("excursion_summary") is None:
+        return
+    ctx.files["excursion_summary.json"] = _to_json_bytes(
+        {key: session_state.get(key) for key in _EXCURSION_META_KEYS}
+    )
+    excursion_grouped = session_state.get("excursion_grouped_summary")
+    if _is_dataframe(excursion_grouped):
+        ctx.files["excursion_grouped_summary.parquet"] = _to_parquet_bytes(excursion_grouped)
+        ctx.included_keys.add("excursion_grouped_summary")
+    excursion_calibration = session_state.get("excursion_calibration_grid")
+    if _is_dataframe(excursion_calibration):
+        ctx.files["excursion_calibration_grid.parquet"] = _to_parquet_bytes(excursion_calibration)
+        ctx.included_keys.add("excursion_calibration_grid")
+    excursion_quadrants = session_state.get("excursion_quadrant_summary")
+    if _is_dataframe(excursion_quadrants):
+        ctx.files["excursion_quadrant_summary.parquet"] = _to_parquet_bytes(excursion_quadrants)
+        ctx.included_keys.add("excursion_quadrant_summary")
+    _mark_included(ctx, "excursion")
+    ctx.included_keys.update(_EXCURSION_META_KEYS)
 
-    if session_state.get("sensitivity_summary") is not None:
-        files["sensitivity_summary.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _SENSITIVITY_META_KEYS}
-        )
-        manifest["included"]["sensitivity"] = True
-        included_keys.update(_SENSITIVITY_META_KEYS)
 
-    if session_state.get("portfolio_summary") is not None:
-        files["portfolio_summary.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _PORTFOLIO_META_KEYS}
+def _load_excursion_section(ctx: _BundleLoadCtx) -> None:
+    excursion_meta = _read_json_from_zip(ctx.zf, "excursion_summary.json")
+    _restore_present_meta(ctx.session_values, excursion_meta, _EXCURSION_META_KEYS)
+    if "excursion_grouped_summary.parquet" in ctx.names:
+        ctx.session_values["excursion_grouped_summary"] = _read_parquet_from_zip(
+            ctx.zf, "excursion_grouped_summary.parquet"
         )
-        for key in (
-            "portfolio_trades",
-            "portfolio_skipped_trades",
-            "portfolio_equity_curve",
-            "portfolio_correlation",
-            "portfolio_drawdown_correlation",
-            "portfolio_marginal_contribution",
-        ):
-            frame = session_state.get(key)
-            if _is_dataframe(frame):
-                files[f"{key}.parquet"] = _to_parquet_bytes(frame)
-                included_keys.add(key)
-        manifest["included"]["portfolio"] = True
-        included_keys.update(_PORTFOLIO_META_KEYS)
+    if "excursion_calibration_grid.parquet" in ctx.names:
+        ctx.session_values["excursion_calibration_grid"] = _read_parquet_from_zip(
+            ctx.zf, "excursion_calibration_grid.parquet"
+        )
+    if "excursion_quadrant_summary.parquet" in ctx.names:
+        ctx.session_values["excursion_quadrant_summary"] = _read_parquet_from_zip(
+            ctx.zf, "excursion_quadrant_summary.parquet"
+        )
 
+
+def _build_json_summary_section(
+    ctx: _BundleBuildCtx,
+    section: str,
+    summary_key: str,
+    filename: str,
+    meta_keys: tuple[str, ...],
+) -> None:
+    if ctx.session_state.get(summary_key) is None:
+        return
+    ctx.files[filename] = _to_json_bytes({key: ctx.session_state.get(key) for key in meta_keys})
+    _mark_included(ctx, section)
+    ctx.included_keys.update(meta_keys)
+
+
+def _load_json_summary_section(
+    ctx: _BundleLoadCtx, filename: str, meta_keys: tuple[str, ...]
+) -> None:
+    meta = _read_json_from_zip(ctx.zf, filename)
+    _restore_present_meta(ctx.session_values, meta, meta_keys)
+
+
+def _build_monte_carlo_section(ctx: _BundleBuildCtx) -> None:
+    _build_json_summary_section(
+        ctx,
+        "monte_carlo",
+        "monte_carlo_summary",
+        "monte_carlo_summary.json",
+        _MONTE_CARLO_META_KEYS,
+    )
+
+
+def _load_monte_carlo_section(ctx: _BundleLoadCtx) -> None:
+    _load_json_summary_section(ctx, "monte_carlo_summary.json", _MONTE_CARLO_META_KEYS)
+
+
+def _build_noise_section(ctx: _BundleBuildCtx) -> None:
+    _build_json_summary_section(
+        ctx, "noise", "noise_summary", "noise_summary.json", _NOISE_META_KEYS
+    )
+
+
+def _load_noise_section(ctx: _BundleLoadCtx) -> None:
+    _load_json_summary_section(ctx, "noise_summary.json", _NOISE_META_KEYS)
+
+
+def _build_overfitting_section(ctx: _BundleBuildCtx) -> None:
+    _build_json_summary_section(
+        ctx,
+        "overfitting",
+        "overfitting_summary",
+        "overfitting_summary.json",
+        _OVERFITTING_META_KEYS,
+    )
+
+
+def _load_overfitting_section(ctx: _BundleLoadCtx) -> None:
+    _load_json_summary_section(ctx, "overfitting_summary.json", _OVERFITTING_META_KEYS)
+
+
+def _build_sensitivity_section(ctx: _BundleBuildCtx) -> None:
+    _build_json_summary_section(
+        ctx,
+        "sensitivity",
+        "sensitivity_summary",
+        "sensitivity_summary.json",
+        _SENSITIVITY_META_KEYS,
+    )
+
+
+def _load_sensitivity_section(ctx: _BundleLoadCtx) -> None:
+    _load_json_summary_section(ctx, "sensitivity_summary.json", _SENSITIVITY_META_KEYS)
+
+
+def _build_portfolio_section(ctx: _BundleBuildCtx) -> None:
+    session_state = ctx.session_state
+    if session_state.get("portfolio_summary") is None:
+        return
+    ctx.files["portfolio_summary.json"] = _to_json_bytes(
+        {key: session_state.get(key) for key in _PORTFOLIO_META_KEYS}
+    )
+    for key in (
+        "portfolio_trades",
+        "portfolio_skipped_trades",
+        "portfolio_equity_curve",
+        "portfolio_correlation",
+        "portfolio_drawdown_correlation",
+        "portfolio_marginal_contribution",
+    ):
+        frame = session_state.get(key)
+        if _is_dataframe(frame):
+            ctx.files[f"{key}.parquet"] = _to_parquet_bytes(frame)
+            ctx.included_keys.add(key)
+    _mark_included(ctx, "portfolio")
+    ctx.included_keys.update(_PORTFOLIO_META_KEYS)
+
+
+def _load_portfolio_section(ctx: _BundleLoadCtx) -> None:
+    portfolio_meta = _read_json_from_zip(ctx.zf, "portfolio_summary.json")
+    _restore_present_meta(ctx.session_values, portfolio_meta, _PORTFOLIO_META_KEYS)
+    for key in (
+        "portfolio_trades",
+        "portfolio_skipped_trades",
+        "portfolio_equity_curve",
+        "portfolio_correlation",
+        "portfolio_drawdown_correlation",
+        "portfolio_marginal_contribution",
+    ):
+        filename = f"{key}.parquet"
+        if filename in ctx.names:
+            ctx.session_values[key] = _read_parquet_from_zip(ctx.zf, filename)
+
+
+def _build_confluence_combo_section(ctx: _BundleBuildCtx) -> None:
     # PR 5c: confluence combo is Backtest on-the-fly only — recompute on export
     # (no producer session key). Omit entirely when unavailable. Gate on the
     # backtest section so combo siblings are never orphaned without trades.parquet
     # (source of truth for later recompute).
-    if manifest["included"].get("backtest"):
-        confluence_artifacts = build_confluence_combo_bundle_artifacts(session_state)
-        if isinstance(confluence_artifacts, dict):
-            summary_payload = confluence_artifacts.get("summary")
-            frames = confluence_artifacts.get("frames")
-            if isinstance(summary_payload, Mapping) and summary_payload.get("available"):
-                files["confluence_combo_summary.json"] = _to_json_bytes(summary_payload)
-                included_keys.add(_CONFLUENCE_COMBO_SUMMARY_KEY)
-                if isinstance(frames, Mapping):
-                    for artifact_name, session_key in _CONFLUENCE_COMBO_FRAME_FROM_ARTIFACT.items():
-                        frame = frames.get(artifact_name)
-                        if _is_dataframe(frame) and not frame.empty:
-                            filename = _CONFLUENCE_COMBO_PARQUET_FILES[session_key]
-                            files[filename] = _to_parquet_bytes(_parquet_safe_frame(frame))
-                            included_keys.add(session_key)
-                manifest["included"]["confluence_combo"] = True
+    if not ctx.manifest["included"].get("backtest"):
+        return
+    confluence_artifacts = build_confluence_combo_bundle_artifacts(ctx.session_state)
+    if not isinstance(confluence_artifacts, dict):
+        return
+    summary_payload = confluence_artifacts.get("summary")
+    frames = confluence_artifacts.get("frames")
+    if not (isinstance(summary_payload, Mapping) and summary_payload.get("available")):
+        return
+    ctx.files["confluence_combo_summary.json"] = _to_json_bytes(summary_payload)
+    ctx.included_keys.add(_CONFLUENCE_COMBO_SUMMARY_KEY)
+    if isinstance(frames, Mapping):
+        for artifact_name, session_key in _CONFLUENCE_COMBO_FRAME_FROM_ARTIFACT.items():
+            frame = frames.get(artifact_name)
+            if _is_dataframe(frame) and not frame.empty:
+                filename = _CONFLUENCE_COMBO_PARQUET_FILES[session_key]
+                ctx.files[filename] = _to_parquet_bytes(_parquet_safe_frame(frame))
+                ctx.included_keys.add(session_key)
+    _mark_included(ctx, "confluence_combo")
 
-    identity_payload = _identity_payload_from_state(session_state)
-    if identity_payload is not None:
-        files[IDENTITY_META_FILENAME] = _to_json_bytes(identity_payload)
-        for key in ("data_identity", "levels_identity"):
-            if key in identity_payload:
-                included_keys.add(key)
 
-    manifest["session_keys"] = sorted(included_keys)
-    files[MANIFEST_FILENAME] = _to_json_bytes(manifest)
+def _load_confluence_combo_section(ctx: _BundleLoadCtx) -> None:
+    # PR 5c: optional confluence combo siblings. Absent section → ignore
+    # missing files (old bundles keep loading). Included → require JSON;
+    # load parquet siblings only when present.
+    ctx.session_values[_CONFLUENCE_COMBO_SUMMARY_KEY] = _read_json_from_zip(
+        ctx.zf, "confluence_combo_summary.json"
+    )
+    for session_key, filename in _CONFLUENCE_COMBO_PARQUET_FILES.items():
+        if filename in ctx.names:
+            ctx.session_values[session_key] = _read_parquet_from_zip(ctx.zf, filename)
 
+
+def _build_identity_member(ctx: _BundleBuildCtx) -> None:
+    identity_payload = _identity_payload_from_state(ctx.session_state)
+    if identity_payload is None:
+        return
+    ctx.files[IDENTITY_META_FILENAME] = _to_json_bytes(identity_payload)
+    for key in ("data_identity", "levels_identity"):
+        if key in identity_payload:
+            ctx.included_keys.add(key)
+
+
+def _load_identity_member(ctx: _BundleLoadCtx) -> None:
+    if IDENTITY_META_FILENAME not in ctx.names:
+        return
+    identity_meta = _read_json_from_zip(ctx.zf, IDENTITY_META_FILENAME)
+    for key in ("data_identity", "levels_identity"):
+        if key in identity_meta:
+            ctx.session_values[key] = identity_meta[key]
+    # Older/odd identity members may nest data_identity only under
+    # levels_identity; promote so session restore stays complete.
+    if "data_identity" not in ctx.session_values:
+        levels_identity = ctx.session_values.get("levels_identity")
+        if isinstance(levels_identity, Mapping):
+            nested = levels_identity.get("data_identity")
+            if isinstance(nested, Mapping):
+                ctx.session_values["data_identity"] = nested
+
+
+def _promote_format_profile_from_identity(session_values: dict[str, Any]) -> None:
+    # Older CAI-1 bundles may omit format_profile from dataset_meta while
+    # still carrying it on data_identity (top-level or nested-promoted).
+    if "format_profile" in session_values:
+        return
+    data_identity = session_values.get("data_identity")
+    if isinstance(data_identity, Mapping) and data_identity.get("format_profile"):
+        session_values["format_profile"] = str(data_identity["format_profile"])
+
+
+def _require_included_section_files(included: Mapping[str, Any], names: set[str]) -> None:
+    for section, required_files in _SECTION_REQUIRED_FILES.items():
+        if not included.get(section):
+            continue
+        for filename in required_files:
+            if filename not in names:
+                raise ValueError(
+                    f"Manifest includes '{section}' but bundle is missing '{filename}'."
+                )
+
+
+def _open_research_bundle_zip(uploaded_file: Any) -> zipfile.ZipFile:
+    raw = _read_uploaded_bytes(uploaded_file)
+    try:
+        return zipfile.ZipFile(io.BytesIO(raw), mode="r")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Invalid research bundle zip file.") from exc
+
+
+def _read_validated_manifest(
+    zf: zipfile.ZipFile, names: set[str]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if MANIFEST_FILENAME not in names:
+        raise ValueError("Bundle is missing manifest.json.")
+    manifest = _read_json_from_zip(zf, MANIFEST_FILENAME)
+    if manifest.get("kind") != BUNDLE_KIND:
+        raise ValueError("Invalid bundle kind in manifest.")
+    if manifest.get("bundle_schema_version") != BUNDLE_SCHEMA_VERSION:
+        raise ValueError("Unsupported bundle schema version.")
+    included = manifest.get("included")
+    if not isinstance(included, dict):
+        raise ValueError("Manifest 'included' must be an object.")
+    _require_included_section_files(included, names)
+    return manifest, included
+
+
+def _pack_research_bundle_zip(files: Mapping[str, bytes]) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name in sorted(files):
             zf.writestr(name, files[name])
     return output.getvalue()
+
+
+BUNDLE_SECTION_IO: tuple[BundleSectionIO, ...] = (
+    BundleSectionIO("dataset", _build_dataset_section, _load_dataset_section),
+    BundleSectionIO("levels", _build_levels_section, _load_levels_section),
+    BundleSectionIO("signals", _build_signals_section, _load_signals_section),
+    BundleSectionIO("backtest", _build_backtest_section, _load_backtest_section),
+    BundleSectionIO("grid", _build_grid_section, _load_grid_section),
+    BundleSectionIO("validation", _build_validation_section, _load_validation_section),
+    BundleSectionIO("walk_forward", _build_walk_forward_section, _load_walk_forward_section),
+    BundleSectionIO("excursion", _build_excursion_section, _load_excursion_section),
+    BundleSectionIO("monte_carlo", _build_monte_carlo_section, _load_monte_carlo_section),
+    BundleSectionIO("noise", _build_noise_section, _load_noise_section),
+    BundleSectionIO("overfitting", _build_overfitting_section, _load_overfitting_section),
+    BundleSectionIO("sensitivity", _build_sensitivity_section, _load_sensitivity_section),
+    BundleSectionIO("portfolio", _build_portfolio_section, _load_portfolio_section),
+    BundleSectionIO(
+        "confluence_combo", _build_confluence_combo_section, _load_confluence_combo_section
+    ),
+)
+BUNDLE_SECTION_IO_NAMES: tuple[str, ...] = tuple(spec.section for spec in BUNDLE_SECTION_IO)
+
+
+def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
+    """Build a zip bundle for supported research artifacts from session_state.
+
+    Walks :data:`BUNDLE_SECTION_IO` (C-7 / QI-06-04). Identity is written after
+    the section walk so omitted session identity maps still omit
+    ``research_identity.json``.
+    """
+    ctx = _BundleBuildCtx(session_state)
+    for spec in BUNDLE_SECTION_IO:
+        spec.build(ctx)
+    _build_identity_member(ctx)
+    ctx.manifest["session_keys"] = sorted(ctx.included_keys)
+    ctx.files[MANIFEST_FILENAME] = _to_json_bytes(ctx.manifest)
+    return _pack_research_bundle_zip(ctx.files)
 
 
 def _identity_payload_from_state(session_state: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -871,223 +1390,26 @@ def _read_parquet_from_zip(zf: zipfile.ZipFile, filename: str) -> pd.DataFrame:
 
 
 def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
-    """Load and validate a research bundle zip into an in-memory payload."""
-    raw = _read_uploaded_bytes(uploaded_file)
-    try:
-        zf = zipfile.ZipFile(io.BytesIO(raw), mode="r")
-    except zipfile.BadZipFile as exc:
-        raise ValueError("Invalid research bundle zip file.") from exc
+    """Load and validate a research bundle zip into an in-memory payload.
 
+    Walks :data:`BUNDLE_SECTION_IO` for included sections (C-7 / QI-06-04).
+    Identity loads first; ``format_profile`` promotion runs after the walk.
+    """
+    zf = _open_research_bundle_zip(uploaded_file)
     with zf:
         names = set(zf.namelist())
-        if MANIFEST_FILENAME not in names:
-            raise ValueError("Bundle is missing manifest.json.")
-
-        manifest = _read_json_from_zip(zf, MANIFEST_FILENAME)
-        if manifest.get("kind") != BUNDLE_KIND:
-            raise ValueError("Invalid bundle kind in manifest.")
-        if manifest.get("bundle_schema_version") != BUNDLE_SCHEMA_VERSION:
-            raise ValueError("Unsupported bundle schema version.")
-
-        included = manifest.get("included")
-        if not isinstance(included, dict):
-            raise ValueError("Manifest 'included' must be an object.")
-
-        for section, required_files in _SECTION_REQUIRED_FILES.items():
-            if included.get(section):
-                for filename in required_files:
-                    if filename not in names:
-                        raise ValueError(
-                            f"Manifest includes '{section}' but bundle is missing '{filename}'."
-                        )
-
-        session_values: dict[str, Any] = {}
-
-        if IDENTITY_META_FILENAME in names:
-            identity_meta = _read_json_from_zip(zf, IDENTITY_META_FILENAME)
-            for key in ("data_identity", "levels_identity"):
-                if key in identity_meta:
-                    session_values[key] = identity_meta[key]
-            # Older/odd identity members may nest data_identity only under
-            # levels_identity; promote so session restore stays complete.
-            if "data_identity" not in session_values:
-                levels_identity = session_values.get("levels_identity")
-                if isinstance(levels_identity, Mapping):
-                    nested = levels_identity.get("data_identity")
-                    if isinstance(nested, Mapping):
-                        session_values["data_identity"] = nested
-
-        if included.get("dataset"):
-            session_values["data"] = _read_parquet_from_zip(zf, "dataset.parquet")
-            dataset_meta = _read_json_from_zip(zf, "dataset_meta.json")
-            for key in _DATASET_META_KEYS:
-                if key in dataset_meta:
-                    session_values[key] = dataset_meta[key]
-            if "subtimeframe_data.parquet" in names:
-                session_values["subtimeframe_data"] = _read_parquet_from_zip(
-                    zf, "subtimeframe_data.parquet"
-                )
-                subtimeframe_meta = _read_json_from_zip(zf, "subtimeframe_meta.json")
-                if "subtimeframe_interval" in subtimeframe_meta:
-                    session_values["subtimeframe_interval"] = subtimeframe_meta[
-                        "subtimeframe_interval"
-                    ]
-                if "subtimeframe_fallback_parent_bars" in subtimeframe_meta:
-                    session_values["subtimeframe_fallback_parent_bars"] = subtimeframe_meta[
-                        "subtimeframe_fallback_parent_bars"
-                    ]
-                if "subtimeframe_duplicate_resolution" in subtimeframe_meta:
-                    session_values["subtimeframe_duplicate_resolution"] = subtimeframe_meta[
-                        "subtimeframe_duplicate_resolution"
-                    ]
-                if "subtimeframe_format_profile" in subtimeframe_meta:
-                    session_values["subtimeframe_format_profile"] = subtimeframe_meta[
-                        "subtimeframe_format_profile"
-                    ]
-                provenance = subtimeframe_meta.get("ingestion_provenance")
-                if isinstance(provenance, Mapping):
-                    session_values["ingestion_provenance"] = dict(provenance)
-
-        # Older CAI-1 bundles may omit format_profile from dataset_meta while
-        # still carrying it on data_identity (top-level or nested-promoted).
-        if "format_profile" not in session_values:
-            data_identity = session_values.get("data_identity")
-            if isinstance(data_identity, Mapping) and data_identity.get("format_profile"):
-                session_values["format_profile"] = str(data_identity["format_profile"])
-
-        if included.get("levels"):
-            session_values["levels"] = _read_parquet_from_zip(zf, "levels.parquet")
-            session_values["session_levels"] = _read_parquet_from_zip(zf, "session_levels.parquet")
-            levels_meta = _read_json_from_zip(zf, "levels_meta.json")
-            for key in _LEVELS_META_KEYS:
-                if key in levels_meta:
-                    session_values[key] = levels_meta[key]
-
-        if included.get("signals"):
-            session_values["signals"] = _read_parquet_from_zip(zf, "signals.parquet")
-            session_values["confluence_zones"] = _read_parquet_from_zip(
-                zf, "confluence_zones.parquet"
-            )
-            session_values["naked_flags"] = _read_parquet_from_zip(zf, "naked_flags.parquet")
-            signals_meta = _read_json_from_zip(zf, "signals_meta.json")
-            for key in _SIGNALS_META_KEYS:
-                if key in signals_meta:
-                    session_values[key] = signals_meta[key]
-
-        if included.get("backtest"):
-            session_values["trades"] = _read_parquet_from_zip(zf, "trades.parquet")
-            session_values["equity_curve"] = _read_parquet_from_zip(zf, "equity_curve.parquet")
-            backtest_meta = _read_json_from_zip(zf, "trade_summary.json")
-            for key in _BACKTEST_META_KEYS:
-                if key in backtest_meta:
-                    session_values[key] = backtest_meta[key]
-
-        if included.get("grid"):
-            session_values["grid_results"] = _read_parquet_from_zip(zf, "grid_results.parquet")
-            grid_meta = _read_json_from_zip(zf, "best_grid_result.json")
-            for key in _GRID_META_KEYS:
-                if key in grid_meta:
-                    session_values[key] = grid_meta[key]
-
-        if included.get("validation"):
-            validation_meta = _read_json_from_zip(zf, "validation_summary.json")
-            if "validation_summary" in validation_meta:
-                session_values["validation_summary"] = validation_meta["validation_summary"]
-
-        if included.get("walk_forward"):
-            session_values["walk_forward_results"] = _read_parquet_from_zip(
-                zf, "walk_forward_results.parquet"
-            )
-            walk_forward_meta = _read_json_from_zip(zf, "walk_forward_meta.json")
-            for key in _WFA_META_KEYS:
-                if key in walk_forward_meta:
-                    session_values[key] = walk_forward_meta[key]
-            for key, filename in (
-                ("walk_forward_oos_trades", "walk_forward_oos_trades.parquet"),
-                (
-                    "walk_forward_stitched_equity",
-                    "walk_forward_stitched_equity.parquet",
-                ),
-                ("wfa_matrix", "wfa_matrix.parquet"),
-            ):
-                if filename in names:
-                    session_values[key] = _read_parquet_from_zip(zf, filename)
-
-        if included.get("excursion"):
-            excursion_meta = _read_json_from_zip(zf, "excursion_summary.json")
-            for key in _EXCURSION_META_KEYS:
-                if key in excursion_meta:
-                    session_values[key] = excursion_meta[key]
-            if "excursion_grouped_summary.parquet" in names:
-                session_values["excursion_grouped_summary"] = _read_parquet_from_zip(
-                    zf, "excursion_grouped_summary.parquet"
-                )
-            if "excursion_calibration_grid.parquet" in names:
-                session_values["excursion_calibration_grid"] = _read_parquet_from_zip(
-                    zf, "excursion_calibration_grid.parquet"
-                )
-            if "excursion_quadrant_summary.parquet" in names:
-                session_values["excursion_quadrant_summary"] = _read_parquet_from_zip(
-                    zf, "excursion_quadrant_summary.parquet"
-                )
-
-        if included.get("monte_carlo"):
-            monte_carlo_meta = _read_json_from_zip(zf, "monte_carlo_summary.json")
-            for key in _MONTE_CARLO_META_KEYS:
-                if key in monte_carlo_meta:
-                    session_values[key] = monte_carlo_meta[key]
-
-        if included.get("noise"):
-            noise_meta = _read_json_from_zip(zf, "noise_summary.json")
-            for key in _NOISE_META_KEYS:
-                if key in noise_meta:
-                    session_values[key] = noise_meta[key]
-
-        if included.get("overfitting"):
-            overfitting_meta = _read_json_from_zip(zf, "overfitting_summary.json")
-            for key in _OVERFITTING_META_KEYS:
-                if key in overfitting_meta:
-                    session_values[key] = overfitting_meta[key]
-
-        if included.get("sensitivity"):
-            sensitivity_meta = _read_json_from_zip(zf, "sensitivity_summary.json")
-            for key in _SENSITIVITY_META_KEYS:
-                if key in sensitivity_meta:
-                    session_values[key] = sensitivity_meta[key]
-
-        if included.get("portfolio"):
-            portfolio_meta = _read_json_from_zip(zf, "portfolio_summary.json")
-            for key in _PORTFOLIO_META_KEYS:
-                if key in portfolio_meta:
-                    session_values[key] = portfolio_meta[key]
-            for key in (
-                "portfolio_trades",
-                "portfolio_skipped_trades",
-                "portfolio_equity_curve",
-                "portfolio_correlation",
-                "portfolio_drawdown_correlation",
-                "portfolio_marginal_contribution",
-            ):
-                filename = f"{key}.parquet"
-                if filename in names:
-                    session_values[key] = _read_parquet_from_zip(zf, filename)
-
-        # PR 5c: optional confluence combo siblings. Absent section → ignore
-        # missing files (old bundles keep loading). Included → require JSON;
-        # load parquet siblings only when present.
-        if included.get("confluence_combo"):
-            session_values[_CONFLUENCE_COMBO_SUMMARY_KEY] = _read_json_from_zip(
-                zf, "confluence_combo_summary.json"
-            )
-            for session_key, filename in _CONFLUENCE_COMBO_PARQUET_FILES.items():
-                if filename in names:
-                    session_values[session_key] = _read_parquet_from_zip(zf, filename)
-
-    return {
-        "manifest": manifest,
-        "session_values": session_values,
-        "known_files_in_bundle": sorted(name for name in names if name in _KNOWN_FILES),
-    }
+        manifest, included = _read_validated_manifest(zf, names)
+        ctx = _BundleLoadCtx(zf, names, included)
+        _load_identity_member(ctx)
+        for spec in BUNDLE_SECTION_IO:
+            if included.get(spec.section):
+                spec.load(ctx)
+        _promote_format_profile_from_identity(ctx.session_values)
+        return {
+            "manifest": manifest,
+            "session_values": ctx.session_values,
+            "known_files_in_bundle": sorted(name for name in names if name in _KNOWN_FILES),
+        }
 
 
 def apply_research_bundle_to_session(
