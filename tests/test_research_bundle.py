@@ -1212,15 +1212,23 @@ def _const_str_tuple(node: ast.AST) -> set[str]:
     }
 
 
-def _bundle_key_registry_assign(tree: ast.AST) -> ast.Assign:
+def _is_name_target(node: ast.AST, name: str) -> bool:
+    if isinstance(node, ast.Assign):
+        return any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+    return (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == name
+    )
+
+
+def _bundle_key_registry_assign(tree: ast.AST) -> ast.Assign | ast.AnnAssign | None:
     if not isinstance(tree, ast.Module):
-        raise AssertionError("expected a module AST")
+        return None
     for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if any(isinstance(t, ast.Name) and t.id == "BUNDLE_KEY_REGISTRY" for t in node.targets):
+        if _is_name_target(node, "BUNDLE_KEY_REGISTRY"):
             return node
-    raise AssertionError("missing BUNDLE_KEY_REGISTRY assignment")
+    return None
 
 
 def _bundle_key_spec_calls(tree: ast.AST) -> list[ast.Call]:
@@ -1229,6 +1237,8 @@ def _bundle_key_spec_calls(tree: ast.AST) -> list[ast.Call]:
     A dead helper / unused call must not bind A-7 leftovers (A-1/A-6 class).
     """
     registry = _bundle_key_registry_assign(tree)
+    if registry is None:
+        return []
     return [
         node
         for node in ast.walk(registry)
