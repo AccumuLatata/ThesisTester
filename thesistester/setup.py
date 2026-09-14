@@ -648,7 +648,8 @@ def _validate_setup_entry_window(config: dict[str, Any]) -> list[str]:
     ]
 
 
-# QI-03-03 clusters. C-2 / C-3 reuse this (name, collect) table — no pydantic.
+# QI-03-03 clusters. C-2 / C-3 reuse this (name, collect) table *pattern*
+# (their own tables; do not import this one) — no pydantic.
 SETUP_CONFIG_RULES: tuple[SetupConfigRule, ...] = (
     SetupConfigRule("identity", _validate_setup_identity),
     SetupConfigRule("enums", _validate_setup_enums),
