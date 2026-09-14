@@ -49,11 +49,7 @@ def _swallows_b023(code: str) -> bool:
 
 
 def _is_zip_call(node: ast.AST) -> bool:
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "zip"
-    )
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "zip"
 
 
 def _zip_strict_value(node: ast.Call) -> bool | None:
@@ -166,9 +162,7 @@ def test_voice_health_mock_read_binds_payload_and_keeps_amt() -> None:
         and node.name == "test_probe_sidecar_health_rejects_truthy_non_bool_ok"
     )
     reads = [
-        node
-        for node in ast.walk(host)
-        if isinstance(node, ast.FunctionDef) and node.name == "read"
+        node for node in ast.walk(host) if isinstance(node, ast.FunctionDef) and node.name == "read"
     ]
     assert len(reads) == 1, reads
     names = [arg.arg for arg in reads[0].args.args]
