@@ -800,9 +800,7 @@ STUDY_INGEST_RULES: tuple[StudyIngestRule, ...] = (
     StudyIngestRule("ingestion_mode", STUDY_INGESTION_MODES, "primary"),
 )
 _SUPPORTED_FACTOR_AXES = frozenset(rule.axis for rule in STUDY_FACTOR_AXIS_RULES)
-_REQUIRED_FACTOR_AXES = frozenset(
-    rule.axis for rule in STUDY_FACTOR_AXIS_RULES if rule.required
-)
+_REQUIRED_FACTOR_AXES = frozenset(rule.axis for rule in STUDY_FACTOR_AXIS_RULES if rule.required)
 
 
 def _validate_dataset_ingest(dataset: Mapping[str, Any]) -> tuple[Any, StudyIngestRule]:

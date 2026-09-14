@@ -452,9 +452,7 @@ def _schema_assigned_names(tree: ast.AST) -> set[str]:
     assigned: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
-            assigned.update(
-                target.id for target in node.targets if isinstance(target, ast.Name)
-            )
+            assigned.update(target.id for target in node.targets if isinstance(target, ast.Name))
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             assigned.add(node.target.id)
     return assigned
@@ -619,17 +617,13 @@ def test_validate_study_spec_one_row_per_supported_axis(axis, make_spec, expecte
     constants = spec["study"]["constants"]
     tokens = closed_level_token_set(spec["study"].get("levels") or {})
     rule = next(item for item in STUDY_FACTOR_AXIS_RULES if item.axis == axis)
-    message = _axis_check_error(
-        rule, factors, closed_tokens=tokens, constants=constants
-    )
+    message = _axis_check_error(rule, factors, closed_tokens=tokens, constants=constants)
     assert message is not None
     assert re.search(expected, message)
     for other in STUDY_FACTOR_AXIS_RULES:
         if other.axis == axis or other.axis not in factors:
             continue
-        other_message = _axis_check_error(
-            other, factors, closed_tokens=tokens, constants=constants
-        )
+        other_message = _axis_check_error(other, factors, closed_tokens=tokens, constants=constants)
         if other_message is None:
             continue
         assert not re.search(expected, other_message), other.axis
