@@ -117,7 +117,7 @@ comparison design; ignoring either would make the gate flaky and therefore usele
 ### 3.1 Value equality is the primary assertion — not byte equality
 
 `pandas`-level identity of the same logical frame is **not** stable across pandas majors.
-Measured with `thesistester.persistence.local_store.hash_dataframe` on one fixed
+Measured with `thesistester.persistence.local_store._hash_dataframe` on one fixed
 5-column frame (tz-aware timestamps, ints, floats, strings):
 
 | Environment | Timestamp dtype | String dtype | Frame hash |
@@ -152,7 +152,7 @@ on identical session state produced `62653c4a…d0fd` and `ee1a0583…10b8`.
 
 - every bundle member is hashed by content, keyed by filename, in sorted filename order;
 - JSON members are re-serialized with `sort_keys=True` after dropping `manifest.created_at`;
-- DataFrame members are hashed with `local_store.hash_dataframe` (the repo's existing
+- DataFrame members are hashed with `local_store._hash_dataframe` (the repo's existing
   deterministic convention) rather than by their parquet bytes.
 
 Because that convention is pandas-major-sensitive (§3.1), the file also records the
