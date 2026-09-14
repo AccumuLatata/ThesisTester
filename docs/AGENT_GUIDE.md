@@ -607,6 +607,21 @@ Every request must first parse as an `AssistantRequest`, then pass
   not keep C7). This job is **not** a G-1 required check. A later PR
   flips the same contracts to blocking. Do not rename the six required
   display names to absorb it.
+- **mypy (B-11 / QI-12-05).** `[tool.mypy]` is path-scoped to
+  `thesistester/engine` and `thesistester/analytics` with `--strict`,
+  `--ignore-missing-imports`, and `--no-site-packages`. Not repo-wide.
+  `api.py` / `data/` / `levels/` later. QI-12 §2.3 five-tree probe was
+  **164** strict; B-11 records **97** engine/analytics-path errors in
+  `tests/fixtures/mypy/baseline.json` (import-pulled errors are logged,
+  not ratcheted). `--no-site-packages`
+  keeps numpy stubs from aborting a 3.10-target run. The CI job
+  `mypy (informational)` runs
+  `python -m tests.fixtures.mypy.check_ratchet` and emits `::warning` on
+  type errors or a ratchet increase; it **does not** fail. Config/runtime
+  crashes (no type-check report) still fail the job. This job is **not**
+  a G-1 required check. Count is monotonically decreasing per release —
+  do not raise the committed total. A later PR flips the same scope to
+  blocking. Do not invoke mypy from required pytest cells.
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:
@@ -640,6 +655,7 @@ cells do not block merge.
 | `editable install (no dev extras)` | `pip install -e .` + import + `pip check` in a clean venv; required on `main` |
 | `golden-master regeneration guard` | required on `main`; fails any PR that changes legacy golden artifacts without the `GOLDEN_REGEN` label. Job is `pull_request`-only (`ci.yml`); that is the merge path |
 | `import-linter (warn-first)` | **not** required. B-10 / QI-12-07: `lint-imports` on `.importlinter` (C1–C5, C7–C10). Emits `::warning` on broken contracts; job stays green. Config/runtime errors (no contract report) still fail the job. Blocking flip is a later PR |
+| `mypy (informational)` | **not** required. B-11 / QI-12-05: `--strict --ignore-missing-imports --no-site-packages` on `engine/` + `analytics/` only (not repo-wide). Per-file ratchet vs `tests/fixtures/mypy/baseline.json` (scoped paths only). Emits `::warning` on type errors / ratchet-up; job stays green. Config/runtime errors (no type-check report) still fail the job. `api.py` later. Blocking flip is a later PR |
 
 Verify the live gate from a non-admin token. `GET …/branches/main/protection`
 is admin-only and returns **403** for integration tokens — do not treat that

@@ -100,6 +100,31 @@ jobs:
           echo "::warning title=import-linter::Broken contracts (QI-12-07 / B-10 warn-first, not blocking): ${broken:-see log}. Known expected: C7 via journal.levels → study.schema → tick_vap → execution_artifacts → api. Blocking flip is a later PR."
           exit 0
 
+  mypy:
+    # B-11 / QI-12-05: informational. Not a G-1 required check — do not rename
+    # this job onto the six frozen display names. Path-scoped engine/ +
+    # analytics/ only (not --strict repo-wide). api.py later. Blocking flip
+    # is a later PR. Type-error / ratchet-up is warn-first; config/runtime
+    # crash still fails.
+    name: mypy (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - name: Install package + mypy
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . mypy -c constraints.txt
+      - name: mypy engine+analytics (informational ratchet)
+        run: python -m tests.fixtures.mypy.check_ratchet
+
   tests:
     name: pytest (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
