@@ -7,7 +7,10 @@ from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.setup import (
     BASE_COLUMNS,
     DEFAULT_OTF_FILTER_CONFIG,
+    SETUP_CONFIG_CLUSTERS,
+    SETUP_CONFIG_RULES,
     SUGGESTED_DEFAULT_LEVELS,
+    VALID_TRIGGERS,
     available_level_columns,
     build_setup_config,
     default_selected_levels,
@@ -654,3 +657,61 @@ def test_effective_otf_helper_preserves_enabled_values():
         }
     )
     assert get_effective_otf_filter_config(config)["minimum_consecutive_bars"] == 6
+
+
+def test_setup_config_rule_table_names_the_qi0303_clusters():
+    assert SETUP_CONFIG_CLUSTERS == (
+        "identity",
+        "enums",
+        "global_cluster",
+        "anchor_rules",
+        "trigger_params",
+        "otf",
+        "entry_window",
+    )
+    assert tuple(rule.cluster for rule in SETUP_CONFIG_RULES) == SETUP_CONFIG_CLUSTERS
+
+
+@pytest.mark.parametrize(
+    ("cluster", "make_config", "expected"),
+    [
+        ("identity", lambda: _base_config(name="   "), "Setup name must not be empty."),
+        (
+            "enums",
+            lambda: _base_config(trigger="bad_trigger"),
+            f"Trigger must be one of {sorted(VALID_TRIGGERS)}.",
+        ),
+        (
+            "global_cluster",
+            lambda: _base_config(selected_levels=["close"]),
+            "Selected levels include OHLCV/base columns that "
+            "cannot be used for confluence: ['close'].",
+        ),
+        (
+            "anchor_rules",
+            lambda: _anchor_config(anchor_level=""),
+            "Anchor level must be a non-empty string.",
+        ),
+        (
+            "trigger_params",
+            lambda: _base_config(trigger="3c", trigger_params={"entry_retrace_ticks": -1}),
+            "entry_retrace_ticks must be >= 0.",
+        ),
+        (
+            "otf",
+            lambda: {**_base_config(), "otf_filter": {"enabled": True, "timeframes": []}},
+            "OTF filter: Select at least one OTF timeframe when OTF filter is enabled.",
+        ),
+        (
+            "entry_window",
+            lambda: {**_base_config(), "entry_window": "not-a-dict"},
+            "Entry window: entry_window must be a dictionary or null.",
+        ),
+    ],
+)
+def test_validate_setup_config_one_row_per_cluster(cluster, make_config, expected):
+    config = make_config()
+    errors = validate_setup_config(config)
+    assert expected in errors
+    collect = next(rule.collect for rule in SETUP_CONFIG_RULES if rule.cluster == cluster)
+    assert expected in collect(config)
