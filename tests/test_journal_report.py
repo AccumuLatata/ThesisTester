@@ -83,25 +83,38 @@ def test_build_journal_report_is_keyword_only() -> None:
 
 
 def test_report_module_does_not_import_engine_or_index_keys() -> None:
-    source = Path("thesistester/journal/report.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name.split(".")[0] for alias in node.names)
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module.split(".")[0])
-            imported.add(node.module)
-    assert "thesistester.engine" not in imported
-    assert "thesistester.journal.triggers" not in imported
-    assert "thesistester.study.execute" not in imported
-    assert "simulate_trades(" not in source
-    assert "compute_all_levels(" not in source
-    assert "STUDY_INDEX_KEYS" not in source
-    assert "R18_INDEX_METRIC_KEYS" not in source
-    assert "run_experiment(" not in source
-    assert "run_study(" not in source
+    for path in (
+        Path("thesistester/journal/report.py"),
+        Path("thesistester/journal/report_tables.py"),
+    ):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+                imported.add(node.module)
+        assert "thesistester.engine" not in imported
+        assert "thesistester.journal.triggers" not in imported
+        assert "thesistester.study.execute" not in imported
+        assert "simulate_trades(" not in source
+        assert "compute_all_levels(" not in source
+        assert "STUDY_INDEX_KEYS" not in source
+        assert "R18_INDEX_METRIC_KEYS" not in source
+        assert "run_experiment(" not in source
+        assert "run_study(" not in source
+
+
+def test_c25_q4_q6_stays_on_report_facade() -> None:
+    import thesistester.journal.report as report
+    import thesistester.journal.report_tables as tables
+
+    assert report._q4_q6 is tables._q4_q6
+    assert report._q7_q8 is tables._q7_q8
+    assert report._q3_triggers is tables._q3_triggers
 
 
 def test_q1_derives_gross_from_pnl_currency() -> None:

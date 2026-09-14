@@ -335,11 +335,21 @@ def test_tick_walk_skips_entry_print(tmp_path: Path) -> None:
 
 
 def test_join_does_not_import_engine_or_derive() -> None:
-    source = Path(join_mod.__file__).read_text(encoding="utf-8")
-    assert "from thesistester.engine" not in source
-    assert "import simulate_trades" not in source
-    assert "compute_all_levels(" not in source
-    assert "derive_complete_parent_ohlcv(" not in source
+    for path in (
+        Path(join_mod.__file__),
+        Path("thesistester/journal/join_rows.py"),
+    ):
+        source = path.read_text(encoding="utf-8")
+        assert "from thesistester.engine" not in source
+        assert "import simulate_trades" not in source
+        assert "compute_all_levels(" not in source
+        assert "derive_complete_parent_ohlcv(" not in source
+
+
+def test_c25_join_rows_stay_on_facade() -> None:
+    from thesistester.journal import join_rows as rows_mod
+
+    assert join_mod._rows_to_frame is rows_mod._rows_to_frame
 
 
 def test_naive_bar_timestamp_fails_closed(tmp_path: Path) -> None:

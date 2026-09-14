@@ -200,11 +200,24 @@ def test_journal_match_does_not_import_engine_or_index_keys() -> None:
     assert "compute_all_levels" not in match_mod.__dict__
     assert "STUDY_INDEX_KEYS" not in match_mod.__dict__
     assert "R18_INDEX_METRIC_KEYS" not in match_mod.__dict__
-    source = Path(match_mod.__file__).read_text(encoding="utf-8")
-    assert "from thesistester.engine" not in source
-    assert "import thesistester.engine" not in source
-    assert "from thesistester.study.execute" not in source
-    assert "import thesistester.study.execute" not in source
+    for path in (
+        Path(match_mod.__file__),
+        Path("thesistester/journal/match_classify.py"),
+    ):
+        source = path.read_text(encoding="utf-8")
+        assert "from thesistester.engine" not in source
+        assert "import thesistester.engine" not in source
+        assert "from thesistester.study.execute" not in source
+        assert "import thesistester.study.execute" not in source
+        assert "simulate_trades" not in source
+        assert "compute_all_levels" not in source
+
+
+def test_c25_classify_stays_on_match_facade() -> None:
+    from thesistester.journal import match_classify as classify_mod
+
+    assert match_mod._classify is classify_mod._classify
+    assert match_mod._match_frame is classify_mod._match_frame
 
 
 def test_executed_cell_requires_hold_and_risk() -> None:
