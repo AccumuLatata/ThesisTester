@@ -255,9 +255,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    unchanged. Identity vs `origin/main` is live `hash_dataframe` /
    `assert_frame_equal` (not same-process self-compare; hexes are not
    frozen). C-15 (QI-14-05) replaces `iterrows` with column arrays /
-   `iloc` behind the C-14 helpers (`_index_trigger_rows_by_base_end`,
-   admission, 3c HTF lookup, zone projection). Nullable dtypes were
-   not changed. Next: C-16.
+   `iloc` behind the C-14 helpers (`_index_trigger_rows_by_base_end`
+   as a `_TriggerRowRef` column-array index, admission, 3c HTF lookup,
+   zone projection). Nullable dtypes were not changed. Next: C-16.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
