@@ -499,15 +499,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
             "study.dataset.instrument is required (non-empty string; "
             "injected into every expanded setup)"
         )
-    for ingest in STUDY_INGEST_RULES:
-        value = dataset.get(ingest.key)
-        if value is not None and (not isinstance(value, str) or value not in ingest.allowed):
-            raise StudySpecError(
-                f"study.dataset.{ingest.key} must be one of "
-                f"{sorted(ingest.allowed)!r} when present; got {value!r}"
-            )
-    ingestion_mode = dataset.get("ingestion_mode")
-    ingest_mode = next(rule for rule in STUDY_INGEST_RULES if rule.key == "ingestion_mode")
+    ingestion_mode, ingest_mode = _validate_dataset_ingest(dataset)
     format_profile = dataset.get("format_profile")
     profile_token = format_profile.strip() if isinstance(format_profile, str) else format_profile
     if profile_token == "quantower_history_exporter" and (
@@ -814,6 +806,20 @@ _SUPPORTED_FACTOR_AXES = frozenset(rule.axis for rule in STUDY_FACTOR_AXIS_RULES
 _REQUIRED_FACTOR_AXES = frozenset(
     rule.axis for rule in STUDY_FACTOR_AXIS_RULES if rule.required
 )
+
+
+def _validate_dataset_ingest(dataset: Mapping[str, Any]) -> tuple[Any, StudyIngestRule]:
+    """Walk ``STUDY_INGEST_RULES``. Omit means the row ``omit_means`` (AH §2 item 9)."""
+    for ingest in STUDY_INGEST_RULES:
+        value = dataset.get(ingest.key)
+        if value is not None and (not isinstance(value, str) or value not in ingest.allowed):
+            raise StudySpecError(
+                f"study.dataset.{ingest.key} must be one of "
+                f"{sorted(ingest.allowed)!r} when present; got {value!r}"
+            )
+    return dataset.get("ingestion_mode"), next(
+        rule for rule in STUDY_INGEST_RULES if rule.key == "ingestion_mode"
+    )
 
 
 def _validate_factors(
