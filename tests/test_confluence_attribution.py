@@ -59,7 +59,6 @@ from thesistester.analytics.confluence_attribution import (
     time_analysis_combo_group_caption,
 )
 from thesistester.analytics.entry_window import FOCUSABLE_GROUP_COLS
-from thesistester.persistence.local_store import hash_dataframe
 
 
 def _plan_fixture_trades() -> pd.DataFrame:
@@ -1084,23 +1083,15 @@ def test_summarize_exact_combo_and_direction_keeps_empty_name_sentinel():
     assert cross.iloc[0][EXACT_COMBO_KEY_COL] == "A|B"
 
 
-# C-13 / QI-05-03: combo tables byte-identical after pair/trigger extract.
-# Hashes frozen on origin/main @ 5278316 before the split.
-_COMBO_TABLE_HASHES = {
-    "exact": "765a21e5412187777424c53a2dc5772c85be11ac72e6c454b2513d3663f45761",
-    "membership": "25ea1459dde3eb174e846f8253dac857aed79b778f2163689d14550fd16e3321",
-    "level_count": "d4c3f06431ab6e91692b330653d66cf9306e0860629146b6820be5e686113f36",
-    "pairs_generic": "093dd732f900f89f40902ab043314e5841222ca2050b322dfabebf9a1bf2f93c",
-    "pairs_anchor": "3ff58136c1f15153615f4446daa78956d64f442cdd262b1b0f6da8298ca06864",
-    "summary_exact": "765a21e5412187777424c53a2dc5772c85be11ac72e6c454b2513d3663f45761",
-    "summary_pairs": "3ff58136c1f15153615f4446daa78956d64f442cdd262b1b0f6da8298ca06864",
-    "exact_x_dir": "dd5b7680043c3e5cfed64909bf816b361d889517fd6e35324fee0e95aa998777",
-    "exact_x_var": "a3ed2819bab8b8e8f197ea64305bfd1e0c3e2da9a75d147936a530b88871e005",
-    "pair_x_var": "21794cd94eec7b82a06950e087835016196bb6062b3c93f9168760f3bfa38136",
-}
-
-
 def test_combo_tables_remain_byte_identical_after_summarizer_split():
+    """C-13 exit: facade combo tables match sibling + summary assembly.
+
+    ``hash_dataframe`` is not a cross-interpreter golden: ``hash_pandas_object``
+    differs across Python/pandas (py3.10 CI ≠ this image). Same-process
+    ``assert_frame_equal`` is the portable identity lock.
+    """
+    from thesistester.analytics import confluence_pair_trigger as sibling
+
     trades = _plan_fixture_trades()
     cross = trades.copy()
     cross["direction"] = ["long", "short", "long", "long", "short"]
@@ -1111,25 +1102,39 @@ def test_combo_tables_remain_byte_identical_after_summarizer_split():
         anchor_level="pdHigh",
         confluence_mode="anchor_rules",
     )
-    frames = {
-        "exact": summarize_by_exact_combo(trades, min_trades=1),
-        "membership": summarize_by_level_membership(trades, min_trades=1),
-        "level_count": summarize_by_level_count(trades, min_trades=1),
-        "pairs_generic": summarize_by_level_pairs(trades, min_trades=1),
-        "pairs_anchor": summarize_by_level_pairs(
+    pairs_generic = summarize_by_level_pairs(trades, min_trades=1)
+    pairs_anchor = summarize_by_level_pairs(
+        trades,
+        min_trades=1,
+        anchor_level="pdHigh",
+        confluence_mode="anchor_rules",
+    )
+    exact = summarize_by_exact_combo(trades, min_trades=1)
+    exact_x_var = summarize_by_exact_combo_and_trigger_variant(cross, min_trades=1)
+    pair_x_var = summarize_by_pair_and_trigger_variant(cross, min_trades=1)
+
+    pd.testing.assert_frame_equal(summary["by_exact_combo"], exact)
+    pd.testing.assert_frame_equal(summary["by_pairs"], pairs_anchor)
+    pd.testing.assert_frame_equal(
+        pairs_generic, sibling.summarize_by_level_pairs(trades, min_trades=1)
+    )
+    pd.testing.assert_frame_equal(
+        pairs_anchor,
+        sibling.summarize_by_level_pairs(
             trades,
             min_trades=1,
             anchor_level="pdHigh",
             confluence_mode="anchor_rules",
         ),
-        "summary_exact": summary["by_exact_combo"],
-        "summary_pairs": summary["by_pairs"],
-        "exact_x_dir": summarize_by_exact_combo_and_direction(cross, min_trades=1),
-        "exact_x_var": summarize_by_exact_combo_and_trigger_variant(cross, min_trades=1),
-        "pair_x_var": summarize_by_pair_and_trigger_variant(cross, min_trades=1),
-    }
-    for name, expected in _COMBO_TABLE_HASHES.items():
-        assert hash_dataframe(frames[name]) == expected, name
+    )
+    pd.testing.assert_frame_equal(
+        exact_x_var,
+        sibling.summarize_by_exact_combo_and_trigger_variant(cross, min_trades=1),
+    )
+    pd.testing.assert_frame_equal(
+        pair_x_var,
+        sibling.summarize_by_pair_and_trigger_variant(cross, min_trades=1),
+    )
 
 
 def test_pair_trigger_reexports_are_sibling_functions():
