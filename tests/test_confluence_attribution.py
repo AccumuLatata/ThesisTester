@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -56,6 +59,7 @@ from thesistester.analytics.confluence_attribution import (
     time_analysis_combo_group_caption,
 )
 from thesistester.analytics.entry_window import FOCUSABLE_GROUP_COLS
+from thesistester.persistence.local_store import hash_dataframe
 
 
 def _plan_fixture_trades() -> pd.DataFrame:
@@ -1078,3 +1082,143 @@ def test_summarize_exact_combo_and_direction_keeps_empty_name_sentinel():
     assert EMPTY_LEVEL_NAMES_KEY not in set(cross[EXACT_COMBO_KEY_COL])
     assert len(cross) == 1
     assert cross.iloc[0][EXACT_COMBO_KEY_COL] == "A|B"
+
+
+# C-13 / QI-05-03: combo tables byte-identical after pair/trigger extract.
+# Pre-split source @ 5278316 matches these frames on the same interpreter.
+# hash_dataframe includes str(dtype); pandas 2 (CI py3.10) labels string
+# columns object, pandas 3 (CI py3.11/3.12) labels them str. Not a split
+# behavior change — same QI-12-02 named axis as test_signals_fade.py.
+def _pandas_major() -> int:
+    return int(pd.__version__.split(".", maxsplit=1)[0])
+
+
+_COMBO_TABLE_HASHES_BY_PANDAS_MAJOR = {
+    2: {
+        "exact": "766a7f5b702422d168fec1db584c8595f7ca120a602d73980fbb3de5d31823b0",
+        "membership": "76abc5ef78a8b60badf5ea46c8053309d20d977803c7c441958a0a4df292bac2",
+        "level_count": "d4c3f06431ab6e91692b330653d66cf9306e0860629146b6820be5e686113f36",
+        "pairs_generic": "3708bde3004e8f7e17f9e7a07acaf692b5902636cd0588b51585a4d88b02b664",
+        "pairs_anchor": "c86db5e08b10f16e4eefcabc3b45b36c286f764f23c05bc6f9064d5da1d666f4",
+        "summary_exact": "766a7f5b702422d168fec1db584c8595f7ca120a602d73980fbb3de5d31823b0",
+        "summary_pairs": "c86db5e08b10f16e4eefcabc3b45b36c286f764f23c05bc6f9064d5da1d666f4",
+        "exact_x_dir": "b7628797d446732da2d9ae7116ce68bc19dff13754aaba314df8b96c9dd71d26",
+        "exact_x_var": "b5e994d7d06e250eedf82a75a53a68e1af2a7c7e2c1d57d8b7156a70c40d76c2",
+        "pair_x_var": "ae6187ef7a690da75c1c8cbf01a9f98e808500928156e459828974e7432e9dd2",
+    },
+    3: {
+        "exact": "765a21e5412187777424c53a2dc5772c85be11ac72e6c454b2513d3663f45761",
+        "membership": "25ea1459dde3eb174e846f8253dac857aed79b778f2163689d14550fd16e3321",
+        "level_count": "d4c3f06431ab6e91692b330653d66cf9306e0860629146b6820be5e686113f36",
+        "pairs_generic": "093dd732f900f89f40902ab043314e5841222ca2050b322dfabebf9a1bf2f93c",
+        "pairs_anchor": "3ff58136c1f15153615f4446daa78956d64f442cdd262b1b0f6da8298ca06864",
+        "summary_exact": "765a21e5412187777424c53a2dc5772c85be11ac72e6c454b2513d3663f45761",
+        "summary_pairs": "3ff58136c1f15153615f4446daa78956d64f442cdd262b1b0f6da8298ca06864",
+        "exact_x_dir": "dd5b7680043c3e5cfed64909bf816b361d889517fd6e35324fee0e95aa998777",
+        "exact_x_var": "a3ed2819bab8b8e8f197ea64305bfd1e0c3e2da9a75d147936a530b88871e005",
+        "pair_x_var": "21794cd94eec7b82a06950e087835016196bb6062b3c93f9168760f3bfa38136",
+    },
+}
+
+
+def _combo_split_probe_frames() -> dict[str, pd.DataFrame]:
+    trades = _plan_fixture_trades()
+    cross = trades.copy()
+    cross["direction"] = ["long", "short", "long", "long", "short"]
+    cross["trigger_variant"] = ["touch", "touch", "3c_a", "touch", "3c_a"]
+    summary = confluence_attribution_summary(
+        trades,
+        min_trades=1,
+        anchor_level="pdHigh",
+        confluence_mode="anchor_rules",
+    )
+    return {
+        "exact": summarize_by_exact_combo(trades, min_trades=1),
+        "membership": summarize_by_level_membership(trades, min_trades=1),
+        "level_count": summarize_by_level_count(trades, min_trades=1),
+        "pairs_generic": summarize_by_level_pairs(trades, min_trades=1),
+        "pairs_anchor": summarize_by_level_pairs(
+            trades,
+            min_trades=1,
+            anchor_level="pdHigh",
+            confluence_mode="anchor_rules",
+        ),
+        "summary_exact": summary["by_exact_combo"],
+        "summary_pairs": summary["by_pairs"],
+        "exact_x_dir": summarize_by_exact_combo_and_direction(cross, min_trades=1),
+        "exact_x_var": summarize_by_exact_combo_and_trigger_variant(cross, min_trades=1),
+        "pair_x_var": summarize_by_pair_and_trigger_variant(cross, min_trades=1),
+    }
+
+
+def test_combo_tables_remain_byte_identical_after_summarizer_split():
+    expected = _COMBO_TABLE_HASHES_BY_PANDAS_MAJOR.get(_pandas_major())
+    if expected is None:
+        pytest.skip(f"combo table hash is pandas-major-scoped: current={_pandas_major()}")
+    frames = _combo_split_probe_frames()
+    for name, digest in expected.items():
+        assert hash_dataframe(frames[name]) == digest, name
+
+
+def test_moved_combo_tables_match_between_facade_and_sibling():
+    from thesistester.analytics import confluence_pair_trigger as sibling
+
+    frames = _combo_split_probe_frames()
+    trades = _plan_fixture_trades()
+    cross = trades.copy()
+    cross["direction"] = ["long", "short", "long", "long", "short"]
+    cross["trigger_variant"] = ["touch", "touch", "3c_a", "touch", "3c_a"]
+    pd.testing.assert_frame_equal(frames["summary_exact"], frames["exact"])
+    pd.testing.assert_frame_equal(frames["summary_pairs"], frames["pairs_anchor"])
+    pd.testing.assert_frame_equal(
+        frames["pairs_generic"], sibling.summarize_by_level_pairs(trades, min_trades=1)
+    )
+    pd.testing.assert_frame_equal(
+        frames["pairs_anchor"],
+        sibling.summarize_by_level_pairs(
+            trades,
+            min_trades=1,
+            anchor_level="pdHigh",
+            confluence_mode="anchor_rules",
+        ),
+    )
+    pd.testing.assert_frame_equal(
+        frames["exact_x_var"],
+        sibling.summarize_by_exact_combo_and_trigger_variant(cross, min_trades=1),
+    )
+    pd.testing.assert_frame_equal(
+        frames["pair_x_var"],
+        sibling.summarize_by_pair_and_trigger_variant(cross, min_trades=1),
+    )
+
+
+def test_pair_trigger_reexports_are_sibling_functions():
+    from thesistester.analytics import confluence_attribution as facade
+    from thesistester.analytics import confluence_pair_trigger as sibling
+
+    assert facade.pair_keys_for_tokens is sibling.pair_keys_for_tokens
+    assert facade.summarize_by_level_pairs is sibling.summarize_by_level_pairs
+    assert (
+        facade.summarize_by_exact_combo_and_trigger_variant
+        is sibling.summarize_by_exact_combo_and_trigger_variant
+    )
+    assert (
+        facade.summarize_by_pair_and_trigger_variant
+        is sibling.summarize_by_pair_and_trigger_variant
+    )
+
+
+def test_pair_trigger_sibling_import_does_not_require_facade_preload():
+    script = (
+        "from thesistester.analytics.confluence_pair_trigger import pair_keys_for_tokens\n"
+        "assert pair_keys_for_tokens(['B', 'A']) == ['A|B']\n"
+        "print('ok')\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == "ok"
