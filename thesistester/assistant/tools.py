@@ -281,10 +281,15 @@ def _assert_bundle_compatible_with_run_spec(
         )
 
 
+_DEFAULT_TOOL_LIMITS = ToolLimits()
+
+
 class AssistantTools:
     """Narrow tool surface; no arbitrary Python, shell, or filesystem access."""
 
-    def __init__(self, *, data_roots: tuple[Path, ...], limits: ToolLimits = ToolLimits()) -> None:
+    def __init__(
+        self, *, data_roots: tuple[Path, ...], limits: ToolLimits = _DEFAULT_TOOL_LIMITS
+    ) -> None:
         self.data_roots = tuple(root.resolve() for root in data_roots)
         self.limits = limits
 

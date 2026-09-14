@@ -354,7 +354,7 @@ def parse_cohort_key(key: Any) -> dict[str, str]:
     tokens = str(key).split("|")
     if len(tokens) != len(COHORT_FIELDS):
         return {}
-    return {field: token for field, token in zip(COHORT_FIELDS, tokens)}
+    return {field: token for field, token in zip(COHORT_FIELDS, tokens, strict=False)}
 
 
 def format_cohort_label(key: Any) -> str:
@@ -398,7 +398,7 @@ def cohort_choice_labels(keys: Sequence[Any]) -> list[str]:
         ]
         if not differ:
             continue
-        for index, parsed in zip(indexes, parsed_group):
+        for index, parsed in zip(indexes, parsed_group, strict=False):
             extra = " · ".join(f"{field}={parsed.get(field, '')}" for field in differ)
             labels[index] = f"{shorts[index]} · {extra}"
     counts: dict[str, int] = {}

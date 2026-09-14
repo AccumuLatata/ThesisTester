@@ -407,7 +407,7 @@ def spawn_launch(
         _release_launch_pid_claim(pid_path)
         raise
 
-    pid = int(getattr(proc, "pid"))
+    pid = int(proc.pid)
     try:
         _record_child_pid(pid_path, pid)
     except OSError as exc:
