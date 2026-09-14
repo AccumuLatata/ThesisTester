@@ -37,13 +37,16 @@ _CAVEATS = [
 ]
 
 
-def _dash_if_none(value: Any) -> Any:
+def dash_if_none(value: Any) -> Any:
     """Return ``'—'`` when *value* is ``None``; otherwise return *value* unchanged.
 
     Preserves ``0`` as ``0``, empty strings as empty strings, and any
     other falsy-but-not-None values as themselves.
     """
     return "—" if value is None else value
+
+
+_dash_if_none = dash_if_none
 
 
 def _json_safe_float(value: float) -> float | None:

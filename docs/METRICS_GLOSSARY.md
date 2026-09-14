@@ -304,7 +304,7 @@ Export: `## Validation Diagnostics` in `thesistester/reporting.py` (bannered).
 Each SL/TP grid cell includes long-side and short-side metrics computed by
 `summarize_trades_by_direction` applied to the same simulated trade set as the
 aggregate metrics.  Implementation: `thesistester/analytics/grid.py` —
-`_directional_grid_metrics()`.
+`directional_grid_metrics()`.
 
 ### Long/short columns
 

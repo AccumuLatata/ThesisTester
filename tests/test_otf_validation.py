@@ -32,7 +32,7 @@ from thesistester.analytics.otf_validation import (
     run_otf_validation_matrix,
 )
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
-from thesistester.setup import _default_otf_filter_config
+from thesistester.setup import default_otf_filter_config
 
 TZ = "America/New_York"
 TICK = 0.25
@@ -156,7 +156,7 @@ def test_no_otf_row_is_disabled():
     assert no_otf["label"] == "no_otf"
     assert not no_otf["otf_config"]["enabled"]
     assert no_otf["otf_config"]["timeframes"] == []
-    assert no_otf["otf_config"] == _default_otf_filter_config()
+    assert no_otf["otf_config"] == default_otf_filter_config()
 
 
 # ---------------------------------------------------------------------------

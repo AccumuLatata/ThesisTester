@@ -9,7 +9,7 @@ from typing import Any, Mapping
 import pandas as pd
 
 from thesistester.analytics.metrics import summarize_trades
-from thesistester.analytics.overfitting import _SIMULATION_KWARGS
+from thesistester.analytics.overfitting import SIMULATION_KWARGS
 from thesistester.engine.backtest import simulate_trades
 
 _PARAMETER_ORDER = (
@@ -98,7 +98,7 @@ def sensitivity_summary(
     kwargs = {
         key: value
         for key, value in dict(execution_kwargs or {}).items()
-        if key in _SIMULATION_KWARGS
+        if key in SIMULATION_KWARGS
     }
 
     def replay(values: Mapping[str, Any]) -> pd.DataFrame:

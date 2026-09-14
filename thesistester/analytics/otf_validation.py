@@ -30,7 +30,7 @@ from ..engine.otf import OTF_ALGORITHM_VERSION
 from ..engine.otf_filter import apply_otf_filter
 from ..engine.backtest import simulate_trades
 from ..analytics.metrics import summarize_trades
-from ..setup import normalize_otf_filter_config, _default_otf_filter_config
+from ..setup import default_otf_filter_config, normalize_otf_filter_config
 from ..persistence.local_store import compute_otf_config_hash
 
 
@@ -96,7 +96,7 @@ def build_otf_matrix_configs() -> list[dict[str, Any]]:
             }
             config = normalize_otf_filter_config(raw)
         else:
-            config = _default_otf_filter_config()
+            config = default_otf_filter_config()
         result.append(
             {
                 "label": label,

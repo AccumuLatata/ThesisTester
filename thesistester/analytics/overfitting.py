@@ -10,13 +10,13 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 import pandas as pd
 
-from thesistester.analytics.grid import _directional_grid_metrics
+from thesistester.analytics.grid import directional_grid_metrics
 from thesistester.analytics.metrics import summarize_trades
 from thesistester.engine.backtest import simulate_trades
 
 CellKey = tuple[float, float, float | None, float | None, float | None]
 _NORMAL_EULER_GAMMA = 0.5772156649015329
-_SIMULATION_KWARGS = {
+SIMULATION_KWARGS = {
     "max_holding_bars",
     "allow_same_bar_exit",
     "commission_per_side",
@@ -35,6 +35,7 @@ _SIMULATION_KWARGS = {
     "entry_window",
     "entry_window_exchange_tz",
 }
+_SIMULATION_KWARGS = SIMULATION_KWARGS
 
 
 @dataclass(frozen=True)
@@ -176,7 +177,7 @@ def grid_trade_sequences(
                 "trailing_after_r": key[3],
                 "trailing_distance_ticks": key[4],
                 **summarize_trades(ordered),
-                **_directional_grid_metrics(ordered),
+                **directional_grid_metrics(ordered),
             }
         )
     return GridSequenceResult(pd.DataFrame(rows), sequences)

@@ -36,7 +36,7 @@ def _min_valid(a: float | None, b: float | None) -> float | None:
     return min(a, b)
 
 
-def _directional_grid_metrics(trades: pd.DataFrame) -> dict:
+def directional_grid_metrics(trades: pd.DataFrame) -> dict:
     """Compute directional and balanced metrics for a single grid cell.
 
     Parameters
@@ -94,6 +94,9 @@ def _directional_grid_metrics(trades: pd.DataFrame) -> dict:
     }
 
     return {**long_cols, **short_cols, **balanced_cols}
+
+
+_directional_grid_metrics = directional_grid_metrics
 
 
 def _sorted_optional_values(values: list[int | float | None]) -> list[int | float | None]:

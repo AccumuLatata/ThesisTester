@@ -32,9 +32,9 @@ import pandas as pd
 from .otf import OTF_ALGORITHM_VERSION
 from .otf_filter import apply_otf_filter
 from ..setup import (
+    default_otf_filter_config,
     get_effective_otf_filter_config,
     normalize_otf_filter_config,
-    _default_otf_filter_config,
 )
 
 
@@ -188,7 +188,7 @@ def resolve_otf_config(
         return get_effective_otf_filter_config(setup_config)
 
     # 5. Canonical disabled defaults
-    return _default_otf_filter_config()
+    return default_otf_filter_config()
 
 
 # ---------------------------------------------------------------------------

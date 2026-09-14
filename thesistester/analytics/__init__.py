@@ -11,7 +11,7 @@ from .excursions import (
     excursion_summary,
     sl_tp_hit_probability_grid,
 )
-from .grid import best_grid_result, run_sl_tp_grid
+from .grid import best_grid_result, directional_grid_metrics, run_sl_tp_grid
 from .metrics import equity_curve, summarize_trades, summarize_trades_by_direction
 from .monte_carlo import (
     monte_carlo_block_resample,
@@ -28,6 +28,7 @@ from .noise import (
     trade_persistence_rate,
 )
 from .overfitting import (
+    SIMULATION_KWARGS,
     GridSequenceResult,
     cscv_pbo,
     deflated_sharpe,
@@ -142,6 +143,8 @@ __all__ = [
     "sl_tp_hit_probability_grid",
     "run_sl_tp_grid",
     "best_grid_result",
+    "directional_grid_metrics",
+    "SIMULATION_KWARGS",
     "add_time_buckets",
     "summarize_by_group",
     "pivot_time_metric",

@@ -680,7 +680,7 @@ def test_materialized_ns_timestamp_session_roundtrips_identity(tmp_path: Path):
     materialized path rather than hardcode either unit.
     """
     from thesistester.api import load_dataset
-    from thesistester.persistence.local_store import _hash_dataframe
+    from thesistester.persistence.local_store import hash_dataframe
 
     state = _classic_completed_state(tmp_path)
     state["format_profile"] = "quantower_history_exporter"
@@ -726,7 +726,7 @@ def test_materialized_ns_timestamp_session_roundtrips_identity(tmp_path: Path):
         store_root=tmp_path / "store",
     )
     assert run_spec["dataset"]["format_profile"] == "canonical"
-    assert _hash_dataframe(export_state["data"]) == _hash_dataframe(reloaded)
+    assert hash_dataframe(export_state["data"]) == hash_dataframe(reloaded)
 
 
 def test_record_quantower_session_without_source_path(tmp_path: Path, monkeypatch):

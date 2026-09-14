@@ -22,7 +22,7 @@ from thesistester.engine.otf_integration import (
     resolve_otf_config,
 )
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
-from thesistester.setup import _default_otf_filter_config, normalize_otf_filter_config
+from thesistester.setup import default_otf_filter_config, normalize_otf_filter_config
 from thesistester.analytics.walk_forward import run_walk_forward_sl_tp
 from thesistester.analytics.grid import run_sl_tp_grid
 from thesistester.engine.backtest import simulate_trades
@@ -108,7 +108,7 @@ def _signal(
 
 
 def _disabled_config() -> dict:
-    return _default_otf_filter_config()
+    return default_otf_filter_config()
 
 
 def _enabled_config(
@@ -1694,28 +1694,28 @@ class TestOtfMarkdownNoneFormatting:
         assert "None" not in md
 
     def test_dash_if_none_helper_none_gives_dash(self):
-        """_dash_if_none(None) returns '—'."""
-        from thesistester.reporting import _dash_if_none
+        """dash_if_none(None) returns '—'."""
+        from thesistester.reporting import dash_if_none
 
-        assert _dash_if_none(None) == "—"
+        assert dash_if_none(None) == "—"
 
     def test_dash_if_none_helper_zero_gives_zero(self):
-        """_dash_if_none(0) returns 0, not '—'."""
-        from thesistester.reporting import _dash_if_none
+        """dash_if_none(0) returns 0, not '—'."""
+        from thesistester.reporting import dash_if_none
 
-        assert _dash_if_none(0) == 0
+        assert dash_if_none(0) == 0
 
     def test_dash_if_none_helper_string_gives_string(self):
-        """_dash_if_none('abc') returns 'abc'."""
-        from thesistester.reporting import _dash_if_none
+        """dash_if_none('abc') returns 'abc'."""
+        from thesistester.reporting import dash_if_none
 
-        assert _dash_if_none("abc") == "abc"
+        assert dash_if_none("abc") == "abc"
 
     def test_dash_if_none_helper_false_gives_false(self):
-        """_dash_if_none(False) returns False, not '—'."""
-        from thesistester.reporting import _dash_if_none
+        """dash_if_none(False) returns False, not '—'."""
+        from thesistester.reporting import dash_if_none
 
-        assert _dash_if_none(False) is False
+        assert dash_if_none(False) is False
 
 
 # ---------------------------------------------------------------------------

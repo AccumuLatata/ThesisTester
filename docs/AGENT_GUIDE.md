@@ -53,7 +53,11 @@ MG-17) walks own `STUDY_FACTOR_AXIS_RULES` / `STUDY_REPORT_FIELD_RULES` /
 (`STUDY_EXPAND_REQUIRED_AXES`) are derived from that factor table. Own
 table — do not import `SETUP_CONFIG_RULES` or `RUN_SPEC_RULES`. Omitted
 `ingestion_mode` stays the ingest-row `omit_means` (`primary`, AH §2 item 9).
-C-5 is reporting (`build_markdown_report` section table; walker AST-bound). Next: C-6.
+C-5 is reporting (`build_markdown_report` section table; walker AST-bound).
+C-6 (QI-05-14 / QI-06-11 / MG-29) promotes `directional_grid_metrics`,
+`SIMULATION_KWARGS`, `default_otf_filter_config` (copy of
+`DEFAULT_OTF_FILTER_CONFIG`), `hash_dataframe`, and `dash_if_none`
+(private aliases kept). `_empty_trades_df` stays a QI-4 handoff. Next: C-7.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -200,7 +204,12 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    validator table pattern. C-5 (QI-06-02): `build_markdown_report` walks
    `MARKDOWN_REPORT_SECTIONS` (own table; walker AST-bound; A-4 H13 banner
    stays the first line under `## Validation Diagnostics`, bound on
-   `_md_validation`). Next: C-6.
+   `_md_validation`). C-6 (QI-05-14 / QI-06-11): analytics public surface is
+   `directional_grid_metrics` and `SIMULATION_KWARGS` (R15/R19 share the
+   kwargs set); OTF default is `default_otf_filter_config` (copy of
+   `DEFAULT_OTF_FILTER_CONFIG`); bundle parquet
+   projection is `hash_dataframe`; Report captions use `dash_if_none`.
+   Private `_` aliases remain for same-module callers. Next: C-7.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`
@@ -946,7 +955,9 @@ shape — do not add `schema_version` or a fifth top-level key.
 - Use explicit `random_state`; do not replace local seeded RNG with global
   sampling.
 - Preserve grid-cell execution assumptions when re-simulating sequences or
-  random schedules.
+  random schedules. Shared execution-kwarg allow-list is public
+  `SIMULATION_KWARGS` (R19 imports the same set). Directional columns come
+  from public `directional_grid_metrics`.
 - Run `pytest -q tests/test_overfitting.py tests/test_phase8_validation.py`
   after changing R15 statistics or validation integration.
 
@@ -1078,10 +1089,10 @@ are B-1; H10/H11 lock tests are B-2.
 - **Phase 6.5 (Setup Builder):** `pages/3_Setup_Builder.py`, setup helpers in `thesistester/setup.py`.
 - **Phase 4 (Signals):** `pages/6_Signals.py`, signal/confluence functions in `thesistester/engine/`.
 - **Phase 5 (Backtest):** `pages/7_Backtest.py`, simulator in `thesistester/engine/backtest.py`, metrics in `thesistester/analytics/metrics.py`.
-- **Phase 6 (Grid):** `pages/8_Grid_Search.py`, grid analytics in `thesistester/analytics/grid.py`.
+- **Phase 6 (Grid):** `pages/8_Grid_Search.py`, grid analytics in `thesistester/analytics/grid.py`. C-6: `directional_grid_metrics` is public (R15 reuses it).
 - **Phase 7 (Time):** `pages/9_Time_Analysis.py`, helpers in `thesistester/analytics/time_analysis.py`.
 - **Phase 8 (Validation):** `pages/10_Validation.py`, diagnostics in `thesistester/analytics/validation.py`.
-- **Phase 9 (Report/Export):** `pages/11_Report_Export.py`, artifact builders in `thesistester/reporting.py`. C-5 (QI-06-02): `build_markdown_report` walks `MARKDOWN_REPORT_SECTIONS` (walker AST-bound); emitted markdown is fixture-locked.
+- **Phase 9 (Report/Export):** `pages/11_Report_Export.py`, artifact builders in `thesistester/reporting.py`. C-5 (QI-06-02): `build_markdown_report` walks `MARKDOWN_REPORT_SECTIONS` (walker AST-bound); emitted markdown is fixture-locked. C-6: page captions import `dash_if_none`; bundle parquet projection is `hash_dataframe`.
 - **Research Bundles:** `pages/12_Research_Bundles.py`, bundle helpers in `thesistester/research_bundle.py`.
 - **Portfolio:** `pages/13_Portfolio.py`.
 - **Research Assistant:** `pages/14_Research_Assistant.py`, `thesistester/assistant/`.

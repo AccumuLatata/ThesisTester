@@ -28,7 +28,7 @@ from thesistester.persistence.local_store import (
     LEVEL_ENGINE_VERSION,
     _canonicalize_dataframe,
     _fs_path,
-    _hash_dataframe,
+    hash_dataframe,
     _stable_json_bytes,
     compute_levels_settings_hash,
     get_store_root,
@@ -440,7 +440,7 @@ def _verify_data_dir(
     except Exception as exc:  # pragma: no cover - pyarrow/pandas variance
         return ArtifactMiss(_MISS_INCOMPLETE, detail=f"parquet:{exc}")
 
-    content_hash = _hash_dataframe(data)
+    content_hash = hash_dataframe(data)
     if content_hash != expected.data_content_hash:
         return ArtifactMiss(_MISS_CONTENT_MISMATCH, detail="data_content_hash")
 
@@ -600,7 +600,7 @@ def write_data_artifact(
     store_root: str | Path | None = None,
 ) -> DataArtifact:
     """Atomically publish a data artifact, reusing a verified equivalent if present."""
-    if _hash_dataframe(data) != identity.data_content_hash:
+    if hash_dataframe(data) != identity.data_content_hash:
         raise ValueError("data content hash does not match DataIdentity.data_content_hash")
 
     artifacts_root = get_execution_artifacts_root(store_root)

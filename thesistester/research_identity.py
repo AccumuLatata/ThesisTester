@@ -37,7 +37,7 @@ from thesistester.levels.tick_vap import (
 from thesistester.persistence.local_store import (
     LEVEL_ENGINE_VERSION,
     PERSISTENCE_SCHEMA_VERSION,
-    _hash_dataframe,
+    hash_dataframe,
     _stable_json_bytes,
     compute_dataset_id,
     compute_levels_settings_hash,
@@ -254,7 +254,7 @@ class DataIdentity:
             source_timezone=_optional_str(source_timezone),
             exchange_timezone=_optional_str(exchange_timezone),
             format_profile=str(format_profile or "canonical"),
-            data_content_hash=_hash_dataframe(data),
+            data_content_hash=hash_dataframe(data),
         )
 
     @classmethod
@@ -312,7 +312,7 @@ class DataIdentity:
         meta = dict(dataset_meta or {})
         content_hash = data_content_hash
         if content_hash is None and isinstance(data, pd.DataFrame):
-            content_hash = _hash_dataframe(data)
+            content_hash = hash_dataframe(data)
         if content_hash is None or not meta.get("instrument"):
             return None
         return cls(
