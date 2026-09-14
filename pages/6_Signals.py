@@ -39,6 +39,7 @@ from thesistester.setup import (
     VALID_TRIGGER_TIMEFRAMES,
     available_level_columns,
     build_setup_config,
+    build_setup_kwargs_from_mapping,
     default_selected_levels,
     get_effective_otf_filter_config,
     normalize_otf_filter_config,
@@ -281,52 +282,18 @@ def _safe_list(value: object) -> list:
 
 def _generate_setup_from_page_fields(
     *,
-    name: str,
-    description: str,
-    instrument: str,
-    selected_levels: list[str],
-    tolerance_ticks: float,
-    min_confluences: int,
-    max_confluences: int,
-    naked_only: bool,
-    naked_requirement: str,
-    trigger: str,
-    trigger_timeframe: str,
-    direction: str,
-    confluence_mode: str,
-    anchor_level: str | None,
-    confluence_rules: list[dict],
-    min_valid_confluences: int,
-    trigger_params: dict,
-    otf_filter: dict | None = None,
-    entry_window: dict | None = None,
+    source_mapping: dict | None = None,
+    **fields,
 ) -> dict:
     """Build the generate-path setup via ``build_setup_config`` (C-4 / QI-03-10).
 
-    Classic Signals still calls engine ``generate_signals`` — not
-    ``run_experiment`` (AH §2 items 1–2).
+    ``source_mapping`` is a saved/active setup: unknown keys are dropped,
+    present BSC keys (including AO1 ``min_valid_confluences=0``) are kept.
+    ``fields`` override. Classic Signals still calls engine
+    ``generate_signals`` — not ``run_experiment`` (AH §2 items 1–2).
+    Engine ``_source_mode`` is not a setup key; attach it only at generate time.
     """
-    return build_setup_config(
-        name=name,
-        description=description,
-        instrument=instrument,
-        selected_levels=selected_levels,
-        tolerance_ticks=tolerance_ticks,
-        min_confluences=min_confluences,
-        max_confluences=max_confluences,
-        naked_only=naked_only,
-        naked_requirement=naked_requirement,
-        trigger=trigger,
-        trigger_timeframe=trigger_timeframe,
-        direction=direction,
-        confluence_mode=confluence_mode,
-        anchor_level=anchor_level,
-        confluence_rules=confluence_rules,
-        min_valid_confluences=min_valid_confluences,
-        trigger_params=trigger_params,
-        otf_filter=otf_filter,
-        entry_window=entry_window,
-    )
+    return build_setup_config(**build_setup_kwargs_from_mapping(source_mapping or {}, **fields))
 
 
 def _saved_setup_caption(config: dict) -> str:
@@ -1262,6 +1229,7 @@ with st.sidebar:
         entry_window = saved_setup.get("entry_window")
     try:
         generate_setup = _generate_setup_from_page_fields(
+            source_mapping=saved_setup if use_saved_setup and saved_setup is not None else None,
             name=setup_name,
             description=setup_description,
             instrument=str(instrument),
@@ -1283,6 +1251,7 @@ with st.sidebar:
             entry_window=entry_window if isinstance(entry_window, dict) else None,
         )
         confluence_mode = str(generate_setup["confluence_mode"])
+        selected_levels = list(generate_setup["selected_levels"])
         anchor_level = generate_setup["anchor_level"]
         confluence_rules = list(generate_setup["confluence_rules"])
         min_valid_confluences = int(generate_setup["min_valid_confluences"])
@@ -1294,9 +1263,10 @@ with st.sidebar:
         trigger = str(generate_setup["trigger"])
         trigger_timeframe = str(generate_setup["trigger_timeframe"])
         direction = str(generate_setup["direction"])
+        # BSC trigger_params only. ``_source_mode`` is engine generate-time
+        # metadata (same as ``api.generate_signals``) — do not put it in
+        # signal-settings identity.
         trigger_params = dict(generate_setup["trigger_params"])
-        if trigger == "3c":
-            trigger_params["_source_mode"] = confluence_mode
     except (TypeError, ValueError) as exc:
         generation_blockers.append(
             f"Setup normalization failed: {exc} "

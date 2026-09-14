@@ -749,6 +749,20 @@ def test_validate_setup_config_concatenates_clusters_in_table_order():
 
 def test_setup_build_keys_match_build_setup_config_signature():
     assert SETUP_BUILD_KEYS == frozenset(inspect.signature(build_setup_config).parameters)
+    assert {
+        "name",
+        "min_valid_confluences",
+        "trigger_params",
+        "otf_filter",
+        "entry_window",
+    } <= SETUP_BUILD_KEYS
+
+
+def test_setup_build_keys_match_api_execution_keys():
+    """Page-6 collector and ``api.build_setup`` must share the same BSC keys."""
+    from thesistester.api import _SETUP_EXECUTION_KEYS
+
+    assert SETUP_BUILD_KEYS == frozenset(_SETUP_EXECUTION_KEYS)
 
 
 def test_build_setup_kwargs_from_mapping_keeps_ao1_zero_and_drops_unknown():

@@ -692,11 +692,75 @@ def test_page6_generate_setup_hashes_equal_build_setup_config():
     assert "_source_mode" not in so_t["trigger_params"]
 
 
+def test_page6_source_mapping_keeps_ao1_when_field_omitted():
+    """Saved mapping supplies AO1 ``min_valid=0`` when page fields omit it."""
+    kwargs = _page6_saved_ao1_3c_kwargs()
+    source = {**kwargs, "setup_id": "drop-me", "min_valid_confluences": 0}
+    fields = {key: value for key, value in kwargs.items() if key != "min_valid_confluences"}
+    page_setup = _generate_setup_from_page_fields(source_mapping=source, **fields)
+    assert page_setup["min_valid_confluences"] == 0
+    assert "_source_mode" not in page_setup["trigger_params"]
+
+
+def test_page6_3c_none_params_use_bsc_defaults():
+    kwargs = _page6_saved_ao1_3c_kwargs()
+    kwargs["trigger_params"] = None
+    setup = _generate_setup_from_page_fields(**kwargs)
+    assert setup["trigger_params"]["entry_retrace_ticks"] == 4.0
+    assert setup["trigger_params"]["max_entry_wait_bars_after_reversal"] == 5
+    assert setup["trigger_params"]["arrival_tolerance_ticks"] == 0.0
+    assert "_source_mode" not in setup["trigger_params"]
+
+
+def test_page6_bsc_rejects_non_numeric_3c_retrace():
+    kwargs = _page6_saved_ao1_3c_kwargs()
+    kwargs["trigger_params"] = {
+        "entry_retrace_ticks": "bad",
+        "max_entry_wait_bars_after_reversal": 5,
+    }
+    with pytest.raises(ValueError):
+        _generate_setup_from_page_fields(**kwargs)
+
+
+def test_page6_settings_trigger_params_omit_source_mode():
+    """Identity hash uses BSC trigger_params; ``_source_mode`` is generate-only."""
+    kwargs = _page6_saved_ao1_3c_kwargs()
+    kwargs["trigger_params"] = {
+        **kwargs["trigger_params"],
+        "_source_mode": "anchor_rules",
+    }
+    generate_setup = _generate_setup_from_page_fields(**kwargs)
+    trigger_params = dict(generate_setup["trigger_params"])
+    assert "_source_mode" not in trigger_params
+    settings = _normalize_signal_settings_for_hash(
+        {
+            "confluence_mode": generate_setup["confluence_mode"],
+            "selected_levels": generate_setup["selected_levels"],
+            "anchor_level": generate_setup["anchor_level"],
+            "confluence_rules": generate_setup["confluence_rules"],
+            "min_valid_confluences": generate_setup["min_valid_confluences"],
+            "tolerance_ticks": generate_setup["tolerance_ticks"],
+            "min_confluences": generate_setup["min_confluences"],
+            "max_confluences": generate_setup["max_confluences"],
+            "naked_only": generate_setup["naked_only"],
+            "naked_requirement": generate_setup["naked_requirement"],
+            "trigger": generate_setup["trigger"],
+            "trigger_timeframe": generate_setup["trigger_timeframe"],
+            "direction": generate_setup["direction"],
+            "trigger_params": trigger_params,
+            "use_saved_setup": True,
+            "setup_snapshot": generate_setup,
+        }
+    )
+    assert "_source_mode" not in settings["trigger_params"]
+
+
 def test_signals_page_generate_uses_bsc_not_run_experiment():
     import ast
     from pathlib import Path
 
-    tree = ast.parse((Path(__file__).parent.parent / "pages" / "6_Signals.py").read_text())
+    page_text = (Path(__file__).parent.parent / "pages" / "6_Signals.py").read_text()
+    tree = ast.parse(page_text)
     defined = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
     assert "_generate_setup_from_page_fields" in defined
     assert "_normalize_3c_params" not in defined
@@ -713,8 +777,11 @@ def test_signals_page_generate_uses_bsc_not_run_experiment():
                 called.add(func.attr)
     assert "build_setup_config" in imported
     assert "build_setup_config" in called
+    assert "build_setup_kwargs_from_mapping" in imported
+    assert "build_setup_kwargs_from_mapping" in called
     assert "run_experiment" not in imported
     assert "run_experiment" not in called
+    assert page_text.count('trigger_params["_source_mode"]') == 1
 
 
 # ---------------------------------------------------------------------------

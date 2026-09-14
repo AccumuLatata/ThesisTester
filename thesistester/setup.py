@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple
 
@@ -400,31 +401,9 @@ def build_setup_config(
     }
 
 
-# C-4 / QI-03-10: Classic Signals generate kwargs. Keep in lockstep with
-# ``build_setup_config`` parameters (tested).
-SETUP_BUILD_KEYS: frozenset[str] = frozenset(
-    {
-        "name",
-        "description",
-        "instrument",
-        "selected_levels",
-        "tolerance_ticks",
-        "min_confluences",
-        "max_confluences",
-        "naked_only",
-        "naked_requirement",
-        "trigger",
-        "trigger_timeframe",
-        "direction",
-        "confluence_mode",
-        "anchor_level",
-        "confluence_rules",
-        "min_valid_confluences",
-        "trigger_params",
-        "otf_filter",
-        "entry_window",
-    }
-)
+# C-4 / QI-03-10: derived from ``build_setup_config`` so a new builder
+# parameter is collected automatically (page-6 / saved mappings).
+SETUP_BUILD_KEYS: frozenset[str] = frozenset(inspect.signature(build_setup_config).parameters)
 
 
 def build_setup_kwargs_from_mapping(

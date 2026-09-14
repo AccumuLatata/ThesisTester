@@ -53,7 +53,7 @@ MG-17) walks own `STUDY_FACTOR_AXIS_RULES` / `STUDY_REPORT_FIELD_RULES` /
 (`STUDY_EXPAND_REQUIRED_AXES`) are derived from that factor table. Own
 table — do not import `SETUP_CONFIG_RULES` or `RUN_SPEC_RULES`. Omitted
 `ingestion_mode` stays the ingest-row `omit_means` (`primary`, AH §2 item 9).
-Next: C-4. Stage-first example:
+Next: C-5. Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
 ```bash
@@ -191,9 +191,12 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Signals generate calls `build_setup_config` for the setup dict only —
    still **not** `run_experiment` (AH §2 items 1–2). Page-local
    `_normalize_3c_params` is deleted; 3c / AO1 `min_valid=0` go through BSC.
-   AH §2 item 10 / AH6: `BASE_COLUMNS` and `close` fail closed. Omitted-key
-   defaults stay unchanged. C-2 / C-3 reuse the validator table pattern.
-   Next: C-5.
+   Page-6 collects kwargs with `build_setup_kwargs_from_mapping` (saved
+   mapping + page overrides). Engine `_source_mode` is attached only at
+   `generate_signals` time — not stored on the setup dict or in signal
+   settings identity. AH §2 item 10 / AH6: `BASE_COLUMNS` and `close` fail
+   closed. Omitted-key defaults stay unchanged. C-2 / C-3 reuse the
+   validator table pattern. Next: C-5.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`
