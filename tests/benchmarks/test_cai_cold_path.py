@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tests.fixtures.assistant_parity import write_parity_bars, parity_run_spec
+from tests.fixtures.cai_baseline import cai_levels_config
 from thesistester.api import run_experiment
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 
@@ -30,6 +31,24 @@ def test_cai_small_cold_path_harness_is_complete_and_nonnegative():
     assert [stage["stage"] for stage in report["stages"]] == _EXPECTED_STAGES
     assert all(stage["median_ms"] >= 0 for stage in report["stages"])
     assert all(stage["p95_ms"] >= stage["median_ms"] for stage in report["stages"])
+    assert report["signal_count"] >= 0
+    assert report["trade_count"] >= 0
+
+
+def test_cai_realistic_levels_config_is_tick_gated():
+    assert cai_levels_config(kind="realistic")["poc_windows"] == []
+
+
+def test_cai_realistic_cold_path_harness_is_complete_and_nonnegative():
+    """QI-14-01 / B-18: --fixture realistic emits six tick-gated stage rows."""
+    report = measure_cai_cold_path(kind="realistic", repeats=1)
+    assert report["fixture"] == "realistic"
+    assert report["bar_count"] == 780
+    assert list(report["levels_config"]["poc_windows"]) == []
+    assert [stage["stage"] for stage in report["stages"]] == _EXPECTED_STAGES
+    assert all(stage["median_ms"] >= 0 for stage in report["stages"])
+    assert all(stage["p95_ms"] >= stage["median_ms"] for stage in report["stages"])
+    assert all(list(stage["poc_windows"]) == [] for stage in report["stages"])
     assert report["signal_count"] >= 0
     assert report["trade_count"] >= 0
 

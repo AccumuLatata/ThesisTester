@@ -602,6 +602,13 @@ Every request must first parse as an `AssistantRequest`, then pass
   family prefix ignore (`B` / `B0` / `B02`) must not swallow it.
   Fail-closed lock: `tests/test_ruff_b_family.py`. Next family (UP / I /
   SIM / …) is its own PR.
+- **CAI cold-path harness (B-18 / QI-14-01).**
+  `cai_levels_config(kind="realistic")` is tick-gated (`poc_windows=[]`).
+  `measure_cai_cold_path` calls `compute_levels` only after
+  `disable_unneeded_tick_families` (same as `run_experiment` when
+  `tick_paths` is empty). Do not revive typical-price `_rolling_poc`.
+  `--fixture both` / `--fixture realistic` emit six stage rows. Timing
+  tables stay informational; F-10 re-records them.
 - **E402 / page import path (B-14 / QI-10-08).** Only `pages/1_Data.py` may
   execute code before importing `thesistester` (it inserts `REPO_ROOT` onto
   `sys.path`). The ruff `E402` per-file ignore is that file only — do not

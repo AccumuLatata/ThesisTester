@@ -3,8 +3,9 @@
 Two fixture sizes exist:
 
 - ``small`` — exhaustive CI smoke fixture. Cheap levels config, no rolling POC.
-- ``realistic`` — informational benchmark fixture. Two RTH sessions with one
-  rolling POC window so level cost is representative of product research use.
+- ``realistic`` — informational benchmark fixture. Two RTH sessions on the
+  tick-gated path (``poc_windows=[]``). Do not revive typical-price
+  ``_rolling_poc``; rolling POC without ``tick_paths`` refuses.
 
 Neither fixture is a CI wall-time gate. Correctness continues to use the
 existing API/CLI/assistant parity fixture in ``assistant_parity.py``.
@@ -91,6 +92,9 @@ def cai_levels_config(*, kind: CAI_FIXTURE_KIND) -> dict[str, Any]:
             "single_prints_enabled": False,
             "apoc_enabled": False,
         }
+    # Tick-gated: no rolling POC windows (QI-14-01). SMA 20/50, 1min+5min,
+    # vwap_windows=["30min"], session VWAP on. Do not restore poc_windows
+    # without tick_paths; do not revive typical-price _rolling_poc.
     return {
         "opening_range_minutes": 15,
         "sma_lengths": [20, 50],
@@ -98,7 +102,7 @@ def cai_levels_config(*, kind: CAI_FIXTURE_KIND) -> dict[str, Any]:
         "sma_timeframes": ["1min", "5min"],
         "ema_timeframes": ["1min"],
         "vwap_windows": ["30min"],
-        "poc_windows": ["30min"],
+        "poc_windows": [],
         "value_area_pct": 0.70,
         "prior_day_profile_aggregation_ticks": 4,
         "prior_week_profile_aggregation_ticks": 8,

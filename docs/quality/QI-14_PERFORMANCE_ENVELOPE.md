@@ -135,7 +135,7 @@ Process peak RSS: ~223 MB after the 780-bar cold path; **749 MB** after the 3-mo
 |---|---|
 | 8 Perf envelope — official R22 | Serial medians match `SIMULATE_PERF.md` within **+0.0…+4.3%** on this VM. |
 | 8 Perf envelope — CAI small | Stages within +12% except `build_research_bundle` **+226%** (QI-14-07). |
-| 8 Perf envelope — CAI realistic documented command | **Raises** `rolling POC requires ticks` (QI-14-01). |
+| 8 Perf envelope — CAI realistic documented command | **B-18:** harness runs on the tick-gated path (`poc_windows=[]`); six stage rows (QI-14-01). |
 | 8 Perf envelope — current realistic (POC stripped) | e2e median **756 ms**; `generate_signals` 45% / `compute_levels` 26% (QI-14-02). |
 | Warm path | small speedup **2.328**, hash equal, `levels_hit`. realistic speedup **1.335**, hash equal, `levels_hit`. CAI-10 “no second signal cache yet” still the harness recommendation (QI-14-08). |
 | Study `--workers` 1/2/4 | Four cells. `bundle_hash` **byte-identical** across 1/2/4. Walls 2.087 / 1.353 / 0.966 s used a **shared store** (later runs `levels_hit`) and are **not** a workers-scaling efficiency claim. |
@@ -259,7 +259,7 @@ Warm small: cold 164.8 ms / warm 70.8 ms / speedup 2.328 / hash equal / `levels_
 
 | Path | Result |
 |---|---|
-| Documented `python3 -m tests.benchmarks.cai_cold_path --fixture both` | **`ValueError: rolling POC requires ticks: tick_paths is missing or empty`** at the harness’s direct `compute_levels` (before stage timing). |
+| Documented `python3 -m tests.benchmarks.cai_cold_path --fixture both` | **B-18:** runs on the tick-gated path (`poc_windows=[]` after `disable_unneeded_tick_families`). Six stage rows. Do not revive typical-price `_rolling_poc`. `CAI_BASELINE.md` tables stay the CAI-0 typical-price snapshot until F-10. |
 | Documented table (CAI-0) | levels 1,293 ms (**70.9%** of 1,825 ms e2e) with `poc_windows=["30min"]` (then typical-price `_rolling_poc`). |
 | `run_experiment` / warm harness | Succeeds: `disable_unneeded_tick_families` clears unused POC. Warm realistic: cold 732 ms / warm 548 ms / speedup 1.335 / hash equal. |
 | This slice, explicit `poc_windows=[]` (prev30m still default-on) | table below |
