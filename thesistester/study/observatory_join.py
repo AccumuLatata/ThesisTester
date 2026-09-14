@@ -65,9 +65,9 @@ def load_observatory_frame(
     change. ``prior`` is process-memory only (CLI stays stateless).
     """
     if roots is None:
-        from thesistester.study import viewer as _viewer
+        from thesistester.study import observatory as _observatory
 
-        resolved_roots = _viewer.default_study_viewer_roots()
+        resolved_roots = _observatory.default_study_viewer_roots()
     else:
         resolved_roots = tuple(Path(root).resolve() for root in roots)
     entries = discover_study_dirs(resolved_roots, extra_dirs=extra_dirs)

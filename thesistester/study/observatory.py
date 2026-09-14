@@ -29,6 +29,7 @@ from thesistester.study.observatory_join import (
     dir_artifact_stamp,
     load_observatory_frame,
 )
+from thesistester.study.viewer import default_study_viewer_roots
 from thesistester.study.observatory_lens import (
     attach_program_b_projections,
     desk_class_counts,
@@ -134,6 +135,7 @@ __all__ = [
     "cohort_key_from_values",
     "constrain_facet_selection",
     "corpus_progress_counts",
+    "default_study_viewer_roots",
     "delete_observatory_desk",
     "desk_class_counts",
     "desk_class_for",
