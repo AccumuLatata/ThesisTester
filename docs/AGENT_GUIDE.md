@@ -626,13 +626,17 @@ Every request must first parse as an `AssistantRequest`, then pass
   blocking. Do not invoke mypy from required pytest cells.
 - **AppTest harness (B-12 / QI-11-03 / MG-26).** Assert widget `.disabled`,
   named session keys, and rendered labels. `set_value` only on enabled
-  widgets via `tests.apptest_helpers.set_enabled_value`. Never read
+  widgets via `tests.apptest_helpers.set_enabled_value`. Missing
+  `.disabled` fails closed (do not treat it as enabled). Never read
   `proto.*` — Streamlit 1.63 (#478 / plan §4.3) raises `AppTestError` on
   disabled `chat_input.set_value`. Mark AppTest modules (or AppTest
   functions in a mixed file) `serial`; B-15 adds the rest of the marker
-  set. RUX: rewrite assertions, never delete. Isolation fixtures stay
-  per-module until B-13 promotes `isolate_apptest_globals` to
-  `tests/conftest.py`. Do not `list(session_state)` (B-13).
+  set. `tests/test_apptest_harness_rules.py` is fail-closed: discovers
+  every `AppTest` import, AST-binds `serial` (not merely `pytestmark`),
+  and rejects `getattr(..., "proto")` / bound `.set_value`. RUX: rewrite
+  assertions, never delete. Isolation fixtures stay per-module until
+  B-13 promotes `isolate_apptest_globals` to `tests/conftest.py`. Do not
+  `list(session_state)` (B-13).
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:

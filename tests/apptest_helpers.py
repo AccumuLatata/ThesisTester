@@ -3,7 +3,7 @@
 Public widget attributes and named session keys only. Never read ``proto.*``.
 ``set_value`` is allowed only on enabled widgets — Streamlit 1.63 raises
 ``AppTestError`` on a disabled ``chat_input`` (QUALITY_INVESTIGATION_PLAN.md
-§4.3).
+§4.3). Missing ``.disabled`` fails closed (do not treat it as enabled).
 """
 
 from __future__ import annotations
@@ -14,8 +14,17 @@ __all__ = ["set_enabled_value", "widget_disabled"]
 
 
 def widget_disabled(widget: Any) -> bool:
-    """Return the public ``.disabled`` flag. Do not read ``proto.*``."""
-    return bool(getattr(widget, "disabled", False))
+    """Return the public ``.disabled`` flag. Do not read ``proto.*``.
+
+    A widget without ``.disabled`` is not treated as enabled — the helper
+    refuses so ``set_value`` cannot run fail-open.
+    """
+    kind = getattr(widget, "type", type(widget).__name__)
+    try:
+        disabled = widget.disabled
+    except AttributeError as exc:
+        raise AssertionError(f"set_value requires public .disabled on {kind}") from exc
+    return bool(disabled)
 
 
 def set_enabled_value(widget: Any, value: Any) -> Any:

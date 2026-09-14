@@ -281,14 +281,18 @@ def test_default_prominence_is_discuss_with_collapsed_secondary_surfaces(workspa
     # Help expander is gone; Help is a peer mode.
     assert all(label != "Help / how it works" for kind, label in entries if kind == "expander")
 
-    for label in (
-        "Manage thesis",
-        "Advanced: draft, runs & compare",
-        "Debug: raw JSON & conversation audit",
+    for label, expected_key in (
+        ("Manage thesis", None),
+        ("Advanced: draft, runs & compare", ASSISTANT_ADVANCED_EXPANDER_KEY),
+        ("Debug: raw JSON & conversation audit", None),
     ):
-        assert _expander(app, label).label == label
-    # Keyed Advanced expander defaults collapsed (named session key).
-    assert _session_value(app, ASSISTANT_ADVANCED_EXPANDER_KEY) in (None, False)
+        expander = _expander(app, label)
+        assert expander.label == label, f"{label} must default collapsed"
+        assert expander.key == expected_key
+        if expected_key is not None:
+            assert _session_value(app, expected_key) in (None, False), (
+                f"{label} must default collapsed"
+            )
 
     # Discuss mode owns the page-level chat_input (RUX-3).
     assert len(app.chat_input) == 1
@@ -642,9 +646,9 @@ def test_classic_results_qa_deep_link_preselects_discuss_and_force_opens(workspa
     assert _session_value(app, "assistant_focused_run_id") == run_id
     assert _session_value(app, ASSISTANT_ADVANCED_EXPANDER_KEY) is True
     assert _session_value(app, linked_run_expander_key(run_id)) is True
-    assert _expander(app, "Advanced: draft, runs & compare").label == (
-        "Advanced: draft, runs & compare"
-    )
+    advanced = _expander(app, "Advanced: draft, runs & compare")
+    assert advanced.label == "Advanced: draft, runs & compare"
+    assert advanced.key == ASSISTANT_ADVANCED_EXPANDER_KEY
     # RUX-2 superset: Discuss mode + preselected run.
     assert _session_value(app, ASSISTANT_MODE_SESSION_KEY) == ASSISTANT_MODE_DISCUSS
     assert _session_value(app, DISCUSS_RUN_PICKER_KEY) == run_id
@@ -669,9 +673,9 @@ def test_classic_results_qa_orphan_deep_link_still_force_opens_expanders(workspa
     assert _session_value(app, "assistant_focused_run_id") == ORPHAN_RUN_ID
     assert _session_value(app, ASSISTANT_ADVANCED_EXPANDER_KEY) is True
     assert _session_value(app, linked_run_expander_key(ORPHAN_RUN_ID)) is True
-    assert _expander(app, "Advanced: draft, runs & compare").label == (
-        "Advanced: draft, runs & compare"
-    )
+    advanced = _expander(app, "Advanced: draft, runs & compare")
+    assert advanced.label == "Advanced: draft, runs & compare"
+    assert advanced.key == ASSISTANT_ADVANCED_EXPANDER_KEY
     assert _session_value(app, ASSISTANT_MODE_SESSION_KEY) == ASSISTANT_MODE_DISCUSS
 
 
