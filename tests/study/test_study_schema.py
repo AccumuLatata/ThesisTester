@@ -881,6 +881,7 @@ def test_dataset_ingestion_mode_omitted_stays_legal():
 _VENDOR_15S_HE = Path("tests/fixtures/vendor/quantower_history_exporter_15s.csv")
 _QUANTOWER_PROFILE = "quantower_history_exporter"
 _BUILDER_PATH = Path("thesistester/study/builder.py")
+_BUILDER_DRAFT_PATH = Path("thesistester/study/builder_draft.py")
 _PROGRAM_B_ROOTS = (
     Path("examples/studies/program_b"),
     Path("examples/studies/program_b_run2"),
@@ -942,8 +943,9 @@ def test_quantower_warning_sentence_matches_builder_draft_warnings():
 
 
 def test_builder_does_not_duplicate_quantower_primary_warning_sentence():
-    """AST-bind: builder imports the schema constant and does not re-literal the sentence."""
-    source = _BUILDER_PATH.read_text(encoding="utf-8")
+    """AST-bind: draft_warnings owner imports the schema constant and does not re-literal."""
+    # C-24 moved draft_warnings + the schema import onto builder_draft.py.
+    source = _BUILDER_DRAFT_PATH.read_text(encoding="utf-8")
     tree = ast.parse(source)
     imported = False
     for node in tree.body:
@@ -954,18 +956,20 @@ def test_builder_does_not_duplicate_quantower_primary_warning_sentence():
         ):
             imported = True
             break
-    assert imported, "builder must import _WARNING_QUANTOWER_PRIMARY from schema"
-    for node in tree.body:
-        targets: list[ast.Name] = []
-        if isinstance(node, ast.Assign):
-            targets = [t for t in node.targets if isinstance(t, ast.Name)]
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            targets = [node.target]
-        if any(target.id == "_WARNING_QUANTOWER_PRIMARY" for target in targets):
-            raise AssertionError("builder must not reassign _WARNING_QUANTOWER_PRIMARY")
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and node.value == _WARNING_QUANTOWER_PRIMARY:
-            raise AssertionError("builder must not re-literal the Quantower-primary sentence")
+    assert imported, "builder_draft must import _WARNING_QUANTOWER_PRIMARY from schema"
+    for path in (_BUILDER_DRAFT_PATH, _BUILDER_PATH):
+        path_tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in path_tree.body:
+            targets: list[ast.Name] = []
+            if isinstance(node, ast.Assign):
+                targets = [t for t in node.targets if isinstance(t, ast.Name)]
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                targets = [node.target]
+            if any(target.id == "_WARNING_QUANTOWER_PRIMARY" for target in targets):
+                raise AssertionError(f"{path} must not reassign _WARNING_QUANTOWER_PRIMARY")
+        for node in ast.walk(path_tree):
+            if isinstance(node, ast.Constant) and node.value == _WARNING_QUANTOWER_PRIMARY:
+                raise AssertionError(f"{path} must not re-literal the Quantower-primary sentence")
 
 
 def test_program_b_manifests_validate_without_quantower_primary_warning():
