@@ -18,6 +18,12 @@ Regression-safe onboarding guide for contributors/agents working in ThesisTester
    payload; Streamlit default is 200) and `server.maxUploadSize = 350`.
    `MessageSizeError` is that transport cap, not host RAM. Restart Streamlit
    after editing the file. Headless `python -m thesistester` is uncapped.
+4. Codespaces / Dev Containers (G-5 / QI-12-08): the image is Python **3.12**
+   (CI lint / scanners / `pytest (py3.12)`). `updateContentCommand` is
+   `pip install -e '.[dev]' -c constraints.txt`. `postAttachCommand` is
+   `streamlit run app.py` — do not disable XSRF/CORS. Do not add a second
+   Streamlit install. Do not edit `.streamlit/config.toml` from the
+   container spec (QI-10). Fail-closed lock: `tests/test_g5_devcontainer.py`.
 
 ## Headless and agent operation (R18)
 
@@ -565,6 +571,13 @@ Every request must first parse as an `AssistantRequest`, then pass
 - Editable install with tooling: `pip install -e ".[dev]" -c constraints.txt`
   (packaging metadata and caps live in `pyproject.toml`; `constraints.txt` is
   the CI lock — QI-12-02 / QR G-2).
+- **Codespaces / Dev Containers (G-5 / QI-12-08).**
+  `.devcontainer/devcontainer.json` uses Python **3.12** and
+  `pip install -e '.[dev]' -c constraints.txt`. No extra `streamlit`
+  install. `streamlit run app.py` keeps XSRF/CORS on. `.streamlit/config.toml`
+  is product transport caps only — do not rewrite it here. Lock:
+  `tests/test_g5_devcontainer.py`. A full image-build workflow is optional
+  and is **not** a G-1 required check.
 - Before pushing, run exactly what CI runs:
   1. `ruff check .`
   2. `ruff format --check .`
