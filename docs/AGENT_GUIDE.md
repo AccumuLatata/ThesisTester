@@ -56,9 +56,21 @@ the CLI when the flag is off.
 host): `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + copy-ready prompts under
 `examples/studies/agents/`.
 
+**Import contracts (B-10 / QI-12-07).** Direct Study / journal / library
+import bans are `.importlinter` C1–C5 and C7–C10 (`QI-15_SYNTHESIS.md` §5.4).
+CI job `import-linter (warn-first)` runs `lint-imports` and emits `::warning`
+on broken contracts; it does **not** fail and is **not** one of the six G-1
+required names. C1/C4 use `allow_indirect_imports` for the known
+`expand → cli → cli_study` chain. C7 is expected broken via the
+`journal.levels → study.schema → api` layering chain (C-9 slims package init). C8 allow-list: `app_state`, classic chrome, and the two
+secret readers (`assistant.llm`, `assistant.voice.xai_realtime`) until C-8/F-9.
+C10 is page-scoped (`pages/15_Studies.py` ↛ `FORMAT_PROFILE_LABELS` from
+builder) and is gated by `tests/test_import_linter_contracts.py`. Blocking
+flip is a later PR.
+
 **RS-D8:** Studies page authoring preview — canonical StudySpec YAML
 validate + in-memory expand (cell count / confirm gate). `preview.py` must not
-import `thesistester.study.execute`.
+import `thesistester.study.execute` (import-linter **C1**).
 
 **RS-D2 Inspect progress:** ledger `done/total` + running cell names on
 Studies Inspect. Explicit Refresh only — do not add auto-refresh, kill,
@@ -104,7 +116,7 @@ SL/TP grid / NY RTH ToD (`thesistester/study/briefing.py`). Do not implement
 further SV work inside an RS/SB/SIA PR. Discover must not call `report_study`.
 Do not call `run_study()`, `report_study` write, or `rollup_study()` from
 Inspect. `viewer.py` must not import `cli_study` / `thesistester.cli` /
-`execute` / `rollup` / Plotly / Streamlit. Do not hydrate classic
+`execute` / `rollup` / Plotly / Streamlit (import-linter **C2**). Do not hydrate classic
 `st.session_state`. Do not add time-of-day as a StudySpec factor axis.
 Operator contract: `docs/STUDY_RUNNER.md` §SV.
 
@@ -119,7 +131,7 @@ cohort labels (raw `cohort_key` unchanged) + lens-as-filter (`desk_class`
 Do not implement SO5/SO6 inside an RS/SV/SAF PR. Do not unpark
 SO5/SO6. Do not call `report_study`
 per study, `run_study()`, `rollup_study()`, or unzip-all. `observatory.py`
-must not import `cli_study` / `execute` / Streamlit / Plotly. `viewer.py`
+must not import `cli_study` / `execute` / Streamlit / Plotly (import-linter **C3**). `viewer.py`
 must not import `observatory`. Do not write `results/studies/`. Operator
 contract: `docs/STUDY_RUNNER.md` §SO.
 
@@ -584,6 +596,13 @@ Every request must first parse as an `AssistantRequest`, then pass
   informational line. The job still **does not** fail: `--cov-fail-under` and
   `[tool.coverage.report] fail_under` stay unset. A later PR flips the same
   floor to blocking, then ratchet +1 pt per release.
+- **Import-linter (B-10 / QI-12-07).** `.importlinter` encodes QI-15 §5.4
+  contracts C1–C5 and C7–C10. The CI job `import-linter (warn-first)` runs
+  `lint-imports` and emits `::warning` on broken contracts; it **does not**
+  fail. C7 is expected broken via the journal.levels → study.schema → api
+  chain (C-9 slims package init). This job is **not** a G-1 required
+  check. A later PR flips the same contracts to blocking. Do not rename the
+  six required display names to absorb it.
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:
@@ -616,6 +635,7 @@ cells do not block merge.
 | `pytest (py3.12)` | full suite; required on `main` |
 | `editable install (no dev extras)` | `pip install -e .` + import + `pip check` in a clean venv; required on `main` |
 | `golden-master regeneration guard` | required on `main`; fails any PR that changes legacy golden artifacts without the `GOLDEN_REGEN` label. Job is `pull_request`-only (`ci.yml`); that is the merge path |
+| `import-linter (warn-first)` | **not** required. B-10 / QI-12-07: `lint-imports` on `.importlinter` (C1–C5, C7–C10). Emits `::warning` on broken contracts; job stays green. Blocking flip is a later PR |
 
 Verify the live gate from a non-admin token. `GET …/branches/main/protection`
 is admin-only and returns **403** for integration tokens — do not treat that
@@ -760,10 +780,11 @@ are B-1; H10/H11 lock tests are B-2.
 - Keep `dataset.format_profile` explicit in API/CLI specifications; canonical
   remains the default and no format auto-detection is permitted. Study builder
   emit always writes the key from the R17 allow-list (omitted / blank →
-  `canonical`; unknown non-blank tokens fail emit). The Studies page must not
+  `canonical`; unknown non-blank tokens fail emit).   The Studies page must not
   import `FORMAT_PROFILE_LABELS`, `normalize_builder_format_profile`,
   `INGESTION_MODE_PRIMARY`, or `WIDGET_KEY_INGESTION_MODE` from builder
-  (stale `builder.py` bricks the page, including Inspect/Preview). Bind
+  (stale `builder.py` bricks the page, including Inspect/Preview;
+  import-linter **C10** / `tests/test_import_linter_contracts.py`). Bind
   labels from loader via a type-checked `getattr` plus local fallback; keep
   page-local normalize (blank → `canonical`; do not rewrite unknown tokens).
   Page-local ingest tokens; seed/Apply via getattr/hasattr (and

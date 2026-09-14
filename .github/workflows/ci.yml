@@ -62,6 +62,37 @@ jobs:
       - name: ruff format --check
         run: ruff format --check .
 
+  import-linter:
+    # B-10 / QI-12-07: warn-first. Not a G-1 required check — do not rename
+    # this job onto the six frozen display names. Blocking flip is a later PR.
+    name: import-linter (warn-first)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - name: Install package + import-linter
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . import-linter -c constraints.txt
+      - name: lint-imports (warn-first)
+        run: |
+          set +e
+          lint-imports --config .importlinter
+          code=$?
+          if [ "$code" -eq 0 ]; then
+            echo "import-linter: all contracts kept (warn-first job; not a G-1 required check)."
+            exit 0
+          fi
+          echo "::warning title=import-linter::Broken contracts (QI-12-07 / B-10 warn-first, not blocking). C7 is expected via journal.levels → study.schema → api until later structural PRs. Blocking flip is a later PR."
+          exit 0
+
   tests:
     name: pytest (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
