@@ -49,6 +49,9 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.16,<0.17",
     "import-linter>=2.3,<3",
+    # mypy is capped to one major: --strict error inventory drifts across
+    # minors, and B-11's per-file ratchet must not jump because of a release.
+    "mypy>=2.3,<3",
 ]
 
 [project.urls]
@@ -81,6 +84,21 @@ branch = true
 # +1 pt per release.
 show_missing = true
 exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
+
+# B-11 / QI-12-05: path-scoped type-check. Informational CI job
+# `mypy (informational)` only — not a G-1 required check. `--strict` is
+# scoped to these two trees (not repo-wide). `api.py` / `data/` / `levels/`
+# are later. QI-12 §2.3 five-tree probe was 164; this config is engine +
+# analytics only. `no_site_packages` keeps numpy stubs (3.12 `type`
+# statements) from aborting a 3.10-target run. Blocking flip is a later PR.
+[tool.mypy]
+python_version = "3.10"
+files = ["thesistester/engine", "thesistester/analytics"]
+ignore_missing_imports = true
+no_site_packages = true
+strict = true
+pretty = false
+show_error_codes = true
 
 [tool.ruff]
 line-length = 100

@@ -14,6 +14,8 @@ anyio==4.15.1
     # via
     #   starlette
     #   streamlit
+ast-serialize==0.11.2
+    # via mypy
 attrs==26.1.0
     # via
     #   jsonschema
@@ -69,6 +71,8 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 kaleido==1.4.0
     # via thesistester (pyproject.toml)
+librt==0.15.0 ; platform_python_implementation != 'PyPy'
+    # via mypy
 logistro==2.0.1
     # via
     #   choreographer
@@ -79,6 +83,10 @@ markupsafe==3.0.3
     # via jinja2
 mdurl==0.1.2
     # via markdown-it-py
+mypy==2.3.1
+    # via thesistester (pyproject.toml)
+mypy-extensions==1.1.0
+    # via mypy
 narwhals==2.26.0
     # via
     #   altair
@@ -118,6 +126,8 @@ pandas==3.0.5 ; python_full_version >= '3.11'
     # via
     #   thesistester (pyproject.toml)
     #   streamlit
+pathspec==1.1.1
+    # via mypy
 pdfminer-six==20260107
     # via pdfplumber
 pdfplumber==0.11.10
@@ -197,6 +207,7 @@ tomli==2.4.1 ; python_full_version <= '3.11'
     #   thesistester (pyproject.toml)
     #   coverage
     #   import-linter
+    #   mypy
     #   pytest
 typing-extensions==4.16.0
     # via
@@ -205,6 +216,7 @@ typing-extensions==4.16.0
     #   cryptography
     #   exceptiongroup
     #   import-linter
+    #   mypy
     #   referencing
     #   starlette
     #   streamlit

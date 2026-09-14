@@ -1,0 +1,35 @@
+{
+  "finding": "QI-12-05",
+  "pr": "B-11",
+  "scope": [
+    "thesistester/engine",
+    "thesistester/analytics"
+  ],
+  "flags": [
+    "--strict",
+    "--ignore-missing-imports",
+    "--no-site-packages"
+  ],
+  "note": "QI-12 \u00a72.3 five-tree probe (engine+analytics+api+data+levels) was 164 strict. This baseline ratchets engine+analytics paths only; api.py later. Import-pulled errors outside the two trees are logged, not ratcheted. --no-site-packages avoids numpy stub syntax abort under python_version 3.10.",
+  "qi12_five_tree_strict": 164,
+  "total": 97,
+  "files": {
+    "thesistester/analytics/entry_window.py": 1,
+    "thesistester/analytics/grid.py": 9,
+    "thesistester/analytics/metrics.py": 8,
+    "thesistester/analytics/otf_validation.py": 7,
+    "thesistester/analytics/overfitting.py": 4,
+    "thesistester/analytics/sensitivity.py": 4,
+    "thesistester/analytics/time_analysis.py": 2,
+    "thesistester/analytics/validation.py": 8,
+    "thesistester/analytics/walk_forward.py": 6,
+    "thesistester/engine/anchor_confluence.py": 1,
+    "thesistester/engine/backtest.py": 13,
+    "thesistester/engine/confluence.py": 1,
+    "thesistester/engine/exit_management.py": 2,
+    "thesistester/engine/intrabar.py": 6,
+    "thesistester/engine/signals.py": 21,
+    "thesistester/engine/signals_3c.py": 3,
+    "thesistester/engine/sim_core.py": 1
+  }
+}
