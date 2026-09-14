@@ -9,7 +9,7 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import uuid4
 
 import pandas as pd
@@ -558,67 +558,44 @@ def _refresh_dataset_manifest() -> list[dict[str, Any]]:
     return items
 
 
-def save_dataset(
-    df: pd.DataFrame,
-    *,
-    name: str,
-    instrument: str,
-    base_interval: str | None,
-    source_timezone: str | None,
-    exchange_timezone: str | None,
-    raw_data: pd.DataFrame | None = None,
-    format_profile: str = "canonical",
-    raw_interval: str | None = None,
-    subtimeframe_data: pd.DataFrame | None = None,
-    subtimeframe_interval: str | None = None,
-    subtimeframe_format_profile: str | None = None,
-    ingestion_provenance: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Persist a canonical dataset and return its metadata.
+class _RawSidecarFields(NamedTuple):
+    format_profile: str
+    raw_interval: str | None
+    raw_rows: int | None
 
-    When the deterministic dataset directory already contains a raw-capture
-    sidecar, omitting ``raw_data`` preserves that sidecar's provenance.
-    The same preserve/conflict policy applies to an optional R12
-    ``subtimeframe.parquet`` sidecar.
+
+class _SubtfSidecarFields(NamedTuple):
+    has_subtimeframe: bool
+    interval: str | None
+    format_profile: str | None
+    rows: int | None
+    ingestion_provenance: dict[str, Any] | None
+
+
+def _apply_raw_sidecar_policy(
+    *,
+    raw_path: Path,
+    raw_data: pd.DataFrame | None,
+    format_profile: str,
+    raw_interval: str | None,
+    existing_metadata: dict[str, Any] | None,
+) -> _RawSidecarFields:
+    """Preserve an existing raw sidecar or accept a new one; refuse overwrite.
+
+    Canonical-only resave (``raw_data is None``) copies interval, profile, and
+    row count from the on-disk sidecar. A different hash or profile raises
+    ``ValueError`` and does not overwrite (S1 / QI-01-02).
     """
-    canonical = _canonicalize_dataframe(df)
-    dataset_id = compute_dataset_id(
-        canonical,
-        instrument=instrument,
-        base_interval=base_interval,
-        source_timezone=source_timezone,
-        exchange_timezone=exchange_timezone,
-    )
-    dataset_dir = _dataset_dir(dataset_id)
-    dataset_dir.mkdir(parents=True, exist_ok=True)
-    raw_path = dataset_dir / "raw.parquet"
-    subtimeframe_path = dataset_dir / SUBTIMEFRAME_PARQUET_NAME
-    metadata_path = dataset_dir / "meta.json"
     metadata_format_profile = format_profile
     metadata_raw_interval = raw_interval
     metadata_raw_rows = None if raw_data is None else int(len(raw_data))
-    metadata_subtimeframe_interval = subtimeframe_interval
-    metadata_subtimeframe_format_profile = subtimeframe_format_profile
-    metadata_subtimeframe_rows = None if subtimeframe_data is None else int(len(subtimeframe_data))
-    metadata_has_subtimeframe = subtimeframe_data is not None
-    metadata_ingestion_provenance = (
-        dict(ingestion_provenance) if isinstance(ingestion_provenance, dict) else None
-    )
 
-    existing_metadata: dict[str, Any] | None = None
-    if metadata_path.exists():
-        try:
-            existing_metadata = _read_json(metadata_path)
-        except (json.JSONDecodeError, OSError, ValueError):
-            existing_metadata = None
-
+    existing = existing_metadata if isinstance(existing_metadata, dict) else {}
     if raw_data is None and raw_path.exists():
-        existing = existing_metadata or {}
         metadata_format_profile = existing.get("format_profile", format_profile)
         metadata_raw_interval = existing.get("raw_interval", raw_interval)
         metadata_raw_rows = int(len(pd.read_parquet(raw_path)))
     elif raw_data is not None and raw_path.exists():
-        existing = existing_metadata or {}
         existing_raw = pd.read_parquet(raw_path)
         existing_profile = existing.get("format_profile", "canonical")
         if (
@@ -629,9 +606,40 @@ def save_dataset(
                 "A different raw capture already exists for this canonical dataset. "
                 "Refusing to overwrite raw provenance."
             )
+    return _RawSidecarFields(
+        format_profile=metadata_format_profile,
+        raw_interval=metadata_raw_interval,
+        raw_rows=metadata_raw_rows,
+    )
 
+
+def _apply_subtf_sidecar_policy(
+    *,
+    subtimeframe_path: Path,
+    subtimeframe_data: pd.DataFrame | None,
+    subtimeframe_interval: str | None,
+    subtimeframe_format_profile: str | None,
+    format_profile: str,
+    ingestion_provenance: dict[str, Any] | None,
+    existing_metadata: dict[str, Any] | None,
+) -> _SubtfSidecarFields:
+    """Preserve/conflict a subtf sidecar; refuse derive-mode without one.
+
+    Omitting ``subtimeframe_data`` when ``subtimeframe.parquet`` exists
+    preserves interval, profile, rows, and ``ingestion_provenance``. A
+    different hash, profile, or provenance raises ``ValueError``. Derive-mode
+    provenance without a sidecar is refused (S1 / QI-01-02).
+    """
+    metadata_subtimeframe_interval = subtimeframe_interval
+    metadata_subtimeframe_format_profile = subtimeframe_format_profile
+    metadata_subtimeframe_rows = None if subtimeframe_data is None else int(len(subtimeframe_data))
+    metadata_has_subtimeframe = subtimeframe_data is not None
+    metadata_ingestion_provenance = (
+        dict(ingestion_provenance) if isinstance(ingestion_provenance, dict) else None
+    )
+
+    existing = existing_metadata if isinstance(existing_metadata, dict) else {}
     if subtimeframe_data is None and subtimeframe_path.exists():
-        existing = existing_metadata or {}
         metadata_has_subtimeframe = True
         metadata_subtimeframe_interval = existing.get(
             "subtimeframe_interval", subtimeframe_interval
@@ -644,7 +652,6 @@ def save_dataset(
         if metadata_ingestion_provenance is None and isinstance(existing_provenance, dict):
             metadata_ingestion_provenance = dict(existing_provenance)
     elif subtimeframe_data is not None and subtimeframe_path.exists():
-        existing = existing_metadata or {}
         existing_sub = pd.read_parquet(subtimeframe_path)
         existing_profile = existing.get("subtimeframe_format_profile") or existing.get(
             "format_profile", "canonical"
@@ -676,6 +683,78 @@ def save_dataset(
             "provenance without subtimeframe data."
         )
 
+    return _SubtfSidecarFields(
+        has_subtimeframe=metadata_has_subtimeframe,
+        interval=metadata_subtimeframe_interval,
+        format_profile=metadata_subtimeframe_format_profile,
+        rows=metadata_subtimeframe_rows,
+        ingestion_provenance=metadata_ingestion_provenance,
+    )
+
+
+def save_dataset(
+    df: pd.DataFrame,
+    *,
+    name: str,
+    instrument: str,
+    base_interval: str | None,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    raw_data: pd.DataFrame | None = None,
+    format_profile: str = "canonical",
+    raw_interval: str | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
+    subtimeframe_interval: str | None = None,
+    subtimeframe_format_profile: str | None = None,
+    ingestion_provenance: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Persist a canonical dataset and return its metadata.
+
+    When the deterministic dataset directory already contains a raw-capture
+    sidecar, omitting ``raw_data`` preserves that sidecar's provenance.
+    The same preserve/conflict policy applies to an optional R12
+    ``subtimeframe.parquet`` sidecar. Sidecar rules live in
+    ``_apply_raw_sidecar_policy`` / ``_apply_subtf_sidecar_policy`` so a
+    rule change cannot silently fork raw vs subtf vs provenance (QI-01-02).
+    """
+    canonical = _canonicalize_dataframe(df)
+    dataset_id = compute_dataset_id(
+        canonical,
+        instrument=instrument,
+        base_interval=base_interval,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+    )
+    dataset_dir = _dataset_dir(dataset_id)
+    raw_path = dataset_dir / "raw.parquet"
+    subtimeframe_path = dataset_dir / SUBTIMEFRAME_PARQUET_NAME
+    metadata_path = dataset_dir / "meta.json"
+
+    existing_metadata: dict[str, Any] | None = None
+    if metadata_path.exists():
+        try:
+            loaded_metadata = _read_json(metadata_path)
+        except (json.JSONDecodeError, OSError, ValueError):
+            loaded_metadata = None
+        existing_metadata = loaded_metadata if isinstance(loaded_metadata, dict) else None
+
+    raw_fields = _apply_raw_sidecar_policy(
+        raw_path=raw_path,
+        raw_data=raw_data,
+        format_profile=format_profile,
+        raw_interval=raw_interval,
+        existing_metadata=existing_metadata,
+    )
+    subtf_fields = _apply_subtf_sidecar_policy(
+        subtimeframe_path=subtimeframe_path,
+        subtimeframe_data=subtimeframe_data,
+        subtimeframe_interval=subtimeframe_interval,
+        subtimeframe_format_profile=subtimeframe_format_profile,
+        format_profile=format_profile,
+        ingestion_provenance=ingestion_provenance,
+        existing_metadata=existing_metadata,
+    )
+
     metadata = _dataset_metadata(
         canonical,
         dataset_id=dataset_id,
@@ -684,15 +763,18 @@ def save_dataset(
         base_interval=base_interval,
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
-        format_profile=metadata_format_profile,
-        raw_interval=metadata_raw_interval,
-        raw_rows=metadata_raw_rows,
-        has_subtimeframe=metadata_has_subtimeframe,
-        subtimeframe_interval=metadata_subtimeframe_interval,
-        subtimeframe_format_profile=metadata_subtimeframe_format_profile,
-        subtimeframe_rows=metadata_subtimeframe_rows,
-        ingestion_provenance=metadata_ingestion_provenance,
+        format_profile=raw_fields.format_profile,
+        raw_interval=raw_fields.raw_interval,
+        raw_rows=raw_fields.raw_rows,
+        has_subtimeframe=subtf_fields.has_subtimeframe,
+        subtimeframe_interval=subtf_fields.interval,
+        subtimeframe_format_profile=subtf_fields.format_profile,
+        subtimeframe_rows=subtf_fields.rows,
+        ingestion_provenance=subtf_fields.ingestion_provenance,
     )
+    # mkdir only after sidecar policy succeeds so a refusal cannot leave
+    # an empty datasets/<id>/ directory (S1 / QI-01-02).
+    dataset_dir.mkdir(parents=True, exist_ok=True)
     canonical.to_parquet(dataset_dir / "canonical.parquet", index=False)
     if raw_data is not None:
         _canonicalize_dataframe(raw_data).to_parquet(raw_path, index=False)

@@ -13,6 +13,14 @@ from thesistester.data.derive import (
     DERIVATION_POLICY_DEFAULT,
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
 )
+from thesistester.persistence.local_store import (
+    compute_dataset_id,
+    get_store_root,
+    hash_dataframe,
+    load_dataset,
+    load_subtimeframe_dataset,
+    save_dataset,
+)
 from thesistester.persistence.execution_artifacts import (
     read_source_data_binding,
     source_binding_key,
@@ -260,6 +268,116 @@ def test_api_15s_primary_resolves_ohlc_identical_source_duplicates(tmp_path: Pat
     assert provenance["source_duplicate_rows_discarded"] == 1
     assert provenance["source_duplicate_audit"][0]["retained_volume"] == 2.0
     assert provenance["source_duplicate_audit"][0]["discarded_volumes"] == [99.0]
+
+
+def test_15s_primary_local_store_roundtrip_is_hash_identical(tmp_path: Path, monkeypatch):
+    """C-12 exit: derived parent + subtf sidecar round-trip hash-identical."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    csv_path = tmp_path / "es_15s.csv"
+    shutil.copy(VENDOR_15S, csv_path)
+    state = run_experiment(
+        _minimal_derive_spec("es_15s.csv"),
+        base_directory=tmp_path,
+        cache_policy="off",
+    )
+    saved = save_dataset(
+        state["data"],
+        name="Derived ES",
+        instrument="ES",
+        base_interval=state["base_interval"],
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="quantower_history_exporter",
+        subtimeframe_data=state["subtimeframe_data"],
+        subtimeframe_interval=state["subtimeframe_interval"],
+        subtimeframe_format_profile=state["subtimeframe_format_profile"],
+        ingestion_provenance=state["ingestion_provenance"],
+    )
+    loaded, meta = load_dataset(saved["dataset_id"])
+    restored_sub = load_subtimeframe_dataset(saved["dataset_id"])
+    assert restored_sub is not None
+    assert hash_dataframe(loaded) == hash_dataframe(state["data"])
+    assert hash_dataframe(restored_sub) == hash_dataframe(state["subtimeframe_data"])
+    assert meta["schema_version"] == 2
+    assert meta["ingestion_provenance"] == state["ingestion_provenance"]
+
+
+@pytest.mark.parametrize(
+    ("conflict", "match"),
+    [
+        ("subtf_content", "Refusing to overwrite subtimeframe provenance"),
+        ("derive_without_subtf", "requires a subtimeframe sidecar"),
+    ],
+)
+def test_15s_primary_local_store_sidecar_conflicts(
+    tmp_path: Path, monkeypatch, conflict: str, match: str
+):
+    """C-12 / QI-01-02: one row per 15s-primary sidecar conflict."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    csv_path = tmp_path / "es_15s.csv"
+    shutil.copy(VENDOR_15S, csv_path)
+    state = run_experiment(
+        _minimal_derive_spec("es_15s.csv"),
+        base_directory=tmp_path,
+        cache_policy="off",
+    )
+    common = {
+        "name": "Derived ES",
+        "instrument": "ES",
+        "base_interval": state["base_interval"],
+        "source_timezone": "America/New_York",
+        "exchange_timezone": "America/New_York",
+        "format_profile": "quantower_history_exporter",
+    }
+    if conflict == "derive_without_subtf":
+        with pytest.raises(ValueError, match=match):
+            save_dataset(
+                state["data"],
+                ingestion_provenance=state["ingestion_provenance"],
+                **common,
+            )
+        dataset_id = compute_dataset_id(
+            state["data"],
+            instrument=common["instrument"],
+            base_interval=common["base_interval"],
+            source_timezone=common["source_timezone"],
+            exchange_timezone=common["exchange_timezone"],
+        )
+        dataset_dir = get_store_root() / "datasets" / dataset_id
+        assert not dataset_dir.exists()
+        return
+
+    saved = save_dataset(
+        state["data"],
+        subtimeframe_data=state["subtimeframe_data"],
+        subtimeframe_interval=state["subtimeframe_interval"],
+        subtimeframe_format_profile=state["subtimeframe_format_profile"],
+        ingestion_provenance=state["ingestion_provenance"],
+        **common,
+    )
+    dataset_dir = Path(saved["path"])
+    before = {
+        name: (dataset_dir / name).read_bytes()
+        for name in ("canonical.parquet", "subtimeframe.parquet", "meta.json")
+        if (dataset_dir / name).is_file()
+    }
+    conflicting = state["subtimeframe_data"].copy()
+    conflicting.iloc[0, conflicting.columns.get_loc("close")] = 999.0
+    with pytest.raises(ValueError, match=match):
+        save_dataset(
+            state["data"],
+            subtimeframe_data=conflicting,
+            subtimeframe_interval=state["subtimeframe_interval"],
+            subtimeframe_format_profile=state["subtimeframe_format_profile"],
+            ingestion_provenance=state["ingestion_provenance"],
+            **common,
+        )
+    after = {
+        name: (dataset_dir / name).read_bytes()
+        for name in ("canonical.parquet", "subtimeframe.parquet", "meta.json")
+        if (dataset_dir / name).is_file()
+    }
+    assert after == before
 
 
 def test_api_15s_primary_ohlc_conflict_source_duplicates_fail_closed(tmp_path: Path):
