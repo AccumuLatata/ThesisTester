@@ -27,6 +27,7 @@ from typing import Any
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from tests.apptest_helpers import set_enabled_value
 from thesistester.assistant.llm import (
     ProductHelpSettings,
     ResultsQASettings,
@@ -57,6 +58,8 @@ HELP_REPLY_TEXT = "RUX help probe reply"
 RESULTS_USER_TEXT = "RUX results probe question"
 RESULTS_REPLY_TEXT = "RUX results probe reply"
 ORPHAN_RUN_ID = "run_ruxbaseline0000000000000000000"
+
+pytestmark = pytest.mark.serial
 
 
 @pytest.fixture(autouse=True)
@@ -278,12 +281,18 @@ def test_default_prominence_is_discuss_with_collapsed_secondary_surfaces(workspa
     # Help expander is gone; Help is a peer mode.
     assert all(label != "Help / how it works" for kind, label in entries if kind == "expander")
 
-    for label in (
-        "Manage thesis",
-        "Advanced: draft, runs & compare",
-        "Debug: raw JSON & conversation audit",
+    for label, expected_key in (
+        ("Manage thesis", None),
+        ("Advanced: draft, runs & compare", ASSISTANT_ADVANCED_EXPANDER_KEY),
+        ("Debug: raw JSON & conversation audit", None),
     ):
-        assert _expander(app, label).proto.expanded is False, f"{label} must default collapsed"
+        expander = _expander(app, label)
+        assert expander.label == label, f"{label} must default collapsed"
+        assert expander.key == expected_key
+        if expected_key is not None:
+            assert _session_value(app, expected_key) in (None, False), (
+                f"{label} must default collapsed"
+            )
 
     # Discuss mode owns the page-level chat_input (RUX-3).
     assert len(app.chat_input) == 1
@@ -306,7 +315,7 @@ def test_default_discuss_empty_state_names_record_and_discuss(workspace):
     assert any("Record and discuss this run" in text for text in infos)
     assert len(app.chat_input) == 1
     assert app.chat_input[0].placeholder == chat_input_placeholder(ASSISTANT_MODE_DISCUSS)
-    assert app.chat_input[0].proto.disabled is True
+    assert app.chat_input[0].disabled is True
 
 
 def test_discuss_mode_reports_disabled_results_qa_not_missing_runs(workspace, monkeypatch):
@@ -331,7 +340,7 @@ def test_discuss_mode_reports_disabled_results_qa_not_missing_runs(workspace, mo
     assert any("Results Q&A is disabled" in text for text in infos)
     assert all("Record and discuss this run" not in text for text in infos)
     assert len(app.chat_input) == 1
-    assert app.chat_input[0].proto.disabled is True
+    assert app.chat_input[0].disabled is True
     # Pre-RUX-2 sibling gate: secondary actions stay available without RQ.
     assert any(item.label == "Explain run" for item in app.button)
     assert any(item.label == "Open exact run in Backtest" for item in app.button)
@@ -361,7 +370,7 @@ def test_help_mode_shows_disabled_guidance_when_product_help_off(workspace, monk
     assert any("Product Help is disabled" in text for text in infos)
     assert len(app.chat_input) == 1
     assert app.chat_input[0].placeholder == chat_input_placeholder(ASSISTANT_MODE_HELP)
-    assert app.chat_input[0].proto.disabled is True
+    assert app.chat_input[0].disabled is True
 
 
 def test_rendered_captions_contain_rux2_nav_fragments(workspace):
@@ -426,8 +435,8 @@ def test_discuss_chat_input_routes_to_handle_results_turn(workspace, monkeypatch
     app = _render(thesis.thesis_id)
     assert not app.exception
     assert len(app.chat_input) == 1
-    assert app.chat_input[0].proto.disabled is False
-    _run_app(app.chat_input[0].set_value("What was expectancy?"))
+    assert app.chat_input[0].disabled is False
+    _run_app(set_enabled_value(app.chat_input[0], "What was expectancy?"))
 
     assert not app.exception, app.exception
     assert len(calls) == 1
@@ -467,8 +476,8 @@ def test_help_chat_input_routes_to_handle_help_turn_without_choices(workspace, m
     app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP})
     assert not app.exception
     assert len(app.chat_input) == 1
-    assert app.chat_input[0].proto.disabled is False
-    _run_app(app.chat_input[0].set_value("How does Setup Builder work?"))
+    assert app.chat_input[0].disabled is False
+    _run_app(set_enabled_value(app.chat_input[0], "How does Setup Builder work?"))
 
     assert not app.exception, app.exception
     assert len(calls) == 1
@@ -501,8 +510,8 @@ def test_draft_chat_input_routes_to_handle_chat_turn(workspace, monkeypatch):
     app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_DRAFT})
     assert not app.exception
     assert len(app.chat_input) == 1
-    assert app.chat_input[0].proto.disabled is False
-    _run_app(app.chat_input[0].set_value("Refine this thesis for ES"))
+    assert app.chat_input[0].disabled is False
+    _run_app(set_enabled_value(app.chat_input[0], "Refine this thesis for ES"))
 
     assert not app.exception, app.exception
     assert len(calls) == 1
@@ -535,7 +544,7 @@ def test_disabled_discuss_chat_input_does_not_call_handle_results_turn(workspace
     app = _render(thesis.thesis_id)
     assert not app.exception
     assert len(app.chat_input) == 1
-    assert app.chat_input[0].proto.disabled is True
+    assert app.chat_input[0].disabled is True
     assert calls == []
 
 
@@ -637,7 +646,9 @@ def test_classic_results_qa_deep_link_preselects_discuss_and_force_opens(workspa
     assert _session_value(app, "assistant_focused_run_id") == run_id
     assert _session_value(app, ASSISTANT_ADVANCED_EXPANDER_KEY) is True
     assert _session_value(app, linked_run_expander_key(run_id)) is True
-    assert _expander(app, "Advanced: draft, runs & compare").proto.expanded is True
+    advanced = _expander(app, "Advanced: draft, runs & compare")
+    assert advanced.label == "Advanced: draft, runs & compare"
+    assert advanced.key == ASSISTANT_ADVANCED_EXPANDER_KEY
     # RUX-2 superset: Discuss mode + preselected run.
     assert _session_value(app, ASSISTANT_MODE_SESSION_KEY) == ASSISTANT_MODE_DISCUSS
     assert _session_value(app, DISCUSS_RUN_PICKER_KEY) == run_id
@@ -662,7 +673,9 @@ def test_classic_results_qa_orphan_deep_link_still_force_opens_expanders(workspa
     assert _session_value(app, "assistant_focused_run_id") == ORPHAN_RUN_ID
     assert _session_value(app, ASSISTANT_ADVANCED_EXPANDER_KEY) is True
     assert _session_value(app, linked_run_expander_key(ORPHAN_RUN_ID)) is True
-    assert _expander(app, "Advanced: draft, runs & compare").proto.expanded is True
+    advanced = _expander(app, "Advanced: draft, runs & compare")
+    assert advanced.label == "Advanced: draft, runs & compare"
+    assert advanced.key == ASSISTANT_ADVANCED_EXPANDER_KEY
     assert _session_value(app, ASSISTANT_MODE_SESSION_KEY) == ASSISTANT_MODE_DISCUSS
 
 

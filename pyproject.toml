@@ -71,6 +71,11 @@ include = ["thesistester*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# B-12 registers `serial` for AppTest modules (QI-11-03). The rest of the
+# marker set (unit/integration/golden/eval/benchmark/oracle) is B-15.
+markers = [
+    "serial: AppTest / process-global Streamlit harness; isolate from xdist (B-12 / QI-11-03)",
+]
 
 [tool.coverage.run]
 source = ["thesistester"]
