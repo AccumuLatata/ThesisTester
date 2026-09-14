@@ -10,8 +10,8 @@ Pure helpers for Backtest research views:
 - Backtest directed Exact + directed PR 3 cross-views (PR 6: trade ``direction``)
 
 Pair / trigger-variant summarizers live in ``confluence_pair_trigger.py``
-(C-13 / QI-05-03) and are re-exported here (PEP 562) so public combo helpers
-do not move. Display-facing dataclass assembly
+(C-13 / QI-05-03) and are re-exported here so public combo helpers do not
+move. Display-facing dataclass assembly
 (``confluence_attribution_summary``, ``prepare_exact_combo_display``) stays
 in this module.
 
@@ -21,43 +21,19 @@ No zone / signal / fill engine changes. Summaries return **all** groups with
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
 
-if TYPE_CHECKING:
-    from thesistester.analytics.confluence_pair_trigger import (
-        pair_keys_for_tokens,
-        summarize_by_exact_combo_and_trigger_variant,
-        summarize_by_level_pairs,
-        summarize_by_pair_and_trigger_variant,
-    )
+from thesistester.analytics import confluence_pair_trigger as _pair_trigger
 
-# Lazy re-exports: a module-level import of confluence_pair_trigger would
-# cycle with its typed facade import (C-11 used the same lazy-facade shape).
-_PAIR_TRIGGER_EXPORTS = frozenset(
-    {
-        "pair_keys_for_tokens",
-        "summarize_by_exact_combo_and_trigger_variant",
-        "summarize_by_level_pairs",
-        "summarize_by_pair_and_trigger_variant",
-    }
+pair_keys_for_tokens = _pair_trigger.pair_keys_for_tokens
+summarize_by_exact_combo_and_trigger_variant = (
+    _pair_trigger.summarize_by_exact_combo_and_trigger_variant
 )
-
-
-def __getattr__(name: str) -> Any:
-    if name in _PAIR_TRIGGER_EXPORTS:
-        from thesistester.analytics import confluence_pair_trigger as _pair_trigger
-
-        value = getattr(_pair_trigger, name)
-        globals()[name] = value
-        return value
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def __dir__() -> list[str]:
-    return sorted({*globals(), *_PAIR_TRIGGER_EXPORTS})
+summarize_by_level_pairs = _pair_trigger.summarize_by_level_pairs
+summarize_by_pair_and_trigger_variant = _pair_trigger.summarize_by_pair_and_trigger_variant
 
 
 EMPTY_LEVEL_NAMES_KEY = "__empty__"
