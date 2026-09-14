@@ -7,7 +7,6 @@ pytest cells cannot become a merge gate.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import tomllib
 
@@ -139,6 +138,8 @@ def test_ci_mypy_job_is_informational_not_g1() -> None:
     assert "python -m tests.fixtures.mypy.check_ratchet" in text
     assert "B-11 / QI-12-05" in text
     assert "Not a G-1 required check" in text
-    for name in G1_REQUIRED_NAMES:
-        assert name in text
-    assert "name: mypy (informational)" not in G1_REQUIRED_NAMES
+    assert "name: pytest (py${{ matrix.python-version }})" in text
+    assert "name: ruff (lint + format)" in text
+    assert "name: golden-master regeneration guard" in text
+    assert "name: editable install (no dev extras)" in text
+    assert "mypy (informational)" not in G1_REQUIRED_NAMES
