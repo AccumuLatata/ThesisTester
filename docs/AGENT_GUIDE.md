@@ -173,7 +173,13 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 2. `compute_levels(...) -> LevelsResult` returns `levels`, `session_levels`,
    and canonical `levels_settings`.
 3. `build_setup(...) -> dict` applies the Setup Builder normalization and
-   validation contract.
+   validation contract. `validate_setup_config` in `thesistester/setup.py`
+   is the SoT validator: C-1 (QI-03-03 / MG-17) walks a declarative
+   `SETUP_CONFIG_RULES` table (identity, enums, `global_cluster`,
+   `anchor_rules`, `trigger_params`, otf, `entry_window`). No pydantic.
+   `build_setup_config` is unchanged. AH §2 item 10 / AH6: `BASE_COLUMNS`
+   and `close` fail closed. Omitted-key defaults stay unchanged. C-2 /
+   C-3 reuse this table pattern.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`

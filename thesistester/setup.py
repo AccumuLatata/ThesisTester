@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import pandas as pd
 
@@ -399,15 +400,31 @@ def build_setup_config(
     }
 
 
-def validate_setup_config(config: dict[str, Any]) -> list[str]:
-    """Validate setup config and return a list of user-facing error messages."""
-    errors: list[str] = []
+class SetupConfigRule(NamedTuple):
+    """One ``validate_setup_config`` cluster (C-1 / QI-03-03 / MG-17). Not pydantic."""
 
+    cluster: str
+    collect: Callable[[dict[str, Any]], list[str]]
+
+
+def _setup_confluence_mode(config: dict[str, Any]) -> str:
+    return str(config.get("confluence_mode") or "global_cluster")
+
+
+def _setup_trigger(config: dict[str, Any]) -> str:
+    return str(config.get("trigger", ""))
+
+
+def _validate_setup_identity(config: dict[str, Any]) -> list[str]:
     name = str(config.get("name", "")).strip()
     if not name:
-        errors.append("Setup name must not be empty.")
+        return ["Setup name must not be empty."]
+    return []
 
-    confluence_mode = str(config.get("confluence_mode") or "global_cluster")
+
+def _validate_setup_enums(config: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    confluence_mode = _setup_confluence_mode(config)
     if confluence_mode not in VALID_CONFLUENCE_MODES:
         errors.append(f"Confluence mode must be one of {sorted(VALID_CONFLUENCE_MODES)}.")
 
@@ -415,7 +432,7 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
     if naked_requirement not in {"any", "all"}:
         errors.append("Naked requirement must be 'any' or 'all'.")
 
-    trigger = str(config.get("trigger", ""))
+    trigger = _setup_trigger(config)
     if trigger not in VALID_TRIGGERS:
         errors.append(f"Trigger must be one of {sorted(VALID_TRIGGERS)}.")
 
@@ -426,138 +443,156 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
     direction = str(config.get("direction", ""))
     if direction not in VALID_DIRECTIONS:
         errors.append(f"Direction must be one of {sorted(VALID_DIRECTIONS)}.")
+    return errors
 
-    if confluence_mode == "global_cluster":
-        selected_levels = config.get("selected_levels", [])
-        if not isinstance(selected_levels, list) or not selected_levels:
-            errors.append("Select at least one level column.")
-        elif isinstance(selected_levels, list):
-            banned = sorted(
-                {str(level) for level in selected_levels if str(level) in NON_LEVEL_OUTPUT_COLUMNS}
-            )
-            if banned:
-                errors.append(
-                    "Selected levels include diagnostic (non-level) columns that "
-                    f"cannot be used for confluence: {banned}."
-                )
-            banned_base = sorted(
-                {
-                    token
-                    for level in selected_levels
-                    if (token := _normalized_level_token(level)) in BASE_COLUMNS
-                }
-            )
-            if banned_base:
-                errors.append(
-                    "Selected levels include OHLCV/base columns that "
-                    f"cannot be used for confluence: {banned_base}."
-                )
 
-        try:
-            tolerance_ticks = float(config.get("tolerance_ticks", 0.0))
-            if tolerance_ticks < 0:
-                errors.append("Tolerance ticks must be >= 0.")
-        except (TypeError, ValueError):
-            errors.append("Tolerance ticks must be a number.")
+def _validate_setup_global_cluster(config: dict[str, Any]) -> list[str]:
+    if _setup_confluence_mode(config) != "global_cluster":
+        return []
 
-        try:
-            min_conf = int(config.get("min_confluences", 0))
-            if min_conf < 1:
-                errors.append("Minimum confluences must be >= 1.")
-        except (TypeError, ValueError):
-            min_conf = 1
-            errors.append("Minimum confluences must be an integer.")
-
-        try:
-            max_conf = int(config.get("max_confluences", 0))
-        except (TypeError, ValueError):
-            max_conf = 0
-            errors.append("Maximum confluences must be an integer.")
-        else:
-            if max_conf < min_conf:
-                errors.append("Maximum confluences must be >= minimum confluences.")
-            if max_conf > 5:
-                errors.append("Maximum confluences must be <= 5.")
-    elif confluence_mode == "anchor_rules":
-        raw_anchor_level = config.get("anchor_level")
-        anchor_level = raw_anchor_level.strip() if isinstance(raw_anchor_level, str) else ""
-        if not anchor_level:
-            errors.append("Anchor level must be a non-empty string.")
-        elif anchor_level in NON_LEVEL_OUTPUT_COLUMNS:
+    errors: list[str] = []
+    selected_levels = config.get("selected_levels", [])
+    if not isinstance(selected_levels, list) or not selected_levels:
+        errors.append("Select at least one level column.")
+    elif isinstance(selected_levels, list):
+        banned = sorted(
+            {str(level) for level in selected_levels if str(level) in NON_LEVEL_OUTPUT_COLUMNS}
+        )
+        if banned:
             errors.append(
-                f"Anchor level '{anchor_level}' is a diagnostic column and cannot "
-                "be used as a setup level."
+                "Selected levels include diagnostic (non-level) columns that "
+                f"cannot be used for confluence: {banned}."
             )
-        elif anchor_level in BASE_COLUMNS:
+        banned_base = sorted(
+            {
+                token
+                for level in selected_levels
+                if (token := _normalized_level_token(level)) in BASE_COLUMNS
+            }
+        )
+        if banned_base:
             errors.append(
-                f"Anchor level '{anchor_level}' is an OHLCV/base column and cannot "
-                "be used as a setup level."
+                "Selected levels include OHLCV/base columns that "
+                f"cannot be used for confluence: {banned_base}."
             )
 
-        confluence_rules = config.get("confluence_rules", [])
-        if not isinstance(confluence_rules, list):
-            errors.append("Confluence rules must be a non-empty list.")
-            confluence_rules = []
+    try:
+        tolerance_ticks = float(config.get("tolerance_ticks", 0.0))
+        if tolerance_ticks < 0:
+            errors.append("Tolerance ticks must be >= 0.")
+    except (TypeError, ValueError):
+        errors.append("Tolerance ticks must be a number.")
 
-        if "min_valid_confluences" not in config or config.get("min_valid_confluences") is None:
-            min_valid_confluences = 1
+    try:
+        min_conf = int(config.get("min_confluences", 0))
+        if min_conf < 1:
+            errors.append("Minimum confluences must be >= 1.")
+    except (TypeError, ValueError):
+        min_conf = 1
+        errors.append("Minimum confluences must be an integer.")
+
+    try:
+        max_conf = int(config.get("max_confluences", 0))
+    except (TypeError, ValueError):
+        max_conf = 0
+        errors.append("Maximum confluences must be an integer.")
+    else:
+        if max_conf < min_conf:
+            errors.append("Maximum confluences must be >= minimum confluences.")
+        if max_conf > 5:
+            errors.append("Maximum confluences must be <= 5.")
+    return errors
+
+
+def _validate_setup_anchor_rules(config: dict[str, Any]) -> list[str]:
+    if _setup_confluence_mode(config) != "anchor_rules":
+        return []
+
+    errors: list[str] = []
+    raw_anchor_level = config.get("anchor_level")
+    anchor_level = raw_anchor_level.strip() if isinstance(raw_anchor_level, str) else ""
+    if not anchor_level:
+        errors.append("Anchor level must be a non-empty string.")
+    elif anchor_level in NON_LEVEL_OUTPUT_COLUMNS:
+        errors.append(
+            f"Anchor level '{anchor_level}' is a diagnostic column and cannot "
+            "be used as a setup level."
+        )
+    elif anchor_level in BASE_COLUMNS:
+        errors.append(
+            f"Anchor level '{anchor_level}' is an OHLCV/base column and cannot "
+            "be used as a setup level."
+        )
+
+    confluence_rules = config.get("confluence_rules", [])
+    if not isinstance(confluence_rules, list):
+        errors.append("Confluence rules must be a non-empty list.")
+        confluence_rules = []
+
+    if "min_valid_confluences" not in config or config.get("min_valid_confluences") is None:
+        min_valid_confluences = 1
+    else:
+        raw_min_valid = config.get("min_valid_confluences")
+        if isinstance(raw_min_valid, bool):
+            min_valid_confluences = None
+            errors.append("Minimum valid confluences must be an integer.")
         else:
-            raw_min_valid = config.get("min_valid_confluences")
-            if isinstance(raw_min_valid, bool):
+            try:
+                min_valid_confluences = int(raw_min_valid)
+                if min_valid_confluences < 0:
+                    errors.append("Minimum valid confluences must be >= 0.")
+                    min_valid_confluences = None
+            except (TypeError, ValueError):
                 min_valid_confluences = None
                 errors.append("Minimum valid confluences must be an integer.")
-            else:
-                try:
-                    min_valid_confluences = int(raw_min_valid)
-                    if min_valid_confluences < 0:
-                        errors.append("Minimum valid confluences must be >= 0.")
-                        min_valid_confluences = None
-                except (TypeError, ValueError):
-                    min_valid_confluences = None
-                    errors.append("Minimum valid confluences must be an integer.")
 
-        if not confluence_rules and min_valid_confluences != 0:
-            errors.append("Confluence rules must be a non-empty list.")
+    if not confluence_rules and min_valid_confluences != 0:
+        errors.append("Confluence rules must be a non-empty list.")
 
-        if min_valid_confluences is not None and min_valid_confluences > len(confluence_rules):
-            errors.append("Minimum valid confluences must be <= number of confluence rules.")
+    if min_valid_confluences is not None and min_valid_confluences > len(confluence_rules):
+        errors.append("Minimum valid confluences must be <= number of confluence rules.")
 
-        seen_levels: set[str] = set()
-        for index, rule in enumerate(confluence_rules, start=1):
-            if not isinstance(rule, dict):
-                errors.append(f"Confluence rule {index} must be a dictionary.")
-                continue
+    seen_levels: set[str] = set()
+    for index, rule in enumerate(confluence_rules, start=1):
+        if not isinstance(rule, dict):
+            errors.append(f"Confluence rule {index} must be a dictionary.")
+            continue
 
-            rule_level = str(rule.get("level", "")).strip()
-            if not rule_level:
-                errors.append(f"Confluence rule {index} level must be a non-empty string.")
-            else:
-                if rule_level in NON_LEVEL_OUTPUT_COLUMNS:
-                    errors.append(
-                        f"Confluence rule {index} level '{rule_level}' is a diagnostic "
-                        "column and cannot be used as a setup level."
-                    )
-                elif rule_level in BASE_COLUMNS:
-                    errors.append(
-                        f"Confluence rule {index} level '{rule_level}' is an "
-                        "OHLCV/base column and cannot be used as a setup level."
-                    )
-                if rule_level == anchor_level:
-                    errors.append(f"Confluence rule {index} level must not equal anchor_level.")
-                if rule_level in seen_levels:
-                    errors.append(f"Duplicate confluence rule level '{rule_level}' is not allowed.")
-                seen_levels.add(rule_level)
+        rule_level = str(rule.get("level", "")).strip()
+        if not rule_level:
+            errors.append(f"Confluence rule {index} level must be a non-empty string.")
+        else:
+            if rule_level in NON_LEVEL_OUTPUT_COLUMNS:
+                errors.append(
+                    f"Confluence rule {index} level '{rule_level}' is a diagnostic "
+                    "column and cannot be used as a setup level."
+                )
+            elif rule_level in BASE_COLUMNS:
+                errors.append(
+                    f"Confluence rule {index} level '{rule_level}' is an "
+                    "OHLCV/base column and cannot be used as a setup level."
+                )
+            if rule_level == anchor_level:
+                errors.append(f"Confluence rule {index} level must not equal anchor_level.")
+            if rule_level in seen_levels:
+                errors.append(f"Duplicate confluence rule level '{rule_level}' is not allowed.")
+            seen_levels.add(rule_level)
 
-            try:
-                rule_tolerance = float(rule.get("tolerance_ticks", 0.0))
-                if rule_tolerance < 0:
-                    errors.append(f"Confluence rule {index} tolerance_ticks must be >= 0.")
-            except (TypeError, ValueError):
-                errors.append(f"Confluence rule {index} tolerance_ticks must be a number.")
+        try:
+            rule_tolerance = float(rule.get("tolerance_ticks", 0.0))
+            if rule_tolerance < 0:
+                errors.append(f"Confluence rule {index} tolerance_ticks must be >= 0.")
+        except (TypeError, ValueError):
+            errors.append(f"Confluence rule {index} tolerance_ticks must be a number.")
 
-            if not _is_boolean_compatible(rule.get("required")):
-                errors.append(f"Confluence rule {index} required must be boolean-compatible.")
+        if not _is_boolean_compatible(rule.get("required")):
+            errors.append(f"Confluence rule {index} required must be boolean-compatible.")
+    return errors
 
+
+def _validate_setup_trigger_params(config: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    trigger = _setup_trigger(config)
     if trigger in {"fade", "continuation"}:
         trigger_params = config.get("trigger_params", {}) or {}
         if trigger_params and not isinstance(trigger_params, dict):
@@ -589,17 +624,51 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
                         errors.append(f"{key} must be >= 0.")
                 except (TypeError, ValueError):
                     errors.append(f"{key} must be a number.")
+    return errors
 
-    if "otf_filter" in config:
-        for error in validate_otf_filter_config(config.get("otf_filter")):
-            errors.append(f"OTF filter: {error}")
 
-    if "entry_window" in config:
-        exchange_tz = _resolve_setup_exchange_tz(config, None)
+def _validate_setup_otf(config: dict[str, Any]) -> list[str]:
+    if "otf_filter" not in config:
+        return []
+    return [
+        f"OTF filter: {error}" for error in validate_otf_filter_config(config.get("otf_filter"))
+    ]
+
+
+def _validate_setup_entry_window(config: dict[str, Any]) -> list[str]:
+    if "entry_window" not in config:
+        return []
+    exchange_tz = _resolve_setup_exchange_tz(config, None)
+    return [
+        f"Entry window: {error}"
         for error in validate_entry_window_config(
             config.get("entry_window"),
             exchange_tz=exchange_tz,
-        ):
-            errors.append(f"Entry window: {error}")
+        )
+    ]
 
+
+# QI-03-03 clusters. C-2 / C-3 reuse this (name, collect) table *pattern*
+# (their own tables; do not import this one) — no pydantic.
+SETUP_CONFIG_RULES: tuple[SetupConfigRule, ...] = (
+    SetupConfigRule("identity", _validate_setup_identity),
+    SetupConfigRule("enums", _validate_setup_enums),
+    SetupConfigRule("global_cluster", _validate_setup_global_cluster),
+    SetupConfigRule("anchor_rules", _validate_setup_anchor_rules),
+    SetupConfigRule("trigger_params", _validate_setup_trigger_params),
+    SetupConfigRule("otf", _validate_setup_otf),
+    SetupConfigRule("entry_window", _validate_setup_entry_window),
+)
+SETUP_CONFIG_CLUSTERS: tuple[str, ...] = tuple(rule.cluster for rule in SETUP_CONFIG_RULES)
+
+
+def validate_setup_config(config: dict[str, Any]) -> list[str]:
+    """Validate setup config and return a list of user-facing error messages.
+
+    Walks :data:`SETUP_CONFIG_RULES` (C-1 / QI-03-03). Error strings and
+    omitted-key defaults are unchanged. ``build_setup_config`` is separate.
+    """
+    errors: list[str] = []
+    for rule in SETUP_CONFIG_RULES:
+        errors.extend(rule.collect(config))
     return errors
