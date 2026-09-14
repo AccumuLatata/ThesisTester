@@ -12,6 +12,10 @@ Two public entry-points exist:
 * ``detect_3c_setups_with_trigger_timeframe`` — non-base detector.
   Arrival, inside/muted, SFP, and reversal are evaluated on a resampled
   trigger DataFrame.  Retrace fill is evaluated on canonical/base bars.
+
+C-16 (QI-03-02) extracts shared scan / merge helpers so both public
+detectors stay ≤ CC 30. Arrival, reversal, retrace, and SFP math (S3)
+is unchanged.
 """
 
 from __future__ import annotations
@@ -93,28 +97,10 @@ def _valid_bar_index(value: object, size: int) -> int | None:
     return idx
 
 
-def detect_3c_setups(
-    df: pd.DataFrame,
-    candidates: list[CandidateLevel],
-    tick_size: float,
-    trigger_params: dict | None = None,
-) -> list[dict[str, Any]]:
-    if df is None or df.empty or not candidates:
-        return []
-
-    params = _normalize_3c_params(trigger_params)
-    tick_size_f = float(tick_size)
-    arrival_tol = float(params["arrival_tolerance_ticks"]) * tick_size_f
-    retrace_dist = float(params["entry_retrace_ticks"]) * tick_size_f
-    max_wait = max(int(params["max_entry_wait_bars_after_reversal"]), 0)
-
-    df_reset = df.reset_index(drop=True)
-    n = len(df_reset)
-    raw: list[dict[str, Any]] = []
-    active_until_by_key: dict[tuple[float, str, str], int] = {}
-    active_arrival_by_key: dict[tuple[float, str, str], int] = {}
-
-    ordered_candidates = sorted(
+def _ordered_3c_candidates(
+    candidates: list[CandidateLevel], tick_size_f: float
+) -> list[CandidateLevel]:
+    return sorted(
         candidates,
         key=lambda c: (
             int(c.bar_index),
@@ -123,138 +109,151 @@ def detect_3c_setups(
         ),
     )
 
-    for candidate in ordered_candidates:
-        directions = ["long", "short"] if candidate.direction == "both" else [candidate.direction]
-        bar1_idx = int(candidate.bar_index)
-        if bar1_idx < 0 or bar1_idx >= n:
+
+def _3c_effective_key(
+    level_price: float, direction: str, source_mode: str, tick_size_f: float
+) -> tuple[float, str, str]:
+    return (
+        _rounded_price(level_price, tick_size_f),
+        direction,
+        str(source_mode),
+    )
+
+
+def _3c_is_suppressed(
+    active_until_by_key: dict[tuple[float, str, str], int],
+    active_arrival_by_key: dict[tuple[float, str, str], int],
+    effective_key: tuple[float, str, str],
+    bar_idx: int,
+) -> bool:
+    active_until = active_until_by_key.get(effective_key)
+    active_arrival = active_arrival_by_key.get(effective_key)
+    return active_until is not None and bar_idx <= active_until and bar_idx != active_arrival
+
+
+def _3c_arrival_ok(
+    direction: str,
+    *,
+    low: float,
+    high: float,
+    close: float,
+    level_price: float,
+    arrival_tol: float,
+) -> bool:
+    if direction == "long":
+        return low <= level_price + arrival_tol and close > level_price
+    return high >= level_price - arrival_tol and close < level_price
+
+
+def _scan_inside_and_reversal(
+    df: pd.DataFrame,
+    *,
+    start_after: int,
+    n: int,
+    direction: str,
+    bar1_high: float,
+    bar1_low: float,
+) -> tuple[int, int | None, float | None, int | None, bool]:
+    inside_count = 0
+    reversal_idx: int | None = None
+    reversal_close: float | None = None
+    invalidated_at: int | None = None
+    is_sfp = False
+
+    for idx in range(start_after + 1, n):
+        bar = df.iloc[idx]
+        high = float(bar["high"])
+        low = float(bar["low"])
+        close = float(bar["close"])
+        is_inside = high <= bar1_high and low >= bar1_low
+        if is_inside:
+            inside_count += 1
             continue
 
-        bar1 = df_reset.iloc[bar1_idx]
-        bar1_low = float(bar1["low"])
-        bar1_high = float(bar1["high"])
-        bar1_close = float(bar1["close"])
-        level_price = float(candidate.level_price)
+        if direction == "long":
+            rev_ok = close > bar1_high
+            sfp = low < bar1_low and rev_ok
+        else:
+            rev_ok = close < bar1_low
+            sfp = high > bar1_high and rev_ok
 
-        for direction in directions:
-            effective_key = (
-                _rounded_price(level_price, tick_size_f),
-                direction,
-                str(candidate.source_mode),
-            )
-            active_until = active_until_by_key.get(effective_key)
-            active_arrival = active_arrival_by_key.get(effective_key)
-            if active_until is not None and bar1_idx <= active_until and bar1_idx != active_arrival:
-                continue
+        if rev_ok:
+            reversal_idx = idx
+            reversal_close = close
+            is_sfp = sfp
+        else:
+            invalidated_at = idx
+        break
 
-            if direction == "long":
-                arrival_ok = bar1_low <= level_price + arrival_tol and bar1_close > level_price
-            else:
-                arrival_ok = (
-                    float(bar1["high"]) >= level_price - arrival_tol and bar1_close < level_price
-                )
-            if not arrival_ok:
-                continue
+    return inside_count, reversal_idx, reversal_close, invalidated_at, is_sfp
 
-            inside_count = 0
-            reversal_idx: int | None = None
-            reversal_close: float | None = None
-            invalidated_at: int | None = None
-            is_sfp = False
 
-            for idx in range(bar1_idx + 1, n):
-                bar = df_reset.iloc[idx]
-                high = float(bar["high"])
-                low = float(bar["low"])
-                close = float(bar["close"])
-                is_inside = high <= bar1_high and low >= bar1_low
-                if is_inside:
-                    inside_count += 1
-                    continue
+def _touch_active_window(
+    active_until_by_key: dict[tuple[float, str, str], int],
+    active_arrival_by_key: dict[tuple[float, str, str], int],
+    effective_key: tuple[float, str, str],
+    until: int,
+    arrival_idx: int,
+) -> None:
+    existing_active_until = active_until_by_key.get(effective_key)
+    if existing_active_until is None or until >= int(existing_active_until):
+        active_until_by_key[effective_key] = until
+        active_arrival_by_key[effective_key] = arrival_idx
 
-                if direction == "long":
-                    rev_ok = close > bar1_high
-                    sfp = low < bar1_low and rev_ok
-                else:
-                    rev_ok = close < bar1_low
-                    sfp = high > bar1_high and rev_ok
 
-                if rev_ok:
-                    reversal_idx = idx
-                    reversal_close = close
-                    is_sfp = sfp
-                else:
-                    invalidated_at = idx
-                break
+def _entry_trigger_price(direction: str, reversal_close: float, retrace_dist: float) -> float:
+    if direction == "long":
+        return reversal_close - retrace_dist
+    return reversal_close + retrace_dist
 
-            if reversal_idx is None or reversal_close is None:
-                if invalidated_at is not None:
-                    existing_active_until = active_until_by_key.get(effective_key)
-                    if existing_active_until is None or invalidated_at >= int(
-                        existing_active_until
-                    ):
-                        active_until_by_key[effective_key] = int(invalidated_at)
-                        active_arrival_by_key[effective_key] = bar1_idx
-                continue
 
-            if direction == "long":
-                entry_trigger_price = reversal_close - retrace_dist
-            else:
-                entry_trigger_price = reversal_close + retrace_dist
+def _scan_retrace_fill(
+    df: pd.DataFrame,
+    *,
+    start_after: int,
+    watch_end: int,
+    direction: str,
+    entry_trigger_price: float,
+) -> int | None:
+    for idx in range(start_after + 1, watch_end + 1):
+        bar = df.iloc[idx]
+        if direction == "long":
+            hit = float(bar["low"]) <= entry_trigger_price
+        else:
+            hit = float(bar["high"]) >= entry_trigger_price
+        if hit:
+            return idx
+    return None
 
-            entry_idx: int | None = None
-            watch_end = min(n - 1, reversal_idx + max_wait)
-            for idx in range(reversal_idx + 1, watch_end + 1):
-                bar = df_reset.iloc[idx]
-                if direction == "long":
-                    hit = float(bar["low"]) <= entry_trigger_price
-                else:
-                    hit = float(bar["high"]) >= entry_trigger_price
-                if hit:
-                    entry_idx = idx
-                    break
 
-            status = "filled" if entry_idx is not None else "void"
-            resolved_through_bar = int(entry_idx) if entry_idx is not None else int(watch_end)
-            is_muted = inside_count > 0
-            raw.append(
-                {
-                    "timestamp": df_reset.iloc[entry_idx]["timestamp"]
-                    if entry_idx is not None
-                    else df_reset.iloc[reversal_idx]["timestamp"],
-                    "bar_index": entry_idx if entry_idx is not None else reversal_idx,
-                    "direction": direction,
-                    "trigger_variant": _variant(direction, is_muted, is_sfp),
-                    "is_muted": is_muted,
-                    "is_sfp": is_sfp,
-                    "inside_candle_count": inside_count,
-                    "arrival_bar_index": bar1_idx,
-                    "reversal_bar_index": reversal_idx,
-                    "entry_bar_index": entry_idx,
-                    "entry_trigger_price": entry_trigger_price,
-                    "retrace_entry_price": entry_trigger_price if entry_idx is not None else None,
-                    "status": status,
-                    "arrival_level_price": level_price,
-                    "level_source_mode": candidate.source_mode,
-                    "level_source_label": candidate.source_label,
-                    "zone_id": candidate.zone_id,
-                    "level_id": candidate.level_id,
-                    "entry_retrace_ticks": float(params["entry_retrace_ticks"]),
-                    "source_labels": [candidate.source_label] if candidate.source_label else [],
-                    "zone_ids": [candidate.zone_id] if candidate.zone_id else [],
-                    "level_ids": [candidate.level_id] if candidate.level_id else [],
-                    "source_count": 1,
-                    "level_test_state_at_arrival": candidate.metadata.get(
-                        "level_test_state_at_arrival"
-                    ),
-                    "was_naked_before_arrival": candidate.metadata.get("was_naked_before_arrival"),
-                }
-            )
-            existing_active_until = active_until_by_key.get(effective_key)
-            if existing_active_until is None or resolved_through_bar >= int(existing_active_until):
-                active_until_by_key[effective_key] = resolved_through_bar
-                active_arrival_by_key[effective_key] = bar1_idx
+def _scan_retrace_after_trigger_ts(
+    base_df: pd.DataFrame,
+    *,
+    start_after: int,
+    n_base: int,
+    reversal_trigger_ts: object,
+    window_end_ts: object,
+    direction: str,
+    entry_trigger_price: float,
+) -> int | None:
+    for b_idx in range(start_after + 1, n_base):
+        b_ts = base_df.iloc[b_idx]["timestamp"]
+        if b_ts <= reversal_trigger_ts:
+            continue
+        if b_ts > window_end_ts:
+            break
+        bar = base_df.iloc[b_idx]
+        if direction == "long":
+            hit = float(bar["low"]) <= entry_trigger_price
+        else:
+            hit = float(bar["high"]) >= entry_trigger_price
+        if hit:
+            return b_idx
+    return None
 
-    # Deduplicate by effective setup key while preserving merged metadata.
+
+def _merge_3c_setup_rows(raw: list[dict[str, Any]], tick_size: float) -> list[dict[str, Any]]:
+    """Deduplicate by effective setup key while preserving merged metadata."""
     merged: dict[tuple[float, str, int, str], dict[str, Any]] = {}
     for row in raw:
         key = (
@@ -298,6 +297,137 @@ def detect_3c_setups(
         )
     )
     return out
+
+
+def detect_3c_setups(
+    df: pd.DataFrame,
+    candidates: list[CandidateLevel],
+    tick_size: float,
+    trigger_params: dict | None = None,
+) -> list[dict[str, Any]]:
+    if df is None or df.empty or not candidates:
+        return []
+
+    params = _normalize_3c_params(trigger_params)
+    tick_size_f = float(tick_size)
+    arrival_tol = float(params["arrival_tolerance_ticks"]) * tick_size_f
+    retrace_dist = float(params["entry_retrace_ticks"]) * tick_size_f
+    max_wait = max(int(params["max_entry_wait_bars_after_reversal"]), 0)
+
+    df_reset = df.reset_index(drop=True)
+    n = len(df_reset)
+    raw: list[dict[str, Any]] = []
+    active_until_by_key: dict[tuple[float, str, str], int] = {}
+    active_arrival_by_key: dict[tuple[float, str, str], int] = {}
+
+    for candidate in _ordered_3c_candidates(candidates, tick_size_f):
+        directions = ["long", "short"] if candidate.direction == "both" else [candidate.direction]
+        bar1_idx = int(candidate.bar_index)
+        if bar1_idx < 0 or bar1_idx >= n:
+            continue
+
+        bar1 = df_reset.iloc[bar1_idx]
+        bar1_low = float(bar1["low"])
+        bar1_high = float(bar1["high"])
+        bar1_close = float(bar1["close"])
+        level_price = float(candidate.level_price)
+
+        for direction in directions:
+            effective_key = _3c_effective_key(
+                level_price, direction, str(candidate.source_mode), tick_size_f
+            )
+            if _3c_is_suppressed(
+                active_until_by_key, active_arrival_by_key, effective_key, bar1_idx
+            ):
+                continue
+
+            if not _3c_arrival_ok(
+                direction,
+                low=bar1_low,
+                high=float(bar1["high"]),
+                close=bar1_close,
+                level_price=level_price,
+                arrival_tol=arrival_tol,
+            ):
+                continue
+
+            inside_count, reversal_idx, reversal_close, invalidated_at, is_sfp = (
+                _scan_inside_and_reversal(
+                    df_reset,
+                    start_after=bar1_idx,
+                    n=n,
+                    direction=direction,
+                    bar1_high=bar1_high,
+                    bar1_low=bar1_low,
+                )
+            )
+
+            if reversal_idx is None or reversal_close is None:
+                if invalidated_at is not None:
+                    _touch_active_window(
+                        active_until_by_key,
+                        active_arrival_by_key,
+                        effective_key,
+                        int(invalidated_at),
+                        bar1_idx,
+                    )
+                continue
+
+            entry_trigger_price = _entry_trigger_price(direction, reversal_close, retrace_dist)
+            watch_end = min(n - 1, reversal_idx + max_wait)
+            entry_idx = _scan_retrace_fill(
+                df_reset,
+                start_after=reversal_idx,
+                watch_end=watch_end,
+                direction=direction,
+                entry_trigger_price=entry_trigger_price,
+            )
+
+            status = "filled" if entry_idx is not None else "void"
+            resolved_through_bar = int(entry_idx) if entry_idx is not None else int(watch_end)
+            is_muted = inside_count > 0
+            raw.append(
+                {
+                    "timestamp": df_reset.iloc[entry_idx]["timestamp"]
+                    if entry_idx is not None
+                    else df_reset.iloc[reversal_idx]["timestamp"],
+                    "bar_index": entry_idx if entry_idx is not None else reversal_idx,
+                    "direction": direction,
+                    "trigger_variant": _variant(direction, is_muted, is_sfp),
+                    "is_muted": is_muted,
+                    "is_sfp": is_sfp,
+                    "inside_candle_count": inside_count,
+                    "arrival_bar_index": bar1_idx,
+                    "reversal_bar_index": reversal_idx,
+                    "entry_bar_index": entry_idx,
+                    "entry_trigger_price": entry_trigger_price,
+                    "retrace_entry_price": entry_trigger_price if entry_idx is not None else None,
+                    "status": status,
+                    "arrival_level_price": level_price,
+                    "level_source_mode": candidate.source_mode,
+                    "level_source_label": candidate.source_label,
+                    "zone_id": candidate.zone_id,
+                    "level_id": candidate.level_id,
+                    "entry_retrace_ticks": float(params["entry_retrace_ticks"]),
+                    "source_labels": [candidate.source_label] if candidate.source_label else [],
+                    "zone_ids": [candidate.zone_id] if candidate.zone_id else [],
+                    "level_ids": [candidate.level_id] if candidate.level_id else [],
+                    "source_count": 1,
+                    "level_test_state_at_arrival": candidate.metadata.get(
+                        "level_test_state_at_arrival"
+                    ),
+                    "was_naked_before_arrival": candidate.metadata.get("was_naked_before_arrival"),
+                }
+            )
+            _touch_active_window(
+                active_until_by_key,
+                active_arrival_by_key,
+                effective_key,
+                resolved_through_bar,
+                bar1_idx,
+            )
+
+    return _merge_3c_setup_rows(raw, tick_size)
 
 
 # ---------------------------------------------------------------------------
@@ -378,16 +508,7 @@ def detect_3c_setups_with_trigger_timeframe(
     active_until_by_key: dict[tuple[float, str, str], int] = {}
     active_arrival_by_key: dict[tuple[float, str, str], int] = {}
 
-    ordered_candidates = sorted(
-        candidates,
-        key=lambda c: (
-            int(c.bar_index),
-            str(c.source_mode),
-            _rounded_price(float(c.level_price), tick_size_f),
-        ),
-    )
-
-    for candidate in ordered_candidates:
+    for candidate in _ordered_3c_candidates(candidates, tick_size_f):
         directions = ["long", "short"] if candidate.direction == "both" else [candidate.direction]
         t_arr_idx = int(candidate.bar_index)  # trigger df index of arrival candle
         if t_arr_idx < 0 or t_arr_idx >= n_trigger:
@@ -406,66 +527,44 @@ def detect_3c_setups_with_trigger_timeframe(
             continue
 
         for direction in directions:
-            effective_key = (
-                _rounded_price(level_price, tick_size_f),
-                direction,
-                str(candidate.source_mode),
+            effective_key = _3c_effective_key(
+                level_price, direction, str(candidate.source_mode), tick_size_f
             )
-            active_until = active_until_by_key.get(effective_key)
-            active_arrival = active_arrival_by_key.get(effective_key)
-            if (
-                active_until is not None
-                and t_arr_idx <= active_until
-                and t_arr_idx != active_arrival
+            if _3c_is_suppressed(
+                active_until_by_key, active_arrival_by_key, effective_key, t_arr_idx
             ):
                 continue
 
-            if direction == "long":
-                arrival_ok = t_arr_low <= level_price + arrival_tol and t_arr_close > level_price
-            else:
-                arrival_ok = t_arr_high >= level_price - arrival_tol and t_arr_close < level_price
-            if not arrival_ok:
+            if not _3c_arrival_ok(
+                direction,
+                low=t_arr_low,
+                high=t_arr_high,
+                close=t_arr_close,
+                level_price=level_price,
+                arrival_tol=arrival_tol,
+            ):
                 continue
 
-            inside_count = 0
-            t_rev_idx: int | None = None
-            reversal_close: float | None = None
-            invalidated_at: int | None = None
-            is_sfp = False
-
-            for idx in range(t_arr_idx + 1, n_trigger):
-                bar = trigger_df_reset.iloc[idx]
-                high = float(bar["high"])
-                low = float(bar["low"])
-                close = float(bar["close"])
-                is_inside = high <= t_arr_high and low >= t_arr_low
-                if is_inside:
-                    inside_count += 1
-                    continue
-
-                if direction == "long":
-                    rev_ok = close > t_arr_high
-                    sfp = low < t_arr_low and rev_ok
-                else:
-                    rev_ok = close < t_arr_low
-                    sfp = high > t_arr_high and rev_ok
-
-                if rev_ok:
-                    t_rev_idx = idx
-                    reversal_close = close
-                    is_sfp = sfp
-                else:
-                    invalidated_at = idx
-                break
+            inside_count, t_rev_idx, reversal_close, invalidated_at, is_sfp = (
+                _scan_inside_and_reversal(
+                    trigger_df_reset,
+                    start_after=t_arr_idx,
+                    n=n_trigger,
+                    direction=direction,
+                    bar1_high=t_arr_high,
+                    bar1_low=t_arr_low,
+                )
+            )
 
             if t_rev_idx is None or reversal_close is None:
                 if invalidated_at is not None:
-                    existing_active_until = active_until_by_key.get(effective_key)
-                    if existing_active_until is None or invalidated_at >= int(
-                        existing_active_until
-                    ):
-                        active_until_by_key[effective_key] = int(invalidated_at)
-                        active_arrival_by_key[effective_key] = t_arr_idx
+                    _touch_active_window(
+                        active_until_by_key,
+                        active_arrival_by_key,
+                        effective_key,
+                        int(invalidated_at),
+                        t_arr_idx,
+                    )
                 continue
 
             # Reversal trigger candle end timestamp — used as base-scan boundary.
@@ -475,32 +574,22 @@ def detect_3c_setups_with_trigger_timeframe(
             if base_reversal_idx is None:
                 continue
 
-            if direction == "long":
-                entry_trigger_price = reversal_close - retrace_dist
-            else:
-                entry_trigger_price = reversal_close + retrace_dist
+            entry_trigger_price = _entry_trigger_price(direction, reversal_close, retrace_dist)
 
             # Window end: reversal_trigger_ts + max_wait * trigger_timeframe_delta
             window_end_ts = reversal_trigger_ts + max_wait * trigger_timeframe_delta
 
             # Scan base bars for retrace fill.
             # Eligible: base.timestamp > reversal_trigger_ts AND <= window_end_ts
-            entry_idx_base: int | None = None
-
-            for b_idx in range(base_reversal_idx + 1, n_base):
-                b_ts = base_df_reset.iloc[b_idx]["timestamp"]
-                if b_ts <= reversal_trigger_ts:
-                    continue
-                if b_ts > window_end_ts:
-                    break
-                bar = base_df_reset.iloc[b_idx]
-                if direction == "long":
-                    hit = float(bar["low"]) <= entry_trigger_price
-                else:
-                    hit = float(bar["high"]) >= entry_trigger_price
-                if hit:
-                    entry_idx_base = b_idx
-                    break
+            entry_idx_base = _scan_retrace_after_trigger_ts(
+                base_df_reset,
+                start_after=base_reversal_idx,
+                n_base=n_base,
+                reversal_trigger_ts=reversal_trigger_ts,
+                window_end_ts=window_end_ts,
+                direction=direction,
+                entry_trigger_price=entry_trigger_price,
+            )
 
             status = "filled" if entry_idx_base is not None else "void"
             resolved_through_trigger = t_rev_idx + max_wait  # trigger bar count
@@ -552,53 +641,12 @@ def detect_3c_setups_with_trigger_timeframe(
                     "trigger_timestamp": reversal_trigger_ts,
                 }
             )
-            existing_active_until = active_until_by_key.get(effective_key)
-            if existing_active_until is None or resolved_through_trigger >= int(
-                existing_active_until
-            ):
-                active_until_by_key[effective_key] = resolved_through_trigger
-                active_arrival_by_key[effective_key] = t_arr_idx
+            _touch_active_window(
+                active_until_by_key,
+                active_arrival_by_key,
+                effective_key,
+                resolved_through_trigger,
+                t_arr_idx,
+            )
 
-    # Deduplicate by effective setup key (same logic as detect_3c_setups).
-    merged: dict[tuple[float, str, int, str], dict[str, Any]] = {}
-    for row in raw:
-        key = (
-            _rounded_price(float(row["arrival_level_price"]), float(tick_size)),
-            str(row["direction"]),
-            int(row["arrival_bar_index"]),
-            str(row["level_source_mode"]),
-        )
-        if key not in merged:
-            merged[key] = row
-            continue
-        prev = merged[key]
-
-        if prev["status"] == "void" and row["status"] == "filled":
-            keep, other = row, prev
-        elif prev["status"] == "filled" and row["status"] == "void":
-            keep, other = prev, row
-        else:
-            keep, other = prev, row
-
-        labels = set(keep.get("source_labels", [])) | set(other.get("source_labels", []))
-        zone_ids = set(keep.get("zone_ids", [])) | set(other.get("zone_ids", []))
-        level_ids = set(keep.get("level_ids", [])) | set(other.get("level_ids", []))
-        keep["source_labels"] = sorted(v for v in labels if v)
-        keep["zone_ids"] = sorted(v for v in zone_ids if v)
-        keep["level_ids"] = sorted(v for v in level_ids if v)
-        keep["source_count"] = (
-            len(keep["level_ids"])
-            if keep["level_ids"]
-            else max(int(keep.get("source_count", 1)), 1)
-        )
-        merged[key] = keep
-
-    out = list(merged.values())
-    out.sort(
-        key=lambda row: (
-            int(row["arrival_bar_index"]),
-            int(row["reversal_bar_index"]),
-            row["direction"],
-        )
-    )
-    return out
+    return _merge_3c_setup_rows(raw, tick_size)

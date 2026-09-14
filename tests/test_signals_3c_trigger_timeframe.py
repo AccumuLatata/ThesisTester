@@ -1456,3 +1456,41 @@ class TestValidBarIndex:
 
     def test_string_rejected(self):
         assert _valid_bar_index("abc", self.SIZE) is None
+
+
+def test_c16_htf_detector_identity_vs_origin_main():
+    """Live vs origin/main — HTF S3 path must stay byte-identical after C-16."""
+    from tests.test_signals_3c import _origin_main_signals_3c
+
+    baseline = _origin_main_signals_3c().detect_3c_setups_with_trigger_timeframe
+    current = _run_nonbase(_make_standard_15row_long_base_rows())
+    expected = _run_nonbase_with(baseline, _make_standard_15row_long_base_rows())
+    assert current == expected
+
+
+def _run_nonbase_with(
+    detector,
+    base_rows: list[dict],
+    direction: str = "long",
+    trigger_timeframe: str = "5min",
+    price: float = 100.0,
+    params: dict | None = None,
+) -> list[dict]:
+    base_df = _base_df(base_rows, freq="1min")
+    base_df_reset = base_df.reset_index(drop=True)
+    trigger_df = _prepare_trigger_dataframe(base_df_reset, trigger_timeframe)
+    delta = pd.to_timedelta(trigger_timeframe)
+    candidate = _candidate_trigger(
+        direction=direction,
+        price=price,
+        trigger_bar_index=0,
+    )
+    return detector(
+        trigger_df=trigger_df,
+        base_df=base_df_reset,
+        candidates=[candidate],
+        tick_size=TICK,
+        trigger_params=params
+        or {"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+        trigger_timeframe_delta=delta,
+    )

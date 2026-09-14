@@ -1298,9 +1298,11 @@ admission (`_admit_zones_for_signals`), and a trigger dispatch table
 (`_SIMPLE_TRIGGER_CHECKERS` / `_APPROACH_SIDE_CHECKERS`) plus the
 existing 3c row-mapping body (`_generate_3c_signals`). `_check_*`
 bodies, the `_find_tested_level_for_arrival` sort key, 3c detectors
-(S3 / DA0), and public `VALID_TRIGGERS` are unchanged. C-16 owns
-sharing the two 3c mappers; C-15 owns `iterrows` replacement behind
-these helpers. Identity vs `origin/main` is live `hash_dataframe` /
+(S3 / DA0), and public `VALID_TRIGGERS` are unchanged. C-16 shares
+the two 3c mappers (`_map_3c_setup_to_signal`) and detector scan/merge
+helpers; the mapper selects base vs HTF fields by
+`effective_trigger_timeframe` (no silent base-index fallback when the
+HTF trigger frame is missing). C-15 owns `iterrows` replacement behind these helpers. Identity vs `origin/main` is live `hash_dataframe` /
 `assert_frame_equal` on CAI + golden fixtures (hexes are not frozen).
 `classify_zone_triggers` still does not call
 `generate_signals`.
