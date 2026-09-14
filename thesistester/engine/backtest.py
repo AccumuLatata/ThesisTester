@@ -37,7 +37,7 @@ from .intrabar import (
     prepare_subtimeframe_conservative_context,
     validate_intrabar_model,
 )
-from .sim_core import BarData, compute_session_close_cap, walk_trade_exit
+from .sim_core import BarData, TradeExitWalk, compute_session_close_cap, walk_trade_exit
 from .exit_management import (
     exit_management_enabled,
     policy_dict as exit_management_policy_dict,
@@ -914,7 +914,7 @@ def _exposure_skip_for_candidate(
 
 
 def _finalize_exit_walk(
-    walk: Any,
+    walk: TradeExitWalk,
     *,
     bars: BarData,
     n_bars: int,
@@ -925,9 +925,7 @@ def _finalize_exit_walk(
     intrabar_model: str,
 ) -> _ExitOutcome:
     """Map a serial P7 walk onto C-18 exit tokens. No P&L."""
-    exit_bar_index = walk.exit_bar_index
-    theoretical_exit_price = walk.theoretical_exit_price
-    exit_reason: str | None = None
+    exit_reason: str
     intrabar_resolution = "not_evaluated"
     intrabar_parent_both_hit = False
     intrabar_ambiguous = False
@@ -941,6 +939,10 @@ def _finalize_exit_walk(
     subtimeframe_fallback_exit_count = 0
     resolution = walk.resolution
     if resolution is not None and resolution.exit_kind is not None:
+        if walk.exit_bar_index is None or walk.theoretical_exit_price is None:
+            raise RuntimeError("P7 walk reported a bracket hit without exit coordinates")
+        exit_bar_index = walk.exit_bar_index
+        theoretical_exit_price = walk.theoretical_exit_price
         if (
             resolution.exit_kind == EXIT_SL
             and walk.stop_state.active_reason in EXIT_MANAGED_STOP_REASONS
@@ -963,7 +965,7 @@ def _finalize_exit_walk(
         bracket_exit_count = 1
         if resolution.parent_both_hit:
             both_hit_count = 1
-            affected_bar = walk.exit_bar_index
+            affected_bar = exit_bar_index
         if intrabar_ambiguous:
             ambiguous_count = 1
         if resolution.proximity_tie:
@@ -1005,9 +1007,9 @@ def _finalize_exit_walk(
             ambiguous_count = 1
 
     return _ExitOutcome(
-        exit_bar_index=int(exit_bar_index),
-        theoretical_exit_price=float(theoretical_exit_price),
-        exit_reason=str(exit_reason),
+        exit_bar_index=exit_bar_index,
+        theoretical_exit_price=theoretical_exit_price,
+        exit_reason=exit_reason,
         intrabar_resolution=intrabar_resolution,
         intrabar_parent_both_hit=intrabar_parent_both_hit,
         intrabar_ambiguous=intrabar_ambiguous,
@@ -1061,6 +1063,10 @@ def _simulate_trade_exit(
     session_cap_bar: int | None = None
     data_end_before_session_close = False
     if flat_by_session_close:
+        # Narrow before the R22 call. Public simulate_trades already rejects
+        # flatten-without-clock; do not AttributeError on session_close.hour.
+        if parsed_session_close is None:
+            raise ValueError("flat_by_session_close=True requires a valid session_close_time.")
         cap = compute_session_close_cap(
             local_timestamps,
             entry_bar_index=entry_bar_index,
@@ -1070,7 +1076,6 @@ def _simulate_trade_exit(
         )
         if cap.empty:
             return None
-        assert parsed_session_close is not None
         session_cap_bar = cap.session_cap_bar
         data_end_before_session_close = cap.data_end_before_session_close
     walk = walk_trade_exit(
@@ -1546,8 +1551,8 @@ def simulate_trades(
     risk_currency = float(stop_loss_ticks) * float(tick_size) * float(point_value)
     capture_skips = return_skipped_signals or return_result
 
-    trades: list[dict] = []
-    skipped_signals: list[dict] = []
+    trades: list[dict[str, Any]] = []
+    skipped_signals: list[dict[str, Any]] = []
     trade_id = 0
     bracket_exit_count = 0
     both_hit_count = 0
@@ -1581,7 +1586,7 @@ def simulate_trades(
         same_bar_opposite_direction=same_bar_opposite_direction,
     )
 
-    accepted_for_blocking: list[dict] = []
+    accepted_for_blocking: list[dict[str, Any]] = []
     for candidate in ordered_candidates:
         sig = candidate["sig"]
         if (
