@@ -66,7 +66,9 @@ takes a mapping) + one-function `app_state` adapter (lazy Streamlit).
 `classic_*` Streamlit imports stay lazy. C-9 (QI-08-02) slims the journal
 barrel and lazy-binds classify so `import thesistester.journal` does not
 load `engine.backtest`. C-10 (QI-08-01) is one qty-scaled P&L helper
-(`qty_scaled_journal_pnl`) plus shared `journal_cost_ticks`. Next: C-11.
+(`qty_scaled_journal_pnl`) plus shared `journal_cost_ticks`. C-11 (QI-06-10)
+extracts execution-artifact verify/publish/evict helpers behind containment
+guards. Next: C-12.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -228,7 +230,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    C-9 (QI-08-02) slims `journal/__init__.py` (lazy JS/TJ exports) and
    lazy-binds `_classify_zone_triggers_detail` in `journal/triggers.py`.
    C-10 (QI-08-01) is `qty_scaled_journal_pnl` (pair then `_cost_row`) plus
-   shared `journal_cost_ticks`. Next: C-11.
+   shared `journal_cost_ticks`. C-11 (QI-06-10) extracts verify/publish/evict
+   helpers from `execution_artifacts.py` (containment guards unchanged).
+   Next: C-12.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`

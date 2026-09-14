@@ -504,3 +504,29 @@ def test_fsync_file_swallows_close_oserror(tmp_path: Path, monkeypatch: pytest.M
     # the patched close would raise on some interpreters' file teardown.
     assert path.stat().st_size == len(before)
     assert tmp_path.is_dir()
+
+
+def test_cache_policy_default_stays_off() -> None:
+    from thesistester.persistence.execution_artifacts import normalize_cache_policy
+
+    assert normalize_cache_policy(None) == "off"
+    assert normalize_cache_policy("legacy") == "off"
+    assert normalize_cache_policy("read_write") == "read_write"
+
+
+def test_eviction_helpers_select_without_deleting() -> None:
+    from thesistester.persistence.execution_artifact_ops import (
+        select_eviction_victims,
+        validate_eviction_limits,
+    )
+
+    with pytest.raises(ValueError, match="at least one"):
+        validate_eviction_limits(max_entries=None, max_total_bytes=None, max_age_seconds=None)
+    records = [
+        {"artifact_key": "old", "accessed_at": "2020-01-01T00:00:00+00:00", "size_bytes": 10},
+        {"artifact_key": "new", "accessed_at": "2026-01-01T00:00:00+00:00", "size_bytes": 10},
+    ]
+    victims = select_eviction_victims(
+        records, max_entries=1, max_total_bytes=None, max_age_seconds=None
+    )
+    assert [row["artifact_key"] for row in victims] == ["old"]
