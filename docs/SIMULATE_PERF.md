@@ -31,17 +31,16 @@ deterministic synthetic 1-minute OHLCV (`tests/benchmarks/fixtures.py`):
 
 ## Recorded baseline
 
-Recorded on the C-19 extract environment: CPython 3.12.3, pandas 3.0.5,
-NumPy 2.5.3, Linux 6.12. Prior C-18 / R22 ruler (CPython 3.12, pandas 3.0.5,
-NumPy 2.4.6) was 4.645 / 27.019 / 52.943 / 204.473 ms median. This re-time
-is within noise on the same scenarios (+0.8% / +4.6% / +4.3% / +0.9%).
+Recorded on the C-20 `BarData` float64 environment: CPython 3.12.3,
+pandas 3.0.5, NumPy 2.5.3, Linux 6.12. Prior C-19 extract ruler was
+4.683 / 28.257 / 55.204 / 206.236 ms median on the same host class.
 
 | Scenario | Bars | Signals | Holding cap | Median ms | P95 ms |
 |---|---:|---:|---:|---:|---:|
-| `simulate_trades` | 500 | 10 | 50 | 4.683 | 4.690 |
-| `simulate_trades` | 500 | 100 | 50 | 28.257 | 28.266 |
-| `simulate_trades` | 2,000 | 100 | 200 | 55.204 | 55.318 |
-| `run_sl_tp_grid_3x3` | 500 | 50 | 50 | 206.236 | 206.256 |
+| `simulate_trades` | 500 | 10 | 50 | 4.863 | 4.880 |
+| `simulate_trades` | 500 | 100 | 50 | 30.166 | 31.435 |
+| `simulate_trades` | 2,000 | 100 | 200 | 59.234 | 59.378 |
+| `run_sl_tp_grid_3x3` | 500 | 50 | 50 | 214.443 | 214.711 |
 
 The grid result demonstrates the expected multiplicative cost: each grid cell
 replays the serial engine. R15/R16/R19 and walk-forward work compound that
@@ -52,12 +51,15 @@ serial-parity implementation and measurement PR.
 
 ## R22 core boundary
 
-`thesistester.engine.sim_core` owns immutable parent-bar OHLC snapshots,
-one-bar bracket resolution, and the C-19 serial P7 walk
-(`walk_trade_exit`, `compute_session_close_cap`). `simulate_trades`
-remains the sole public orchestrator for admission, skip/exit labels,
-costs, trade records, and diagnostics. `sim_core` still holds no
-admission or P&L. This keeps any future hot-loop acceleration (E-10)
-constrained to the small internal boundary while preserving exact legacy
-semantics. C-19 is a behavior-preserving extract; the ruler above is
-re-timed on that extract.
+`thesistester.engine.sim_core` owns immutable parent-bar OHLC snapshots
+as write-protected ``float64`` arrays (C-20 / QI-14-09), one-bar
+bracket resolution, and the C-19 serial P7 walk (`walk_trade_exit`,
+`compute_session_close_cap`). `BarData.at()` still yields Python
+``float`` scalars so `resolve_ohlc_bar` math is unchanged. Non-numpy
+OHLC dtypes keep C-19 ``float()`` fail-closed.
+`simulate_trades` remains the sole public orchestrator for admission,
+skip/exit labels, costs, trade records, and diagnostics. `sim_core`
+still holds no admission or P&L. This keeps any future hot-loop
+acceleration (E-10) constrained to the small internal boundary while
+preserving exact legacy semantics. The ruler above is re-timed on the
+C-20 storage change.
