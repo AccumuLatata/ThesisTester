@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import ast
+import subprocess
+import sys
+import types
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -936,3 +942,181 @@ def test_overlap_first_oos_trades_follow_exit_timestamp_sort():
         assert entry_order != exit_order
         assert list(owned.oos_trades["signal_id"]) == exit_order
         assert owned.summary["stitched_oos_trade_count"] == len(owned.oos_trades)
+
+
+def _origin_main_walk_forward():
+    """Load walk-forward from the PR base (origin/main).
+
+    Hex digests are computed live in-process. Do not freeze them as CI goldens.
+    """
+    from tests.test_journal_triggers import _regression_base_ref
+
+    name = "thesistester.analytics._walk_forward_origin_main"
+    cached = sys.modules.get(name)
+    if cached is not None:
+        return cached
+    ref = _regression_base_ref()
+    src = subprocess.check_output(
+        ["git", "show", f"{ref}:thesistester/analytics/walk_forward.py"],
+        text=True,
+    )
+    module = types.ModuleType(name)
+    module.__file__ = f"<{ref} thesistester/analytics/walk_forward.py>"
+    module.__package__ = "thesistester.analytics"
+    sys.modules[name] = module
+    exec(compile(src, module.__file__, "exec"), module.__dict__)
+    return module
+
+
+def test_c17_orchestrator_calls_phase_helpers():
+    tree = ast.parse(Path("thesistester/analytics/walk_forward.py").read_text())
+    calls: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "run_walk_forward_sl_tp":
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
+                    calls.add(child.func.id)
+    assert "_validate_walk_forward_run" in calls
+    assert "_train_fold_grid" in calls
+    assert "_stitch_walk_forward_oos" in calls
+    assert "_assemble_walk_forward_result" in calls
+    assert "_bar_fold_boundaries" in calls
+    assert "_session_fold_boundaries" in calls
+    assert "_otf_source_for_fold" in calls
+
+
+def test_c17_fold_and_causal_prefix_ast_match_origin_main():
+    """S5 / AH §2 item 6: fold constructors and causal_prefix stay byte-identical."""
+    from tests.test_journal_triggers import _regression_base_ref
+
+    locked = (
+        "_bar_fold_boundaries",
+        "_session_fold_boundaries",
+        "_otf_source_for_fold",
+        "_filter_fold_signals_with_otf",
+    )
+    current_src = Path("thesistester/analytics/walk_forward.py").read_text()
+    current_tree = ast.parse(current_src)
+    current = {
+        node.name: ast.dump(node, include_attributes=False)
+        for node in current_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in locked
+    }
+    expected_src = subprocess.check_output(
+        ["git", "show", f"{_regression_base_ref()}:thesistester/analytics/walk_forward.py"],
+        text=True,
+    )
+    expected_tree = ast.parse(expected_src)
+    expected = {
+        node.name: ast.dump(node, include_attributes=False)
+        for node in expected_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in locked
+    }
+    assert set(current) == set(expected) == set(locked)
+    for name in locked:
+        assert current[name] == expected[name], name
+
+
+def _assert_wfa_result_equal(current, expected) -> None:
+    from thesistester.persistence.local_store import hash_dataframe
+
+    if isinstance(current, WalkForwardResult):
+        assert isinstance(expected, WalkForwardResult)
+        pd.testing.assert_frame_equal(current.folds, expected.folds)
+        pd.testing.assert_frame_equal(current.oos_trades, expected.oos_trades)
+        pd.testing.assert_frame_equal(current.stitched_equity, expected.stitched_equity)
+        assert current.summary == expected.summary
+        assert current.warnings == expected.warnings
+        assert current.config == expected.config
+        assert current.schema_version == expected.schema_version
+        assert hash_dataframe(current.folds) == hash_dataframe(expected.folds)
+        return
+    pd.testing.assert_frame_equal(current, expected)
+    assert hash_dataframe(current) == hash_dataframe(expected)
+
+
+def test_c17_wfa_artifacts_identity_vs_origin_main():
+    """Live vs origin/main — do not freeze hash_dataframe hexes as CI goldens."""
+    baseline = _origin_main_walk_forward().run_walk_forward_sl_tp
+    bar_df = _ohlcv(12)
+    bar_signals = _signal_df(*[_touch_signal(i, i) for i in range(10)])
+    session_df = _session_ohlcv(8)
+    cases = [
+        (
+            "bars folds",
+            dict(
+                df=bar_df,
+                signals=bar_signals,
+                tick_size=TICK,
+                point_value=POINT,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=4,
+                test_bars=2,
+                step_bars=2,
+            ),
+        ),
+        (
+            "session detailed",
+            dict(
+                df=_session_ohlcv(6),
+                signals=_session_signals(_session_ohlcv(6)),
+                tick_size=TICK,
+                point_value=POINT,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=1,
+                test_bars=1,
+                fold_mode="sessions",
+                train_sessions=2,
+                test_sessions=1,
+                step_sessions=1,
+                return_result=True,
+            ),
+        ),
+        (
+            "overlap reject",
+            dict(
+                df=session_df,
+                signals=_session_signals(session_df),
+                tick_size=TICK,
+                point_value=POINT,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=1,
+                test_bars=1,
+                fold_mode="sessions",
+                train_sessions=2,
+                test_sessions=2,
+                step_sessions=1,
+                overlap_policy="reject",
+                return_result=True,
+            ),
+        ),
+        (
+            "overlap first",
+            dict(
+                df=session_df,
+                signals=_session_signals(session_df),
+                tick_size=TICK,
+                point_value=POINT,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=1,
+                test_bars=1,
+                fold_mode="sessions",
+                train_sessions=2,
+                test_sessions=2,
+                step_sessions=1,
+                overlap_policy="first",
+                return_result=True,
+            ),
+        ),
+    ]
+    for label, kwargs in cases:
+        current = run_walk_forward_sl_tp(**kwargs)
+        expected = baseline(**kwargs)
+        try:
+            _assert_wfa_result_equal(current, expected)
+        except AssertionError as exc:
+            raise AssertionError(label) from exc
