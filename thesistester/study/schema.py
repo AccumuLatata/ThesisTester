@@ -796,9 +796,6 @@ STUDY_REPORT_FIELD_RULES: tuple[StudyReportFieldRule, ...] = (
     StudyReportFieldRule("primary_metric", _INDEX_PRIMARY_METRICS),
     StudyReportFieldRule("multiple_testing", _MULTIPLE_TESTING_MODES),
 )
-STUDY_REPORT_FIELD_ALLOWED: dict[str, frozenset[str]] = {
-    rule.field: rule.allowed for rule in STUDY_REPORT_FIELD_RULES
-}
 STUDY_INGEST_RULES: tuple[StudyIngestRule, ...] = (
     StudyIngestRule("ingestion_mode", STUDY_INGESTION_MODES, "primary"),
 )
