@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from tests.fixtures.assistant_parity import write_parity_bars, parity_run_spec
 from thesistester.api import run_experiment
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 
 from .cai_cold_path import measure_cai_cold_path
 
+pytestmark = pytest.mark.benchmark
 
 _EXPECTED_STAGES = [
     "load_dataset",

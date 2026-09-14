@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from tests.fixtures.golden.canonical import canonicalize_trades
 from tests.fixtures.golden.generate_fade_enabled import (
@@ -25,6 +26,8 @@ from tests.fixtures.golden.record_fade_enabled_golden import (
     TRADES_CSV_PATH,
     _signal_projection,
 )
+
+pytestmark = pytest.mark.golden
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "golden"
 LEGACY_ARTIFACTS = (

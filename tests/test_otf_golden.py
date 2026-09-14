@@ -34,6 +34,8 @@ from tests.fixtures.golden.record_otf_enabled_golden import (
     _signal_projection,
 )
 
+pytestmark = pytest.mark.golden
+
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "golden"
 LEGACY_ARTIFACTS = (
     "dataset_nq_1m_small.parquet",

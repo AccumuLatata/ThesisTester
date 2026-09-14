@@ -32,6 +32,7 @@ from thesistester.reporting import (
     build_otf_filter_metadata,
 )
 
+pytestmark = pytest.mark.integration
 
 TZ = "America/New_York"
 TICK = 0.25

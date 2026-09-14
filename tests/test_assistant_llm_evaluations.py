@@ -57,6 +57,8 @@ from thesistester.assistant.results_projections import build_ephemeral_results_c
 from thesistester.assistant.results_qa import RESULTS_QA_CHANNEL, propose_results_reply
 from thesistester.assistant.tools import AssistantTools
 
+pytestmark = pytest.mark.eval
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 

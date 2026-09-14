@@ -71,9 +71,19 @@ include = ["thesistester*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# B-12 registers `serial` for AppTest modules (QI-11-03). The rest of the
-# marker set (unit/integration/golden/eval/benchmark/oracle) is B-15.
+# B-15 / QI-11-05: warn-first marker set. The required CI cell is still the
+# full unmarked suite (`pytest -q`). `pytest -m unit` is the local loop.
+# `--strict-markers` fails unknown names only — unmarked tests stay legal
+# and become `unit` via tests/conftest.py. Do not add xdist here; `serial`
+# must land on AppTest files first (B-12 / B-13).
+addopts = ["--strict-markers"]
 markers = [
+    "unit: fast isolated test; default class when no other class marker is set (B-15 / QI-11-05)",
+    "integration: cross-module or process-level path (OTF/lifecycle/3c; AppTest via serial)",
+    "golden: identity golden-master family (legacy or additive default-on)",
+    "eval: offline assistant/voice release-gate evaluations (stub clients)",
+    "benchmark: informational timing harness (median_ms >= 0; not a perf gate)",
+    "oracle: env-gated desk oracle (Quantower / session-20 ticks; skipped in CI)",
     "serial: AppTest / process-global Streamlit harness; isolate from xdist (B-12 / QI-11-03)",
 ]
 

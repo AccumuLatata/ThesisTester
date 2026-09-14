@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from .cai_warm_path import measure_cai_warm_path
+
+pytestmark = pytest.mark.benchmark
 
 
 def test_cai_small_warm_path_harness_is_complete_and_hash_safe():

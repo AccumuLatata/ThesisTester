@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from tests.fixtures.golden.canonical import canonicalize_trades
 from tests.fixtures.golden.generate_default_on import (
@@ -30,6 +31,8 @@ from tests.fixtures.golden.pipeline_default_on import (
 )
 from tests.fixtures.golden.record_default_on_golden import _skip_projection
 from tests.test_journal_triggers import REPO, _regression_base_ref
+
+pytestmark = pytest.mark.golden
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "golden"
 LEGACY_ARTIFACTS = (

@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from tests.fixtures.golden.canonical import canonicalize_trades
 from tests.fixtures.golden.generate_entry_window_enabled import (
@@ -31,6 +32,8 @@ from tests.fixtures.golden.record_entry_window_enabled_golden import (
 from thesistester.analytics.entry_window import filter_trades_by_entry_window
 
 from tests.fixtures.golden.generate_entry_window_enabled import ENTRY_WINDOW
+
+pytestmark = pytest.mark.golden
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "golden"
 LEGACY_ARTIFACTS = (
