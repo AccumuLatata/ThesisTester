@@ -80,7 +80,10 @@ with column arrays / `iloc` behind those helpers (nullable dtypes
 unchanged — hashes stay identical). Empty trigger frames stay an
 empty HTF map. C-16 (QI-03-02) shares one 3c signal-row mapper
 (`_map_3c_setup_to_signal`) and detector scan/merge helpers; S3 arrival /
-reversal / retrace / SFP math is unchanged. Next: C-17.
+reversal / retrace / SFP math is unchanged. The mapper branches on
+`effective_trigger_timeframe == "base"` (base trigger indices = base
+indices); HTF reads setup `trigger_*` and does not fall back to base
+indices when `trigger_df` is missing. Next: C-17.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -265,6 +268,7 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Nullable dtypes were not changed. C-16 (QI-03-02) unifies the two
    3c row-mappers (`_map_3c_setup_to_signal`) and extracts shared
    detector scan/merge helpers so both public 3c detectors stay ≤ CC 30.
+   Mapper path is the timeframe string, not `trigger_df is None`.
    S3 math is unchanged. Next: C-17.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration

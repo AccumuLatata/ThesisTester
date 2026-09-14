@@ -1082,9 +1082,12 @@ def _map_3c_setup_to_signal(
 ) -> dict | None:
     """Map one 3c detector row onto ``_make_signal`` (C-16 / QI-03-02).
 
-    ``trigger_df is None`` is the base-TF path (trigger indices = base
-    indices). HTF passes the prepared trigger frame so trigger-bar fields
-    come from the setup's trigger_* columns.
+    Path selection is ``effective_trigger_timeframe == "base"``, not
+    ``trigger_df is None``. Base trigger indices equal base indices even
+    if the setup dict carries leftover ``trigger_*`` fields or a trigger
+    frame is passed. HTF reads ``trigger_*`` from the setup and bounds-
+    checks them against the prepared trigger frame; missing ``trigger_df``
+    on HTF returns None (no silent base-index fallback).
     """
     zone, ncount = _zone_and_naked_for_3c_setup(setup, zone_by_id, naked_flags)
     filled = str(setup["status"]) == "filled"
@@ -1118,12 +1121,14 @@ def _map_3c_setup_to_signal(
     ):
         return None
 
-    if trigger_df is None:
+    if effective_trigger_timeframe == "base":
         trigger_bar_index = reversal_idx_base
         trigger_timestamp = df_reset["timestamp"].iloc[reversal_idx_base]
         trigger_arrival_bar_index = arrival_idx_base
         trigger_reversal_bar_index = reversal_idx_base
     else:
+        if trigger_df is None:
+            return None
         trigger_reversal_raw = setup.get("trigger_reversal_bar_index")
         trigger_arrival_raw = setup.get("trigger_arrival_bar_index")
         trigger_bar_index = _safe_signal_index(trigger_reversal_raw, len(trigger_df))

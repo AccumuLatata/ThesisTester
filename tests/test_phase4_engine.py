@@ -28,6 +28,7 @@ from thesistester.engine.signals import (
     _classify_zone_triggers_detail,
     _index_base_end_by_trigger_bar,
     _index_trigger_rows_by_base_end,
+    _map_3c_setup_to_signal,
     _prepare_generate_trigger_frame,
     _safe_signal_float,
     _safe_signal_index,
@@ -1632,3 +1633,142 @@ class TestGenerateSignalsPhases:
         assert "_map_3c_setup_to_signal" in generate_calls
         assert "_make_signal" not in generate_calls
         assert mapper_make == 1
+
+    def test_c16_mapper_base_ignores_poisoned_trigger_fields(self):
+        """Base path uses base indices even if setup carries HTF trigger_*."""
+        df_reset = _df_bars(
+            [
+                {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+                {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},
+                {"open": 101.0, "high": 101.1, "low": 100.5, "close": 100.9},
+            ]
+        )
+        poisoned_ts = pd.Timestamp("1999-01-01 00:00:00", tz=TZ)
+        setup = {
+            "status": "filled",
+            "is_sfp": False,
+            "direction": "long",
+            "timestamp": df_reset["timestamp"].iloc[2],
+            "bar_index": 2,
+            "arrival_bar_index": 0,
+            "reversal_bar_index": 1,
+            "entry_bar_index": 2,
+            "entry_trigger_price": 100.5,
+            "arrival_level_price": 100.0,
+            "entry_retrace_ticks": 2.0,
+            "trigger_variant": "3c_long",
+            "is_muted": False,
+            "inside_candle_count": 0,
+            "level_source_mode": "global_cluster",
+            "trigger_reversal_bar_index": 99,
+            "trigger_arrival_bar_index": 98,
+            "trigger_timestamp": poisoned_ts,
+        }
+        dummy_trigger = df_reset.copy()
+        mapped = _map_3c_setup_to_signal(
+            setup=setup,
+            signal_id=0,
+            zone_by_id={},
+            naked_flags=None,
+            naked_req="any",
+            df_reset=df_reset,
+            effective_trigger_timeframe="base",
+            trigger_df=dummy_trigger,
+        )
+        assert mapped is not None
+        assert mapped["trigger_bar_index"] == 1
+        assert mapped["trigger_arrival_bar_index"] == 0
+        assert mapped["trigger_reversal_bar_index"] == 1
+        assert mapped["trigger_timestamp"] == df_reset["timestamp"].iloc[1]
+        assert mapped["trigger_timestamp"] != poisoned_ts
+
+    def test_c16_mapper_htf_uses_setup_trigger_fields(self):
+        """HTF path keeps trigger indices on the trigger frame, base on canonical."""
+        df_reset = _df_bars(
+            [
+                {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+                {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},
+                {"open": 101.0, "high": 101.1, "low": 100.5, "close": 100.9},
+            ]
+        )
+        trigger_ts = pd.Timestamp("2026-06-02 09:35:00", tz=TZ)
+        setup = {
+            "status": "filled",
+            "is_sfp": False,
+            "direction": "long",
+            "timestamp": df_reset["timestamp"].iloc[2],
+            "bar_index": 2,
+            "arrival_bar_index": 0,
+            "reversal_bar_index": 1,
+            "entry_bar_index": 2,
+            "entry_trigger_price": 100.5,
+            "arrival_level_price": 100.0,
+            "entry_retrace_ticks": 2.0,
+            "trigger_variant": "3c_long",
+            "is_muted": False,
+            "inside_candle_count": 0,
+            "level_source_mode": "global_cluster",
+            "trigger_reversal_bar_index": 1,
+            "trigger_arrival_bar_index": 0,
+            "trigger_timestamp": trigger_ts,
+        }
+        trigger_df = pd.DataFrame({"x": [0, 1, 2]})
+        mapped = _map_3c_setup_to_signal(
+            setup=setup,
+            signal_id=0,
+            zone_by_id={},
+            naked_flags=None,
+            naked_req="any",
+            df_reset=df_reset,
+            effective_trigger_timeframe="5min",
+            trigger_df=trigger_df,
+        )
+        assert mapped is not None
+        assert mapped["trigger_bar_index"] == 1
+        assert mapped["trigger_arrival_bar_index"] == 0
+        assert mapped["trigger_reversal_bar_index"] == 1
+        assert mapped["arrival_bar_index"] == 0
+        assert mapped["reversal_bar_index"] == 1
+        assert mapped["trigger_timestamp"] == trigger_ts
+        assert mapped["trigger_timestamp"] != df_reset["timestamp"].iloc[1]
+
+    def test_c16_mapper_htf_without_trigger_df_does_not_use_base_indices(self):
+        """Missing HTF trigger frame must not silently emit base trigger indices."""
+        df_reset = _df_bars(
+            [
+                {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+                {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},
+                {"open": 101.0, "high": 101.1, "low": 100.5, "close": 100.9},
+            ]
+        )
+        setup = {
+            "status": "filled",
+            "is_sfp": False,
+            "direction": "long",
+            "timestamp": df_reset["timestamp"].iloc[2],
+            "bar_index": 2,
+            "arrival_bar_index": 0,
+            "reversal_bar_index": 1,
+            "entry_bar_index": 2,
+            "entry_trigger_price": 100.5,
+            "arrival_level_price": 100.0,
+            "entry_retrace_ticks": 2.0,
+            "trigger_variant": "3c_long",
+            "is_muted": False,
+            "inside_candle_count": 0,
+            "level_source_mode": "global_cluster",
+            "trigger_reversal_bar_index": 1,
+            "trigger_arrival_bar_index": 0,
+            "trigger_timestamp": df_reset["timestamp"].iloc[1],
+        }
+        mapped = _map_3c_setup_to_signal(
+            setup=setup,
+            signal_id=0,
+            zone_by_id={},
+            naked_flags=None,
+            naked_req="any",
+            df_reset=df_reset,
+            effective_trigger_timeframe="5min",
+            trigger_df=None,
+        )
+        assert mapped is None
