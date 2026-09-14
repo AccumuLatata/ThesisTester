@@ -2,14 +2,35 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import types
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from thesistester.config import INSTRUMENTS
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
-from thesistester.engine.signals import _safe_signal_float, _safe_signal_index, generate_signals
+from thesistester.engine.signals import (
+    VALID_TRIGGERS,
+    _APPROACH_SIDE_CHECKERS,
+    _APPROACH_SIDE_TRIGGERS,
+    _SIMPLE_TRIGGER_CHECKERS,
+    _admit_zones_for_signals,
+    _check_break,
+    _check_continuation,
+    _check_fade,
+    _check_reclaim,
+    _check_reject,
+    _check_touch,
+    _prepare_generate_trigger_frame,
+    _safe_signal_float,
+    _safe_signal_index,
+    generate_signals,
+)
+from thesistester.persistence.local_store import hash_dataframe
 
 
 TZ = "America/New_York"
@@ -1156,3 +1177,322 @@ class TestSafeSignalFloat:
 
     def test_valid_string_float_accepted(self):
         assert _safe_signal_float("3.14") == pytest.approx(3.14)
+
+
+# ===========================================================================
+# C-14 generate_signals phases (QI-03-01)
+# ===========================================================================
+
+
+def _origin_main_generate_signals():
+    """Load ``generate_signals`` from the PR base (origin/main).
+
+    Hex digests are computed live in-process. Do not freeze them as CI goldens.
+    """
+    from tests.test_journal_triggers import _regression_base_ref
+
+    name = "thesistester.engine._signals_origin_main"
+    cached = sys.modules.get(name)
+    if cached is not None:
+        return cached.generate_signals
+    ref = _regression_base_ref()
+    src = subprocess.check_output(
+        ["git", "show", f"{ref}:thesistester/engine/signals.py"],
+        text=True,
+    )
+    module = types.ModuleType(name)
+    module.__file__ = f"<{ref} thesistester/engine/signals.py>"
+    module.__package__ = "thesistester.engine"
+    sys.modules[name] = module
+    exec(compile(src, module.__file__, "exec"), module.__dict__)
+    return module.generate_signals
+
+
+class TestGenerateSignalsPhases:
+    """Per-phase unit tests for the C-14 extract. Checkers and 3c math stay closed."""
+
+    def test_prepare_trigger_frame_indexes_base_end(self):
+        df = _df_bars(
+            [
+                {"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0},
+                {"open": 100.1, "high": 100.6, "low": 99.6, "close": 100.2},
+                {"open": 100.2, "high": 100.7, "low": 99.7, "close": 100.3},
+            ]
+        )
+        df_reset, trigger_df, by_end = _prepare_generate_trigger_frame(df, "base")
+        assert len(df_reset) == 3
+        assert set(by_end) == {0, 1, 2}
+        assert int(by_end[1]["trigger_bar_index"]) == 1
+        assert (trigger_df["base_end_bar_index"] == trigger_df["trigger_bar_index"]).all()
+
+    def test_admit_drops_bar_past_frame(self):
+        df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}])
+        df_reset, _, by_end = _prepare_generate_trigger_frame(df, "base")
+        zones = pd.concat(
+            [_zone_df(0, 100.0, 100.5), _zone_df(9, 100.0, 100.5)],
+            ignore_index=True,
+        )
+        admitted = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "touch",
+            by_end,
+            naked_only=False,
+            naked_flags=None,
+            naked_req="any",
+        )
+        assert [int(zone["bar_index"]) for zone, _ in admitted] == [0]
+
+    def test_admit_simple_requires_trigger_row_3c_does_not(self):
+        df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}])
+        df_reset = df.reset_index(drop=True)
+        zones = _zone_df(0, 100.0, 100.5)
+        empty_map: dict[int, pd.Series] = {}
+        simple = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "touch",
+            empty_map,
+            naked_only=False,
+            naked_flags=None,
+            naked_req="any",
+        )
+        three_c = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "3c",
+            empty_map,
+            naked_only=False,
+            naked_flags=None,
+            naked_req="any",
+        )
+        assert simple == []
+        assert len(three_c) == 1
+        assert int(three_c[0][0]["bar_index"]) == 0
+        assert three_c[0][1] == 0
+
+    def test_admit_naked_any_drops_zero_count(self):
+        ts = pd.date_range("2026-06-02 09:30", periods=3, freq="1min", tz=TZ)
+        df = pd.DataFrame(
+            {
+                "timestamp": ts,
+                "open": [100.0] * 3,
+                "high": [101.0] * 3,
+                "low": [99.0] * 3,
+                "close": [100.0] * 3,
+                "volume": [100.0] * 3,
+                "lA": [100.0, 100.0, 100.0],
+                "lB": [100.25, 100.25, 100.25],
+            }
+        )
+        naked_flags = flag_naked_levels(df, level_columns=["lA", "lB"], tick_size=TICK)
+        df_reset, _, by_end = _prepare_generate_trigger_frame(df, "base")
+        zones = _zone_df(1, low=100.0, high=100.25, level_names="lA|lB")
+        admitted = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "touch",
+            by_end,
+            naked_only=True,
+            naked_flags=naked_flags,
+            naked_req="any",
+        )
+        assert admitted == []
+
+    def test_dispatch_tables_partition_valid_triggers(self):
+        assert set(_SIMPLE_TRIGGER_CHECKERS) == {"touch", "reject", "break", "reclaim"}
+        assert _SIMPLE_TRIGGER_CHECKERS["touch"] is _check_touch
+        assert _SIMPLE_TRIGGER_CHECKERS["reject"] is _check_reject
+        assert _SIMPLE_TRIGGER_CHECKERS["break"] is _check_break
+        assert _SIMPLE_TRIGGER_CHECKERS["reclaim"] is _check_reclaim
+        assert set(_APPROACH_SIDE_CHECKERS) == {"fade", "continuation"}
+        assert _APPROACH_SIDE_CHECKERS["fade"] is _check_fade
+        assert _APPROACH_SIDE_CHECKERS["continuation"] is _check_continuation
+        assert frozenset(_APPROACH_SIDE_CHECKERS) == _APPROACH_SIDE_TRIGGERS
+        assert set(_SIMPLE_TRIGGER_CHECKERS) | set(_APPROACH_SIDE_CHECKERS) | {"3c"} == set(
+            VALID_TRIGGERS
+        )
+
+    def test_generate_signals_identity_vs_origin_main(self, tmp_path):
+        """Live vs origin/main — same-process self-compare is false-green."""
+        from thesistester.api import compute_levels, load_dataset
+        from tests.fixtures.cai_baseline import cai_run_spec, write_cai_bars
+        from tests.fixtures.golden.generate_fade_enabled import (
+            generate_fade_enabled_dataset,
+            generate_fade_enabled_zones,
+        )
+
+        baseline = _origin_main_generate_signals()
+        cases: list[tuple[str, tuple, dict]] = []
+
+        touch_df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}])
+        touch_zones = _zone_df(0, 100.0, 100.25)
+        cases.append(
+            (
+                "phase4 touch both",
+                (touch_df, touch_zones),
+                {"trigger": "touch", "direction": "both", "tick_size": TICK},
+            )
+        )
+
+        fade_df = generate_fade_enabled_dataset()
+        fade_zones = generate_fade_enabled_zones(fade_df)
+        cases.append(
+            (
+                "fade golden",
+                (fade_df, fade_zones),
+                {"trigger": "fade", "direction": "both", "tick_size": 0.25},
+            )
+        )
+
+        three_c_df = _df_bars(
+            [
+                {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+                {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},
+                {"open": 101.1, "high": 101.2, "low": 100.5, "close": 100.9},
+            ]
+        )
+        three_c_zones = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                    "bar_index": 0,
+                    "zone_low": 100.0,
+                    "zone_high": 100.0,
+                    "zone_mid": 100.0,
+                    "level_count": 1,
+                    "level_names": "level_A",
+                    "level_prices": "100.0",
+                }
+            ]
+        )
+        three_c_params = {
+            "entry_retrace_ticks": 2,
+            "max_entry_wait_bars_after_reversal": 3,
+        }
+        cases.append(
+            (
+                "phase4 3c filled",
+                (three_c_df, three_c_zones),
+                {
+                    "trigger": "3c",
+                    "direction": "long",
+                    "tick_size": TICK,
+                    "trigger_params": three_c_params,
+                },
+            )
+        )
+
+        htf_ts = pd.date_range("2026-06-02 09:30", periods=15, freq="1min", tz=TZ)
+        htf_rows = [
+            {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+            {"open": 100.5, "high": 100.9, "low": 100.3, "close": 100.7},
+            {"open": 100.7, "high": 100.9, "low": 100.2, "close": 100.8},
+            {"open": 100.8, "high": 101.0, "low": 100.2, "close": 100.9},
+            {"open": 100.9, "high": 101.0, "low": 100.2, "close": 100.9},
+            {"open": 100.9, "high": 101.5, "low": 100.1, "close": 101.2},
+            {"open": 101.2, "high": 101.4, "low": 101.0, "close": 101.3},
+            {"open": 101.3, "high": 101.4, "low": 101.0, "close": 101.2},
+            {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},
+            {"open": 101.2, "high": 101.5, "low": 101.0, "close": 101.25},
+            {"open": 101.25, "high": 101.5, "low": 101.1, "close": 101.3},
+            {"open": 101.3, "high": 101.5, "low": 100.6, "close": 101.0},
+            {"open": 101.0, "high": 101.2, "low": 100.8, "close": 101.1},
+            {"open": 101.1, "high": 101.2, "low": 100.9, "close": 101.0},
+            {"open": 101.0, "high": 101.1, "low": 100.9, "close": 101.0},
+        ]
+        htf_df = pd.DataFrame(
+            [{"timestamp": htf_ts[i], **row, "volume": 100.0} for i, row in enumerate(htf_rows)]
+        )
+        cases.append(
+            (
+                "3c HTF 5min",
+                (htf_df, three_c_zones),
+                {
+                    "trigger": "3c",
+                    "direction": "long",
+                    "tick_size": TICK,
+                    "trigger_timeframe": "5min",
+                    "trigger_params": three_c_params,
+                },
+            )
+        )
+
+        naked_ts = pd.date_range("2026-06-02 09:30", periods=3, freq="1min", tz=TZ)
+        naked_df = pd.DataFrame(
+            {
+                "timestamp": naked_ts,
+                "open": [100.0] * 3,
+                "high": [101.0] * 3,
+                "low": [99.0] * 3,
+                "close": [100.0] * 3,
+                "volume": [100.0] * 3,
+                "lA": [100.0, 100.0, 100.0],
+                "lB": [100.25, 100.25, 100.25],
+            }
+        )
+        naked_flags = flag_naked_levels(naked_df, level_columns=["lA", "lB"], tick_size=TICK)
+        naked_zones = _zone_df(1, low=100.0, high=100.25, level_names="lA|lB")
+        cases.append(
+            (
+                "touch naked_only any",
+                (naked_df, naked_zones),
+                {
+                    "trigger": "touch",
+                    "direction": "long",
+                    "tick_size": TICK,
+                    "naked_only": True,
+                    "naked_flags": naked_flags,
+                    "naked_requirement": "any",
+                },
+            )
+        )
+
+        bars = write_cai_bars(tmp_path / "cai.csv", kind="small")
+        spec = cai_run_spec(dataset_path=str(bars), kind="small")
+        data = load_dataset(
+            bars,
+            instrument=spec["dataset"]["instrument"],
+            source_timezone=spec["dataset"]["source_timezone"],
+            exchange_timezone=spec["dataset"]["exchange_timezone"],
+            format_profile=spec["dataset"]["format_profile"],
+        )
+        levels = compute_levels(
+            data, instrument=spec["dataset"]["instrument"], config=spec["levels"]
+        )["levels"]
+        setup = spec["setup"]
+        tick_size = INSTRUMENTS[spec["dataset"]["instrument"]].tick_size
+        cai_zones = detect_confluence_zones(
+            levels,
+            level_columns=list(setup["selected_levels"]),
+            tick_size=tick_size,
+            tolerance_ticks=float(setup["tolerance_ticks"]),
+            min_confluences=int(setup["min_confluences"]),
+            max_confluences=int(setup["max_confluences"]),
+        )
+        cases.append(
+            (
+                "CAI small",
+                (levels, cai_zones),
+                {
+                    "trigger": str(setup["trigger"]),
+                    "direction": str(setup["direction"]),
+                    "tick_size": tick_size,
+                    "trigger_timeframe": str(setup["trigger_timeframe"]),
+                },
+            )
+        )
+
+        for label, args, kwargs in cases:
+            current = generate_signals(*args, **kwargs)
+            expected = baseline(*args, **kwargs)
+            pd.testing.assert_frame_equal(current, expected)
+            assert hash_dataframe(current) == hash_dataframe(expected), label
+            if label == "phase4 touch both":
+                assert len(current) == 2
+            if label == "fade golden":
+                assert len(current) == 2
+            if label == "phase4 3c filled":
+                assert len(current) == 1
+            if label == "CAI small":
+                assert len(current) == 120

@@ -1292,6 +1292,19 @@ completed bars (`open + duration ≤ entry`) and write
 `journal_triggers.parquet` + `triggers.json`. Page 17 Q3 **Inferred
 trigger** reads that optional file. No new session keys.
 
+**C-14 signal phases (QI-03-01).** `generate_signals` is a phase
+orchestrator: TF prep (`_prepare_generate_trigger_frame`), zone-naked
+admission (`_admit_zones_for_signals`), and a trigger dispatch table
+(`_SIMPLE_TRIGGER_CHECKERS` / `_APPROACH_SIDE_CHECKERS`) plus the
+existing 3c row-mapping body (`_generate_3c_signals`). `_check_*`
+bodies, the `_find_tested_level_for_arrival` sort key, 3c detectors
+(S3 / DA0), and public `VALID_TRIGGERS` are unchanged. C-16 owns
+sharing the two 3c mappers; C-15 owns `iterrows` replacement behind
+these helpers. Identity vs `origin/main` is live `hash_dataframe` /
+`assert_frame_equal` on CAI + golden fixtures (hexes are not frozen).
+`classify_zone_triggers` still does not call
+`generate_signals`.
+
 ## R22 simulation-core boundary
 
 `thesistester.engine.sim_core` is an internal-only hot-path boundary. It owns

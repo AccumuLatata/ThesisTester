@@ -72,7 +72,10 @@ guards. C-12 (QI-01-02) extracts raw/subtf sidecar policy helpers from
 `save_dataset` (preserve/conflict and derive-without-subtf refusal
 unchanged). C-13 (QI-05-03) splits pair/trigger summarizers into
 `confluence_pair_trigger.py`; public combo helpers stay on
-`confluence_attribution`. Next: C-14.
+`confluence_attribution`. C-14 (QI-03-01) extracts `generate_signals`
+phases (TF prep, zone-naked admission, trigger dispatch table).
+`_check_touch`, the candidate sort key, 3c math (S3 / DA0), and public
+`VALID_TRIGGERS` stay untouched. Next: C-15.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -240,9 +243,20 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    `_apply_subtf_sidecar_policy` from `save_dataset` (S1 preserve/conflict
    and derive-without-subtf refusal unchanged). C-13 (QI-05-03) splits
    pair/trigger summarizers into `confluence_pair_trigger.py` (public
-   combo helpers still imported from `confluence_attribution`). Next: C-14.
+   combo helpers still imported from `confluence_attribution`). C-14
+   (QI-03-01) extracts engine `generate_signals` phases: TF prep
+   (`_prepare_generate_trigger_frame`), zone-naked admission
+   (`_admit_zones_for_signals`), and the trigger dispatch tables
+   (`_SIMPLE_TRIGGER_CHECKERS` / `_APPROACH_SIDE_CHECKERS`) plus the
+   existing 3c row-mapping body (`_generate_3c_signals`). `_check_touch`,
+   the candidate sort key, 3c detectors, and public `VALID_TRIGGERS` are
+   unchanged. Identity vs `origin/main` is live `hash_dataframe` /
+   `assert_frame_equal` (not same-process self-compare; hexes are not
+   frozen). Next: C-15.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
-   signals, and deterministic settings identity.
+   signals, and deterministic settings identity. Engine orchestration
+   is the C-14 helpers above; C-15 replaces `iterrows` behind them;
+   C-16 unifies the two 3c row-mappers.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`
    apply the shared OTF filter before the unchanged engine functions.
 6. `run_validation(...) -> ValidationResult` runs seeded Phase 8 diagnostics
