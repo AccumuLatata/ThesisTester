@@ -859,9 +859,7 @@ def test_c21_claim_format_table_first_match_order():
     for index, suffix in numbered:
         for other_index, other in numbered:
             if suffix != other and suffix.endswith(other):
-                assert index < other_index, (
-                    f"{suffix!r} must precede shorter suffix {other!r}"
-                )
+                assert index < other_index, f"{suffix!r} must precede shorter suffix {other!r}"
 
     strings = [
         (index, rule.path_pattern)
@@ -871,14 +869,10 @@ def test_c21_claim_format_table_first_match_order():
     for index, suffix in strings:
         for other_index, other in strings:
             if suffix != other and suffix.endswith(other):
-                assert index < other_index, (
-                    f"{suffix!r} must precede shorter suffix {other!r}"
-                )
+                assert index < other_index, f"{suffix!r} must precede shorter suffix {other!r}"
 
     endswith_by_type = [
-        (index, rule)
-        for index, rule in enumerate(_CLAIM_FORMAT_RULES)
-        if rule.match == "endswith"
+        (index, rule) for index, rule in enumerate(_CLAIM_FORMAT_RULES) if rule.match == "endswith"
     ]
     for index, rule in enumerate(_CLAIM_FORMAT_RULES):
         if rule.match != "both":
@@ -906,10 +900,7 @@ def test_c21_claim_format_table_first_match_order():
         )
         == "Nonempty combo trade count is 10."
     )
-    assert (
-        _format_scalar_for_claim("results.trade_summary.trade_count", 12)
-        == "Trade count is 12."
-    )
+    assert _format_scalar_for_claim("results.trade_summary.trade_count", 12) == "Trade count is 12."
     assert (
         _format_scalar_for_claim("results.monte_carlo_summary.trade_count", 12)
         == "Monte Carlo trade count is 12."
@@ -922,17 +913,13 @@ def test_c21_claim_format_table_first_match_order():
         _format_scalar_for_claim("results.portfolio_summary.portfolio_metrics.total_r", 1.5)
         == "Portfolio total R is 1.5."
     )
-    assert (
-        _format_scalar_for_claim("results.trade_summary.total_r", 1.5) == "Total R is 1.5."
-    )
+    assert _format_scalar_for_claim("results.trade_summary.total_r", 1.5) == "Total R is 1.5."
     assert (
         _format_scalar_for_claim("results.walk_forward_summary.median_test_expectancy_r", 0.12)
         == "Median OOS test expectancy R is 0.12."
     )
     assert (
-        _format_scalar_for_claim(
-            "results.otf_validation_summary.selected_oos_expectancy_r", 0.12
-        )
+        _format_scalar_for_claim("results.otf_validation_summary.selected_oos_expectancy_r", 0.12)
         == "Selected OTF OOS expectancy R is 0.12."
     )
     assert (
@@ -995,7 +982,4 @@ def test_c21_claim_format_table_first_match_order():
         claim for claim in reply.claims if claim.path == "results.trade_summary.expectancy_r"
     ]
     assert len(expectancy_claims) == 1
-    assert (
-        _format_scalar_for_claim("results.trade_summary.win_rate", 0.52)
-        == "Win rate is 52%."
-    )
+    assert _format_scalar_for_claim("results.trade_summary.win_rate", 0.52) == "Win rate is 52%."
