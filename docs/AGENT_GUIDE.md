@@ -94,7 +94,9 @@ walk) behind the R22 boundary (`sim_core.compute_session_close_cap` /
 `walk_trade_exit` calling `resolve_trade_bar`); then P4/P6 admission
 helpers. Public signature unchanged. `sim_core` still holds no
 admission / P&L. AH §2.1 defaults, C1/AH1 flatten clock, and 3c-void
-silent `continue` stay untouched. Next: C-20.
+silent `continue` stay untouched. C-20 (QI-14-09) stores `BarData` OHLC
+as write-protected `float64` arrays; `resolve_ohlc_bar` math is
+unchanged. Next: C-21.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -287,7 +289,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    C-19 (QI-04-01) extracts `simulate_trades` P7 behind R22
    (`walk_trade_exit` / flatten cap in `sim_core`); P4/P6 admission
    helpers stay in `backtest.py`. No public signature change.
-   Next: C-20.
+   C-20 (QI-14-09) stores `BarData` as `float64` arrays; `at()` still
+   returns Python floats. Next: C-21.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
@@ -1172,8 +1175,9 @@ are B-1; H10/H11 lock tests are B-2.
   flatten-cap math (`compute_session_close_cap`) on the R22 boundary. Admission
   (window / cutoff / exposure / 3c-void), skip-row schema, costs, P&L,
   trade records, and diagnostics remain orchestrated by `backtest.py`.
-  Do not widen `sim_core` into those concerns. C-20 may switch `BarData`
-  storage; E-10 may accelerate only inside this boundary.
+  Do not widen `sim_core` into those concerns. C-20 stores `BarData` as
+  write-protected `float64` arrays (`at()` still Python floats). E-10
+  may accelerate only inside this boundary.
 - Run `pytest -q tests/benchmarks/test_simulate_baseline.py tests/test_golden_master.py tests/test_intrabar.py tests/test_exit_management.py tests/test_phase5_backtest.py`
   after R22 changes.
 

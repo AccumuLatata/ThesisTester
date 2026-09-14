@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import time
 
+import numpy as np
 import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
@@ -35,7 +36,24 @@ def test_bar_data_snapshots_ohlc_without_mutating_source():
 
     assert bars.at(1).open == 101.0
     assert bars.at(1).high == 103.0
+    assert type(bars.at(1).open) is float
     assert_frame_equal(source, before)
+    source.loc[1, "open"] = 0.0
+    assert bars.at(1).open == 101.0
+    assert float(bars.open[1]) == 101.0
+
+
+def test_bar_data_stores_write_protected_float64_arrays():
+    bars = BarData.from_frame(_bars())
+    for column in (bars.open, bars.high, bars.low, bars.close):
+        assert isinstance(column, np.ndarray)
+        assert column.dtype == np.float64
+        assert column.flags.writeable is False
+        assert column.flags.c_contiguous
+        assert column.ndim == 1
+        assert column.shape == (2,)
+    with pytest.raises((ValueError, RuntimeError)):
+        bars.open[0] = 0.0
 
 
 def test_serial_core_resolution_matches_legacy_ohlc_resolver():

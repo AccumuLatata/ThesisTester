@@ -3,8 +3,10 @@
 This module intentionally has no public execution API. It narrows the future
 optimization boundary (R22) while preserving `simulate_trades` orchestration
 in `backtest.py`. C-19 (QI-04-01) owns the serial P7 walk here: session-close
-cap math and the per-bar SL/TP + flatten + R13 walk. Admission, skip-row
-schema, costs, and P&L stay in `backtest.py`.
+cap math and the per-bar SL/TP + flatten + R13 walk. C-20 (QI-14-09) stores
+parent OHLC as write-protected ``float64`` arrays. Admission, skip-row
+schema, costs, and P&L stay in `backtest.py`. ``resolve_ohlc_bar`` math is
+unchanged.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import time
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from .exit_management import (
@@ -33,32 +36,44 @@ class BarValues:
     close: float
 
 
-@dataclass(frozen=True)
-class BarData:
-    """Immutable parent-bar arrays shared by every trade exit walk."""
+def _frozen_float64(column: pd.Series) -> np.ndarray:
+    """Copy one OHLC column to a write-protected C-contiguous float64 array."""
+    array = np.ascontiguousarray(column.to_numpy(dtype=np.float64, copy=True))
+    array.setflags(write=False)
+    return array
 
-    open: tuple[float, ...]
-    high: tuple[float, ...]
-    low: tuple[float, ...]
-    close: tuple[float, ...]
+
+@dataclass(frozen=True, eq=False)
+class BarData:
+    """Immutable parent-bar float64 arrays shared by every trade exit walk.
+
+    C-20 (QI-14-09): storage is ``numpy.float64``, not boxed Python tuples.
+    ``at()`` still returns Python ``float`` scalars so ``resolve_ohlc_bar``
+    math is unchanged.
+    """
+
+    open: np.ndarray
+    high: np.ndarray
+    low: np.ndarray
+    close: np.ndarray
 
     @classmethod
     def from_frame(cls, frame: pd.DataFrame) -> "BarData":
         """Snapshot validated parent OHLC values without mutating the frame."""
         return cls(
-            open=tuple(float(value) for value in frame["open"]),
-            high=tuple(float(value) for value in frame["high"]),
-            low=tuple(float(value) for value in frame["low"]),
-            close=tuple(float(value) for value in frame["close"]),
+            open=_frozen_float64(frame["open"]),
+            high=_frozen_float64(frame["high"]),
+            low=_frozen_float64(frame["low"]),
+            close=_frozen_float64(frame["close"]),
         )
 
     def at(self, index: int) -> BarValues:
         """Return one parent bar's values at the existing integer bar index."""
         return BarValues(
-            open=self.open[index],
-            high=self.high[index],
-            low=self.low[index],
-            close=self.close[index],
+            open=float(self.open[index]),
+            high=float(self.high[index]),
+            low=float(self.low[index]),
+            close=float(self.close[index]),
         )
 
 
