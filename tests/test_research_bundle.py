@@ -13,10 +13,15 @@ import thesistester.research_bundle as research_bundle
 from thesistester.reporting import build_otf_filter_metadata, build_research_artifact
 from thesistester.research_bundle import (
     BUNDLE_IMPORT_OMITTED_DATA_KEY,
+    BUNDLE_KEY_REGISTRY,
+    BUNDLE_KEY_REGISTRY_NAMES,
+    BUNDLE_SECTION_IO,
+    BUNDLE_SECTION_IO_NAMES,
     DATA_PAGE_INVALIDATE_SOURCE_KEY,
     _CANONICAL_HASH_EXCLUDED_FILES,
     _KNOWN_FILES,
     _MANAGED_RESEARCH_KEYS,
+    _SECTION_REQUIRED_FILES,
     apply_research_bundle_to_session,
     build_research_bundle,
     canonical_bundle_hash,
@@ -1197,8 +1202,52 @@ def _assert_qi0603_leftovers_cleared(session: dict) -> None:
     assert session["display_timezone"] == TIMEZONE_OPTIONS[0]
 
 
+def _const_str_tuple(node: ast.AST) -> set[str]:
+    if not isinstance(node, ast.Tuple):
+        return set()
+    return {
+        elt.value
+        for elt in node.elts
+        if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+    }
+
+
+def _bundle_key_spec_calls(tree: ast.AST) -> list[ast.Call]:
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "BundleKeySpec"
+    ]
+
+
+def _call_kw(call: ast.Call, name: str) -> ast.AST | None:
+    for keyword in call.keywords:
+        if keyword.arg == name:
+            return keyword.value
+    return None
+
+
+def _managed_registry_session_key_literals(source: str) -> set[str]:
+    """``session_keys`` string Constants on managed ``BundleKeySpec`` rows."""
+    tree = ast.parse(source)
+    literals: set[str] = set()
+    for call in _bundle_key_spec_calls(tree):
+        managed = _call_kw(call, "managed")
+        if not (isinstance(managed, ast.Constant) and managed.value is True):
+            continue
+        literals.update(_const_str_tuple(_call_kw(call, "session_keys")))
+    return literals
+
+
 def _managed_set_string_literals(source: str) -> set[str]:
-    """String literals in the ``_MANAGED_RESEARCH_KEYS`` set display (AST, not comments)."""
+    """String literals that bind residuals to ``_MANAGED_RESEARCH_KEYS``.
+
+    C-7 generates the set from ``BUNDLE_KEY_REGISTRY``. A set display still
+    binds its Constants; a set-comp is allowed only when the registry rows
+    carry the residual keys as AST string Constants (not comments).
+    """
     tree = ast.parse(source)
     for node in tree.body:
         if not isinstance(node, ast.Assign):
@@ -1207,23 +1256,24 @@ def _managed_set_string_literals(source: str) -> set[str]:
             isinstance(t, ast.Name) and t.id == "_MANAGED_RESEARCH_KEYS" for t in node.targets
         ):
             continue
-        if not isinstance(node.value, ast.Set):
-            raise AssertionError("_MANAGED_RESEARCH_KEYS must be a set display")
-        literals = {
-            elt.value
-            for elt in node.value.elts
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
-        }
-        return literals
+        if isinstance(node.value, ast.Set):
+            return {
+                elt.value
+                for elt in node.value.elts
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+            }
+        if isinstance(node.value, ast.SetComp):
+            return set()
+        raise AssertionError("_MANAGED_RESEARCH_KEYS must be a set display")
     raise AssertionError("missing _MANAGED_RESEARCH_KEYS assignment")
 
 
 def _assert_qi0603_managed_set_literals(source: str) -> None:
-    """AST-bind the five residual keys to the managed-set literals.
+    """AST-bind the residual keys to managed-set / registry literals.
 
     File-level / comment needles false-green — A-1/A-6 class.
     """
-    literals = _managed_set_string_literals(source)
+    literals = _managed_set_string_literals(source) | _managed_registry_session_key_literals(source)
     missing = [key for key in _AH4_RESIDUAL_CLEAR_ONLY_KEYS if key not in literals]
     assert missing == [], f"_MANAGED_RESEARCH_KEYS set missing literals {missing}"
 
@@ -1377,6 +1427,258 @@ def test_ah4_p6_qi0603_residual_leftovers_cleared_on_zip_without_those_sections(
     post_matrix = (post_artifact.get("tables") or {}).get("otf_validation_matrix") or []
     assert post_matrix == []
     assert "otf_validation" not in post_artifact
+
+
+# Frozen C-7 / QI-06-04 membership. Additive-only: a dropped key is a hash/H1 defect.
+_FROZEN_MANAGED_RESEARCH_KEYS = frozenset(
+    {
+        "backtest_config",
+        "backtest_execution_costs",
+        "backtest_exit_management_diagnostic",
+        "backtest_exit_management_policy",
+        "backtest_intrabar_diagnostic",
+        "backtest_intrabar_policy",
+        "backtest_otf_filter",
+        "backtest_session_exit_policy",
+        "base_interval",
+        "best_grid_result",
+        "cache_provenance",
+        "confluence_by_exact_combo",
+        "confluence_by_level_count",
+        "confluence_by_membership",
+        "confluence_by_pairs",
+        "confluence_combo_summary",
+        "confluence_zones",
+        "data",
+        "data_identity",
+        "dataset_id",
+        "direction_collision_diagnostic",
+        "display_timezone",
+        "entry_window",
+        "entry_window_armed",
+        "entry_window_promote_provenance",
+        "equity_curve",
+        "exchange_timezone",
+        "excursion_calibration_grid",
+        "excursion_config",
+        "excursion_grouped_summary",
+        "excursion_quadrant_summary",
+        "excursion_summary",
+        "execution_origin",
+        "experiment_identity",
+        "exposure_policy",
+        "focus_entry_window",
+        "focus_provenance",
+        "focused_equity_curve",
+        "focused_trade_summary",
+        "focused_trades",
+        "format_profile",
+        "grid_entry_window",
+        "grid_exit_management_policy",
+        "grid_intrabar_policy",
+        "grid_otf_filter",
+        "grid_results",
+        "ingestion_provenance",
+        "instrument",
+        "last_signal_setup",
+        "levels",
+        "levels_data_fingerprint",
+        "levels_identity",
+        "levels_settings",
+        "monte_carlo_config",
+        "monte_carlo_summary",
+        "naked_flags",
+        "noise_config",
+        "noise_summary",
+        "otf_accepted_signals",
+        "otf_candidate_signals",
+        "otf_filter_result",
+        "otf_filter_summary",
+        "otf_rejected_signals",
+        "otf_validation_config",
+        "otf_validation_matrix",
+        "otf_validation_summary",
+        "overfitting_config",
+        "overfitting_summary",
+        "portfolio_config",
+        "portfolio_correlation",
+        "portfolio_drawdown_correlation",
+        "portfolio_equity_curve",
+        "portfolio_marginal_contribution",
+        "portfolio_setup_inputs",
+        "portfolio_skipped_trades",
+        "portfolio_summary",
+        "portfolio_trades",
+        "sensitivity_config",
+        "sensitivity_summary",
+        "session_levels",
+        "setup_config",
+        "signal_context",
+        "signal_settings",
+        "signal_settings_hash",
+        "signals",
+        "skipped_signals",
+        "source_timezone",
+        "subtimeframe_data",
+        "subtimeframe_fallback_parent_bars",
+        "subtimeframe_format_profile",
+        "subtimeframe_interval",
+        "time_bucketed_trades",
+        "time_grouped_summary",
+        "trade_summary",
+        "trades",
+        "validation_summary",
+        "walk_forward_config",
+        "walk_forward_oos_trades",
+        "walk_forward_otf_filter",
+        "walk_forward_results",
+        "walk_forward_stitched_equity",
+        "walk_forward_summary",
+        "walk_forward_warnings",
+        "wfa_matrix",
+        "wfa_matrix_config",
+    }
+)
+_FROZEN_KNOWN_FILES = frozenset(
+    {
+        "best_grid_result.json",
+        "confluence_by_exact_combo.parquet",
+        "confluence_by_level_count.parquet",
+        "confluence_by_membership.parquet",
+        "confluence_by_pairs.parquet",
+        "confluence_combo_summary.json",
+        "confluence_zones.parquet",
+        "dataset.parquet",
+        "dataset_meta.json",
+        "equity_curve.parquet",
+        "excursion_calibration_grid.parquet",
+        "excursion_grouped_summary.parquet",
+        "excursion_quadrant_summary.parquet",
+        "excursion_summary.json",
+        "grid_results.parquet",
+        "levels.parquet",
+        "levels_meta.json",
+        "manifest.json",
+        "monte_carlo_summary.json",
+        "naked_flags.parquet",
+        "noise_summary.json",
+        "overfitting_summary.json",
+        "portfolio_correlation.parquet",
+        "portfolio_drawdown_correlation.parquet",
+        "portfolio_equity_curve.parquet",
+        "portfolio_marginal_contribution.parquet",
+        "portfolio_skipped_trades.parquet",
+        "portfolio_summary.json",
+        "portfolio_trades.parquet",
+        "research_identity.json",
+        "sensitivity_summary.json",
+        "session_levels.parquet",
+        "signals.parquet",
+        "signals_meta.json",
+        "subtimeframe_data.parquet",
+        "subtimeframe_meta.json",
+        "trade_summary.json",
+        "trades.parquet",
+        "validation_summary.json",
+        "walk_forward_meta.json",
+        "walk_forward_oos_trades.parquet",
+        "walk_forward_results.parquet",
+        "walk_forward_stitched_equity.parquet",
+        "wfa_matrix.parquet",
+    }
+)
+_FROZEN_HASH_EXCLUDED_FILES = frozenset(
+    {
+        "confluence_combo_summary.json",
+        "confluence_by_exact_combo.parquet",
+        "confluence_by_level_count.parquet",
+        "confluence_by_membership.parquet",
+        "confluence_by_pairs.parquet",
+    }
+)
+_FROZEN_REQUIRED_SECTIONS = (
+    "dataset",
+    "levels",
+    "signals",
+    "backtest",
+    "grid",
+    "validation",
+    "walk_forward",
+    "excursion",
+    "monte_carlo",
+    "noise",
+    "overfitting",
+    "sensitivity",
+    "portfolio",
+    "confluence_combo",
+)
+
+
+def _assert_bundle_walks_section_io(source: str, name: str) -> None:
+    """``build`` / ``load`` must walk ``BUNDLE_SECTION_IO`` (comment needles fail-closed)."""
+    fn = _function_def(ast.parse(source), name)
+    fors = [node for node in ast.walk(fn) if isinstance(node, ast.For)]
+    assert fors, f"{name} must walk BUNDLE_SECTION_IO"
+    walked = False
+    for loop in fors:
+        it = loop.iter
+        if isinstance(it, ast.Name) and it.id == "BUNDLE_SECTION_IO":
+            walked = True
+            break
+    assert walked, f"{name} must iterate BUNDLE_SECTION_IO"
+
+
+def test_bundle_key_registry_completeness():
+    """C-7 / QI-06-04: generated lists match the registry; frozen membership holds."""
+    assert BUNDLE_KEY_REGISTRY_NAMES == (
+        *_FROZEN_REQUIRED_SECTIONS,
+        "identity",
+        "clear_only",
+    )
+    assert BUNDLE_SECTION_IO_NAMES == _FROZEN_REQUIRED_SECTIONS
+    assert tuple(spec.section for spec in BUNDLE_SECTION_IO) == _FROZEN_REQUIRED_SECTIONS
+
+    generated_managed = {
+        key for spec in BUNDLE_KEY_REGISTRY if spec.managed for key in spec.session_keys
+    }
+    assert _MANAGED_RESEARCH_KEYS == generated_managed == _FROZEN_MANAGED_RESEARCH_KEYS
+    assert len(_MANAGED_RESEARCH_KEYS) == 105
+
+    generated_known = {
+        "manifest.json",
+        *(name for spec in BUNDLE_KEY_REGISTRY for name in spec.known_files),
+    }
+    assert _KNOWN_FILES == generated_known == _FROZEN_KNOWN_FILES
+    assert len(_KNOWN_FILES) == 44
+
+    generated_required = {
+        spec.section: spec.required_files for spec in BUNDLE_KEY_REGISTRY if spec.required_files
+    }
+    assert _SECTION_REQUIRED_FILES == generated_required
+    assert tuple(_SECTION_REQUIRED_FILES) == _FROZEN_REQUIRED_SECTIONS
+
+    generated_excl = frozenset(
+        name for spec in BUNDLE_KEY_REGISTRY for name in spec.hash_exclude_files
+    )
+    assert _CANONICAL_HASH_EXCLUDED_FILES == generated_excl == _FROZEN_HASH_EXCLUDED_FILES
+
+    clear_only = next(spec for spec in BUNDLE_KEY_REGISTRY if spec.section == "clear_only")
+    assert clear_only.managed is True
+    assert clear_only.hashed is False
+    assert clear_only.known_files == ()
+    assert clear_only.required_files == ()
+    assert set(_AH4_RESIDUAL_CLEAR_ONLY_KEYS) <= set(clear_only.session_keys)
+
+    confluence = next(spec for spec in BUNDLE_KEY_REGISTRY if spec.section == "confluence_combo")
+    assert confluence.hashed is False
+    assert set(confluence.hash_exclude_files) == _FROZEN_HASH_EXCLUDED_FILES
+
+    backtest = next(spec for spec in BUNDLE_KEY_REGISTRY if spec.section == "backtest")
+    assert "direction_collision_diagnostic" not in backtest.meta_keys
+    assert "direction_collision_diagnostic" not in backtest.session_keys
+
+    _assert_bundle_walks_section_io(_RESEARCH_BUNDLE_SOURCE, "build_research_bundle")
+    _assert_bundle_walks_section_io(_RESEARCH_BUNDLE_SOURCE, "load_research_bundle")
 
 
 def test_ah4_p6_managed_set_literals_and_apply_pop_are_ast_bound():
