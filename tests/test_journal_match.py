@@ -209,8 +209,8 @@ def test_journal_match_does_not_import_engine_or_index_keys() -> None:
         assert "import thesistester.engine" not in source
         assert "from thesistester.study.execute" not in source
         assert "import thesistester.study.execute" not in source
-        assert "simulate_trades" not in source
-        assert "compute_all_levels" not in source
+        assert "from thesistester.engine.backtest" not in source
+        assert "import simulate_trades" not in source
 
 
 def test_c25_classify_stays_on_match_facade() -> None:

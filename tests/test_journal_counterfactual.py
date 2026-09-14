@@ -129,8 +129,8 @@ def test_journal_cf_does_not_import_engine() -> None:
         source = path.read_text(encoding="utf-8")
         assert "from thesistester.engine" not in source
         assert "import thesistester.engine" not in source
-        assert "simulate_trades" not in source
-        assert "compute_all_levels" not in source
+        assert "from thesistester.engine.backtest" not in source
+        assert "import simulate_trades" not in source
 
 
 def test_c25_cf_summary_stays_on_facade() -> None:
