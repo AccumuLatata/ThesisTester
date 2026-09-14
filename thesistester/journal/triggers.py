@@ -1,7 +1,7 @@
 """Trigger inference on the previous completed 1m bar and 15s_proxy (JS2).
 
-Calls ``classify_zone_triggers`` via ``_classify_zone_triggers_detail``
-(prepare + delegate). Does not call
+Calls ``classify_zone_triggers`` via a lazy ``_classify_zone_triggers_detail``
+bind (prepare + delegate; public wrapper is labels-only). Does not call
 ``simulate_trades``, ``generate_signals``, or ``_check_confirm_3bar``.
 Does not compare JS1 ``approach_side`` to fade ``_approach_side``.
 """
@@ -16,7 +16,6 @@ import math
 
 import pandas as pd
 
-from thesistester.engine.signals import _classify_zone_triggers_detail
 from thesistester.journal.schema import (
     JOIN_BAR_SECONDS,
     JOURNAL_STORE_SCHEMA,
@@ -47,6 +46,30 @@ _TRIGGERS_JSON = "triggers.json"
 _DIRECTIONAL = frozenset({"reject", "break", "reclaim"})
 _IMPLIED = frozenset({"fade", "continuation"})
 _TRADE_SIDES = frozenset({"long", "short"})
+
+
+def _classify_zone_triggers_detail(
+    df: pd.DataFrame,
+    zone: pd.Series,
+    trigger_bar_idx: int,
+    direction: str,
+    *,
+    trigger_timeframe: str = "base",
+    trigger_params: dict[str, object] | None = None,
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """Lazy bind. Public ``classify_zone_triggers`` returns labels only."""
+    from thesistester.engine.signals import (
+        _classify_zone_triggers_detail as classify_impl,
+    )
+
+    return classify_impl(
+        df,
+        zone,
+        trigger_bar_idx,
+        direction,
+        trigger_timeframe=trigger_timeframe,
+        trigger_params=trigger_params,
+    )
 
 
 def infer_journal_triggers(

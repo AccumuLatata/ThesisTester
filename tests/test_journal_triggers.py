@@ -8,6 +8,7 @@ import inspect
 import json
 import os
 import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -733,6 +734,39 @@ def test_cli_writes_artifacts_and_refuses_studies_dir(tmp_path: Path) -> None:
     )
     assert code_bad == 2
     assert not (forbidden / "triggers.json").exists()
+
+
+def test_journal_package_import_leaves_simulate_trades_unbound() -> None:
+    """QI-08-02: ``import thesistester.journal`` must not load ``engine.backtest``."""
+    script = (
+        "import sys\n"
+        "import thesistester.journal as journal\n"
+        "assert hasattr(journal, 'simulate_trades') is False\n"
+        "assert 'thesistester.engine.backtest' not in sys.modules\n"
+        "assert 'thesistester.engine.signals' not in sys.modules\n"
+        "assert 'thesistester.journal.triggers' not in sys.modules\n"
+        "assert 'thesistester.journal.zones' not in sys.modules\n"
+        "assert 'thesistester.journal.levels' not in sys.modules\n"
+        "print('ok')\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == "ok"
+
+
+def test_journal_init_does_not_eager_import_engine_loaders() -> None:
+    source = Path("thesistester/journal/__init__.py").read_text(encoding="utf-8")
+    assert "from thesistester.journal.triggers" not in source
+    assert "from thesistester.journal.zones" not in source
+    assert "from thesistester.journal.levels" not in source
+    assert "from thesistester.engine" not in source
+    assert "import thesistester.engine" not in source
 
 
 def test_triggers_module_does_not_call_engine_mutators() -> None:

@@ -63,7 +63,9 @@ C-7 (QI-06-04) generates managed/known/required/hash-exclusion lists from
 walk `BUNDLE_SECTION_IO`. C-8 (QI-06-05) splits saved-dataset bootstrap:
 Streamlit-free `saved_dataset_state` (`restore_saved_dataset_provenance`
 takes a mapping) + one-function `app_state` adapter (lazy Streamlit).
-`classic_*` Streamlit imports stay lazy. Next: C-9.
+`classic_*` Streamlit imports stay lazy. C-9 (QI-08-02) slims the journal
+barrel and lazy-binds classify so `import thesistester.journal` does not
+load `engine.backtest`. Next: C-10.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -97,8 +99,8 @@ on broken contracts; it does **not** fail and is **not** one of the six G-1
 required names. C1/C4 ignore only the known `expand → cli` hop of
 `expand → cli → cli_study` (not blanket `allow_indirect_imports`). C7 is
 expected broken via `journal.levels → study.schema → tick_vap →
-execution_artifacts → api` (C-9 slims package-init runtime load; it does
-not keep C7). C8 allow-list: lazy `app_state` adapter (C-8), lazy
+execution_artifacts → api` (C-9 landed: package-init no longer loads
+`engine.backtest`; it does not keep C7). C8 allow-list: lazy `app_state` adapter (C-8), lazy
 classic chrome (`classic_context` / `classic_ledger` / `classic_nav` /
 `classic_proposal` / `classic_record`), and the two secret readers
 (`assistant.llm`, `assistant.voice.xai_realtime`) until F-9. Eager
@@ -221,7 +223,10 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Private `_` aliases remain for same-module callers. C-7 (QI-06-04)
    is the bundle key registry (`BUNDLE_KEY_REGISTRY` / `BUNDLE_SECTION_IO`).
    C-8 (QI-06-05) is the Streamlit-free `saved_dataset_state` store plus
-   the one-function `app_state` page adapter (restore is store-only). Next: C-9.
+   the one-function `app_state` page adapter (restore is store-only).
+   C-9 (QI-08-02) slims `journal/__init__.py` (lazy JS/TJ exports) and
+   lazy-binds `_classify_zone_triggers_detail` in `journal/triggers.py`.
+   Next: C-10.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`
@@ -738,8 +743,8 @@ Every request must first parse as an `AssistantRequest`, then pass
   `lint-imports` and emits `::warning` on broken contracts; it **does not**
   fail. Config/runtime errors (no contract report) still fail the job.
   C7 is expected broken via journal.levels → study.schema → tick_vap →
-  execution_artifacts → api (C-9 slims package-init runtime load; it does
-  not keep C7). C9 (`sim_core` ↛ `entry_window_policy` / `analytics.*`)
+  execution_artifacts → api (C-9 landed: package-init no longer loads
+  `engine.backtest`; it does not keep C7). C9 (`sim_core` ↛ `entry_window_policy` / `analytics.*`)
   is kept (B-19 / QI-4 §6.3); AST resolves parent-package and relative
   imports. C12 is `tests/test_validation.py`, not this job. This job
   is **not** a G-1 required check. A later PR
@@ -1115,7 +1120,7 @@ are B-1; H10/H11 lock tests are B-2.
 - **A-period POC parity (AP):** `docs/APOC_QUANTOWER_INVESTIGATION_PLAN.md` (AP3 + desk default-tick follow-up). Default `apoc_profile_source` is `tick_last_volume_v1`. Named/product APOC without `tick_paths` refuses (`APOC requires ticks`); never typical fallback. Do not ship a bar-range proxy as Quantower-compatible. Tick math is reused from `apoc_candidates` via `apoc_tick.py`. Do not reuse `PriorProfileTable` as APOC. `run_experiment` / `compute_levels` must forward `dataset.tick_paths` into the A-period table even when a prior-VA parquet is present. Identity always stamps tick APOC; `LEVEL_ENGINE_VERSION` stays 11. Fresh Program B Wave 7 lives in `manifest_tick.yaml` (placeholder ticks, omitted source = product tick). Historical ZIPs stay typical-labeled; do not rewrite them. **Rolling POC is RP, not AP.** Product prior-profile aggregation is desk **4/8/10** (not a QT day lock).
 - **Rolling POC parity (RP):** `docs/ROLLING_POC_QUANTOWER_INVESTIGATION_PLAN.md` (RP2 default tick Last×Volume + VA-style refuse follow-up). Production `POC_rolling_*` is two-pointer Last×Volume on `[now-W+1min, now+1min)`. Missing ticks refuse when rolling is required (`rolling POC requires ticks`), never typical and not quiet all-NaN as the product path. Do **not** edit `_rolling_poc` **body** (dead/non-default). Do not treat AP1’s 4/4 as a QT rolling scorecard. Do not reuse `PriorProfileTable` / `APeriodTickProfileTable`. Do not open RP2-cancel. Do not claim Quantower rolling-widget parity. No `LEVEL_ENGINE_VERSION` bump; identity keys stamp tick. Studies that name neither VA nor APOC/rolling still run on 15s-only.
 - **Directional attribution (DA):** `docs/DIRECTIONAL_INTEGRITY_IMPLEMENTATION_PLAN.md` (DA0 locked). `touch` + `direction: both` + `single_position` is a long-only sample. Series code is **DA**; **DI is Discuss Intelligence**. Do not edit `_check_touch` or the candidate sort key. Do not rerun Program B on `touch` expecting shorts.
-- **Journal → Study (JS):** `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS2 landed; JS0 locked). Zone attribution (`detect_confluence_zones` on the previous completed 1m bar: `bar_open + 1min <= fill`; exact `09:30:00` uses `09:29`, not TJ6 `_expected_previous_open`) + CLI `journal zones` + page 17 Q3 Zones. Trigger inference (`classify_zone_triggers` wrapper; 1m + `15s_proxy`; `trigger_timeframe="base"` never `"1min"`; 3c not inferred) + CLI `journal triggers` + page 17 Q3 Inferred trigger. Later: frequency-selected `explicit_cells` StudySpec with fail-closed `holdout`, TJ8 multi-bundle rule-vs-desk. Gate A can stop the series after JS2. Do not add a 15s trigger lane, invent core×partner×trigger cartesians, omit `constants.backtest` SL/TP, regenerate goldens, select factors by outcome, or auto-run the proposed study. No new USER_GUIDE H2. Do not implement JS inside a TJ/DA PR.
+- **Journal → Study (JS):** `docs/JOURNAL_TO_STUDY_IMPLEMENTATION_PLAN.md` (JS2 landed; JS0 locked). Zone attribution (`detect_confluence_zones` on the previous completed 1m bar: `bar_open + 1min <= fill`; exact `09:30:00` uses `09:29`, not TJ6 `_expected_previous_open`) + CLI `journal zones` + page 17 Q3 Zones. Trigger inference (`classify_zone_triggers` wrapper; 1m + `15s_proxy`; `trigger_timeframe="base"` never `"1min"`; 3c not inferred) + CLI `journal triggers` + page 17 Q3 Inferred trigger. C-9 (QI-08-02): journal barrel lazy-exports helpers; `triggers.py` lazy-imports `_classify_zone_triggers_detail` so `import thesistester.journal` does not load `engine.backtest` or bind `simulate_trades`. Call-ban unchanged. Later: frequency-selected `explicit_cells` StudySpec with fail-closed `holdout`, TJ8 multi-bundle rule-vs-desk. Gate A can stop the series after JS2. Do not add a 15s trigger lane, invent core×partner×trigger cartesians, omit `constants.backtest` SL/TP, regenerate goldens, select factors by outcome, or auto-run the proposed study. No new USER_GUIDE H2. Do not implement JS inside a TJ/DA PR.
 - **Trade journal (TJ):** `docs/TRADE_JOURNAL_IMPLEMENTATION_PLAN.md` (TJ9 landed; series complete). TradesViz executions CSV (Layer 1, UTC) + AMP Daily Statement PDF (Layer 2, fees) only; Quantower loader parked (Vienna-local clock). `session_date` is `trading_session_date` (`eth_start=18:00`), not NY calendar date. Journal `r_multiple` / currency P&L scale with **qty**; do not copy 1-lot `simulate_trades` formulas. Do not call `simulate_trades` or `compute_all_levels` from journal code. Developing levels use the adjacent previous 1m bar whose close is strictly before the fill (a gap omits the token). Store under `.thesistester_store/journal/v1/` (not `execution_artifacts/`). Page 17 is read-only over ingested artifacts (Q1–Q8; n < 30 hidden unless toggled). Do not commit desk PII exports. TradesViz `commission`/`fees` are unused; AMP is the fee SoT. Tags are intent — verify against the levels frame, never treat as a trigger. `touch`/`3c` are context (entry style; `3c` is desk-written, not journal-inferred). TJ7 15s walk starts at the next 15s open; the only RNG is the seeded direction-shuffle null (preserves per-session long/short counts); discipline rules are declared with a date, never searched. TJ8 matches **one** named hash-verified cell (never the Observatory corpus); `product_mismatch` names hold/risk; the live-declaration file is read-only. Do not rebuild generic journal stats TradesViz already provides.
   Journal CLI: `JournalIngestError` prints `journal <cmd> failed: …` and
   exits 2 with no traceback — including malformed / empty / non-PDF AMP
