@@ -315,6 +315,8 @@ def test_isolate_apptest_globals_lives_in_conftest() -> None:
     }
     assert names == {"isolate_apptest_globals"}
     assert "autouse=True" in text
+    assert "_REAL_STREAMLIT" in text
+    assert 'sys.modules["streamlit"]' in text
     assistant = _source(REQUIRED_APPTEST_FILES[0])
     observatory = _source(REQUIRED_APPTEST_FILES[1])
     assert "def isolate_apptest_globals" not in assistant
