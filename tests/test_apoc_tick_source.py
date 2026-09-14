@@ -451,6 +451,7 @@ def test_reference_fixture_gate_synthetic_ticks_are_exact():
     _assert_tick_oracle([FIXTURE_TICKS], FIXTURE_EXPECTED, instrument="ES")
 
 
+@pytest.mark.oracle
 @pytest.mark.skipif(
     not os.environ.get(ORACLE_TICKS_ENV) or not os.environ.get(ORACLE_EXPECTED_ENV),
     reason=(

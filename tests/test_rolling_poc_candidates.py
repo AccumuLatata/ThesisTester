@@ -392,6 +392,7 @@ def test_isolation_production_rolling_poc_series_equal_and_va_omitted():
 # --- §8.1 item 8 -------------------------------------------------------------
 
 
+@pytest.mark.oracle
 @pytest.mark.skipif(
     not os.environ.get("THESISTESTER_RP_QT_1M")
     or not os.environ.get("THESISTESTER_RP_QT_EXPECTED"),

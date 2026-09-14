@@ -36,13 +36,16 @@ def _fixture_path() -> Path | None:
     return path
 
 
-pytestmark = pytest.mark.skipif(
-    _fixture_path() is None,
-    reason=(
-        f"{_ENV} is not the real b9bd9777 session-20 tick export "
-        f"(must exist, contain b9bd9777, and be >{_MIN_BYTES} bytes)"
+pytestmark = [
+    pytest.mark.oracle,
+    pytest.mark.skipif(
+        _fixture_path() is None,
+        reason=(
+            f"{_ENV} is not the real b9bd9777 session-20 tick export "
+            f"(must exist, contain b9bd9777, and be >{_MIN_BYTES} bytes)"
+        ),
     ),
-)
+]
 
 
 def test_session20_one_tick_vap_near_quantower_band():

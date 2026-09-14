@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from .run import run_benchmarks
+
+pytestmark = pytest.mark.benchmark
 
 
 def test_r22_benchmark_scenarios_are_deterministic_and_complete():

@@ -60,6 +60,8 @@ from thesistester.assistant.voice.xai_realtime import (
 )
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 
+pytestmark = pytest.mark.eval
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ASSISTANT_TOML = _REPO_ROOT / "config" / "assistant.toml"
 

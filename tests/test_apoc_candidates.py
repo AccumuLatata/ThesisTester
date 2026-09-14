@@ -353,6 +353,7 @@ def test_disabled_production_apoc_remains_a_no_op():
     assert list(out.columns) == []
 
 
+@pytest.mark.oracle
 @pytest.mark.skipif(
     not os.environ.get("THESISTESTER_APOC_QT_BARS")
     or not os.environ.get("THESISTESTER_APOC_QT_EXPECTED"),

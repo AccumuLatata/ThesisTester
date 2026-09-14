@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from thesistester.engine.anchor_confluence import detect_anchor_confluence_zones
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.signals import generate_signals
 
+pytestmark = pytest.mark.integration
 
 TZ = "America/New_York"
 TICK = 0.25

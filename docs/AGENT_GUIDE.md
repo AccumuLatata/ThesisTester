@@ -564,6 +564,16 @@ Every request must first parse as an `AssistantRequest`, then pass
   1. `ruff check .`
   2. `ruff format --check .`
   3. `pytest -q`
+- **Pytest markers (B-15 / QI-11-05).** Registered warn-first:
+  `unit` / `integration` / `golden` / `eval` / `benchmark` / `oracle` /
+  `serial`. The required CI cell is still the **full suite** (`pytest -q`
+  — do not add `-m unit` to G-1 jobs). Local loop: `pytest -m unit -q`
+  (exit: < 5 min). Unmarked tests are legal and become `unit` at
+  collection (`tests/conftest.py`). `--strict-markers` fails unknown
+  names only. Do not add `pytest-xdist` until every AppTest module (or
+  AppTest function in a mixed file) is `serial` (already true: B-12 /
+  B-13). `oracle` is env-gated desk data and stays skipped in CI.
+  Benchmarks assert `median_ms >= 0` only — not a performance gate.
 - Lint scope is deliberately narrow (`E4`, `E7`, `E9`, `F`, `W` at line length 100) and applies
   to Python only — Markdown is excluded so documentation snippets are never rewritten by the
   formatter. Widening the rule set is a separate, reviewable PR — never a side effect of
@@ -648,8 +658,10 @@ Every request must first parse as an `AssistantRequest`, then pass
   `proto.*` — Streamlit 1.63 (#478 / plan §4.3) raises `AppTestError` on
   disabled `chat_input.set_value`. Never `list(session_state)` (QI-10-05:
   Streamlit 1.63 raises `KeyError` key `"0"`). Mark AppTest modules (or
-  AppTest functions in a mixed file) `serial`; B-15 adds the rest of the
-  marker set.   Shared isolate fixture: `isolate_apptest_globals` in
+  AppTest functions in a mixed file) `serial`. B-15 registered
+  `unit` / `integration` / `golden` / `eval` / `benchmark` / `oracle`;
+  AppTest `serial` items collect as `integration` so `-m unit` stays off
+  the harness. Shared isolate fixture: `isolate_apptest_globals` in
   `tests/conftest.py` (autouse; restores the real
   `sys.modules["streamlit"]` before *and* after each test so helper
   stubs cannot brick `AppTest.run`; snapshots `__main__` / `sys.path`

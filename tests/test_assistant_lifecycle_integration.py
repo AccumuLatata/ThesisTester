@@ -9,6 +9,8 @@ import pytest
 from thesistester.assistant import AssistantOrchestrator, LocalThesisRepository, SpecVersion
 from thesistester.research_bundle import canonical_bundle_hash
 
+pytestmark = pytest.mark.integration
+
 
 def _mock_bundle_bytes() -> bytes:
     buffer = io.BytesIO()

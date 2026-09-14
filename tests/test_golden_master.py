@@ -11,6 +11,8 @@ from tests.fixtures.golden.canonical import canonicalize_trades, dtype_families
 from tests.fixtures.golden.generate import generate_dataset
 from tests.fixtures.golden.pipeline import run_legacy_pipeline
 
+pytestmark = pytest.mark.golden
+
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "golden"
 
 
