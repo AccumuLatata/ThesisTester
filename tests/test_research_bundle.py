@@ -1212,10 +1212,26 @@ def _const_str_tuple(node: ast.AST) -> set[str]:
     }
 
 
+def _bundle_key_registry_assign(tree: ast.AST) -> ast.Assign:
+    if not isinstance(tree, ast.Module):
+        raise AssertionError("expected a module AST")
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "BUNDLE_KEY_REGISTRY" for t in node.targets):
+            return node
+    raise AssertionError("missing BUNDLE_KEY_REGISTRY assignment")
+
+
 def _bundle_key_spec_calls(tree: ast.AST) -> list[ast.Call]:
+    """``BundleKeySpec`` calls on the ``BUNDLE_KEY_REGISTRY`` assignment only.
+
+    A dead helper / unused call must not bind A-7 leftovers (A-1/A-6 class).
+    """
+    registry = _bundle_key_registry_assign(tree)
     return [
         node
-        for node in ast.walk(tree)
+        for node in ast.walk(registry)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "BundleKeySpec"
@@ -1612,19 +1628,112 @@ _FROZEN_REQUIRED_SECTIONS = (
     "portfolio",
     "confluence_combo",
 )
+_FROZEN_SECTION_REQUIRED_FILES = {
+    "dataset": ("dataset.parquet", "dataset_meta.json"),
+    "levels": ("levels.parquet", "session_levels.parquet", "levels_meta.json"),
+    "signals": (
+        "signals.parquet",
+        "confluence_zones.parquet",
+        "naked_flags.parquet",
+        "signals_meta.json",
+    ),
+    "backtest": ("trades.parquet", "trade_summary.json", "equity_curve.parquet"),
+    "grid": ("grid_results.parquet", "best_grid_result.json"),
+    "validation": ("validation_summary.json",),
+    "walk_forward": ("walk_forward_results.parquet", "walk_forward_meta.json"),
+    "excursion": ("excursion_summary.json",),
+    "monte_carlo": ("monte_carlo_summary.json",),
+    "noise": ("noise_summary.json",),
+    "overfitting": ("overfitting_summary.json",),
+    "sensitivity": ("sensitivity_summary.json",),
+    "portfolio": ("portfolio_summary.json", "portfolio_trades.parquet"),
+    "confluence_combo": ("confluence_combo_summary.json",),
+}
+
+
+def _for_iterates_name(node: ast.For, name: str) -> bool:
+    return isinstance(node.iter, ast.Name) and node.iter.id == name
+
+
+def _loop_calls_section_io(loop: ast.For, attr: str) -> bool:
+    for child in ast.walk(loop):
+        if isinstance(child, ast.Attribute) and child.attr == attr:
+            return True
+    return False
+
+
+def _loop_gates_included_section(loop: ast.For) -> bool:
+    for child in ast.walk(loop):
+        if not isinstance(child, ast.Call):
+            continue
+        func = child.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "get"):
+            continue
+        if not (isinstance(func.value, ast.Name) and func.value.id == "included"):
+            continue
+        if not child.args:
+            continue
+        arg0 = child.args[0]
+        if (
+            isinstance(arg0, ast.Attribute)
+            and arg0.attr == "section"
+            and isinstance(arg0.value, ast.Name)
+        ):
+            return True
+    return False
+
+
+def _canonical_hash_exclusion_assigns(source: str) -> list[ast.Assign]:
+    tree = ast.parse(source)
+    if not isinstance(tree, ast.Module):
+        raise AssertionError("expected a module AST")
+    return [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "_CANONICAL_HASH_EXCLUDED_FILES"
+            for target in node.targets
+        )
+    ]
+
+
+def _assert_hash_exclusions_are_registry_generated(source: str) -> None:
+    """Hash exclusions must be generated from the registry (not a leftover literal set)."""
+    assigns = _canonical_hash_exclusion_assigns(source)
+    assert len(assigns) == 1, "_CANONICAL_HASH_EXCLUDED_FILES must have exactly one assignment"
+    node = assigns[0].value
+    assert isinstance(node, ast.Call), "_CANONICAL_HASH_EXCLUDED_FILES must be a frozenset call"
+    func = node.func
+    assert isinstance(func, ast.Name) and func.id == "frozenset"
+    assert node.args, "_CANONICAL_HASH_EXCLUDED_FILES frozenset needs a generator"
+    gen = node.args[0]
+    assert isinstance(gen, ast.GeneratorExp), (
+        "_CANONICAL_HASH_EXCLUDED_FILES must be generated, not a set display"
+    )
+    names = {n.id for n in ast.walk(gen) if isinstance(n, ast.Name)}
+    attrs = {n.attr for n in ast.walk(gen) if isinstance(n, ast.Attribute)}
+    assert "BUNDLE_KEY_REGISTRY" in names
+    assert "hash_exclude_files" in attrs
 
 
 def _assert_bundle_walks_section_io(source: str, name: str) -> None:
     """``build`` / ``load`` must walk ``BUNDLE_SECTION_IO`` (comment needles fail-closed)."""
     fn = _function_def(ast.parse(source), name)
+    attr = "build" if name == "build_research_bundle" else "load"
     fors = [node for node in ast.walk(fn) if isinstance(node, ast.For)]
     assert fors, f"{name} must walk BUNDLE_SECTION_IO"
     walked = False
     for loop in fors:
-        it = loop.iter
-        if isinstance(it, ast.Name) and it.id == "BUNDLE_SECTION_IO":
-            walked = True
-            break
+        if not _for_iterates_name(loop, "BUNDLE_SECTION_IO"):
+            continue
+        assert _loop_calls_section_io(loop, attr), f"{name} must call spec.{attr}"
+        if name == "load_research_bundle":
+            assert _loop_gates_included_section(loop), (
+                "load_research_bundle must gate the walk on included.get(spec.section)"
+            )
+        walked = True
+        break
     assert walked, f"{name} must iterate BUNDLE_SECTION_IO"
 
 
@@ -1635,8 +1744,15 @@ def test_bundle_key_registry_completeness():
         "identity",
         "clear_only",
     )
+    assert len(set(BUNDLE_KEY_REGISTRY_NAMES)) == len(BUNDLE_KEY_REGISTRY_NAMES)
     assert BUNDLE_SECTION_IO_NAMES == _FROZEN_REQUIRED_SECTIONS
     assert tuple(spec.section for spec in BUNDLE_SECTION_IO) == _FROZEN_REQUIRED_SECTIONS
+
+    for spec in BUNDLE_KEY_REGISTRY:
+        if spec.hashed:
+            assert spec.hash_exclude_files == ()
+        else:
+            assert set(spec.hash_exclude_files) == set(spec.known_files)
 
     generated_managed = {
         key for spec in BUNDLE_KEY_REGISTRY if spec.managed for key in spec.session_keys
@@ -1654,13 +1770,14 @@ def test_bundle_key_registry_completeness():
     generated_required = {
         spec.section: spec.required_files for spec in BUNDLE_KEY_REGISTRY if spec.required_files
     }
-    assert _SECTION_REQUIRED_FILES == generated_required
+    assert _SECTION_REQUIRED_FILES == generated_required == _FROZEN_SECTION_REQUIRED_FILES
     assert tuple(_SECTION_REQUIRED_FILES) == _FROZEN_REQUIRED_SECTIONS
 
     generated_excl = frozenset(
         name for spec in BUNDLE_KEY_REGISTRY for name in spec.hash_exclude_files
     )
     assert _CANONICAL_HASH_EXCLUDED_FILES == generated_excl == _FROZEN_HASH_EXCLUDED_FILES
+    _assert_hash_exclusions_are_registry_generated(_RESEARCH_BUNDLE_SOURCE)
 
     clear_only = next(spec for spec in BUNDLE_KEY_REGISTRY if spec.section == "clear_only")
     assert clear_only.managed is True
@@ -1742,6 +1859,80 @@ def test_ah4_p6_managed_set_guard_ignores_comment_needles():
         assert "missing literals" in str(exc)
     else:
         raise AssertionError("comment leftover keys must not satisfy _MANAGED_RESEARCH_KEYS")
+
+    stray_spec = (
+        "BUNDLE_KEY_REGISTRY = ()\n"
+        "_MANAGED_RESEARCH_KEYS = {key for spec in BUNDLE_KEY_REGISTRY "
+        "if spec.managed for key in spec.session_keys}\n"
+        "def _unused():\n"
+        "    BundleKeySpec(\n"
+        '        section="clear_only", meta_attr="", meta_keys=(),\n'
+        '        session_keys=("otf_validation_matrix", "display_timezone"),\n'
+        "        required_files=(), known_files=(), managed=True, hashed=False,\n"
+        "        hash_exclude_files=(),\n"
+        "    )\n"
+    )
+    try:
+        _assert_qi0603_managed_set_literals(stray_spec)
+    except AssertionError as exc:
+        assert "missing literals" in str(exc)
+    else:
+        raise AssertionError("dead BundleKeySpec must not bind A-7 leftovers")
+
+
+def test_hash_exclusion_guard_rejects_leftover_literal_set():
+    """C-7: a leftover frozenset display must not satisfy hash-exclusion generation."""
+    leftover = (
+        "_CANONICAL_HASH_EXCLUDED_FILES = frozenset(\n"
+        "    {\n"
+        '        "confluence_combo_summary.json",\n'
+        '        "confluence_by_exact_combo.parquet",\n'
+        "    }\n"
+        ")\n"
+    )
+    try:
+        _assert_hash_exclusions_are_registry_generated(leftover)
+    except AssertionError as exc:
+        assert "generated" in str(exc) or "set display" in str(exc)
+    else:
+        raise AssertionError("leftover hash-exclusion literal must not pass")
+
+    double = leftover + (
+        "_CANONICAL_HASH_EXCLUDED_FILES = frozenset(\n"
+        "    name for spec in BUNDLE_KEY_REGISTRY for name in spec.hash_exclude_files\n"
+        ")\n"
+    )
+    try:
+        _assert_hash_exclusions_are_registry_generated(double)
+    except AssertionError as exc:
+        assert "exactly one assignment" in str(exc)
+    else:
+        raise AssertionError("redefined hash-exclusion set must not pass")
+
+
+def test_load_walk_guard_requires_included_gate():
+    """C-7: iterating BUNDLE_SECTION_IO without included.get must fail closed."""
+    ungated = (
+        "def load_research_bundle(uploaded_file):\n"
+        "    for spec in BUNDLE_SECTION_IO:\n"
+        "        spec.load(ctx)\n"
+    )
+    try:
+        _assert_bundle_walks_section_io(ungated, "load_research_bundle")
+    except AssertionError as exc:
+        assert "included.get" in str(exc)
+    else:
+        raise AssertionError("ungated load walk must not pass")
+
+
+def test_spec_meta_requires_unique_nonempty_attr():
+    """Generated *_META_KEYS aliases fail closed on blank or duplicate meta_attr."""
+    from thesistester.research_bundle import _spec_meta
+
+    with pytest.raises(ValueError, match="non-empty"):
+        _spec_meta("")
+    with pytest.raises(ValueError, match="exactly one spec"):
+        _spec_meta("_MISSING_META_KEYS")
 
 
 def test_ah4_p6_apply_guard_requires_pop_of_managed_set():

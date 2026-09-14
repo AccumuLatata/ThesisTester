@@ -277,7 +277,7 @@ Known zip members (plus always-written `manifest.json`):
 | `overfitting` | `overfitting_summary.json` | — |
 | `sensitivity` | `sensitivity_summary.json` | — |
 | `portfolio` | `portfolio_summary.json`, `portfolio_trades.parquet` | `portfolio_skipped_trades.parquet`, `portfolio_equity_curve.parquet`, `portfolio_correlation.parquet`, `portfolio_drawdown_correlation.parquet`, `portfolio_marginal_contribution.parquet` |
-| `confluence_combo` | `confluence_combo_summary.json` | four `confluence_by_*.parquet` (hash-excluded) |
+| `confluence_combo` | `confluence_combo_summary.json` (hash-excluded) | four `confluence_by_*.parquet` (hash-excluded) |
 | `identity` | — | `research_identity.json` |
 | `clear_only` | — | no zip members |
 

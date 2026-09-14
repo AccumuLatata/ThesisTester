@@ -445,7 +445,12 @@ BUNDLE_KEY_REGISTRY_NAMES: tuple[str, ...] = tuple(spec.section for spec in BUND
 
 
 def _spec_meta(attr: str) -> tuple[str, ...]:
-    return next(spec.meta_keys for spec in BUNDLE_KEY_REGISTRY if spec.meta_attr == attr)
+    if not attr:
+        raise ValueError("BUNDLE_KEY_REGISTRY meta_attr must be non-empty")
+    matches = [spec.meta_keys for spec in BUNDLE_KEY_REGISTRY if spec.meta_attr == attr]
+    if len(matches) != 1:
+        raise ValueError(f"BUNDLE_KEY_REGISTRY meta_attr {attr!r} must name exactly one spec")
+    return matches[0]
 
 
 _DATASET_META_KEYS = _spec_meta("_DATASET_META_KEYS")
@@ -472,9 +477,11 @@ _KNOWN_FILES = {
 _SECTION_REQUIRED_FILES = {
     spec.section: spec.required_files for spec in BUNDLE_KEY_REGISTRY if spec.required_files
 }
-# Optional confluence combo siblings are deterministic projections of trades.
-# Exclude them from the canonical hash so legacy golden bundle hashes stay
-# stable without a GOLDEN_REGEN.
+# Optional confluence combo siblings are deterministic projections of trades (+
+# signal-run identity). Exclude them from the canonical hash so legacy golden
+# bundle hashes stay stable without a GOLDEN_REGEN, while still shipping the
+# optional files for import/preview. Manifest ``included.confluence_combo`` is
+# also stripped from the hashed manifest projection for the same reason.
 _CANONICAL_HASH_EXCLUDED_FILES = frozenset(
     name for spec in BUNDLE_KEY_REGISTRY for name in spec.hash_exclude_files
 )
@@ -574,19 +581,6 @@ def _parquet_safe_frame(df: pd.DataFrame) -> pd.DataFrame:
             continue
         out[col] = series.map(lambda value: value if _is_null(value) else str(value))
     return out
-
-
-# Optional confluence combo siblings are deterministic projections of trades (+
-# signal-run identity). Exclude them from the canonical hash so legacy golden
-# bundle hashes stay stable without a GOLDEN_REGEN, while still shipping the
-# optional files for import/preview. Manifest ``included.confluence_combo`` is
-# also stripped from the hashed manifest projection for the same reason.
-_CANONICAL_HASH_EXCLUDED_FILES = frozenset(
-    {
-        "confluence_combo_summary.json",
-        *_CONFLUENCE_COMBO_PARQUET_FILES.values(),
-    }
-)
 
 
 def canonical_bundle_hash(bundle_bytes: bytes) -> str:
