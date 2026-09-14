@@ -53,6 +53,11 @@ from thesistester.study.viewer import (
     tail_launch_log,
 )
 from tests.study.test_study_report import _write_report_fixture
+from tests.test_import_linter_contracts import (
+    _hits_ban,
+    _hits_observatory_family,
+    _imported_module_names,
+)
 
 
 def test_load_study_view_from_fixture(tmp_path: Path):
@@ -1442,6 +1447,7 @@ def test_c24_viewer_split_keeps_public_names_and_read_only_guards():
     assert "write_artifacts=False" in inspect.getsource(viewer.load_study_view)
     for module in (viewer, catalog, progress):
         source = Path(module.__file__).read_text(encoding="utf-8")
-        assert "thesistester.study.observatory" not in source
-        assert "import streamlit" not in source
-        assert "import plotly" not in source
+        imported = _imported_module_names(ast.parse(source), module.__name__)
+        assert not any(_hits_observatory_family(name) for name in imported)
+        assert not any(_hits_ban(name, "streamlit") for name in imported)
+        assert not any(_hits_ban(name, "plotly") for name in imported)

@@ -200,8 +200,9 @@ overview charts + cell peek + trader briefing —
 SL/TP grid / NY RTH ToD (`thesistester/study/briefing.py`). Do not implement
 further SV work inside an RS/SB/SIA PR. Discover must not call `report_study`.
 Do not call `run_study()`, `report_study` write, or `rollup_study()` from
-Inspect. `viewer.py` must not import `cli_study` / `thesistester.cli` /
-`execute` / `rollup` / Plotly / Streamlit (import-linter **C2**). Do not hydrate classic
+Inspect. `viewer.py` and C-24 `viewer_catalog` / `viewer_progress` must not
+import `cli_study` / `thesistester.cli` / `execute` / `rollup` / Plotly /
+Streamlit / Observatory siblings (import-linter **C2**). Do not hydrate classic
 `st.session_state`. Do not add time-of-day as a StudySpec factor axis.
 Operator contract: `docs/STUDY_RUNNER.md` §SV.
 
@@ -218,7 +219,8 @@ C-24 keeps those public names on `observatory.py` / `viewer.py` /
 Do not implement SO5/SO6 inside an RS/SV/SAF PR. Do not unpark
 SO5/SO6. Do not call `report_study`
 per study, `run_study()`, `rollup_study()`, or unzip-all. `observatory.py`
-must not import `cli_study` / `execute` / Streamlit / Plotly (import-linter **C3**). `viewer.py`
+and C-24 join/desk/lens/query/support helpers must not import `cli_study` /
+`execute` / Streamlit / Plotly (import-linter **C3**). `viewer.py`
 must not import `observatory`. Do not write `results/studies/`. Operator
 contract: `docs/STUDY_RUNNER.md` §SO.
 
@@ -841,7 +843,9 @@ Every request must first parse as an `AssistantRequest`, then pass
   execution_artifacts → api (C-9 landed: package-init no longer loads
   `engine.backtest`; it does not keep C7). C9 (`sim_core` ↛ `entry_window_policy` / `analytics.*`)
   is kept (B-19 / QI-4 §6.3); AST resolves parent-package and relative
-  imports. C12 is `tests/test_validation.py`, not this job. This job
+  imports. C-24 extends C2/C3 sources (and C4/C5 viewer bans) to the
+  observatory/viewer split helpers so a sibling cannot bypass the façade.
+  C12 is `tests/test_validation.py`, not this job. This job
   is **not** a G-1 required check. A later PR
   flips the same contracts to blocking. Do not rename the six required
   display names to absorb it.

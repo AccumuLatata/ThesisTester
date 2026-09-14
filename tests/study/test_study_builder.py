@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.test_import_linter_contracts import _hits_ban, _imported_module_names
 from thesistester.api import validate_run_spec
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.data.loader import FORMAT_PROFILE_LABELS as LOADER_FORMAT_PROFILE_LABELS
@@ -1194,15 +1195,19 @@ def test_c24_builder_hydrate_emit_stay_on_facade():
     assert builder.emit_study_spec is emit.emit_study_spec
     assert builder.hydrate_study_draft.__name__ == "hydrate_study_draft"
     assert builder.emit_study_spec.__name__ == "emit_study_spec"
-    source = Path("thesistester/study/builder.py").read_text(encoding="utf-8")
-    assert "import streamlit" not in source
-    assert "thesistester.study.execute" not in source
+    builder_source = Path("thesistester/study/builder.py").read_text(encoding="utf-8")
+    builder_imported = _imported_module_names(
+        ast.parse(builder_source), "thesistester.study.builder"
+    )
+    assert not any(_hits_ban(name, "streamlit") for name in builder_imported)
+    assert not any(_hits_ban(name, "thesistester.study.execute") for name in builder_imported)
     for path in (
         Path("thesistester/study/builder_draft.py"),
         Path("thesistester/study/builder_emit.py"),
         Path("thesistester/study/builder_hydrate.py"),
         Path("thesistester/study/builder_widgets.py"),
     ):
-        text = path.read_text(encoding="utf-8")
-        assert "import streamlit" not in text
-        assert "thesistester.study.execute" not in text
+        module_name = "thesistester.study." + path.stem
+        imported = _imported_module_names(ast.parse(path.read_text(encoding="utf-8")), module_name)
+        assert not any(_hits_ban(name, "streamlit") for name in imported), path
+        assert not any(_hits_ban(name, "thesistester.study.execute") for name in imported), path

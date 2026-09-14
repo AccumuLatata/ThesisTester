@@ -205,7 +205,9 @@ Plus additive CLI `python -m thesistester study observatory`. It concatenates
 existing index + expansion + spec locks via SV1 `discover_study_dirs`. It
 must not call `report_study` / `rollup_study` / `run_study`, must not unzip
 every cell, must not import Streamlit/Plotly inside `observatory.py` or the
-C-24 siblings (import-linter **C3** on the façade), and
+C-24 siblings (import-linter **C3** on the façade and join/desk/lens/query/support
+helpers; **C2** names `viewer_catalog` / `viewer_progress` and forbids the
+observatory siblings so a helper cannot bypass the façade), and
 must not be imported by `viewer.py`. SO2 adds `pages/16_Study_Observatory.py`
 (facets, cohort lock, n×E scatter, Inspect drill). Streamlit/Plotly stay on
 pages. SO3 attaches the Program B

@@ -13,6 +13,11 @@ import pytest
 import yaml
 
 from tests.apptest_helpers import set_enabled_value
+from tests.test_import_linter_contracts import (
+    _hits_ban,
+    _hits_observatory_family,
+    _imported_module_names,
+)
 
 from thesistester.cli import main as cli_main
 from thesistester.study.ledger import empty_ledger, save_ledger
@@ -830,49 +835,66 @@ _OBS_IMPORT_BANS = (
 )
 
 
-def _imported_modules(source: str) -> set[str]:
-    tree = ast.parse(source)
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
-    return imported
+def _module_name_for_path(path: Path) -> str:
+    return ".".join(path.with_suffix("").parts)
+
+
+def _imported_names(source: str, module_name: str) -> tuple[str, ...]:
+    return _imported_module_names(ast.parse(source), module_name)
+
+
+def _assert_no_banned_imports(source: str, module_name: str, banned: tuple[str, ...]) -> None:
+    imported = _imported_names(source, module_name)
+    leaked = [
+        name
+        for name in imported
+        for ban in banned
+        if _hits_ban(name, ban)
+    ]
+    assert leaked == [], f"{module_name}: {leaked}"
 
 
 def test_observatory_and_viewer_import_guards():
     observatory = Path("thesistester/study/observatory.py").read_text(encoding="utf-8")
     viewer = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")
-    imported = _imported_modules(observatory)
-    for banned in _OBS_IMPORT_BANS:
-        assert banned not in imported
+    _assert_no_banned_imports(observatory, "thesistester.study.observatory", _OBS_IMPORT_BANS)
     assert "report_study(" not in observatory
     assert "build_overview_frame(" not in observatory
     assert "_resolve_bundle_metrics(" not in observatory
     assert "rollup_study(" not in observatory
     assert "run_study(" not in observatory
-    assert "thesistester.study.observatory" not in viewer
-    assert "import observatory" not in viewer
-    assert "plotly" not in observatory
-    assert "streamlit" not in observatory
+    viewer_imported = _imported_names(viewer, "thesistester.study.viewer")
+    assert not any(_hits_observatory_family(name) for name in viewer_imported)
     for path in _C24_OBSERVATORY_MODULES:
         source = path.read_text(encoding="utf-8")
-        imported = _imported_modules(source)
-        for banned in _OBS_IMPORT_BANS:
-            assert banned not in imported, f"{path}: {banned}"
+        module_name = _module_name_for_path(path)
+        _assert_no_banned_imports(source, module_name, _OBS_IMPORT_BANS)
         assert "report_study(" not in source
         assert "rollup_study(" not in source
         assert "run_study(" not in source
-        assert "import streamlit" not in source
-        assert "import plotly" not in source
     for path in _C24_VIEWER_MODULES:
         source = path.read_text(encoding="utf-8")
-        assert "thesistester.study.observatory" not in source
-        assert "import observatory" not in source
-        imported = _imported_modules(source)
-        assert "streamlit" not in imported
-        assert "plotly" not in imported
+        module_name = _module_name_for_path(path)
+        imported = _imported_names(source, module_name)
+        assert not any(_hits_observatory_family(name) for name in imported), path
+        _assert_no_banned_imports(source, module_name, ("streamlit", "plotly"))
+
+
+def test_load_observatory_frame_honors_observatory_root_monkeypatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Page load binds ``observatory.default_study_viewer_roots`` (8b64af3)."""
+    hidden = tmp_path / "cwd" / "results" / "studies"
+    isolated = tmp_path / "isolated" / "results" / "studies"
+    _write_study(hidden, "hidden", cells=[{"run_name": "h0"}])
+    _write_study(isolated, "visible", cells=[{"run_name": "v0"}])
+    monkeypatch.chdir(tmp_path / "cwd")
+    monkeypatch.setattr(
+        "thesistester.study.observatory.default_study_viewer_roots",
+        lambda: (tmp_path / "isolated",),
+    )
+    model = load_observatory_frame()
+    assert list(model.studies["study_name"]) == ["visible"]
 
 
 def test_c24_desk_writes_stay_under_store_desks(tmp_path: Path):
@@ -1085,16 +1107,10 @@ def test_observatory_page_ast_and_contract():
     for key in CLASSIC_RESEARCH_SESSION_KEYS:
         assert f'st.session_state["{key}"]' not in source
         assert f"st.session_state['{key}']" not in source
-    tree = ast.parse(source)
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
-    assert "thesistester.study.execute" not in imported
-    assert "thesistester.study.rollup" not in imported
-    assert "thesistester.classic_record" not in imported
+    imported = _imported_names(source, "pages.16_Study_Observatory")
+    assert not any(_hits_ban(name, "thesistester.study.execute") for name in imported)
+    assert not any(_hits_ban(name, "thesistester.study.rollup") for name in imported)
+    assert not any(_hits_ban(name, "thesistester.classic_record") for name in imported)
     assert "observatory_cached_model" in source
     assert "observatory_active_lens" in source
     assert "observatory_saved_desk_id" in source
