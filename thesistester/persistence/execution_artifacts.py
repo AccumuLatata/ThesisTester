@@ -379,9 +379,7 @@ def _publish_directory(temp_dir: Path, final_dir: Path, *, artifacts_root: Path)
     contained_final = _assert_path_under_execution_artifacts(
         final_dir, artifacts_root=artifacts_root
     )
-    contained_temp = _assert_path_under_execution_artifacts(
-        temp_dir, artifacts_root=artifacts_root
-    )
+    contained_temp = _assert_path_under_execution_artifacts(temp_dir, artifacts_root=artifacts_root)
     publish_directory(contained_temp, contained_final)
 
 
