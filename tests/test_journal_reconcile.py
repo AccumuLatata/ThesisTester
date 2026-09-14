@@ -350,6 +350,66 @@ def test_amp_rewrite_leaves_points_unchanged() -> None:
     assert updated["r_multiple"] == pytest.approx(1.52 / (10 * 0.25 * 2.0 * 2))
 
 
+def test_cost_row_risk_zero_still_writes_net() -> None:
+    """Pre-C-10 ``if risk > 0`` skipped R; helper must not ZeroDivisionError."""
+    row = {
+        "qty": 2,
+        "instrument": "MNQ",
+        "status": STATUS_CLOSED,
+        "gross_pnl_points": 1.0,
+        "gross_pnl_currency": 4.0,
+        "journal_risk_ticks": 0,
+        "entry_price": 100.0,
+        "stop_price": None,
+        "trade_id": "jt:q2:0",
+        "r_multiple": 0.4,
+    }
+    updated = recon_mod._cost_row(dict(row), per_side=0.62, day_fee_allocation=0.0)
+    assert updated["gross_pnl_points"] == pytest.approx(1.0)
+    assert updated["net_pnl_currency"] == pytest.approx(1.52)
+    assert updated["net_ticks"] == pytest.approx(3.04)
+    assert updated["fee_ticks"] == pytest.approx(4.96)
+    assert updated["r_multiple"] == pytest.approx(0.4)
+
+
+def test_cost_row_missing_points_still_writes_net() -> None:
+    """Pre-C-10 ``_cost_row`` used stored currency and never float()ed points."""
+    row = {
+        "qty": 2,
+        "instrument": "MNQ",
+        "status": STATUS_CLOSED,
+        "gross_pnl_points": None,
+        "gross_pnl_currency": 4.0,
+        "journal_risk_ticks": 10,
+        "entry_price": 100.0,
+        "stop_price": None,
+        "trade_id": "jt:q2:0",
+    }
+    updated = recon_mod._cost_row(dict(row), per_side=0.62, day_fee_allocation=0.0)
+    assert updated["gross_pnl_points"] is None
+    assert updated["gross_pnl_currency"] == pytest.approx(4.0)
+    assert updated["net_pnl_currency"] == pytest.approx(1.52)
+    assert updated["net_ticks"] == pytest.approx(3.04)
+    assert updated["r_multiple"] == pytest.approx(1.52 / (10 * 0.25 * 2.0 * 2))
+
+
+def test_cost_row_amp_rewrites_declared_r() -> None:
+    row = {
+        "qty": 2,
+        "instrument": "MNQ",
+        "status": STATUS_CLOSED,
+        "gross_pnl_points": 1.0,
+        "gross_pnl_currency": 4.0,
+        "journal_risk_ticks": 10,
+        "entry_price": 100.0,
+        "stop_price": 99.0,
+        "trade_id": "jt:q2:0",
+    }
+    updated = recon_mod._cost_row(dict(row), per_side=0.62, day_fee_allocation=0.0)
+    assert updated["gross_pnl_points"] == pytest.approx(1.0)
+    assert updated["r_multiple_declared"] == pytest.approx(1.52 / (1.0 * 2.0 * 2))
+
+
 def test_synthetic_e2e_pnl_columns_byte_identical() -> None:
     """C-10 exit: 40-fill synthetic reconcile P&L columns stay byte-identical."""
     trades, days = reconcile_journal(_load_tv(GOLDEN_TV), (parse_amp(GOLDEN_AMP.read_text()),))

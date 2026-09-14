@@ -478,15 +478,13 @@ def _cost_row(
     ):
         return row
     net = gross_f - commission - day_fee_allocation
-    points = row["gross_pnl_points"]
-    stop = row.get("stop_price")
-    declared_stop = None
-    entry_price = None
-    if stop is not None and not (isinstance(stop, float) and pd.isna(stop)):
-        declared_stop = float(stop)
-        entry_price = float(row["entry_price"])
+    # Points are unused for net/R/ticks when net is provided. Do not float()
+    # blindly: pre-C-10 _cost_row never required a finite points cell.
+    points = _as_finite(row.get("gross_pnl_points"))
+    declared_stop = _as_finite(row.get("stop_price"))
+    entry_price = _as_finite(row.get("entry_price")) if declared_stop is not None else None
     scaled = qty_scaled_journal_pnl(
-        points=float(points),
+        points=points,
         qty=qty,
         instrument=instrument,
         journal_risk_ticks=int(row["journal_risk_ticks"]),
@@ -499,11 +497,29 @@ def _cost_row(
     row["net_pnl_currency"] = scaled.net_pnl_currency
     row["fee_ticks"] = scaled.fee_ticks
     row["net_ticks"] = scaled.net_ticks
-    if int(row["journal_risk_ticks"]) * qty > 0:
+    if int(row["journal_risk_ticks"]) * qty > 0 and scaled.r_multiple is not None:
         row["r_multiple"] = scaled.r_multiple
     if scaled.r_multiple_declared is not None:
         row["r_multiple_declared"] = scaled.r_multiple_declared
     return row
+
+
+def _as_finite(value: object) -> float | None:
+    """Parse a scalar for AMP rewrite. ``None`` / NA / non-finite → ``None``."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
 
 
 def _day_to_json(day: DayReconcile) -> dict[str, object]:

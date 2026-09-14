@@ -43,18 +43,18 @@ _ENTRY_KINDS = frozenset({ENTRY_KIND_IMPORTED, ENTRY_KIND_MANUAL})
 class QtyScaledJournalPnl:
     """TJ §3.0 qty-scaled P&L. Points unscaled; currency / R / ticks × qty."""
 
-    gross_pnl_points: float
-    gross_pnl_currency: float
+    gross_pnl_points: float | None
+    gross_pnl_currency: float | None
     net_pnl_currency: float
     net_ticks: float
     fee_ticks: float | None
-    r_multiple: float
+    r_multiple: float | None
     r_multiple_declared: float | None
 
 
 def qty_scaled_journal_pnl(
     *,
-    points: float,
+    points: float | None = None,
     qty: int,
     instrument: str,
     journal_risk_ticks: int,
@@ -63,26 +63,38 @@ def qty_scaled_journal_pnl(
     entry_price: float | None = None,
     declared_stop: float | None = None,
 ) -> QtyScaledJournalPnl:
-    """Qty-scaled journal P&L. Does not copy 1-lot ``simulate_trades`` formulas."""
+    """Qty-scaled journal P&L. Does not copy 1-lot ``simulate_trades`` formulas.
+
+    AMP rewrite may omit ``points`` and pass ``net_pnl_currency``. ``r_multiple``
+    is ``None`` when risk is 0 so ``_cost_row`` can skip the field (TJ4).
+    """
     if instrument not in JOURNAL_POINT_VALUE:
         raise JournalIngestError(f"unknown journal instrument {instrument!r}")
     point_value = JOURNAL_POINT_VALUE[instrument]
     tick_value = JOURNAL_TICK_SIZE * point_value
-    gross_currency = points * point_value * qty
-    net = gross_currency if net_pnl_currency is None else net_pnl_currency
+    if points is None:
+        if net_pnl_currency is None:
+            raise JournalIngestError("qty_scaled_journal_pnl requires points or net_pnl_currency")
+        gross_points: float | None = None
+        gross_currency: float | None = None
+        net = net_pnl_currency
+    else:
+        gross_points = points
+        gross_currency = points * point_value * qty
+        net = gross_currency if net_pnl_currency is None else net_pnl_currency
     risk = journal_risk_ticks * tick_value * qty
     r_declared = None
     if entry_price is not None and declared_stop is not None:
-        distance = abs(entry_price - declared_stop)
-        if distance > 0:
-            r_declared = net / (distance * point_value * qty)
+        declared_denom = abs(entry_price - declared_stop) * point_value * qty
+        if declared_denom > 0:
+            r_declared = net / declared_denom
     return QtyScaledJournalPnl(
-        gross_pnl_points=points,
+        gross_pnl_points=gross_points,
         gross_pnl_currency=gross_currency,
         net_pnl_currency=net,
         net_ticks=net / tick_value,
         fee_ticks=None if commission_cost is None else commission_cost / tick_value,
-        r_multiple=net / risk,
+        r_multiple=(net / risk) if risk else None,
         r_multiple_declared=r_declared,
     )
 
