@@ -46,6 +46,10 @@ FORMAT_PROFILE_LABELS: dict[str, str] = {
     "tick_capture": "Generic tick capture CSV",
     "second_capture": "Generic second capture CSV",
 }
+# 15s-primary derive allow-list (Data page + validate_run_spec). SoT for QI-01-06.
+DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
+# Dual-upload lower-frame parser tokens; never inherit the primary vendor profile.
+SUBTIMEFRAME_FORMAT_PROFILES = ("canonical", "quantower_history_exporter")
 FormatProfile = Literal[
     "canonical",
     "ninjatrader",

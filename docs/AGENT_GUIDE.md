@@ -31,7 +31,11 @@ Regression-safe onboarding guide for contributors/agents working in ThesisTester
 ## Headless and agent operation (R18)
 
 Use `thesistester.api` for one in-process research pipeline or the versioned YAML
-runner for independent batches:
+runner for independent batches. `validate_run_spec` is the shared fail-closed
+RunSpec gate: C-2 (QI-06-01 / MG-17) walks `RUN_SPEC_RULES` (run, dataset,
+levels, setup, backtest, grid, subtimeframe, walk_forward, validation).
+Own table — do not import `SETUP_CONFIG_RULES`. `api.FORMAT_PROFILES` is
+the loader object. No pydantic. No composer collapse.
 
 ```bash
 python -m thesistester run experiment.yaml --workers 4
@@ -968,7 +972,12 @@ are B-1; H10/H11 lock tests are B-2.
   labels from loader via a type-checked `getattr` plus local fallback; keep
   page-local normalize (blank → `canonical`; do not rewrite unknown tokens).
   Page-local ingest tokens; seed/Apply via getattr/hasattr (and
-  `dataset_extra` when the first-class field is missing).
+  `dataset_extra` when the first-class field is missing). C-2 (QI-01-06):
+  `validate_run_spec` imports `FORMAT_PROFILES` /
+  `DERIVE_15S_SUPPORTED_PROFILES` / `SUBTIMEFRAME_FORMAT_PROFILES` from
+  loader. The Data page binds the derive and dual-upload subsets with the
+  same type-checked `getattr` fallback. Builder `_FORMAT_PROFILE_LABELS_FALLBACK`
+  stays.
 - `dataset.subtimeframe_path` is always canonical OHLCV for R12 replay; it
   never inherits the primary dataset's vendor `format_profile`. Prefer
   `dataset.ingestion_mode: 15s_primary_derive_1m` when the primary file is

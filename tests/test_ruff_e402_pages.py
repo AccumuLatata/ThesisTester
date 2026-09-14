@@ -109,8 +109,10 @@ def test_only_data_page_bootstraps_sys_path_before_imports() -> None:
     assert bootstrapped == [E402_IGNORE_KEY]
     assert set(late_by_page) == {E402_IGNORE_KEY}
     # QI-10 §2.2 / PR probe: the remaining ignore covers Data's post-bootstrap
-    # thesistester imports, not a blanket pages glob.
-    assert len(late_by_page[E402_IGNORE_KEY]) == 14
+    # thesistester imports, not a blanket pages glob. C-2 adds one statement
+    # (`from thesistester.data import loader as _data_loader`) for the R17
+    # type-checked getattr bind.
+    assert len(late_by_page[E402_IGNORE_KEY]) == 15
 
     data_src = DATA_PAGE.read_text(encoding="utf-8")
     assert "REPO_ROOT = Path(__file__).resolve().parents[1]" in data_src

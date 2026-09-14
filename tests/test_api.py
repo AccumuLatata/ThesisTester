@@ -7,6 +7,10 @@ import pytest
 
 from thesistester.analytics import equity_curve, summarize_trades
 from thesistester.api import (
+    FORMAT_PROFILES,
+    RUN_SPEC_CLUSTERS,
+    RUN_SPEC_RULES,
+    SUBTIMEFRAME_FORMAT_PROFILES,
     build_setup,
     compute_levels,
     generate_signals,
@@ -16,6 +20,12 @@ from thesistester.api import (
     run_portfolio_analysis,
     run_walk_forward,
     run_validation,
+    validate_run_spec,
+)
+from thesistester.data.loader import (
+    DERIVE_15S_SUPPORTED_PROFILES,
+    FORMAT_PROFILES as LOADER_FORMAT_PROFILES,
+    SUBTIMEFRAME_FORMAT_PROFILES as LOADER_SUBTIMEFRAME_FORMAT_PROFILES,
 )
 from thesistester.engine import apply_configured_otf_filter, simulate_trades
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
@@ -720,3 +730,208 @@ def test_anchor_only_setup_generate_signals_emits_point_zone():
     assert zones.iloc[0]["zone_low"] == zones.iloc[0]["zone_high"] == 100.5
     backtest = run_backtest(levels, result["signals"], instrument="ES")
     assert "trades" in backtest
+
+
+def test_validate_run_spec_format_profiles_match_loader():
+    assert set(FORMAT_PROFILES) == set(LOADER_FORMAT_PROFILES)
+    assert FORMAT_PROFILES is LOADER_FORMAT_PROFILES
+
+
+def test_validate_run_spec_derive_profiles_match_loader():
+    from thesistester.api import _DERIVE_15S_SUPPORTED_PROFILES
+
+    assert set(_DERIVE_15S_SUPPORTED_PROFILES) == set(DERIVE_15S_SUPPORTED_PROFILES)
+    assert _DERIVE_15S_SUPPORTED_PROFILES is DERIVE_15S_SUPPORTED_PROFILES
+
+
+def test_validate_run_spec_subtimeframe_profiles_match_loader():
+    assert set(SUBTIMEFRAME_FORMAT_PROFILES) == set(LOADER_SUBTIMEFRAME_FORMAT_PROFILES)
+    assert SUBTIMEFRAME_FORMAT_PROFILES is LOADER_SUBTIMEFRAME_FORMAT_PROFILES
+
+
+def test_validate_run_spec_rule_table_names_qi0601_clusters():
+    assert RUN_SPEC_CLUSTERS == (
+        "run",
+        "dataset",
+        "levels",
+        "setup",
+        "backtest",
+        "grid",
+        "subtimeframe",
+        "walk_forward",
+        "validation",
+    )
+    assert tuple(rule.cluster for rule in RUN_SPEC_RULES) == RUN_SPEC_CLUSTERS
+    import thesistester.api as api
+
+    assert not hasattr(api, "SETUP_CONFIG_RULES")
+
+
+def _c2_base_run_spec() -> dict:
+    return {
+        "name": "c2",
+        "dataset": {
+            "path": "x.csv",
+            "instrument": "ES",
+            "source_timezone": "America/New_York",
+            "format_profile": "canonical",
+        },
+        "levels": {
+            "sma_lengths": [2],
+            "ema_lengths": [2],
+            "sma_timeframes": ["1min"],
+            "ema_timeframes": ["1min"],
+            "vwap_windows": [],
+            "poc_windows": [],
+        },
+        "setup": {
+            "name": "c2",
+            "description": "C-2 cluster probe",
+            "instrument": "ES",
+            "selected_levels": ["dOpen", "RTH_Open"],
+            "tolerance_ticks": 0,
+            "min_confluences": 2,
+            "max_confluences": 2,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "trigger": "touch",
+            "trigger_timeframe": "base",
+            "direction": "both",
+            "confluence_mode": "global_cluster",
+            "anchor_level": None,
+            "confluence_rules": [],
+            "min_valid_confluences": 1,
+            "trigger_params": {},
+            "otf_filter": None,
+        },
+        "backtest": {
+            "stop_loss_ticks": 8,
+            "take_profit_ticks": 16,
+        },
+        "grid": {"enabled": False},
+        "validation": {"enabled": False},
+    }
+
+
+def _c2_probe_run() -> dict:
+    spec = _c2_base_run_spec()
+    spec["unknown_run_key"] = 1
+    return spec
+
+
+def _c2_probe_dataset() -> dict:
+    spec = _c2_base_run_spec()
+    spec["dataset"]["format_profile"] = "not_a_profile"
+    return spec
+
+
+def _c2_probe_levels() -> dict:
+    spec = _c2_base_run_spec()
+    spec["levels"] = "not-a-mapping"
+    return spec
+
+
+def _c2_probe_setup() -> dict:
+    spec = _c2_base_run_spec()
+    spec["setup"] = "not-a-mapping"
+    return spec
+
+
+def _c2_probe_backtest() -> dict:
+    spec = _c2_base_run_spec()
+    spec["backtest"]["intrabar_model"] = "not_a_model"
+    return spec
+
+
+def _c2_probe_grid() -> dict:
+    spec = _c2_base_run_spec()
+    spec["grid"] = "not-a-mapping"
+    return spec
+
+
+def _c2_probe_subtimeframe() -> dict:
+    spec = _c2_base_run_spec()
+    spec["backtest"]["intrabar_model"] = "subtimeframe"
+    return spec
+
+
+def _c2_probe_walk_forward() -> dict:
+    spec = _c2_base_run_spec()
+    spec["walk_forward"] = "not-a-mapping"
+    return spec
+
+
+def _c2_probe_validation() -> dict:
+    spec = _c2_base_run_spec()
+    spec["validation"] = "not-a-mapping"
+    return spec
+
+
+_RUN_SPEC_CLUSTER_PROBES: tuple[tuple[str, object, str], ...] = (
+    ("run", _c2_probe_run, "Unknown run configuration keys"),
+    ("dataset", _c2_probe_dataset, "dataset.format_profile is unsupported"),
+    ("levels", _c2_probe_levels, "levels must be a mapping"),
+    ("setup", _c2_probe_setup, "setup must be a mapping"),
+    ("backtest", _c2_probe_backtest, "backtest.intrabar_model must be one of"),
+    ("grid", _c2_probe_grid, "grid must be a mapping"),
+    (
+        "subtimeframe",
+        _c2_probe_subtimeframe,
+        "dataset.subtimeframe_path is required when an enabled run section",
+    ),
+    ("walk_forward", _c2_probe_walk_forward, "walk_forward must be a mapping"),
+    ("validation", _c2_probe_validation, "validation must be a mapping"),
+)
+
+
+def _cluster_error(check, spec) -> str | None:
+    try:
+        check(spec)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+def test_validate_run_spec_rule_table_probe_names_match_clusters():
+    assert tuple(row[0] for row in _RUN_SPEC_CLUSTER_PROBES) == RUN_SPEC_CLUSTERS
+
+
+@pytest.mark.parametrize(("cluster", "make_spec", "expected"), _RUN_SPEC_CLUSTER_PROBES)
+def test_validate_run_spec_one_row_per_cluster(cluster, make_spec, expected):
+    spec = make_spec()
+    check = next(rule.check for rule in RUN_SPEC_RULES if rule.cluster == cluster)
+    message = _cluster_error(check, spec)
+    assert message is not None
+    assert expected in message
+    for rule in RUN_SPEC_RULES:
+        if rule.cluster == cluster:
+            continue
+        other = _cluster_error(rule.check, spec)
+        if other is None:
+            continue
+        assert expected not in other, rule.cluster
+
+
+def test_validate_run_spec_raises_first_cluster_error_in_table_order():
+    spec = _c2_base_run_spec()
+    spec["unknown_run_key"] = 1
+    spec["dataset"]["format_profile"] = "not_a_profile"
+    with pytest.raises(ValueError, match="Unknown run configuration keys"):
+        validate_run_spec(spec)
+
+
+def test_validate_run_spec_rejects_unknown_format_profile():
+    with pytest.raises(ValueError, match="dataset.format_profile is unsupported"):
+        validate_run_spec(
+            {
+                "name": "c2",
+                "dataset": {"path": "x.csv", "format_profile": "not_a_profile"},
+            }
+        )
+
+
+def test_validate_run_spec_rejects_unknown_subtimeframe_format_profile():
+    spec = _c2_base_run_spec()
+    spec["dataset"]["subtimeframe_format_profile"] = "ninjatrader"
+    with pytest.raises(ValueError, match="dataset.subtimeframe_format_profile is unsupported"):
+        validate_run_spec(spec)

@@ -1094,6 +1094,10 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "Legacy dual-upload (optional)" in page_text
     assert "Sample data remains the legacy one-minute fixture path." in page_text
     assert "quantower_history_exporter" in data_page.DERIVE_15S_SUPPORTED_PROFILES
+    from thesistester.data import loader as loader_mod
+
+    assert data_page.DERIVE_15S_SUPPORTED_PROFILES is loader_mod.DERIVE_15S_SUPPORTED_PROFILES
+    assert data_page.SUBTIMEFRAME_FORMAT_PROFILES is loader_mod.SUBTIMEFRAME_FORMAT_PROFILES
     assert data_page.INGESTION_MODE_PRIMARY == "primary"
     assert "on_change=_on_ingestion_mode_change" in page_text
     assert "_leave_15s_primary_session_if_active()" in page_text
@@ -1115,6 +1119,30 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "Data-page attach does not feed classic Calculate" in page_text
     assert "_classify_typed_tick_path(" in page_text
     assert "outside the trusted local roots (cwd and store)" in page_text
+
+
+def test_bind_loader_profile_allow_list_falls_back_when_missing_or_mistyped():
+    data_page = _import_data_page_module({})
+    fallback = frozenset({"quantower_history_exporter"})
+
+    class _StaleLoader:
+        pass
+
+    class _MistypedLoader:
+        DERIVE_15S_SUPPORTED_PROFILES = "not-an-allow-list"
+
+    assert (
+        data_page._bind_loader_profile_allow_list(
+            _StaleLoader(), "DERIVE_15S_SUPPORTED_PROFILES", fallback
+        )
+        is fallback
+    )
+    assert (
+        data_page._bind_loader_profile_allow_list(
+            _MistypedLoader(), "DERIVE_15S_SUPPORTED_PROFILES", fallback
+        )
+        is fallback
+    )
 
 
 def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch):
