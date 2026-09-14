@@ -39,12 +39,12 @@ gate (warn-first):
 
 | ID | Rule | Notes |
 |---|---|---|
-| C1 | `study/preview.py` ↛ `study.execute` | Direct ban. `allow_indirect_imports` for the known `expand → cli → cli_study` chain (a layers stack would invert: `execute` imports `expand`) |
+| C1 | `study/preview.py` ↛ `study.execute` | Direct and other chains. Ignores only the known `expand → cli` hop of `expand → cli → cli_study` (a layers stack would invert: `execute` imports `expand`). Not `allow_indirect_imports` |
 | C2 | `study/viewer.py` ↛ `cli_study` / `cli` / `execute` / `rollup` / `observatory` / Plotly / Streamlit | Direct and chain |
 | C3 | `study/observatory.py` ↛ `cli_study` / `execute` / Streamlit / Plotly | Direct and chain |
-| C4 | `study/launch.py` ↛ `viewer` / `execute` | Direct ban. Same `expand → cli → cli_study` chain as C1 |
+| C4 | `study/launch.py` ↛ `viewer` / `execute` | Direct and other chains. Same `expand → cli` ignore as C1 |
 | C5 | `study/admit_followup.py` ↛ execute / launch / viewer / cli / Streamlit | Direct and chain |
-| C7 | `journal` ↛ `engine.backtest` / `levels.all` / `engine.sim_core` | **Not** `engine.signals` (JS2). Warn-first broken via `journal.levels → study.schema → api` layering; C-9 slims package init |
+| C7 | `journal` ↛ `engine.backtest` / `levels.all` / `engine.sim_core` | **Not** `engine.signals` (JS2). Warn-first broken via `journal.levels → study.schema → tick_vap → execution_artifacts → api`. C-9 slims package-init runtime load; it does not keep this contract |
 | C8 | `thesistester` ↛ `streamlit` except the allow-list above | New Streamlit importers fail this contract |
 | C9 | `engine.sim_core` ↛ `entry_window_policy` / `analytics.*` | R22: no admission / P&L in `sim_core` |
 | C10 | Studies page ↛ `FORMAT_PROFILE_LABELS` from `study.builder` | `pages/` is not a package; gated by `tests/test_import_linter_contracts.py` |

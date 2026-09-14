@@ -6,9 +6,13 @@
 # Do not add that job to the G-1 six required display names.
 #
 # C6 is a call-ban (AST in tests/study), not an import contract.
-# C7 is expected broken via journal.levels → study.schema → api
-# (QI-12 §2.6 layering). C-9 slims journal/__init__.py package init.
-# C8 allow-list stays until C-8/F-9 extract Streamlit-free readers.
+# C7 is expected broken via the layering chain
+# journal.levels → study.schema → tick_vap → execution_artifacts → api
+# → engine.backtest / levels.all (sim_core via backtest). That is not
+# JS2 (engine.signals stays allowed). C-9 slims journal/__init__.py so a
+# runtime `import thesistester.journal` does not load backtest; it does
+# not keep this contract. C8 allow-list stays until C-8/F-9 extract
+# Streamlit-free readers.
 # C10 is page-scoped: pages/ are not a Python package, so import-linter
 # cannot name pages/15_Studies.py. The FORMAT_PROFILE_LABELS-from-builder
 # ban is this file's C10 comment plus tests/study/test_study_builder.py
@@ -20,8 +24,9 @@ include_external_packages = True
 
 # C1/C4: a layers stack is not used. execute and cli_study import expand
 # (and launch/preview import expand), so a preview>expand>cli>cli_study>execute
-# layer would invert. allow_indirect_imports encodes the known
-# expand → cli → cli_study chain on the forbidden contracts instead.
+# layer would invert. Ignore only the known expand → cli hop
+# (QI-12 §2.6 / QI-15 §5.4). Do not set allow_indirect_imports — that
+# would hide a new preview/launch → X → execute|viewer chain.
 
 [importlinter:contract:c1-preview-no-execute]
 name = C1 preview.py must not import study.execute (RS-D8)
@@ -30,8 +35,10 @@ source_modules =
     thesistester.study.preview
 forbidden_modules =
     thesistester.study.execute
-# Known chain (QI-12 §2.6): preview → expand → cli → cli_study → execute.
-allow_indirect_imports = True
+# Known chain: preview → expand → cli → cli_study → execute.
+ignore_imports =
+    thesistester.study.expand -> thesistester.cli
+unmatched_ignore_imports_alerting = error
 
 [importlinter:contract:c2-viewer-independence]
 name = C2 viewer.py ↛ cli_study / cli / execute / rollup / observatory / Plotly / Streamlit
@@ -67,7 +74,9 @@ forbidden_modules =
     thesistester.study.viewer
     thesistester.study.execute
 # Same expand → cli → cli_study chain as C1 (QI-12 §2.6).
-allow_indirect_imports = True
+ignore_imports =
+    thesistester.study.expand -> thesistester.cli
+unmatched_ignore_imports_alerting = error
 
 [importlinter:contract:c5-admit-followup-independence]
 name = C5 admit_followup.py ↛ execute / launch / viewer / cli / Streamlit
@@ -83,6 +92,7 @@ forbidden_modules =
 
 # C7: journal ↛ engine.backtest / levels.all / sim_core.
 # Do not forbid engine.signals — JS2 classify_zone_triggers wrapper is legitimate.
+# Warn-first broken today via journal.levels → study.schema → api (see header).
 [importlinter:contract:c7-journal-no-engine-core]
 name = C7 journal ↛ engine.backtest / levels.all / sim_core (TJ; not engine.signals)
 type = forbidden

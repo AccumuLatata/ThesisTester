@@ -84,13 +84,20 @@ jobs:
       - name: lint-imports (warn-first)
         run: |
           set +e
-          lint-imports --config .importlinter
+          out="$(lint-imports --config .importlinter --no-cache 2>&1)"
           code=$?
+          printf '%s\n' "$out"
           if [ "$code" -eq 0 ]; then
             echo "import-linter: all contracts kept (warn-first job; not a G-1 required check)."
             exit 0
           fi
-          echo "::warning title=import-linter::Broken contracts (QI-12-07 / B-10 warn-first, not blocking). C7 is expected via journal.levels → study.schema → api until later structural PRs. Blocking flip is a later PR."
+          # Contract violations are warn-first. Config/runtime errors (no report) fail.
+          if ! printf '%s\n' "$out" | grep -q "Contracts:"; then
+            echo "::error title=import-linter::lint-imports failed before producing a contract report (config/runtime error, not warn-first)."
+            exit 1
+          fi
+          broken="$(printf '%s\n' "$out" | awk '/BROKEN$/ {print}' | tr '\n' '|' | sed 's/|$//')"
+          echo "::warning title=import-linter::Broken contracts (QI-12-07 / B-10 warn-first, not blocking): ${broken:-see log}. Known expected: C7 via journal.levels → study.schema → tick_vap → execution_artifacts → api. Blocking flip is a later PR."
           exit 0
 
   tests:

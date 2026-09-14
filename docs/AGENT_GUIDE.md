@@ -60,9 +60,11 @@ host): `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + copy-ready prompts under
 import bans are `.importlinter` C1–C5 and C7–C10 (`QI-15_SYNTHESIS.md` §5.4).
 CI job `import-linter (warn-first)` runs `lint-imports` and emits `::warning`
 on broken contracts; it does **not** fail and is **not** one of the six G-1
-required names. C1/C4 use `allow_indirect_imports` for the known
-`expand → cli → cli_study` chain. C7 is expected broken via the
-`journal.levels → study.schema → api` layering chain (C-9 slims package init). C8 allow-list: `app_state`, classic chrome, and the two
+required names. C1/C4 ignore only the known `expand → cli` hop of
+`expand → cli → cli_study` (not blanket `allow_indirect_imports`). C7 is
+expected broken via `journal.levels → study.schema → tick_vap →
+execution_artifacts → api` (C-9 slims package-init runtime load; it does
+not keep C7). C8 allow-list: `app_state`, classic chrome, and the two
 secret readers (`assistant.llm`, `assistant.voice.xai_realtime`) until C-8/F-9.
 C10 is page-scoped (`pages/15_Studies.py` ↛ `FORMAT_PROFILE_LABELS` from
 builder) and is gated by `tests/test_import_linter_contracts.py`. Blocking
@@ -599,10 +601,12 @@ Every request must first parse as an `AssistantRequest`, then pass
 - **Import-linter (B-10 / QI-12-07).** `.importlinter` encodes QI-15 §5.4
   contracts C1–C5 and C7–C10. The CI job `import-linter (warn-first)` runs
   `lint-imports` and emits `::warning` on broken contracts; it **does not**
-  fail. C7 is expected broken via the journal.levels → study.schema → api
-  chain (C-9 slims package init). This job is **not** a G-1 required
-  check. A later PR flips the same contracts to blocking. Do not rename the
-  six required display names to absorb it.
+  fail. Config/runtime errors (no contract report) still fail the job.
+  C7 is expected broken via journal.levels → study.schema → tick_vap →
+  execution_artifacts → api (C-9 slims package-init runtime load; it does
+  not keep C7). This job is **not** a G-1 required check. A later PR
+  flips the same contracts to blocking. Do not rename the six required
+  display names to absorb it.
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:
@@ -635,7 +639,7 @@ cells do not block merge.
 | `pytest (py3.12)` | full suite; required on `main` |
 | `editable install (no dev extras)` | `pip install -e .` + import + `pip check` in a clean venv; required on `main` |
 | `golden-master regeneration guard` | required on `main`; fails any PR that changes legacy golden artifacts without the `GOLDEN_REGEN` label. Job is `pull_request`-only (`ci.yml`); that is the merge path |
-| `import-linter (warn-first)` | **not** required. B-10 / QI-12-07: `lint-imports` on `.importlinter` (C1–C5, C7–C10). Emits `::warning` on broken contracts; job stays green. Blocking flip is a later PR |
+| `import-linter (warn-first)` | **not** required. B-10 / QI-12-07: `lint-imports` on `.importlinter` (C1–C5, C7–C10). Emits `::warning` on broken contracts; job stays green. Config/runtime errors (no contract report) still fail the job. Blocking flip is a later PR |
 
 Verify the live gate from a non-admin token. `GET …/branches/main/protection`
 is admin-only and returns **403** for integration tokens — do not treat that
