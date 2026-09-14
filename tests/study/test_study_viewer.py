@@ -1427,3 +1427,21 @@ def test_peek_run_names_skips_non_mapping_cells_and_uses_cached_ledger(tmp_path:
 def test_peek_run_names_skips_null_overview_values():
     overview = pd.DataFrame({"run_name": ["alpha", float("nan"), None, ""]})
     assert peek_run_names(overview, None) == ("alpha",)
+
+
+def test_c24_viewer_split_keeps_public_names_and_read_only_guards():
+    import inspect
+
+    import thesistester.study.viewer as viewer
+    import thesistester.study.viewer_catalog as catalog
+    import thesistester.study.viewer_progress as progress
+
+    assert viewer.discover_study_dirs is catalog.discover_study_dirs
+    assert viewer.peek_study_cell.__module__ == "thesistester.study.viewer"
+    assert viewer.load_study_view.__module__ == "thesistester.study.viewer"
+    assert "write_artifacts=False" in inspect.getsource(viewer.load_study_view)
+    for module in (viewer, catalog, progress):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert "thesistester.study.observatory" not in source
+        assert "import streamlit" not in source
+        assert "import plotly" not in source

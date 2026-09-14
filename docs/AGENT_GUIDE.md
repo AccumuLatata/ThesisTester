@@ -102,7 +102,9 @@ unchanged. C-22 (QI-09-02) tables `_derive_caveats` and
 `score_corpus_chunk` and splits `handle_results_turn` phases;
 RQ/HC/DI channel contracts unchanged. C-23 (QI-07-02) extracts
 `run_study` confirm / lock / ledger-init / finalize helpers; public
-signature and RS3 abort semantics unchanged. Next: C-24.
+signature and RS3 abort semantics unchanged. C-24 (QI-07-07) splits
+Observatory join / desk / lens, viewer catalog / progress, and builder
+hydrate / emit; public signatures unchanged. Next: C-25.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -211,6 +213,8 @@ under `{store}/study_observatory/desks` + studies pane + display-only
 cohort labels (raw `cohort_key` unchanged) + lens-as-filter (`desk_class`
 / `useful_confluence` + heatmap focus via existing core/partner facets;
 `schema_version` stays 1). Reuse `discover_study_dirs`.
+C-24 keeps those public names on `observatory.py` / `viewer.py` /
+`builder.py` and splits join / desk / lens / hydrate / emit helpers.
 Do not implement SO5/SO6 inside an RS/SV/SAF PR. Do not unpark
 SO5/SO6. Do not call `report_study`
 per study, `run_study()`, `rollup_study()`, or unzip-all. `observatory.py`
@@ -301,7 +305,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    unchanged. C-22 (QI-09-02) tables caveats + Help scoring and
    splits `handle_results_turn` phases. C-23 (QI-07-02) extracts
    `run_study` confirm / lock / ledger-init / finalize helpers.
-   Next: C-24.
+   C-24 (QI-07-07) splits Observatory join / desk / lens and builder
+   hydrate / emit. Next: C-25.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

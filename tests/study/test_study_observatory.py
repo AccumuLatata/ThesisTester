@@ -802,27 +802,51 @@ def test_scalar_exclusive_factor_in_spec(tmp_path: Path):
     assert row["setup_kind"] == "touch@1min/anchor_rules"
 
 
-def test_observatory_and_viewer_import_guards():
-    observatory = Path("thesistester/study/observatory.py").read_text(encoding="utf-8")
-    viewer = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")
-    obs_tree = ast.parse(observatory)
+_C24_OBSERVATORY_MODULES = (
+    Path("thesistester/study/observatory.py"),
+    Path("thesistester/study/observatory_support.py"),
+    Path("thesistester/study/observatory_join.py"),
+    Path("thesistester/study/observatory_desks.py"),
+    Path("thesistester/study/observatory_lens.py"),
+    Path("thesistester/study/observatory_query.py"),
+)
+_C24_VIEWER_MODULES = (
+    Path("thesistester/study/viewer.py"),
+    Path("thesistester/study/viewer_catalog.py"),
+    Path("thesistester/study/viewer_progress.py"),
+)
+_OBS_IMPORT_BANS = (
+    "streamlit",
+    "plotly",
+    "zipfile",
+    "thesistester.study.execute",
+    "thesistester.study.cli_study",
+    "thesistester.cli",
+    "thesistester.study.launch",
+    "thesistester.study.builder",
+    "thesistester.study.promote",
+    "thesistester.study.tools",
+    "thesistester.study.rollup",
+)
+
+
+def _imported_modules(source: str) -> set[str]:
+    tree = ast.parse(source)
     imported: set[str] = set()
-    for node in ast.walk(obs_tree):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imported.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module)
-    assert "streamlit" not in imported
-    assert "plotly" not in imported
-    assert "zipfile" not in imported
-    assert "thesistester.study.execute" not in imported
-    assert "thesistester.study.cli_study" not in imported
-    assert "thesistester.cli" not in imported
-    assert "thesistester.study.launch" not in imported
-    assert "thesistester.study.builder" not in imported
-    assert "thesistester.study.promote" not in imported
-    assert "thesistester.study.tools" not in imported
-    assert "thesistester.study.rollup" not in imported
+    return imported
+
+
+def test_observatory_and_viewer_import_guards():
+    observatory = Path("thesistester/study/observatory.py").read_text(encoding="utf-8")
+    viewer = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")
+    imported = _imported_modules(observatory)
+    for banned in _OBS_IMPORT_BANS:
+        assert banned not in imported
     assert "report_study(" not in observatory
     assert "build_overview_frame(" not in observatory
     assert "_resolve_bundle_metrics(" not in observatory
@@ -832,6 +856,45 @@ def test_observatory_and_viewer_import_guards():
     assert "import observatory" not in viewer
     assert "plotly" not in observatory
     assert "streamlit" not in observatory
+    for path in _C24_OBSERVATORY_MODULES:
+        source = path.read_text(encoding="utf-8")
+        imported = _imported_modules(source)
+        for banned in _OBS_IMPORT_BANS:
+            assert banned not in imported, f"{path}: {banned}"
+        assert "report_study(" not in source
+        assert "rollup_study(" not in source
+        assert "run_study(" not in source
+        assert "import streamlit" not in source
+        assert "import plotly" not in source
+    for path in _C24_VIEWER_MODULES:
+        source = path.read_text(encoding="utf-8")
+        assert "thesistester.study.observatory" not in source
+        assert "import observatory" not in source
+        imported = _imported_modules(source)
+        assert "streamlit" not in imported
+        assert "plotly" not in imported
+
+
+def test_c24_desk_writes_stay_under_store_desks(tmp_path: Path):
+    study_dir = _write_study(
+        tmp_path / "results" / "studies",
+        "desk_guard",
+        cells=[{"run_name": "desk_c0"}],
+    )
+    store = tmp_path / "store"
+    before = {path.name: path.stat().st_mtime for path in study_dir.iterdir()}
+    saved = save_observatory_desk(name="Guard desk", store_root=store)
+    after = {path.name: path.stat().st_mtime for path in study_dir.iterdir()}
+    assert before == after
+    desk_dir = observatory_desks_dir(store_root=store)
+    assert desk_dir == store / "study_observatory" / "desks"
+    written = desk_dir / f"{saved.id}.json"
+    assert written.is_file()
+    assert written.is_relative_to(desk_dir)
+    assert not written.is_relative_to(study_dir)
+    desks, ignored = list_observatory_desks(store_root=store)
+    assert ignored == ()
+    assert [desk.id for desk in desks] == [saved.id]
 
 
 def test_facet_instrument_hides_other_symbols(tmp_path: Path):

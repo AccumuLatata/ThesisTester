@@ -1183,3 +1183,26 @@ def test_draft_warnings_sia_ingest_rows():
     ) in warnings
     assert default_study_draft().ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
     assert draft_warnings(default_study_draft()) == ()
+
+
+def test_c24_builder_hydrate_emit_stay_on_facade():
+    import thesistester.study.builder as builder
+    import thesistester.study.builder_emit as emit
+    import thesistester.study.builder_hydrate as hydrate
+
+    assert builder.hydrate_study_draft is hydrate.hydrate_study_draft
+    assert builder.emit_study_spec is emit.emit_study_spec
+    assert builder.hydrate_study_draft.__name__ == "hydrate_study_draft"
+    assert builder.emit_study_spec.__name__ == "emit_study_spec"
+    source = Path("thesistester/study/builder.py").read_text(encoding="utf-8")
+    assert "import streamlit" not in source
+    assert "thesistester.study.execute" not in source
+    for path in (
+        Path("thesistester/study/builder_draft.py"),
+        Path("thesistester/study/builder_emit.py"),
+        Path("thesistester/study/builder_hydrate.py"),
+        Path("thesistester/study/builder_widgets.py"),
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert "import streamlit" not in text
+        assert "thesistester.study.execute" not in text
