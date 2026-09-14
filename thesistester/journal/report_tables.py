@@ -1,8 +1,9 @@
 """TJ9 payload-to-table helpers (C-25 / QI-08-04).
 
-Q3 zone/trigger tables plus Q4–Q8 JSON payload assembly. Match classes and
-CF math stay in ``match.py`` / ``counterfactual.py``. No Streamlit.
-``build_journal_report`` stays on ``report.py``.
+Q3 zone/trigger tables plus Q4–Q8 JSON payload assembly. Classify tokens
+live in ``match_classify.py`` (re-exported from ``match.py``). CF walk math
+stays on ``counterfactual.py``. No Streamlit. ``build_journal_report``
+stays on ``report.py``.
 """
 
 from __future__ import annotations

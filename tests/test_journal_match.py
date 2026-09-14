@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
 import io
 import json
@@ -13,6 +14,7 @@ import pandas as pd
 import pytest
 import yaml
 
+from tests.test_import_linter_contracts import _hits_ban, _imported_module_names
 from thesistester.cli import main as cli_main
 from thesistester.journal import (
     build_forward_ledger,
@@ -20,6 +22,7 @@ from thesistester.journal import (
     match_journal_to_cell,
 )
 from thesistester.journal import match as match_mod
+from thesistester.journal import match_classify as classify_mod
 from thesistester.journal.schema import (
     DEFAULT_MATCH_TICKS,
     DEFAULT_MATCH_WINDOW_SECONDS,
@@ -200,24 +203,35 @@ def test_journal_match_does_not_import_engine_or_index_keys() -> None:
     assert "compute_all_levels" not in match_mod.__dict__
     assert "STUDY_INDEX_KEYS" not in match_mod.__dict__
     assert "R18_INDEX_METRIC_KEYS" not in match_mod.__dict__
-    for path in (
-        Path(match_mod.__file__),
-        Path("thesistester/journal/match_classify.py"),
-    ):
-        source = path.read_text(encoding="utf-8")
-        assert "from thesistester.engine" not in source
-        assert "import thesistester.engine" not in source
-        assert "from thesistester.study.execute" not in source
-        assert "import thesistester.study.execute" not in source
-        assert "from thesistester.engine.backtest" not in source
-        assert "import simulate_trades" not in source
+    banned = ("thesistester.engine", "thesistester.study.execute")
+    for module in (match_mod, classify_mod):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        imported = _imported_module_names(ast.parse(source), module.__name__)
+        leaked = [name for name in imported for ban in banned if _hits_ban(name, ban)]
+        assert leaked == [], f"{module.__name__}: {leaked}"
+        assert "simulate_trades(" not in source
+
+
+def test_c25_import_ban_catches_parent_package_engine() -> None:
+    snippets = (
+        "from thesistester import engine",
+        "from thesistester.engine import backtest",
+        "import thesistester.engine.backtest",
+        "from thesistester.study import execute",
+    )
+    for src in snippets:
+        imported = _imported_module_names(ast.parse(src), classify_mod.__name__)
+        assert any(
+            _hits_ban(name, "thesistester.engine") or _hits_ban(name, "thesistester.study.execute")
+            for name in imported
+        ), src
 
 
 def test_c25_classify_stays_on_match_facade() -> None:
-    from thesistester.journal import match_classify as classify_mod
-
     assert match_mod._classify is classify_mod._classify
     assert match_mod._match_frame is classify_mod._match_frame
+    assert hasattr(match_mod, "load_named_cell")
+    assert not hasattr(classify_mod, "load_named_cell")
 
 
 def test_executed_cell_requires_hold_and_risk() -> None:

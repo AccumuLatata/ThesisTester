@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 from datetime import date
@@ -11,6 +12,7 @@ import pandas as pd
 import pytest
 import yaml
 
+from tests.test_import_linter_contracts import _hits_ban, _imported_module_names
 from thesistester.cli import main as cli_main
 from thesistester.journal import (
     apply_journal_rules,
@@ -19,6 +21,7 @@ from thesistester.journal import (
     replay_journal_brackets,
 )
 from thesistester.journal import counterfactual as cf_mod
+from thesistester.journal import counterfactual_tables as cf_tables
 from thesistester.journal.schema import (
     CF_EXIT_SESSION_END,
     CF_EXIT_SL,
@@ -122,23 +125,22 @@ def test_replay_kwargs_are_keyword_only() -> None:
 def test_journal_cf_does_not_import_engine() -> None:
     assert "compute_all_levels" not in cf_mod.__dict__
     assert "simulate_trades" not in cf_mod.__dict__
-    for path in (
-        Path(cf_mod.__file__),
-        Path("thesistester/journal/counterfactual_tables.py"),
-    ):
-        source = path.read_text(encoding="utf-8")
-        assert "from thesistester.engine" not in source
-        assert "import thesistester.engine" not in source
-        assert "from thesistester.engine.backtest" not in source
-        assert "import simulate_trades" not in source
+    banned = ("thesistester.engine",)
+    for module in (cf_mod, cf_tables):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        imported = _imported_module_names(ast.parse(source), module.__name__)
+        leaked = [name for name in imported for ban in banned if _hits_ban(name, ban)]
+        assert leaked == [], f"{module.__name__}: {leaked}"
+        assert "simulate_trades(" not in source
 
 
 def test_c25_cf_summary_stays_on_facade() -> None:
-    from thesistester.journal import counterfactual_tables as tables
-
-    assert cf_mod.summarize_bracket_replay is tables.summarize_bracket_replay
-    assert cf_mod.write_counterfactual_artifacts is tables.write_counterfactual_artifacts
-    assert cf_mod._cf_frame is tables._cf_frame
+    assert cf_mod.summarize_bracket_replay is cf_tables.summarize_bracket_replay
+    assert cf_mod.write_counterfactual_artifacts is cf_tables.write_counterfactual_artifacts
+    assert cf_mod._cf_frame is cf_tables._cf_frame
+    for name in ("_walk_15s", "_walk_ticks", "_replay_one", "_gross_ticks"):
+        assert hasattr(cf_mod, name)
+        assert not hasattr(cf_tables, name)
 
 
 def test_cf_and_rules_share_journal_cost_ticks() -> None:

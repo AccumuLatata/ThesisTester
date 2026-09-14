@@ -11,7 +11,10 @@ import json
 import pandas as pd
 import pytest
 
+from tests.test_import_linter_contracts import _hits_ban, _imported_module_names
 from thesistester.cli import main as cli_main
+from thesistester.journal import report as report_mod
+from thesistester.journal import report_tables as report_tables_mod
 from thesistester.journal.report import (
     REPORT_HONESTY,
     REPORT_MIN_N,
@@ -83,23 +86,16 @@ def test_build_journal_report_is_keyword_only() -> None:
 
 
 def test_report_module_does_not_import_engine_or_index_keys() -> None:
-    for path in (
-        Path("thesistester/journal/report.py"),
-        Path("thesistester/journal/report_tables.py"),
-    ):
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        imported: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imported.update(alias.name.split(".")[0] for alias in node.names)
-                imported.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imported.add(node.module.split(".")[0])
-                imported.add(node.module)
-        assert "thesistester.engine" not in imported
-        assert "thesistester.journal.triggers" not in imported
-        assert "thesistester.study.execute" not in imported
+    banned = (
+        "thesistester.engine",
+        "thesistester.journal.triggers",
+        "thesistester.study.execute",
+    )
+    for module in (report_mod, report_tables_mod):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        imported = _imported_module_names(ast.parse(source), module.__name__)
+        leaked = [name for name in imported for ban in banned if _hits_ban(name, ban)]
+        assert leaked == [], f"{module.__name__}: {leaked}"
         assert "simulate_trades(" not in source
         assert "compute_all_levels(" not in source
         assert "STUDY_INDEX_KEYS" not in source
@@ -109,12 +105,12 @@ def test_report_module_does_not_import_engine_or_index_keys() -> None:
 
 
 def test_c25_q4_q6_stays_on_report_facade() -> None:
-    import thesistester.journal.report as report
-    import thesistester.journal.report_tables as tables
-
-    assert report._q4_q6 is tables._q4_q6
-    assert report._q7_q8 is tables._q7_q8
-    assert report._q3_triggers is tables._q3_triggers
+    assert report_mod._q4_q6 is report_tables_mod._q4_q6
+    assert report_mod._q7_q8 is report_tables_mod._q7_q8
+    assert report_mod._q3_triggers is report_tables_mod._q3_triggers
+    assert report_mod._q3_zones is report_tables_mod._q3_zones
+    assert hasattr(report_mod, "build_journal_report")
+    assert not hasattr(report_tables_mod, "build_journal_report")
 
 
 def test_q1_derives_gross_from_pnl_currency() -> None:
