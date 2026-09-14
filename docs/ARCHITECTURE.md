@@ -14,7 +14,8 @@ Lean documentation index: [`README.md`](README.md) (living vs contract vs
 Consequence that matters for later milestones: the library is Streamlit-free
 except an explicit allow-list mechanized as import-linter **C8** (`.importlinter`,
 B-10 / QI-12-07, warn-first). C-8 (QI-06-05) split saved-dataset bootstrap:
-`thesistester.persistence.saved_dataset_state` is Streamlit-free;
+`thesistester.persistence.saved_dataset_state` is Streamlit-free
+(`restore_saved_dataset_provenance(session_state, …)` lives there);
 `thesistester.app_state` is the one-function page adapter and lazy-imports
 Streamlit. Remaining allow-list entries are lazy classic chrome
 (`classic_context`, `classic_ledger`, `classic_nav`, `classic_proposal`,

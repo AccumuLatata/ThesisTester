@@ -3,7 +3,9 @@
 Store logic is Streamlit-free in
 ``thesistester.persistence.saved_dataset_state``. This module binds
 ``st.session_state`` lazily so importing ``app_state`` does not load Streamlit.
-AH4 skip-flag stays page-local (``should_skip_dataset_bootstrap``).
+``restore_saved_dataset_provenance`` is store-only (mapping in; no Streamlit
+bind) — do not re-export it here. AH4 skip-flag stays page-local
+(``should_skip_dataset_bootstrap``).
 """
 
 from __future__ import annotations
@@ -12,14 +14,12 @@ from thesistester.persistence.saved_dataset_state import (
     ACTIVE_SAVED_DATASET_KEY,
     BOOTSTRAP_MESSAGE_KEY,
     bootstrap_active_saved_dataset as bootstrap_saved_dataset,
-    restore_saved_dataset_provenance,
 )
 
 __all__ = (
     "ACTIVE_SAVED_DATASET_KEY",
     "BOOTSTRAP_MESSAGE_KEY",
     "bootstrap_active_saved_dataset",
-    "restore_saved_dataset_provenance",
 )
 
 

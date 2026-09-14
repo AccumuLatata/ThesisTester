@@ -61,8 +61,9 @@ C-6 (QI-05-14 / QI-06-11 / MG-29) promotes `directional_grid_metrics`,
 C-7 (QI-06-04) generates managed/known/required/hash-exclusion lists from
 `BUNDLE_KEY_REGISTRY`; `build_research_bundle` / `load_research_bundle`
 walk `BUNDLE_SECTION_IO`. C-8 (QI-06-05) splits saved-dataset bootstrap:
-Streamlit-free `saved_dataset_state` + one-function `app_state` adapter
-(lazy Streamlit). `classic_*` Streamlit imports stay lazy. Next: C-9.
+Streamlit-free `saved_dataset_state` (`restore_saved_dataset_provenance`
+takes a mapping) + one-function `app_state` adapter (lazy Streamlit).
+`classic_*` Streamlit imports stay lazy. Next: C-9.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -220,7 +221,7 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Private `_` aliases remain for same-module callers. C-7 (QI-06-04)
    is the bundle key registry (`BUNDLE_KEY_REGISTRY` / `BUNDLE_SECTION_IO`).
    C-8 (QI-06-05) is the Streamlit-free `saved_dataset_state` store plus
-   the `app_state` page adapter. Next: C-9.
+   the one-function `app_state` page adapter (restore is store-only). Next: C-9.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`

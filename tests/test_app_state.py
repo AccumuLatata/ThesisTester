@@ -35,6 +35,10 @@ def test_store_import_does_not_load_streamlit(monkeypatch):
     assert reloaded.ACTIVE_SAVED_DATASET_KEY == store.ACTIVE_SAVED_DATASET_KEY
     adapter = importlib.import_module("thesistester.app_state")
     assert adapter.bootstrap_active_saved_dataset.__module__ == "thesistester.app_state"
+    # Drop the adapter bound to this ephemeral store copy. monkeypatch will
+    # restore the canonical store module; a leftover adapter would close over
+    # the detached copy and ignore later `store.*` patches.
+    sys.modules.pop("thesistester.app_state", None)
 
 
 def test_bootstrap_does_not_override_existing_data(monkeypatch):
@@ -325,9 +329,21 @@ def test_ah4_skip_flag_does_not_change_store_bootstrap(monkeypatch):
     assert session_state["data"] is df
 
 
+def test_adapter_is_one_function_and_does_not_export_restore():
+    from thesistester import app_state
+
+    assert app_state.__all__ == (
+        "ACTIVE_SAVED_DATASET_KEY",
+        "BOOTSTRAP_MESSAGE_KEY",
+        "bootstrap_active_saved_dataset",
+    )
+    assert not hasattr(app_state, "restore_saved_dataset_provenance")
+
+
 def test_adapter_delegates_to_store(monkeypatch):
     from thesistester import app_state
 
+    importlib.reload(app_state)
     session_state = {"data": "already-loaded"}
     stub = types.ModuleType("streamlit")
     stub.session_state = session_state
@@ -342,6 +358,25 @@ def test_adapter_delegates_to_store(monkeypatch):
 
     assert app_state.bootstrap_active_saved_dataset() is False
     assert session_state["data"] == "already-loaded"
+
+
+def test_adapter_passes_streamlit_session_state_to_store(monkeypatch):
+    from thesistester import app_state
+
+    session_state = {"probe": True}
+    captured: dict[str, object] = {}
+
+    def _capture(state):
+        captured["session_state"] = state
+        return True
+
+    stub = types.ModuleType("streamlit")
+    stub.session_state = session_state
+    monkeypatch.setitem(sys.modules, "streamlit", stub)
+    monkeypatch.setattr(app_state, "bootstrap_saved_dataset", _capture)
+
+    assert app_state.bootstrap_active_saved_dataset() is True
+    assert captured["session_state"] is session_state
 
 
 def _module_level_streamlit_imports(source: str) -> tuple[str, ...]:
