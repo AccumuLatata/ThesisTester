@@ -434,12 +434,17 @@ def test_fsync_file_swallows_ebadf(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
     path = tmp_path / "artifact.json"
     path.write_text("{}", encoding="utf-8")
+    calls: list[str] = []
 
     def _boom(_fd: int) -> None:
+        calls.append("fsync")
         raise OSError(9, "Bad file descriptor")
 
     monkeypatch.setattr(ea.os, "fsync", _boom)
     ea._fsync_file(path)
+    assert calls == ["fsync"]
+    assert path.is_file()
+    assert path.read_text(encoding="utf-8") == "{}"
 
 
 def test_fsync_file_opens_rdwr_on_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -483,10 +488,19 @@ def test_fsync_file_swallows_close_oserror(tmp_path: Path, monkeypatch: pytest.M
 
     path = tmp_path / "artifact.json"
     path.write_text("{}", encoding="utf-8")
+    before = path.read_bytes()
+    calls: list[str] = []
 
     def _boom(_fd: int) -> None:
+        calls.append("close")
         raise OSError(9, "Bad file descriptor")
 
     monkeypatch.setattr(ea.os, "close", _boom)
     ea._fsync_file(path)
     ea._fsync_dir(tmp_path)
+    assert calls == ["close", "close"]
+    assert path.is_file()
+    # Do not Path.read_text here: ea.os is the process ``os`` module, so
+    # the patched close would raise on some interpreters' file teardown.
+    assert path.stat().st_size == len(before)
+    assert tmp_path.is_dir()

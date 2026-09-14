@@ -28,6 +28,8 @@ from thesistester.study.schema import (
     STUDY_INGESTION_MODES,
     STUDY_SCHEMA_VERSION,
     STUDY_STATIC_LEVEL_NAMES,
+    VALID_DIRECTIONS,
+    VALID_TRIGGERS,
     StudySpecError,
     StudySpecWarning,
     _WARNING_QUANTOWER_PRIMARY,
@@ -388,7 +390,10 @@ def test_fade_and_continuation_triggers_accepted():
     raw = _minimal_study()
     raw["study"]["factors"]["trigger"] = ["fade", "continuation"]
     raw["study"]["stage"]["include"]["trigger"] = ["fade", "continuation"]
-    validate_study_spec(normalize_study_spec(raw))
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["trigger"] == ["fade", "continuation"]
+    assert validated["study"]["stage"]["include"]["trigger"] == ["fade", "continuation"]
+    assert set(validated["study"]["factors"]["trigger"]) <= VALID_TRIGGERS
 
 
 def test_invalid_trigger_timeframe_30min_rejected():
@@ -415,14 +420,18 @@ def test_unknown_partner_token_rejected():
 def test_direction_in_constants_allowed():
     raw = _minimal_study()
     raw["study"]["constants"]["direction"] = "long"
-    validate_study_spec(normalize_study_spec(raw))
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["constants"]["direction"] == "long"
+    assert validated["study"]["constants"]["direction"] in VALID_DIRECTIONS
 
 
 def test_direction_factor_axis_allowed():
     raw = _minimal_study()
     raw["study"]["factors"]["direction"] = ["long", "short"]
     # explicit_cells / filter group_by may reference it; keep stage filter axes valid
-    validate_study_spec(normalize_study_spec(raw))
+    validated = validate_study_spec(normalize_study_spec(raw))
+    assert validated["study"]["factors"]["direction"] == ["long", "short"]
+    assert set(validated["study"]["factors"]["direction"]) <= VALID_DIRECTIONS
 
 
 def test_grid_without_enabled_fails():
@@ -1046,10 +1055,14 @@ def test_anchor_level_must_be_nonempty_string():
 
 
 def test_same_bar_opposite_direction_tokens_accepted():
-    for token in ("legacy", "skip_both", "raise"):
+    tokens = ("legacy", "skip_both", "raise")
+    assert set(tokens) == study_schema._VALID_SAME_BAR_OPPOSITE_DIRECTION
+    for token in tokens:
         raw = _minimal_study()
         raw["study"]["constants"]["backtest"]["same_bar_opposite_direction"] = token
-        validate_study_spec(normalize_study_spec(raw))
+        validated = validate_study_spec(normalize_study_spec(raw))
+        assert validated["study"]["constants"]["backtest"]["same_bar_opposite_direction"] == token
+        assert token in study_schema._VALID_SAME_BAR_OPPOSITE_DIRECTION
 
 
 def test_same_bar_opposite_direction_omitted_is_ok():

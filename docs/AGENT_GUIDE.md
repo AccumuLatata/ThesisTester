@@ -576,6 +576,19 @@ Every request must first parse as an `AssistantRequest`, then pass
   Mixed oracle files keep unit siblings unmarked at module level.
   Benchmarks assert `median_ms >= 0` only — not a performance gate.
   Fail-closed lock: `tests/test_pytest_markers.py`.
+- **Named-suite convention (B-16 / QI-11-06).** Accept-path tests assert the
+  returned spec, accepted token, or helper state — not a bare no-raise.
+  `validate_study_spec` / `validate_run_spec` / `clear_*` / dir-lock
+  re-acquire / `_fsync_file` swallows are the QI-11 §2.5 twelve. Token
+  asserts on `validate_run_spec` run **after** the call (admission, not
+  fixture construction). A loosened validator or a no-op helper must
+  fail those asserts. C-1 / C-3 (validator refactors) may land only
+  while `tests/test_qi11_accept_asserts.py` stays green: each of the
+  twelve bodies needs a non-tautological `assert` plus the named
+  contract needles. `assert True` does not satisfy QI-11 §6.8. Fixture
+  builders (`_bar` / `_ohlcv` / `_signal`) stay in the suite that owns
+  the contract; do not consolidate them in the same PR as a validator
+  or engine change.
 - Lint scope is deliberately narrow (`E4`, `E7`, `E9`, `F`, `W` at line length 100) and applies
   to Python only — Markdown is excluded so documentation snippets are never rewritten by the
   formatter. Widening the rule set is a separate, reviewable PR — never a side effect of
