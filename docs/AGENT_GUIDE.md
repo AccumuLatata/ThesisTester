@@ -73,9 +73,11 @@ secret readers (`assistant.llm`, `assistant.voice.xai_realtime`) until C-8/F-9.
 C10 is page-scoped (`pages/15_Studies.py` ↛ `FORMAT_PROFILE_LABELS` from
 builder) and is gated by `tests/test_import_linter_contracts.py`. **C9**
 (`sim_core` ↛ `entry_window_policy` / `analytics.*`) is kept (B-19 /
-QI-4 §6.3). **C12** is the `validation_summary()` four-key freeze
-(`tests/test_validation.py`), not an import contract. Blocking
-flip is a later PR.
+QI-4 §6.3); the AST gate resolves parent-package and relative imports
+so those forms cannot false-green. **C12** is the `validation_summary()`
+four-key freeze (`tests/test_validation.py`), not an import contract.
+Empty / no-valid-trade paths stay on the same four keys (`None` not
+NaN, `insufficient`). Blocking flip is a later PR.
 
 **RS-D8:** Studies page authoring preview — canonical StudySpec YAML
 validate + in-memory expand (cell count / confirm gate). `preview.py` must not
@@ -669,8 +671,9 @@ Every request must first parse as an `AssistantRequest`, then pass
   C7 is expected broken via journal.levels → study.schema → tick_vap →
   execution_artifacts → api (C-9 slims package-init runtime load; it does
   not keep C7). C9 (`sim_core` ↛ `entry_window_policy` / `analytics.*`)
-  is kept (B-19 / QI-4 §6.3). C12 is `tests/test_validation.py`, not
-  this job. This job is **not** a G-1 required check. A later PR
+  is kept (B-19 / QI-4 §6.3); AST resolves parent-package and relative
+  imports. C12 is `tests/test_validation.py`, not this job. This job
+  is **not** a G-1 required check. A later PR
   flips the same contracts to blocking. Do not rename the six required
   display names to absorb it.
 - **mypy (B-11 / QI-12-05).** `[tool.mypy]` is path-scoped to
@@ -864,7 +867,7 @@ shape — do not add `schema_version` or a fifth top-level key.
 | R16 `noise_summary` | 1 | Keep opt-in; do not change `validation_summary()` |
 | R19 `sensitivity_summary` | 1 | Keep opt-in; do not change `validation_summary()` |
 | R21 `portfolio_summary` | 1 | |
-| Phase 8 `validation_summary` | **none** | Frozen `{bootstrap, permutation, trade_count, grid_overfit}`. Lock: `tests/test_validation.py` |
+| Phase 8 `validation_summary` | **none** | Frozen `{bootstrap, permutation, trade_count, grid_overfit}`. Empty / all-NaN: `None` not NaN + `insufficient`. Lock: `tests/test_validation.py` |
 | OTF matrix | none | DataFrame |
 | Grid | none | DataFrame |
 
