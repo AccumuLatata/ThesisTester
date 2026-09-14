@@ -18,6 +18,11 @@ import pytest
 _REAL_STREAMLIT = importlib.import_module("streamlit")
 
 
+def _restore_real_streamlit() -> None:
+    """Put the session-start Streamlit module back in ``sys.modules``."""
+    sys.modules["streamlit"] = _REAL_STREAMLIT
+
+
 @pytest.fixture(autouse=True)
 def isolate_apptest_globals():
     """Undo process-global Streamlit mutation that breaks later AppTest.
@@ -26,9 +31,12 @@ def isolate_apptest_globals():
     page directory on ``sys.path``. Helper-unit stubs also replace
     ``sys.modules["streamlit"]`` (no ``.secrets``). ``AppTest.run`` does
     ``import streamlit as st`` and then reads ``st.secrets`` (QI-10 §3.6
-    suite-order). Restore all three so spawn-context ``run_batch`` and
-    later AppTest stay green.
+    suite-order). Restore streamlit *before* the test as well as after —
+    collection or a prior helper can leave a stub before the first
+    AppTest runs. Snapshot ``__main__`` / ``sys.path`` at setup (pytest
+    may have extended path after session start) and restore both after.
     """
+    _restore_real_streamlit()
     main_module = sys.modules.get("__main__")
     path_snapshot = list(sys.path)
     try:
@@ -38,5 +46,5 @@ def isolate_apptest_globals():
             sys.modules.pop("__main__", None)
         else:
             sys.modules["__main__"] = main_module
-        sys.modules["streamlit"] = _REAL_STREAMLIT
+        _restore_real_streamlit()
         sys.path[:] = path_snapshot

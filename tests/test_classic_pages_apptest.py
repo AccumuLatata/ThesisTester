@@ -72,8 +72,9 @@ def _tiny_signals() -> pd.DataFrame:
     )
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
 def isolated_store(tmp_path, monkeypatch):
+    """Pin the local store so Sample auto-load cannot touch the repo store."""
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
     return tmp_path
 

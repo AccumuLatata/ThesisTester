@@ -632,10 +632,11 @@ Every request must first parse as an `AssistantRequest`, then pass
   disabled `chat_input.set_value`. Never `list(session_state)` (QI-10-05:
   Streamlit 1.63 raises `KeyError` key `"0"`). Mark AppTest modules (or
   AppTest functions in a mixed file) `serial`; B-15 adds the rest of the
-  marker set. Shared isolate fixture: `isolate_apptest_globals` in
-  `tests/conftest.py` (autouse; restores `__main__`, `sys.path`, and the
-  real `sys.modules["streamlit"]` so helper stubs cannot brick later
-  `AppTest.run`). Classic
+  marker set.   Shared isolate fixture: `isolate_apptest_globals` in
+  `tests/conftest.py` (autouse; restores the real
+  `sys.modules["streamlit"]` before *and* after each test so helper
+  stubs cannot brick `AppTest.run`; snapshots `__main__` / `sys.path`
+  at setup and restores them after). Classic
   smoke: `tests/test_classic_pages_apptest.py` (`app.py` empty info; Data
   Sample auto-load; Backtest warning without `signals`; seed
   `signals`/`levels` before Backtest widgets). Per-page first render < 1 s.
