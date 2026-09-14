@@ -285,12 +285,13 @@ def test_clear_backtest_when_absent_is_safe():
     set_active_dataset_id("ds-keep")
     save_grid_defaults(_sample_grid_defaults())
     assert get_backtest_defaults() is None
+    sibling = get_grid_defaults()
 
     clear_backtest_defaults()
 
     assert get_backtest_defaults() is None
     assert get_active_dataset_id() == "ds-keep"
-    assert get_grid_defaults() is not None
+    assert get_grid_defaults() == sibling
     assert "backtest_defaults" not in _load_ui_state()
 
 
@@ -299,12 +300,13 @@ def test_clear_grid_when_absent_is_safe():
     set_active_dataset_id("ds-keep")
     save_backtest_defaults(_sample_backtest_defaults())
     assert get_grid_defaults() is None
+    sibling = get_backtest_defaults()
 
     clear_grid_defaults()
 
     assert get_grid_defaults() is None
     assert get_active_dataset_id() == "ds-keep"
-    assert get_backtest_defaults() is not None
+    assert get_backtest_defaults() == sibling
     assert "grid_defaults" not in _load_ui_state()
 
 

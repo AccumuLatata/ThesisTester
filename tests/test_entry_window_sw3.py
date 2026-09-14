@@ -250,9 +250,11 @@ def test_validate_run_spec_accepts_entry_window():
         "rth_segments": ["rth_open_30m"],
     }
     spec = _minimal_spec(entry_window=window)
-    assert spec["backtest"]["entry_window"] == window
-    assert spec["backtest"]["entry_window"]["rth_segments"] == ["rth_open_30m"]
     assert validate_run_spec(spec) is None
+    # Tokens after validate: a validator that drops entry_window stays red.
+    assert spec["backtest"]["entry_window"] == window
+    assert spec["backtest"]["entry_window"]["mode"] == "rth_segments"
+    assert spec["backtest"]["entry_window"]["rth_segments"] == ["rth_open_30m"]
 
 
 def test_validate_run_spec_rejects_invalid_entry_window():

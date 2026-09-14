@@ -1055,11 +1055,14 @@ def test_anchor_level_must_be_nonempty_string():
 
 
 def test_same_bar_opposite_direction_tokens_accepted():
-    for token in ("legacy", "skip_both", "raise"):
+    tokens = ("legacy", "skip_both", "raise")
+    assert set(tokens) == study_schema._VALID_SAME_BAR_OPPOSITE_DIRECTION
+    for token in tokens:
         raw = _minimal_study()
         raw["study"]["constants"]["backtest"]["same_bar_opposite_direction"] = token
         validated = validate_study_spec(normalize_study_spec(raw))
         assert validated["study"]["constants"]["backtest"]["same_bar_opposite_direction"] == token
+        assert token in study_schema._VALID_SAME_BAR_OPPOSITE_DIRECTION
 
 
 def test_same_bar_opposite_direction_omitted_is_ok():

@@ -74,11 +74,12 @@ def _minimal_derive_spec(dataset_path: str, *, intrabar_model: str = "subtimefra
 
 def test_validate_run_spec_accepts_one_file_15s_primary_for_r12():
     spec = _minimal_derive_spec("nq_15s.csv")
+    assert validate_run_spec(spec) is None
+    # Tokens after validate: a validator that strips admission stays red.
     assert spec["dataset"]["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
     assert spec["dataset"]["format_profile"] == "quantower_history_exporter"
     assert "subtimeframe_path" not in spec["dataset"]
     assert spec["dataset"]["path"] == "nq_15s.csv"
-    assert validate_run_spec(spec) is None
 
 
 def test_validate_run_spec_rejects_subtimeframe_path_with_derive_mode():
