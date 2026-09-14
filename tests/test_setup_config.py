@@ -669,8 +669,7 @@ _SETUP_CONFIG_CLUSTER_PROBES: tuple[tuple[str, object, str], ...] = (
     (
         "global_cluster",
         lambda: _base_config(selected_levels=["close"]),
-        "Selected levels include OHLCV/base columns that "
-        "cannot be used for confluence: ['close'].",
+        "Selected levels include OHLCV/base columns that cannot be used for confluence: ['close'].",
     ),
     (
         "anchor_rules",
@@ -740,6 +739,5 @@ def test_validate_setup_config_concatenates_clusters_in_table_order():
     assert errors == [
         "Setup name must not be empty.",
         f"Trigger must be one of {sorted(VALID_TRIGGERS)}.",
-        "Selected levels include OHLCV/base columns that "
-        "cannot be used for confluence: ['close'].",
+        "Selected levels include OHLCV/base columns that cannot be used for confluence: ['close'].",
     ]
