@@ -975,8 +975,13 @@ C-17 (QI-05-01) extracts P0 validate (`_validate_walk_forward_run`),
 P3 train-grid (`_train_fold_grid`), P5 stitch (`_stitch_walk_forward_oos`),
 and P6 summary (`_assemble_walk_forward_result`) from
 `run_walk_forward_sl_tp`. Fold constructors (`_bar_fold_boundaries`,
-`_session_fold_boundaries`) and `causal_prefix` (`_otf_source_for_fold`)
-are unchanged.
+`_session_fold_boundaries`) and `causal_prefix` (`_otf_source_for_fold`,
+`_filter_fold_signals_with_otf`) stay in-place. Identity vs the PR base
+is live `assert_frame_equal` / field equality + `hash_dataframe` on
+folds, OOS trades, and stitched equity (bars, sessions, overlap
+first/last/reject, OTF, entry window, anchored, empty). Do not freeze
+hexes. Compare detailed results by fields, not `WalkForwardResult`
+class identity (the exec'd baseline class is a different object).
 
 When OTF is enabled in walk-forward:
 
