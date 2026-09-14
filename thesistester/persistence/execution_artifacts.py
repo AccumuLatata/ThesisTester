@@ -372,16 +372,31 @@ def _parse_iso_timestamp(value: Any) -> datetime | None:
     return parsed
 
 
-def _publish_directory(temp_dir: Path, final_dir: Path) -> None:
+def _publish_directory(temp_dir: Path, final_dir: Path, *, artifacts_root: Path) -> None:
+    """Rename a staged temp dir onto ``final_dir`` after containment."""
     from thesistester.persistence.execution_artifact_ops import publish_directory
 
-    publish_directory(temp_dir, final_dir)
+    contained_final = _assert_path_under_execution_artifacts(
+        final_dir, artifacts_root=artifacts_root
+    )
+    contained_temp = _assert_path_under_execution_artifacts(
+        temp_dir, artifacts_root=artifacts_root
+    )
+    publish_directory(contained_temp, contained_final)
 
 
-def _cleanup_temp(temp_dir: Path) -> None:
+def _cleanup_temp(temp_dir: Path, *, artifacts_root: Path) -> None:
+    """Best-effort temp removal; refuse escaped paths without raising.
+
+    Must not raise: write paths call this from ``except`` and then re-raise
+    the original publish/stage error.
+    """
     from thesistester.persistence.execution_artifact_ops import cleanup_temp
 
-    cleanup_temp(temp_dir)
+    contained = _contain_path(temp_dir, root=artifacts_root)
+    if contained is None:
+        return
+    cleanup_temp(contained)
 
 
 def _verify_data_dir(
@@ -392,7 +407,10 @@ def _verify_data_dir(
 ) -> DataArtifact | ArtifactMiss:
     from thesistester.persistence.execution_artifact_ops import verify_data_dir
 
-    return verify_data_dir(artifact_dir, expected=expected, artifacts_root=artifacts_root)
+    contained = _contain_path(artifact_dir, root=artifacts_root)
+    if contained is None:
+        return ArtifactMiss(_MISS_PATH_ESCAPE, detail=str(artifact_dir))
+    return verify_data_dir(contained, expected=expected, artifacts_root=artifacts_root)
 
 
 def _verify_levels_dir(
@@ -403,7 +421,10 @@ def _verify_levels_dir(
 ) -> LevelsArtifact | ArtifactMiss:
     from thesistester.persistence.execution_artifact_ops import verify_levels_dir
 
-    return verify_levels_dir(artifact_dir, expected=expected, artifacts_root=artifacts_root)
+    contained = _contain_path(artifact_dir, root=artifacts_root)
+    if contained is None:
+        return ArtifactMiss(_MISS_PATH_ESCAPE, detail=str(artifact_dir))
+    return verify_levels_dir(contained, expected=expected, artifacts_root=artifacts_root)
 
 
 def read_verified_data_artifact(
@@ -473,7 +494,10 @@ def write_data_artifact(
             )
             if isinstance(existing, DataArtifact):
                 return existing
-            shutil.rmtree(artifact_dir, ignore_errors=True)
+            contained_existing = _assert_path_under_execution_artifacts(
+                artifact_dir, artifacts_root=artifacts_root
+            )
+            shutil.rmtree(contained_existing, ignore_errors=True)
 
         artifact_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f".{key}.tmp.", dir=str(artifact_dir.parent)))
@@ -487,9 +511,9 @@ def write_data_artifact(
                 key=key,
                 ingestion_meta=ingestion_meta,
             )
-            _publish_directory(temp_dir, artifact_dir)
+            _publish_directory(temp_dir, artifact_dir, artifacts_root=artifacts_root)
         except Exception:
-            _cleanup_temp(temp_dir)
+            _cleanup_temp(temp_dir, artifacts_root=artifacts_root)
             raise
 
         verified = _verify_data_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
@@ -527,7 +551,10 @@ def write_levels_artifact(
             )
             if isinstance(existing, LevelsArtifact):
                 return existing
-            shutil.rmtree(artifact_dir, ignore_errors=True)
+            contained_existing = _assert_path_under_execution_artifacts(
+                artifact_dir, artifacts_root=artifacts_root
+            )
+            shutil.rmtree(contained_existing, ignore_errors=True)
 
         artifact_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f".{key}.tmp.", dir=str(artifact_dir.parent)))
@@ -542,9 +569,9 @@ def write_levels_artifact(
                 settings=settings,
                 key=key,
             )
-            _publish_directory(temp_dir, artifact_dir)
+            _publish_directory(temp_dir, artifact_dir, artifacts_root=artifacts_root)
         except Exception:
-            _cleanup_temp(temp_dir)
+            _cleanup_temp(temp_dir, artifacts_root=artifacts_root)
             raise
 
         verified = _verify_levels_dir(

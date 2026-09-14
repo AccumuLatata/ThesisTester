@@ -1,8 +1,10 @@
 """Verify / publish / evict helpers for the execution-artifact store.
 
 C-11 (QI-06-10): extracted from ``execution_artifacts.py`` so path-containment
-guards stay at the store boundary. Cache-policy defaults are unchanged.
-Cache is not identity — ``source_binding_key`` vs ``dataset_id`` stays H9.
+guards stay at the store boundary. The facade applies ``_contain_path`` /
+``_assert_path_under_execution_artifacts`` before verify/publish/evict
+mutate or delete. Cache-policy defaults are unchanged. Cache is not
+identity — ``source_binding_key`` vs ``dataset_id`` stays H9.
 """
 
 from __future__ import annotations
@@ -356,6 +358,8 @@ def select_eviction_victims(
     ordered = list(records)
     ordered.sort(key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""))
     clock = now if now is not None else datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
     to_delete: list[dict[str, Any]] = []
     if max_age_seconds is not None:
         for record in ordered:
