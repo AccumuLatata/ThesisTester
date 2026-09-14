@@ -7,9 +7,10 @@ analytics functions. They intentionally contain no alternative trading logic.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from numbers import Integral, Real
 from pathlib import Path
-from typing import Any, Mapping, TypedDict
+from typing import Any, Mapping, NamedTuple, TypedDict
 
 import pandas as pd
 
@@ -39,6 +40,9 @@ from thesistester.data.derive import (
     derive_complete_parent_ohlcv,
 )
 from thesistester.data.loader import (
+    DERIVE_15S_SUPPORTED_PROFILES,
+    FORMAT_PROFILES,
+    SUBTIMEFRAME_FORMAT_PROFILES,
     format_interval,
     load_ohlcv,
     prepare_15s_source_for_derivation,
@@ -334,7 +338,8 @@ _DATASET_KEYS = {
     "tick_source_id",
 }
 _SUPPORTED_INGESTION_MODES = frozenset({"primary", INGESTION_MODE_15S_PRIMARY_DERIVE_1M})
-_DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
+# QI-01-06: same objects as loader (page uses getattr fallback; builder R17 kept).
+_DERIVE_15S_SUPPORTED_PROFILES = DERIVE_15S_SUPPORTED_PROFILES
 _EXCURSION_KEYS = {
     "enabled",
     "group_cols",
@@ -555,10 +560,14 @@ def _validate_positive_list(
         raise ValueError(f"{section}.{key} values must be finite and > 0")
 
 
-def validate_run_spec(spec: Mapping[str, Any]) -> None:
-    """Fail closed on unknown or nondeterministic experiment configuration."""
+def _validate_run_spec_run(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``run`` (C-2 / MG-17)."""
     run = _require_mapping(spec, section="run")
     _validate_keys(run, _RUN_KEYS, section="run")
+
+def _validate_run_spec_dataset(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``dataset`` (C-2 / MG-17)."""
+    run = _require_mapping(spec, section="run")
     dataset = _require_mapping(run.get("dataset"), section="dataset")
     _validate_keys(dataset, _DATASET_KEYS, section="dataset")
     if "path" not in dataset:
@@ -600,20 +609,9 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     ):
         if key in dataset and dataset[key] is not None and not isinstance(dataset[key], str):
             raise ValueError(f"dataset.{key} must be a string or null")
-    if dataset.get("format_profile", "canonical") not in {
-        "canonical",
-        "ninjatrader",
-        "sierra_intraday",
-        "quantower_history_exporter",
-        "databento_trades",
-        "tick_capture",
-        "second_capture",
-    }:
+    if dataset.get("format_profile", "canonical") not in FORMAT_PROFILES:
         raise ValueError("dataset.format_profile is unsupported")
-    if dataset.get("subtimeframe_format_profile", "canonical") not in {
-        "canonical",
-        "quantower_history_exporter",
-    }:
+    if dataset.get("subtimeframe_format_profile", "canonical") not in SUBTIMEFRAME_FORMAT_PROFILES:
         raise ValueError("dataset.subtimeframe_format_profile is unsupported")
     ingestion_mode = str(dataset.get("ingestion_mode") or "primary")
     if ingestion_mode not in _SUPPORTED_INGESTION_MODES:
@@ -637,6 +635,9 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     instrument = str(dataset.get("instrument", "ES"))
     _instrument(instrument)
 
+def _validate_run_spec_levels(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``levels`` (C-2 / MG-17)."""
+    run = _require_mapping(spec, section="run")
     levels = run.get("levels", {})
     _require_mapping(levels, section="levels")
     _validate_keys(
@@ -741,6 +742,12 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             )
         else:
             _validate_range(levels, key, section="levels", minimum=1)
+
+def _validate_run_spec_setup(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``setup`` (C-2 / MG-17)."""
+    run = _require_mapping(spec, section="run")
+    dataset = _require_mapping(run.get("dataset"), section="dataset")
+    instrument = str(dataset.get("instrument", "ES"))
     setup = _require_mapping(run.get("setup"), section="setup")
     _validate_string_fields(
         setup,
@@ -875,6 +882,12 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             "setup.instrument must match dataset.instrument "
             f"({normalized_setup['instrument']!r} != {instrument!r})"
         )
+
+def _validate_run_spec_backtest(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``backtest`` (C-2 / MG-17)."""
+    run = _require_mapping(spec, section="run")
+    dataset = _require_mapping(run.get("dataset"), section="dataset")
+    instrument = str(dataset.get("instrument", "ES"))
     backtest = _require_mapping(run.get("backtest", {}), section="backtest")
     _validate_keys(backtest, set(_BACKTEST_DEFAULTS), section="backtest")
     _validate_bool_fields(
@@ -954,6 +967,12 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             normalize_entry_window(dict(entry_window), exchange_tz=exchange_tz)
         except ValueError as exc:
             raise ValueError(f"Invalid backtest.entry_window: {exc}") from exc
+
+def _validate_run_spec_grid(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``grid`` (C-2 / MG-17)."""
+    run = _require_mapping(spec, section="run")
+    dataset = _require_mapping(run.get("dataset"), section="dataset")
+    instrument = str(dataset.get("instrument", "ES"))
     grid = run.get("grid")
     if grid is not None:
         grid = _require_mapping(grid, section="grid")
@@ -1056,6 +1075,14 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 integer=True,
             )
             _validate_range(grid, "max_holding_bars", section="grid", minimum=1)
+
+def _validate_run_spec_subtimeframe(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``subtimeframe`` (C-2 / MG-17)."""
+    run = _require_mapping(spec, section="run")
+    dataset = _require_mapping(run.get("dataset"), section="dataset")
+    ingestion_mode = str(dataset.get("ingestion_mode") or "primary")
+    backtest = _require_mapping(run.get("backtest", {}), section="backtest")
+    grid = run.get("grid")
     requested_intrabar_models = {backtest.get("intrabar_model", "sl_first")}
     if isinstance(grid, Mapping) and grid.get("enabled", True):
         requested_intrabar_models.add(grid.get("intrabar_model", "sl_first"))
@@ -1069,6 +1096,10 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 "uses intrabar_model='subtimeframe', unless dataset.ingestion_mode="
                 f"{INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
             )
+
+def _validate_run_spec_walk_forward(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``walk_forward`` (C-2 / MG-17)."""
+    run = _require_mapping(spec, section="run")
     walk_forward = run.get("walk_forward")
     if walk_forward is not None:
         walk_forward = _require_mapping(walk_forward, section="walk_forward")
@@ -1166,6 +1197,10 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                         "walk_forward.matrix.matrix_metric must be one of "
                         f"{sorted(valid_matrix_metrics)}"
                     )
+
+def _validate_run_spec_validation(spec: Mapping[str, Any]) -> None:
+    """QI-06-01 cluster ``validation`` (C-2 / MG-17)."""
+    run = _require_mapping(spec, section="run")
     validation = run.get("validation")
     if validation is not None:
         validation = _require_mapping(validation, section="validation")
@@ -1436,6 +1471,37 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                     section="validation.sensitivity",
                 )
 
+class RunSpecRule(NamedTuple):
+    """One ``validate_run_spec`` cluster (C-2 / QI-06-01 / MG-17). Not pydantic."""
+
+    cluster: str
+    check: Callable[[Mapping[str, Any]], None]
+
+
+# QI-06-01 clusters. Own table (do not import SETUP_CONFIG_RULES). No pydantic.
+RUN_SPEC_RULES: tuple[RunSpecRule, ...] = (
+    RunSpecRule("run", _validate_run_spec_run),
+    RunSpecRule("dataset", _validate_run_spec_dataset),
+    RunSpecRule("levels", _validate_run_spec_levels),
+    RunSpecRule("setup", _validate_run_spec_setup),
+    RunSpecRule("backtest", _validate_run_spec_backtest),
+    RunSpecRule("grid", _validate_run_spec_grid),
+    RunSpecRule("subtimeframe", _validate_run_spec_subtimeframe),
+    RunSpecRule("walk_forward", _validate_run_spec_walk_forward),
+    RunSpecRule("validation", _validate_run_spec_validation),
+)
+RUN_SPEC_CLUSTERS: tuple[str, ...] = tuple(rule.cluster for rule in RUN_SPEC_RULES)
+
+
+def validate_run_spec(spec: Mapping[str, Any]) -> None:
+    """Fail closed on unknown or nondeterministic experiment configuration.
+
+    Walks :data:`RUN_SPEC_RULES` (C-2 / QI-06-01). Fail-closed messages and
+    omitted-key defaults are unchanged. Profile allow-lists come from
+    ``thesistester.data.loader``.
+    """
+    for rule in RUN_SPEC_RULES:
+        rule.check(spec)
 
 def _setup_caption(config: Mapping[str, Any]) -> str:
     """Build the setup audit caption stored by the Signals page."""

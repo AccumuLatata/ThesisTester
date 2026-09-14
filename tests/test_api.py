@@ -7,6 +7,8 @@ import pytest
 
 from thesistester.analytics import equity_curve, summarize_trades
 from thesistester.api import (
+    FORMAT_PROFILES,
+    RUN_SPEC_CLUSTERS,
     build_setup,
     compute_levels,
     generate_signals,
@@ -16,6 +18,11 @@ from thesistester.api import (
     run_portfolio_analysis,
     run_walk_forward,
     run_validation,
+    validate_run_spec,
+)
+from thesistester.data.loader import (
+    DERIVE_15S_SUPPORTED_PROFILES,
+    FORMAT_PROFILES as LOADER_FORMAT_PROFILES,
 )
 from thesistester.engine import apply_configured_otf_filter, simulate_trades
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
@@ -720,3 +727,42 @@ def test_anchor_only_setup_generate_signals_emits_point_zone():
     assert zones.iloc[0]["zone_low"] == zones.iloc[0]["zone_high"] == 100.5
     backtest = run_backtest(levels, result["signals"], instrument="ES")
     assert "trades" in backtest
+
+
+def test_validate_run_spec_format_profiles_match_loader():
+    assert set(FORMAT_PROFILES) == set(LOADER_FORMAT_PROFILES)
+    assert FORMAT_PROFILES is LOADER_FORMAT_PROFILES
+
+
+def test_validate_run_spec_derive_profiles_match_loader():
+    from thesistester.api import _DERIVE_15S_SUPPORTED_PROFILES
+
+    assert set(_DERIVE_15S_SUPPORTED_PROFILES) == set(DERIVE_15S_SUPPORTED_PROFILES)
+    assert _DERIVE_15S_SUPPORTED_PROFILES is DERIVE_15S_SUPPORTED_PROFILES
+
+
+def test_validate_run_spec_rule_table_names_qi0601_clusters():
+    assert RUN_SPEC_CLUSTERS == (
+        "run",
+        "dataset",
+        "levels",
+        "setup",
+        "backtest",
+        "grid",
+        "subtimeframe",
+        "walk_forward",
+        "validation",
+    )
+    import thesistester.api as api
+
+    assert not hasattr(api, "SETUP_CONFIG_RULES")
+
+
+def test_validate_run_spec_rejects_unknown_format_profile():
+    with pytest.raises(ValueError, match="dataset.format_profile is unsupported"):
+        validate_run_spec(
+            {
+                "name": "c2",
+                "dataset": {"path": "x.csv", "format_profile": "not_a_profile"},
+            }
+        )

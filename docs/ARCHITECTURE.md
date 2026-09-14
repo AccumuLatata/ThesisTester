@@ -68,7 +68,11 @@ by the Streamlit pages. Its public path is `load_dataset → compute_levels →
 build_setup → generate_signals → run_backtest → run_grid → run_validation`;
 handoffs are typed `DataFrame`/`dict` values. It owns orchestration only: the
 level, signal, OTF, simulation, grid, and validation implementations are
-unchanged.
+unchanged. `validate_run_spec` (C-2 / QI-06-01) walks a declarative
+`RUN_SPEC_RULES` table — own table, not `SETUP_CONFIG_RULES`. Profile
+allow-lists are `loader.FORMAT_PROFILES` / `DERIVE_15S_SUPPORTED_PROFILES`
+/ `SUBTIMEFRAME_FORMAT_PROFILES` (Data page `getattr` fallback; builder
+R17 fallback kept). Fail-closed messages unchanged. No composer collapse.
 
 `thesistester/cli.py` validates experiment schema version 1, calls the facade,
 and sends its bundle-ready mapping to `build_research_bundle()`.
