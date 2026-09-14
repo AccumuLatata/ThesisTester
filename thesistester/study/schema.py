@@ -115,18 +115,6 @@ _LINEAGE_ADMIT_GROUPS = frozenset(
     }
 )
 _LINEAGE_ADMIT_RULES = frozenset({"briefing_best_avg_r", "explicit"})
-_SUPPORTED_FACTOR_AXES = frozenset(
-    {
-        "core_level",
-        "partner_levels",
-        "confluence_mode",
-        "trigger",
-        "trigger_timeframe",
-        "otf",
-        "direction",
-    }
-)
-_REQUIRED_FACTOR_AXES = frozenset({"core_level", "partner_levels"})
 _CONSTANTS_KEYS = frozenset(
     {
         "direction",
@@ -511,19 +499,19 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
             "study.dataset.instrument is required (non-empty string; "
             "injected into every expanded setup)"
         )
+    for ingest in STUDY_INGEST_RULES:
+        value = dataset.get(ingest.key)
+        if value is not None and (not isinstance(value, str) or value not in ingest.allowed):
+            raise StudySpecError(
+                f"study.dataset.{ingest.key} must be one of "
+                f"{sorted(ingest.allowed)!r} when present; got {value!r}"
+            )
     ingestion_mode = dataset.get("ingestion_mode")
-    ingest = STUDY_INGEST_RULES[0]
-    if ingestion_mode is not None and (
-        not isinstance(ingestion_mode, str) or ingestion_mode not in ingest.allowed
-    ):
-        raise StudySpecError(
-            "study.dataset.ingestion_mode must be one of "
-            f"{sorted(ingest.allowed)!r} when present; got {ingestion_mode!r}"
-        )
+    ingest_mode = next(rule for rule in STUDY_INGEST_RULES if rule.key == "ingestion_mode")
     format_profile = dataset.get("format_profile")
     profile_token = format_profile.strip() if isinstance(format_profile, str) else format_profile
     if profile_token == "quantower_history_exporter" and (
-        ingestion_mode is None or ingestion_mode == "primary"
+        ingestion_mode is None or ingestion_mode == ingest_mode.omit_means
     ):
         warnings.warn(
             _WARNING_QUANTOWER_PRIMARY,
@@ -819,9 +807,12 @@ STUDY_REPORT_FIELD_RULES: tuple[StudyReportFieldRule, ...] = (
 STUDY_REPORT_FIELD_ALLOWED: dict[str, frozenset[str]] = {
     rule.field: rule.allowed for rule in STUDY_REPORT_FIELD_RULES
 }
-STUDY_PRIMARY_METRICS = _INDEX_PRIMARY_METRICS
 STUDY_INGEST_RULES: tuple[StudyIngestRule, ...] = (
     StudyIngestRule("ingestion_mode", STUDY_INGESTION_MODES, "primary"),
+)
+_SUPPORTED_FACTOR_AXES = frozenset(rule.axis for rule in STUDY_FACTOR_AXIS_RULES)
+_REQUIRED_FACTOR_AXES = frozenset(
+    rule.axis for rule in STUDY_FACTOR_AXIS_RULES if rule.required
 )
 
 
@@ -884,12 +875,12 @@ def _validate_mode_rules(mode_rules: Mapping[str, Any], *, factors: Mapping[str,
 
 
 def _validate_report(report: Mapping[str, Any], *, factor_keys: set[str]) -> None:
-    primary = report.get("primary_metric")
-    primary_allowed = STUDY_REPORT_FIELD_ALLOWED["primary_metric"]
-    if primary not in primary_allowed:
-        raise StudySpecError(
-            f"study.report.primary_metric must be one of {sorted(primary_allowed)}; got {primary!r}"
-        )
+    for rule in STUDY_REPORT_FIELD_RULES:
+        value = report.get(rule.field)
+        if value not in rule.allowed:
+            raise StudySpecError(
+                f"study.report.{rule.field} must be one of {sorted(rule.allowed)}; got {value!r}"
+            )
     secondary = report.get("secondary_metrics")
     if not isinstance(secondary, list):
         raise StudySpecError("study.report.secondary_metrics must be a list")
@@ -907,14 +898,6 @@ def _validate_report(report: Mapping[str, Any], *, factor_keys: set[str]) -> Non
                     f"study.report.group_by[{index}] must be a factor axis on "
                     f"this study; got {key!r}"
                 )
-
-    multiple_testing = report.get("multiple_testing")
-    testing_allowed = STUDY_REPORT_FIELD_ALLOWED["multiple_testing"]
-    if multiple_testing not in testing_allowed:
-        raise StudySpecError(
-            f"study.report.multiple_testing must be one of "
-            f"{sorted(testing_allowed)}; got {multiple_testing!r}"
-        )
 
     baseline = report.get("otf_baseline")
     if baseline is not None:

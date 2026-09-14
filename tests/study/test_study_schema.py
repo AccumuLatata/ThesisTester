@@ -309,6 +309,15 @@ def test_unknown_factor_axis_fails_closed():
         validate_study_spec(normalize_study_spec(raw))
 
 
+def test_missing_required_factor_axis_fails_closed():
+    raw = _minimal_study()
+    del raw["study"]["factors"]["core_level"]
+    with pytest.raises(StudySpecError, match="Missing required factor axes"):
+        validate_study_spec(normalize_study_spec(raw))
+    required = frozenset(rule.axis for rule in STUDY_FACTOR_AXIS_RULES if rule.required)
+    assert "core_level" in required
+
+
 def test_unknown_study_key_fails_closed():
     raw = _minimal_study()
     raw["study"]["bot_personality"] = "aggressive"
@@ -439,6 +448,18 @@ def test_direction_factor_axis_allowed():
     assert set(validated["study"]["factors"]["direction"]) <= VALID_DIRECTIONS
 
 
+def _schema_assigned_names(tree: ast.AST) -> set[str]:
+    assigned: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            assigned.update(
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            )
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            assigned.add(node.target.id)
+    return assigned
+
+
 def test_study_factor_axis_rules_own_table_not_c1_c2():
     """C-3 / QI-07-03: own tables; seven axes; omit ingestion_mode → primary."""
     assert tuple(rule.axis for rule in STUDY_FACTOR_AXIS_RULES) == (
@@ -450,7 +471,16 @@ def test_study_factor_axis_rules_own_table_not_c1_c2():
         "otf",
         "direction",
     )
-    assert {rule.axis for rule in STUDY_FACTOR_AXIS_RULES} == study_schema._SUPPORTED_FACTOR_AXES
+    assert tuple(rule.axis for rule in STUDY_FACTOR_AXIS_RULES if rule.required) == (
+        "core_level",
+        "partner_levels",
+    )
+    assert study_schema._SUPPORTED_FACTOR_AXES == frozenset(
+        rule.axis for rule in STUDY_FACTOR_AXIS_RULES
+    )
+    assert study_schema._REQUIRED_FACTOR_AXES == frozenset(
+        rule.axis for rule in STUDY_FACTOR_AXIS_RULES if rule.required
+    )
     assert STUDY_EXPAND_REQUIRED_AXES == ("confluence_mode", "trigger", "trigger_timeframe")
     assert set(STUDY_FACTOR_AXIS_ALLOWED) == {
         "confluence_mode",
@@ -462,18 +492,54 @@ def test_study_factor_axis_rules_own_table_not_c1_c2():
         "primary_metric",
         "multiple_testing",
     )
-    assert STUDY_INGEST_RULES[0].key == "ingestion_mode"
-    assert STUDY_INGEST_RULES[0].omit_means == "primary"
-    assert STUDY_INGEST_RULES[0].allowed == STUDY_INGESTION_MODES
+    ingest = next(rule for rule in STUDY_INGEST_RULES if rule.key == "ingestion_mode")
+    assert ingest.omit_means == "primary"
+    assert ingest.allowed == STUDY_INGESTION_MODES
     tree = ast.parse(Path(study_schema.__file__).read_text(encoding="utf-8"))
+    assigned = _schema_assigned_names(tree)
+    for name in (
+        "STUDY_FACTOR_AXIS_RULES",
+        "STUDY_REPORT_FIELD_RULES",
+        "STUDY_INGEST_RULES",
+        "STUDY_CONSTANTS_ENABLED_RULES",
+        "STUDY_EXPAND_REQUIRED_AXES",
+    ):
+        assert name in assigned
+    used_names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
     imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             imported.update(alias.name for alias in node.names)
+    assert "SETUP_CONFIG_RULES" not in used_names
+    assert "RUN_SPEC_RULES" not in used_names
     assert "SETUP_CONFIG_RULES" not in imported
     assert "RUN_SPEC_RULES" not in imported
     assert not hasattr(study_schema, "SETUP_CONFIG_RULES")
     assert not hasattr(study_schema, "RUN_SPEC_RULES")
+
+
+def test_own_table_comment_needles_do_not_bind():
+    """Comment text naming C-1/C-2 tables must not satisfy the AST Name lock."""
+    fake = (
+        "STUDY_FACTOR_AXIS_RULES = ()\n"
+        "STUDY_REPORT_FIELD_RULES = ()\n"
+        "STUDY_INGEST_RULES = ()\n"
+        "STUDY_CONSTANTS_ENABLED_RULES = ()\n"
+        "STUDY_EXPAND_REQUIRED_AXES = ()\n"
+        "# do not import SETUP_CONFIG_RULES or RUN_SPEC_RULES\n"
+    )
+    tree = ast.parse(fake)
+    used_names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    assert "SETUP_CONFIG_RULES" not in used_names
+    assert "RUN_SPEC_RULES" not in used_names
+    bound = (
+        "from thesistester.setup import SETUP_CONFIG_RULES\n"
+        "from thesistester.api import RUN_SPEC_RULES\n"
+    )
+    bound_tree = ast.parse(bound)
+    bound_names = {node.id for node in ast.walk(bound_tree) if isinstance(node, ast.Name)}
+    assert "SETUP_CONFIG_RULES" in bound_names
+    assert "RUN_SPEC_RULES" in bound_names
 
 
 def _c3_probe_core_level():
@@ -535,6 +601,17 @@ def test_validate_study_spec_rule_table_probe_names_match_axes():
     )
 
 
+def _axis_check_error(rule, factors, *, closed_tokens, constants) -> str | None:
+    try:
+        if rule.check is not None:
+            rule.check(factors, closed_tokens=closed_tokens, constants=constants)
+        else:
+            study_schema._validate_enum_factor_axis(factors, rule)
+    except StudySpecError as exc:
+        return str(exc)
+    return None
+
+
 @pytest.mark.parametrize(("axis", "make_spec", "expected"), _FACTOR_AXIS_PROBES)
 def test_validate_study_spec_one_row_per_supported_axis(axis, make_spec, expected):
     raw = make_spec()
@@ -545,12 +622,20 @@ def test_validate_study_spec_one_row_per_supported_axis(axis, make_spec, expecte
     constants = spec["study"]["constants"]
     tokens = closed_level_token_set(spec["study"].get("levels") or {})
     rule = next(item for item in STUDY_FACTOR_AXIS_RULES if item.axis == axis)
-    if rule.check is not None:
-        with pytest.raises(StudySpecError, match=expected):
-            rule.check(factors, closed_tokens=tokens, constants=constants)
-    else:
-        with pytest.raises(StudySpecError, match=expected):
-            study_schema._validate_enum_factor_axis(factors, rule)
+    message = _axis_check_error(
+        rule, factors, closed_tokens=tokens, constants=constants
+    )
+    assert message is not None
+    assert re.search(expected, message)
+    for other in STUDY_FACTOR_AXIS_RULES:
+        if other.axis == axis or other.axis not in factors:
+            continue
+        other_message = _axis_check_error(
+            other, factors, closed_tokens=tokens, constants=constants
+        )
+        if other_message is None:
+            continue
+        assert not re.search(expected, other_message), other.axis
 
 
 def test_grid_without_enabled_fails():

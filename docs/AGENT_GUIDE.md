@@ -49,9 +49,11 @@ executes cells via a **study-owned** `run_experiment` loop (ledger + soft resume
 aggregates an honest overview, and can draft survivor StudySpecs. It does **not**
 change `run_batch` abort semantics. `validate_study_spec` (C-3 / QI-07-03 /
 MG-17) walks own `STUDY_FACTOR_AXIS_RULES` / `STUDY_REPORT_FIELD_RULES` /
-`STUDY_INGEST_RULES`. Expand re-checks reuse `STUDY_EXPAND_REQUIRED_AXES`.
-Own table — do not import `SETUP_CONFIG_RULES` or `RUN_SPEC_RULES`. Omitted
-`ingestion_mode` stays `primary` (AH §2 item 9). Next: C-4. Stage-first example:
+`STUDY_INGEST_RULES`. Required / supported axes and expand re-checks
+(`STUDY_EXPAND_REQUIRED_AXES`) are derived from that factor table. Own
+table — do not import `SETUP_CONFIG_RULES` or `RUN_SPEC_RULES`. Omitted
+`ingestion_mode` stays the ingest-row `omit_means` (`primary`, AH §2 item 9).
+Next: C-4. Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
 ```bash
