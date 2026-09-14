@@ -167,8 +167,11 @@ EXIT_REASONS: frozenset[str] = frozenset(
 
 
 def _exit_reason_with_suffix(kind: str, suffix: str) -> str:
-    """Compose an SL/TP path label. Values stay in ``EXIT_REASONS``."""
-    return f"{kind}{suffix}"
+    """Compose an SL/TP path label. Result must be a member of ``EXIT_REASONS``."""
+    reason = f"{kind}{suffix}"
+    if reason not in EXIT_REASONS:
+        raise ValueError(f"exit reason {reason!r} is not in EXIT_REASONS")
+    return reason
 
 
 _VALID_EXPOSURE_POLICIES = {

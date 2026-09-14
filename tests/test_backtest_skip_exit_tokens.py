@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from thesistester.analytics.entry_window import (
     AFTER_ENTRY_CUTOFF_REASON,
@@ -17,6 +18,7 @@ from thesistester.engine.backtest import (
     EXIT_DATA_END,
     EXIT_EOD,
     EXIT_INTRABAR_PATH_SUFFIX,
+    EXIT_MANAGED_STOP_REASONS,
     EXIT_REASONS,
     EXIT_SESSION_CLOSE,
     EXIT_SL,
@@ -34,29 +36,70 @@ from thesistester.engine.backtest import (
     SKIP_OVERLAPPING_POSITION,
     SKIP_OVERLAPPING_SETUP,
     SKIP_REASONS,
+    _exit_reason_with_suffix,
 )
 
 
 _BACKTEST = Path("thesistester/engine/backtest.py")
 _ENTRY_WINDOW = Path("thesistester/analytics/entry_window.py")
 
+_EXIT_SUFFIX_NAMES = frozenset(
+    {
+        "EXIT_INTRABAR_PATH_SUFFIX",
+        "EXIT_SUBTIMEFRAME_SUFFIX",
+        "EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX",
+    }
+)
+_EXIT_ASSIGN_TOKEN_NAMES = frozenset(
+    {
+        "EXIT_TIME",
+        "EXIT_DATA_END",
+        "EXIT_SESSION_CLOSE",
+        "EXIT_EOD",
+    }
+)
+_EXIT_SUFFIX_CONSTANTS = (
+    EXIT_INTRABAR_PATH_SUFFIX,
+    EXIT_SUBTIMEFRAME_SUFFIX,
+    EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX,
+)
+
 
 def _module_tree(path: Path) -> ast.AST:
     return ast.parse(path.read_text())
+
+
+def _imported_module_names(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+    return names
+
+
+def _is_skip_reason_target(target: ast.AST) -> bool:
+    if isinstance(target, ast.Name) and target.id == "skip_reason":
+        return True
+    if isinstance(target, ast.Subscript):
+        sl = target.slice
+        return isinstance(sl, ast.Constant) and sl.value == "skip_reason"
+    return False
 
 
 def _skip_emit_nodes(tree: ast.AST) -> list[ast.AST]:
     nodes: list[ast.AST] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Dict):
-            for key, value in zip(node.keys, node.values, strict=False):
+            for key, value in zip(node.keys, node.values, strict=True):
                 if isinstance(key, ast.Constant) and key.value == "skip_reason":
                     nodes.append(value)
         if isinstance(node, ast.Assign):
-            if any(
-                isinstance(target, ast.Name) and target.id == "skip_reason"
-                for target in node.targets
-            ):
+            if any(_is_skip_reason_target(target) for target in node.targets):
+                nodes.append(node.value)
+        if isinstance(node, ast.AnnAssign) and node.value is not None:
+            if _is_skip_reason_target(node.target):
                 nodes.append(node.value)
     return nodes
 
@@ -69,6 +112,9 @@ def _exit_assign_nodes(tree: ast.AST) -> list[ast.AST]:
                 isinstance(target, ast.Name) and target.id == "exit_reason"
                 for target in node.targets
             ):
+                nodes.append(node.value)
+        if isinstance(node, ast.AnnAssign) and node.value is not None:
+            if isinstance(node.target, ast.Name) and node.target.id == "exit_reason":
                 nodes.append(node.value)
     return nodes
 
@@ -95,54 +141,94 @@ def test_skip_and_exit_token_values_unchanged():
     assert EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX == "_subtimeframe_fallback"
     assert OUTSIDE_ENTRY_WINDOW_REASON == SKIP_OUTSIDE_ENTRY_WINDOW
     assert AFTER_ENTRY_CUTOFF_REASON == SKIP_AFTER_ENTRY_CUTOFF
-    assert f"{EXIT_SL}{EXIT_INTRABAR_PATH_SUFFIX}" in EXIT_REASONS
-    assert f"{EXIT_TP}{EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX}" in EXIT_REASONS
+    assert EXIT_MANAGED_STOP_REASONS == frozenset({EXIT_BE, EXIT_TRAIL})
+    assert EXIT_MANAGED_STOP_REASONS <= EXIT_REASONS
+
+
+def test_entry_window_does_not_import_engine_backtest():
+    """Focus helpers must not load ``thesistester.engine`` for two aliases."""
+    imported = _imported_module_names(_module_tree(_ENTRY_WINDOW))
+    leaked = {
+        name
+        for name in imported
+        if name == "thesistester.engine.backtest"
+        or name.startswith("thesistester.engine.backtest.")
+        or name == "thesistester.engine"
+        or name.startswith("thesistester.engine.")
+    }
+    assert leaked == []
 
 
 def test_every_skip_emit_site_uses_frozen_skip_reason():
     tree = _module_tree(_BACKTEST)
-    literals: list[str] = []
     names: list[str] = []
     for node in _skip_emit_nodes(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            literals.append(node.value)
-        elif isinstance(node, ast.Name):
-            if node.id != "skip_reason":
-                names.append(node.id)
-        else:
-            literals.append(ast.dump(node))
-    assert literals == []
+        if isinstance(node, ast.Name) and node.id == "skip_reason":
+            continue
+        if isinstance(node, ast.Name) and node.id.startswith("SKIP_"):
+            names.append(node.id)
+            continue
+        raise AssertionError(f"unhandled skip_reason emit {ast.dump(node)}")
     assert names
     from thesistester.engine import backtest as backtest_mod
 
     emitted = {getattr(backtest_mod, name) for name in names}
-    assert emitted <= set(SKIP_REASONS)
+    assert emitted == set(SKIP_REASONS)
 
 
 def test_every_exit_assign_is_token_or_composed_suffix():
     tree = _module_tree(_BACKTEST)
-    allowed_names = {
-        "EXIT_TIME",
-        "EXIT_DATA_END",
-        "EXIT_SESSION_CLOSE",
-        "EXIT_EOD",
-        "_exit_reason_with_suffix",
-    }
+    from thesistester.engine import backtest as backtest_mod
+
     for node in _exit_assign_nodes(tree):
         if isinstance(node, ast.Name):
-            assert node.id in allowed_names or node.id in {
-                "resolution",
-            }
-            if node.id.startswith("EXIT_"):
-                continue
+            assert node.id in _EXIT_ASSIGN_TOKEN_NAMES, ast.dump(node)
+            assert getattr(backtest_mod, node.id) in EXIT_REASONS
+            continue
         if isinstance(node, ast.Attribute):
-            assert node.attr in {"exit_kind", "active_reason"}
+            assert node.attr in {"exit_kind", "active_reason"}, ast.dump(node)
             continue
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            assert node.func.id == "_exit_reason_with_suffix"
+            assert node.func.id == "_exit_reason_with_suffix", ast.dump(node)
+            assert len(node.args) == 2
+            suffix_node = node.args[1]
+            assert isinstance(suffix_node, ast.Name), ast.dump(node)
+            assert suffix_node.id in _EXIT_SUFFIX_NAMES
+            suffix = getattr(backtest_mod, suffix_node.id)
+            for kind in (EXIT_SL, EXIT_TP):
+                composed = _exit_reason_with_suffix(kind, suffix)
+                assert composed in EXIT_REASONS
             continue
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            raise AssertionError(f"raw exit_reason literal {node.value!r}")
+        raise AssertionError(f"unhandled exit_reason emit {ast.dump(node)}")
+
+
+def test_exit_reasons_cover_every_sl_tp_suffix_composition():
+    for kind in (EXIT_SL, EXIT_TP):
+        for suffix in _EXIT_SUFFIX_CONSTANTS:
+            composed = f"{kind}{suffix}"
+            assert composed in EXIT_REASONS
+            assert _exit_reason_with_suffix(kind, suffix) == composed
+    bare = {
+        EXIT_SL,
+        EXIT_TP,
+        EXIT_BE,
+        EXIT_TRAIL,
+        EXIT_TIME,
+        EXIT_DATA_END,
+        EXIT_SESSION_CLOSE,
+        EXIT_EOD,
+    }
+    composed = {
+        f"{kind}{suffix}" for kind in (EXIT_SL, EXIT_TP) for suffix in _EXIT_SUFFIX_CONSTANTS
+    }
+    assert EXIT_REASONS == bare | composed
+
+
+def test_exit_reason_with_suffix_rejects_unknown_composition():
+    with pytest.raises(ValueError, match="not in EXIT_REASONS"):
+        _exit_reason_with_suffix(EXIT_SL, "_not_a_path")
+    with pytest.raises(ValueError, match="not in EXIT_REASONS"):
+        _exit_reason_with_suffix(EXIT_TIME, EXIT_INTRABAR_PATH_SUFFIX)
 
 
 def test_partition_skip_counts_covers_every_skip_reason():

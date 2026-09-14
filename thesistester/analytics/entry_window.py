@@ -16,10 +16,6 @@ from thesistester.analytics.metrics import (
     summarize_trades_by_direction,
 )
 from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
-from thesistester.engine.backtest import (
-    SKIP_AFTER_ENTRY_CUTOFF,
-    SKIP_OUTSIDE_ENTRY_WINDOW,
-)
 from thesistester.entry_window_policy import (
     RTH_SEGMENT_LABELS,
     RTH_SEGMENTS,
@@ -51,8 +47,12 @@ ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING = (
     "Entry window is a fixed Admit constraint across all cells/folds — "
     "not a swept Grid/WFA axis. No per-fold time-bucket reselection."
 )
-OUTSIDE_ENTRY_WINDOW_REASON = SKIP_OUTSIDE_ENTRY_WINDOW
-AFTER_ENTRY_CUTOFF_REASON = SKIP_AFTER_ENTRY_CUTOFF
+# Locked to ``engine.backtest.SKIP_*`` (C-18). Keep the literals here —
+# importing ``engine.backtest`` would load ``thesistester.engine``
+# (``simulate_trades`` + signals/OTF) and invert the isolation this
+# module's docstring exists to preserve.
+OUTSIDE_ENTRY_WINDOW_REASON = "outside_entry_window"
+AFTER_ENTRY_CUTOFF_REASON = "after_entry_cutoff"
 
 
 def partition_skip_counts(skipped_signals: pd.DataFrame | None) -> dict[str, int]:

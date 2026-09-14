@@ -87,7 +87,9 @@ indices when `trigger_df` is missing. C-17 (QI-05-01) extracts WFA
 P0 validate / P3 train-grid / P5 stitch / P6 summary helpers from
 `run_walk_forward_sl_tp`. Fold construction and `causal_prefix` stay
 untouched (S5). C-18 (QI-04-09) centralizes skip/exit tokens next to
-`_SKIPPED_SIGNAL_COLUMNS`; string values unchanged. Next: C-19.
+`_SKIPPED_SIGNAL_COLUMNS`; string values unchanged. `entry_window`
+aliases window/cutoff tokens locally (does not import `engine.backtest`).
+Next: C-19.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -276,6 +278,7 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    S3 math is unchanged. C-17 (QI-05-01) extracts WFA P0/P3/P5/P6
    helpers; fold construction and `causal_prefix` stay untouched.
    C-18 (QI-04-09) centralizes skip/exit tokens; values unchanged.
+   `entry_window` aliases stay local (no `engine.backtest` import).
    Next: C-19.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
