@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -1127,3 +1130,35 @@ def test_combo_tables_remain_byte_identical_after_summarizer_split():
     }
     for name, expected in _COMBO_TABLE_HASHES.items():
         assert hash_dataframe(frames[name]) == expected, name
+
+
+def test_pair_trigger_reexports_are_sibling_functions():
+    from thesistester.analytics import confluence_attribution as facade
+    from thesistester.analytics import confluence_pair_trigger as sibling
+
+    assert facade.pair_keys_for_tokens is sibling.pair_keys_for_tokens
+    assert facade.summarize_by_level_pairs is sibling.summarize_by_level_pairs
+    assert (
+        facade.summarize_by_exact_combo_and_trigger_variant
+        is sibling.summarize_by_exact_combo_and_trigger_variant
+    )
+    assert (
+        facade.summarize_by_pair_and_trigger_variant
+        is sibling.summarize_by_pair_and_trigger_variant
+    )
+
+
+def test_pair_trigger_sibling_import_does_not_require_facade_preload():
+    script = (
+        "from thesistester.analytics.confluence_pair_trigger import pair_keys_for_tokens\n"
+        "assert pair_keys_for_tokens(['B', 'A']) == ['A|B']\n"
+        "print('ok')\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == "ok"

@@ -3,7 +3,9 @@
 C-13 (QI-05-03): extracted from ``confluence_attribution.py`` so pair/trigger
 grouping stays apart from display-facing dataclass assembly
 (``confluence_attribution_summary``, ``prepare_exact_combo_display``).
-Public combo helpers remain importable from ``confluence_attribution``.
+Public combo helpers remain importable from ``confluence_attribution``
+(lazy re-exports; this module imports the facade for shared parse/summarize
+helpers).
 """
 
 from __future__ import annotations
@@ -13,11 +15,7 @@ from typing import Any
 
 import pandas as pd
 
-
-def _cca():
-    from thesistester.analytics import confluence_attribution as module
-
-    return module
+from thesistester.analytics import confluence_attribution as cca
 
 
 def pair_keys_for_tokens(
@@ -31,7 +29,6 @@ def pair_keys_for_tokens(
     ``anchor|support`` for each non-anchor support. Otherwise emit all unordered
     generic pairs as canonical sorted ``A|B`` keys. Never guesses an anchor.
     """
-    cca = _cca()
     uniq = cca.parse_level_names(list(tokens))
     if len(uniq) < 2:
         return []
@@ -60,7 +57,6 @@ def summarize_by_level_pairs(
     uses generic pairs. Trades with fewer than two distinct tokens contribute no
     pair rows.
     """
-    cca = _cca()
     empty = cca._empty_group_frame(cca.PAIR_KEY_COL, [cca.PAIR_MODE_COL])
     if trades is None or not isinstance(trades, pd.DataFrame):
         return empty
@@ -141,7 +137,6 @@ def summarize_by_exact_combo_and_trigger_variant(
     before grouping. Missing ``trigger_variant`` or ``direction`` column → empty
     frame.
     """
-    cca = _cca()
     empty = cca._empty_multi_group_frame(
         [cca.EXACT_COMBO_KEY_COL, cca.DIRECTION_COL, cca.TRIGGER_VARIANT_COL]
     )
@@ -194,7 +189,6 @@ def summarize_by_pair_and_trigger_variant(
     unusable ``direction`` before explode/groupby. Missing ``trigger_variant``
     or ``direction`` column → empty frame.
     """
-    cca = _cca()
     empty = pd.DataFrame(
         columns=[
             cca.PAIR_KEY_COL,
