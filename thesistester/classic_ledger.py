@@ -4,7 +4,8 @@ When recording policy is ``all_executions`` under an active thesis, every Backte
 attempt is persisted as a ResearchRun before classic execution and terminalized
 as completed, failed, or cancelled. Manual policy and non-research sessions are
 no-ops. Recording stays out of ``classic_context`` so link/create remain
-non-recording.
+non-recording. Streamlit is lazy-imported inside render helpers (C-8 /
+QI-06-05; import-linter C8 allow-list).
 """
 
 from __future__ import annotations

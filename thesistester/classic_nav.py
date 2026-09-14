@@ -2,7 +2,8 @@
 
 Discuss / Open-exact / clarification navigation and identity badge resolution.
 Does not record runs or mutate executable classic settings beyond hash-verified
-bundle restore (Open exact). Streamlit UI imports are lazy.
+bundle restore (Open exact). Streamlit UI imports are lazy (C-8 / QI-06-05;
+import-linter C8 allow-list).
 """
 
 from __future__ import annotations

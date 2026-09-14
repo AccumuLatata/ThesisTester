@@ -2,7 +2,8 @@
 
 Builds/verifies a research bundle from classic page state, exports a CAI-4
 RunSpec, and registers an immutable classic-origin thesis run. Streamlit UI is
-lazy-imported so unit tests stay Streamlit-free. Recording must never live in
+lazy-imported so unit tests stay Streamlit-free (C-8 / QI-06-05;
+import-linter C8 allow-list). Recording must never live in
 ``classic_context`` (link/create must remain non-recording).
 """
 

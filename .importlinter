@@ -15,7 +15,8 @@
 # → engine.backtest / levels.all (sim_core via backtest). That is not
 # JS2 (engine.signals stays allowed). C-9 slims journal/__init__.py so a
 # runtime `import thesistester.journal` does not load backtest; it does
-# not keep this contract. C8 allow-list stays until C-8/F-9 extract
+# not keep this contract. C8: C-8 made `app_state` a lazy page adapter;
+# classic_* stay lazy. Secret readers stay until F-9 extracts
 # Streamlit-free readers.
 # C10 is page-scoped: pages/ are not a Python package, so import-linter
 # cannot name pages/15_Studies.py. The FORMAT_PROFILE_LABELS-from-builder
@@ -109,7 +110,7 @@ forbidden_modules =
 
 # C8: library ↛ streamlit except the documented allow-list (R18 / H-C).
 [importlinter:contract:c8-library-streamlit-allowlist]
-name = C8 library is Streamlit-free except app_state / classic chrome / two secret readers
+name = C8 library is Streamlit-free except lazy app_state adapter / classic chrome / two secret readers
 type = forbidden
 source_modules =
     thesistester

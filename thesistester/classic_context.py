@@ -3,7 +3,8 @@
 Streamlit-free session-state helpers for entering/leaving an explicit thesis
 context on classic pages. Executable settings remain page-owned; thesis prose
 stays on the Research Assistant conversation path. Linking or creating a thesis
-must never record a run.
+must never record a run. Streamlit is lazy-imported inside render helpers
+(C-8 / QI-06-05; import-linter C8 allow-list).
 """
 
 from __future__ import annotations
