@@ -50,8 +50,12 @@ serial-parity implementation and measurement PR.
 
 ## R22 core boundary
 
-`thesistester.engine.sim_core` owns immutable parent-bar OHLC snapshots and
-one-bar bracket resolution. `simulate_trades` remains the sole public
-orchestrator for admission, caps, MAE/MFE, costs, trade records, and
-diagnostics. This keeps any future hot-loop acceleration constrained to the
-small internal boundary while preserving exact legacy semantics.
+`thesistester.engine.sim_core` owns immutable parent-bar OHLC snapshots,
+one-bar bracket resolution, and the C-19 serial P7 walk
+(`walk_trade_exit`, `compute_session_close_cap`). `simulate_trades`
+remains the sole public orchestrator for admission, skip/exit labels,
+costs, trade records, and diagnostics. `sim_core` still holds no
+admission or P&L. This keeps any future hot-loop acceleration (E-10)
+constrained to the small internal boundary while preserving exact legacy
+semantics. C-19 is a behavior-preserving extract; the ruler below is
+re-timed on that extract.
