@@ -10,12 +10,17 @@ from thesistester.assistant.help_corpus import (
     HELP_CORPUS_MANIFEST,
     PREFACE_SECTION,
     HelpCorpusError,
+    _CORPUS_BOOST_RULES,
+    _CorpusBoostRule,
+    _corpus_query_matches,
+    _tokenize_query,
     build_registry_digest,
     get_corpus_doc_spec,
     load_allowlisted_corpus,
     load_corpus_chunks,
     manifest_doc_ids,
     resolve_corpus_path,
+    score_corpus_chunk,
     select_help_corpus_chunks,
 )
 
@@ -294,3 +299,36 @@ def test_select_help_corpus_chunks_zero_overlap_preserves_allowlist_order(monkey
     # allowlist order: readme → metrics → architecture (not alpha: architecture first)
     assert [chunk.doc_id for chunk in selected] == ["readme", "metrics"]
     assert "architecture" not in {chunk.doc_id for chunk in selected}
+
+
+def test_c22_corpus_boost_table_drives_score_corpus_chunk():
+    """QI-09-02: `score_corpus_chunk` walks `_CORPUS_BOOST_RULES` (not empty-query only)."""
+    import inspect
+
+    from thesistester.assistant.help_corpus import CorpusChunk
+
+    source = inspect.getsource(score_corpus_chunk)
+    assert "_CORPUS_BOOST_RULES" in source
+    assert {rule.predicate for rule in _CORPUS_BOOST_RULES if rule.predicate is not None} == {
+        "exit_mgmt",
+        "session_exit",
+        "focus_admit",
+    }
+    assert (
+        score_corpus_chunk(
+            CorpusChunk(doc_id="metrics", section="Core", text="expectancy"),
+            query_tokens=set(),
+        )
+        == 0
+    )
+    tokens = _tokenize_query("grid ranking metric expectancy")
+    metrics = CorpusChunk(doc_id="metrics", section="Core formulas", text="expectancy grid")
+    readme = CorpusChunk(doc_id="readme", section="Intro", text="expectancy grid")
+    assert score_corpus_chunk(metrics, query_tokens=tokens) > score_corpus_chunk(
+        readme, query_tokens=tokens
+    )
+    with pytest.raises(ValueError, match="unknown corpus boost predicate"):
+        _corpus_query_matches(
+            _CorpusBoostRule(frozenset({"metrics"}), None, "not_a_real_predicate", 3),
+            tokens,
+        )

@@ -983,3 +983,18 @@ def test_c21_claim_format_table_first_match_order():
     ]
     assert len(expectancy_claims) == 1
     assert _format_scalar_for_claim("results.trade_summary.win_rate", 0.52) == "Win rate is 52%."
+
+
+def test_c22_handle_results_turn_is_phase_facade():
+    """QI-09-02: `handle_results_turn` delegates to named phase helpers."""
+    import inspect
+
+    from thesistester.assistant.orchestrator import AssistantOrchestrator
+
+    source = inspect.getsource(AssistantOrchestrator.handle_results_turn)
+    assert "_require_results_turn_inputs" in source
+    assert "_load_results_turn_evidence" in source
+    assert "_load_results_turn_tables" in source
+    assert "_resolve_results_turn_time" in source
+    assert "_persist_results_turn" in source
+    assert "_complete_results_turn" in source

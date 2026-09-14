@@ -554,3 +554,54 @@ def test_evidence_packet_round_trip_preserves_versioned_fields():
     )
     restored = EvidencePacket.from_dict(original.to_dict())
     assert restored.to_dict() == original.to_dict()
+
+
+def test_c22_caveat_appliers_table_covers_codes():
+    """QI-09-02: `_derive_caveats` walks every `_CAVEAT_APPLIERS` row (not first-match)."""
+    import inspect
+
+    from thesistester.assistant import explainer as explainer_mod
+
+    source = inspect.getsource(explainer_mod._derive_caveats)
+    assert "_CAVEAT_APPLIERS" in source
+    assert [fn.__name__ for fn in explainer_mod._CAVEAT_APPLIERS] == [
+        "_apply_diagnostic_only",
+        "_apply_sample_caveats",
+        "_apply_cost_caveats",
+        "_apply_overlapping_exposure",
+        "_apply_intrabar_ambiguity",
+        "_apply_grid_selection",
+        "_apply_wfa_caveats",
+        "_apply_failed_robustness",
+        "_apply_multiple_testing",
+        "_apply_focus_post_hoc",
+    ]
+    caveats, limitations = explainer_mod._derive_caveats(
+        results={
+            "trade_summary": {"trade_count": 4},
+            "best_grid_result": {"ranking_metric": "expectancy_r"},
+            "validation_summary": {"available": False},
+        },
+        assumptions={
+            "costs_exposure": {
+                "commission_per_side": 0,
+                "slippage_ticks": 0,
+                "exposure_policy": "allow_all",
+            },
+            "entry_window": {"focus": {"enabled": True}},
+        },
+        provenance={"trial_count": 3},
+    )
+    codes = [item.code for item in caveats]
+    assert codes[0] == "diagnostic_only"
+    assert {
+        "low_sample",
+        "zero_costs",
+        "overlapping_exposure",
+        "grid_selection",
+        "missing_oos",
+        "failed_robustness",
+        "multiple_testing",
+        "focus_post_hoc",
+    } <= set(codes)
+    assert any("OOS/WFA summary is missing" in line for line in limitations)

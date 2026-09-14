@@ -3,6 +3,7 @@
 The orchestrator owns confirmation decisions, resource-envelope enforcement, and
 audit recording. It does not interpret prose, run engine internals, or grant
 arbitrary tool access.
+C-22 splits ``handle_results_turn`` phases; RQ/HC/DI channel contracts unchanged.
 """
 
 from __future__ import annotations
@@ -561,6 +562,231 @@ class AssistantOrchestrator:
             conversation_id=conversation_id,
         )
 
+    def _require_results_turn_inputs(self, run_id: str, message: str) -> tuple[str, str]:
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("run_id must be a non-empty string.")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("Results Q&A message must be a non-empty string.")
+        return run_id.strip(), message.strip()
+
+    def _load_results_turn_evidence(
+        self, *, thesis_id: str, conversation_id: str | None, run_id: str
+    ) -> tuple[ResearchRun, OrchestrationResult]:
+        run = self.repository.get_run(thesis_id, run_id)
+        evidence = self.explain_run(
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            run=run,
+        )
+        return run, evidence
+
+    def _results_turn_bundle_binding(self, run: Any) -> tuple[str | None, str | None]:
+        bundle_path: str | None = None
+        expected_hash: str | None = None
+        if isinstance(run.provenance, Mapping):
+            raw_path = run.provenance.get("bundle_path")
+            if isinstance(raw_path, str) and raw_path.strip():
+                bundle_path = raw_path.strip()
+            try:
+                expected_hash = require_run_bundle_hash(run.provenance)
+            except ValueError:
+                expected_hash = None
+        return bundle_path, expected_hash
+
+    def _load_results_turn_tables(
+        self, *, bundle_path: str | None, expected_hash: str | None
+    ) -> tuple[
+        list[dict[str, Any]] | None,
+        list[dict[str, Any]] | None,
+        list[dict[str, Any]] | None,
+        str | None,
+        str | None,
+    ]:
+        grid_rows: list[dict[str, Any]] | None = None
+        time_summary: list[dict[str, Any]] | None = None
+        trade_rows: list[dict[str, Any]] | None = None
+        grid_table_status: str | None = None
+        grid_table_warning: str | None = None
+        if bundle_path is None or expected_hash is None:
+            return grid_rows, time_summary, trade_rows, grid_table_status, grid_table_warning
+        (
+            grid_rows,
+            time_summary,
+            trade_rows,
+            table_load_error,
+        ) = self._load_bundle_tables_for_results(
+            bundle_path=bundle_path,
+            expected_hash=expected_hash,
+        )
+        if table_load_error:
+            # Do not pretend the full grid table was empty — surface the
+            # load failure while still ranking from packet best_grid_result.
+            grid_table_status = "unavailable"
+            grid_table_warning = (
+                "Full grid_results table could not be loaded from the bound "
+                f"bundle ({table_load_error}). Rankings fall back to "
+                "results.best_grid_result only."
+            )
+        return grid_rows, time_summary, trade_rows, grid_table_status, grid_table_warning
+
+    def _time_summary_from_packet(self, packet: Any) -> list[dict[str, Any]] | None:
+        packet_time = packet.results.get("time_grouped_summary")
+        if isinstance(packet_time, (list, tuple)):
+            rows = [dict(row) for row in packet_time if isinstance(row, Mapping)]
+            return rows or None
+        if isinstance(packet_time, Mapping):
+            # Accept TIME.analyze-shaped {"groups": [...]} already on the packet.
+            groups = packet_time.get("groups")
+            if isinstance(groups, list):
+                rows = [dict(row) for row in groups if isinstance(row, Mapping)]
+                return rows or None
+        return None
+
+    def _enrich_results_turn_time(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        bundle_path: str,
+        expected_hash: str,
+    ) -> tuple[list[dict[str, Any]] | None, dict[str, Any]]:
+        enrichment = self._enrich_time_summary_for_results(
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            bundle_path=bundle_path,
+            expected_hash=expected_hash,
+        )
+        if enrichment.status == OrchestrationStatus.COMPLETED.value:
+            groups = enrichment.payload.get("groups")
+            rows = None
+            if isinstance(groups, list):
+                rows = [dict(row) for row in groups if isinstance(row, Mapping)]
+            return rows, {
+                "status": enrichment.status,
+                "capability_id": enrichment.capability_id,
+                "group_col": DEFAULT_TIME_BUCKET_COL,
+                "min_trades": DEFAULT_TIME_MIN_TRADES,
+            }
+        # Hash/provenance failures fail closed for enrichment: do not
+        # invent time buckets. Continue the turn with packet evidence.
+        return None, {
+            "status": enrichment.status,
+            "capability_id": enrichment.capability_id,
+            "error": enrichment.payload.get("error"),
+        }
+
+    def _resolve_results_turn_time(
+        self,
+        *,
+        packet: Any,
+        time_summary: list[dict[str, Any]] | None,
+        settings: Any,
+        thesis_id: str,
+        conversation_id: str | None,
+        bundle_path: str | None,
+        expected_hash: str | None,
+    ) -> tuple[list[dict[str, Any]] | None, dict[str, Any] | None]:
+        if time_summary is None:
+            time_summary = self._time_summary_from_packet(packet)
+        time_enrichment: dict[str, Any] | None = None
+        if (
+            time_summary is None
+            and settings.allow_time_enrichment
+            and bundle_path is not None
+            and expected_hash is not None
+        ):
+            time_summary, time_enrichment = self._enrich_results_turn_time(
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+                bundle_path=bundle_path,
+                expected_hash=expected_hash,
+            )
+        return time_summary, time_enrichment
+
+    def _results_turn_history(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        run_id: str,
+        max_history_messages: int,
+    ) -> tuple[Conversation | None, tuple[dict[str, Any], ...]]:
+        if not (isinstance(conversation_id, str) and conversation_id.strip()):
+            return None, ()
+        conversation = self.repository.get_conversation(thesis_id, conversation_id.strip())
+        history = filter_results_qa_history(
+            conversation.messages,
+            run_id=run_id,
+            max_history_messages=max_history_messages,
+        )
+        return conversation, history
+
+    def _persist_results_turn(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str,
+        conversation: Any,
+        message: str,
+        run_id: str,
+        reply: Any,
+    ) -> None:
+        user_record = self.repository.append_conversation_message(
+            thesis_id,
+            conversation_id.strip(),
+            expected_revision=conversation.revision,
+            message={
+                "role": "user",
+                "content": message,
+                "channel": RESULTS_QA_CHANNEL,
+                "run_id": run_id,
+            },
+        )
+        assistant_message: dict[str, Any] = {
+            "role": "assistant",
+            "content": format_results_qa_reply_content(reply),
+            "channel": RESULTS_QA_CHANNEL,
+            "run_id": run_id,
+            "summary": reply.summary,
+            "caveats": list(reply.caveats),
+            "claims": [claim.to_dict() for claim in reply.claims],
+            "followups": list(reply.followups),
+        }
+        if reply.recovery_reason is not None:
+            assistant_message["recovery_reason"] = reply.recovery_reason
+        self.repository.append_conversation_message(
+            thesis_id,
+            conversation_id.strip(),
+            expected_revision=user_record.revision,
+            message=assistant_message,
+        )
+
+    def _complete_results_turn(
+        self,
+        *,
+        evidence: Any,
+        reply: Any,
+        turn_context: Mapping[str, Any],
+        client: StructuredLLMClient,
+        time_enrichment: dict[str, Any] | None,
+    ) -> OrchestrationResult:
+        payload: dict[str, Any] = {
+            **evidence.payload,
+            "results_reply": reply,
+            "results_turn_context": {
+                "projections": (turn_context.get("results") or {}).get("projections"),
+            },
+            "provider_attempts": getattr(client, "last_attempt_count", None),
+            "results_recovery_reason": reply.recovery_reason,
+        }
+        if time_enrichment is not None:
+            payload["time_enrichment"] = time_enrichment
+        return OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id=RESULTS_QA_CHANNEL,
+            payload=payload,
+        )
+
     def handle_results_turn(
         self,
         client: StructuredLLMClient,
@@ -584,100 +810,36 @@ class AssistantOrchestrator:
 
         VA-4 push-to-talk passes ``persist_conversation=False`` so the voice
         session flush owns the single channel history write.
+
+        Phase helpers (QI-09-02 / C-22) keep the RQ/HC/DI channel contract.
         """
-        if not isinstance(run_id, str) or not run_id.strip():
-            raise ValueError("run_id must be a non-empty string.")
-        if not isinstance(message, str) or not message.strip():
-            raise ValueError("Results Q&A message must be a non-empty string.")
-        run = self.repository.get_run(thesis_id, run_id.strip())
-        evidence = self.explain_run(
+        run_id, message = self._require_results_turn_inputs(run_id, message)
+        run, evidence = self._load_results_turn_evidence(
             thesis_id=thesis_id,
             conversation_id=conversation_id,
-            run=run,
+            run_id=run_id,
         )
         if evidence.status != OrchestrationStatus.COMPLETED.value:
             return evidence
         packet = evidence_packet_from_payload(evidence.payload)
         settings = load_results_qa_settings()
-        bundle_path: str | None = None
-        expected_hash: str | None = None
-        if isinstance(run.provenance, Mapping):
-            raw_path = run.provenance.get("bundle_path")
-            if isinstance(raw_path, str) and raw_path.strip():
-                bundle_path = raw_path.strip()
-            try:
-                expected_hash = require_run_bundle_hash(run.provenance)
-            except ValueError:
-                expected_hash = None
-
-        grid_rows: list[dict[str, Any]] | None = None
-        time_summary: list[dict[str, Any]] | None = None
-        trade_rows: list[dict[str, Any]] | None = None
-        grid_table_status: str | None = None
-        grid_table_warning: str | None = None
-        if bundle_path is not None and expected_hash is not None:
-            (
-                grid_rows,
-                time_summary,
-                trade_rows,
-                table_load_error,
-            ) = self._load_bundle_tables_for_results(
-                bundle_path=bundle_path,
-                expected_hash=expected_hash,
-            )
-            if table_load_error:
-                # Do not pretend the full grid table was empty — surface the
-                # load failure while still ranking from packet best_grid_result.
-                grid_table_status = "unavailable"
-                grid_table_warning = (
-                    "Full grid_results table could not be loaded from the bound "
-                    f"bundle ({table_load_error}). Rankings fall back to "
-                    "results.best_grid_result only."
-                )
-        packet_time = packet.results.get("time_grouped_summary")
-        if time_summary is None:
-            if isinstance(packet_time, (list, tuple)):
-                rows = [dict(row) for row in packet_time if isinstance(row, Mapping)]
-                time_summary = rows or None
-            elif isinstance(packet_time, Mapping):
-                # Accept TIME.analyze-shaped {"groups": [...]} already on the packet.
-                groups = packet_time.get("groups")
-                if isinstance(groups, list):
-                    rows = [dict(row) for row in groups if isinstance(row, Mapping)]
-                    time_summary = rows or None
-
-        time_enrichment: dict[str, Any] | None = None
-        if (
-            time_summary is None
-            and settings.allow_time_enrichment
-            and bundle_path is not None
-            and expected_hash is not None
-        ):
-            enrichment = self._enrich_time_summary_for_results(
-                thesis_id=thesis_id,
-                conversation_id=conversation_id,
-                bundle_path=bundle_path,
-                expected_hash=expected_hash,
-            )
-            if enrichment.status == OrchestrationStatus.COMPLETED.value:
-                groups = enrichment.payload.get("groups")
-                if isinstance(groups, list):
-                    time_summary = [dict(row) for row in groups if isinstance(row, Mapping)]
-                time_enrichment = {
-                    "status": enrichment.status,
-                    "capability_id": enrichment.capability_id,
-                    "group_col": DEFAULT_TIME_BUCKET_COL,
-                    "min_trades": DEFAULT_TIME_MIN_TRADES,
-                }
-            else:
-                # Hash/provenance failures fail closed for enrichment: do not
-                # invent time buckets. Continue the turn with packet evidence.
-                time_enrichment = {
-                    "status": enrichment.status,
-                    "capability_id": enrichment.capability_id,
-                    "error": enrichment.payload.get("error"),
-                }
-
+        bundle_path, expected_hash = self._results_turn_bundle_binding(run)
+        (
+            grid_rows,
+            time_summary,
+            trade_rows,
+            grid_table_status,
+            grid_table_warning,
+        ) = self._load_results_turn_tables(bundle_path=bundle_path, expected_hash=expected_hash)
+        time_summary, time_enrichment = self._resolve_results_turn_time(
+            packet=packet,
+            time_summary=time_summary,
+            settings=settings,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            bundle_path=bundle_path,
+            expected_hash=expected_hash,
+        )
         turn_context = build_ephemeral_results_context(
             packet,
             grid_rows=grid_rows,
@@ -686,21 +848,17 @@ class AssistantOrchestrator:
             grid_table_status=grid_table_status,
             grid_table_warning=grid_table_warning,
         )
-        conversation = None
-        if isinstance(conversation_id, str) and conversation_id.strip():
-            conversation = self.repository.get_conversation(thesis_id, conversation_id.strip())
-            history = filter_results_qa_history(
-                conversation.messages,
-                run_id=run.run_id,
-                max_history_messages=max_history_messages,
-            )
-        else:
-            history = ()
+        conversation, history = self._results_turn_history(
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            run_id=run.run_id,
+            max_history_messages=max_history_messages,
+        )
         reply = propose_results_reply(
             client,
             packet=packet,
             history=history,
-            user_message=message.strip(),
+            user_message=message,
             turn_context=turn_context,
             repair_retry_enabled=bool(getattr(settings, "repair_retry_enabled", True)),
             deterministic_overview_fallback=bool(
@@ -711,50 +869,20 @@ class AssistantOrchestrator:
             ),
         )
         if persist_conversation and conversation is not None and isinstance(conversation_id, str):
-            user_record = self.repository.append_conversation_message(
-                thesis_id,
-                conversation_id.strip(),
-                expected_revision=conversation.revision,
-                message={
-                    "role": "user",
-                    "content": message.strip(),
-                    "channel": RESULTS_QA_CHANNEL,
-                    "run_id": run.run_id,
-                },
+            self._persist_results_turn(
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+                conversation=conversation,
+                message=message,
+                run_id=run.run_id,
+                reply=reply,
             )
-            assistant_message: dict[str, Any] = {
-                "role": "assistant",
-                "content": format_results_qa_reply_content(reply),
-                "channel": RESULTS_QA_CHANNEL,
-                "run_id": run.run_id,
-                "summary": reply.summary,
-                "caveats": list(reply.caveats),
-                "claims": [claim.to_dict() for claim in reply.claims],
-                "followups": list(reply.followups),
-            }
-            if reply.recovery_reason is not None:
-                assistant_message["recovery_reason"] = reply.recovery_reason
-            self.repository.append_conversation_message(
-                thesis_id,
-                conversation_id.strip(),
-                expected_revision=user_record.revision,
-                message=assistant_message,
-            )
-        payload: dict[str, Any] = {
-            **evidence.payload,
-            "results_reply": reply,
-            "results_turn_context": {
-                "projections": (turn_context.get("results") or {}).get("projections"),
-            },
-            "provider_attempts": getattr(client, "last_attempt_count", None),
-            "results_recovery_reason": reply.recovery_reason,
-        }
-        if time_enrichment is not None:
-            payload["time_enrichment"] = time_enrichment
-        return OrchestrationResult(
-            status=OrchestrationStatus.COMPLETED.value,
-            capability_id=RESULTS_QA_CHANNEL,
-            payload=payload,
+        return self._complete_results_turn(
+            evidence=evidence,
+            reply=reply,
+            turn_context=turn_context,
+            client=client,
+            time_enrichment=time_enrichment,
         )
 
     def handle_voice_ptt_turn(

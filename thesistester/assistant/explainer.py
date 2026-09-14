@@ -3,12 +3,14 @@
 Every narrative claim is built from an evidence path and exact packet value.
 Missing evidence becomes an explicit limitation; "best"/"better" language always
 states metric, candidate set, sample, costs, and OOS status.
+C-22 tables ``_derive_caveats`` appliers; caveat codes/paths unchanged.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
+from collections.abc import Callable
 from typing import Any, Mapping
 
 from thesistester.reporting import build_research_artifact, to_jsonable
@@ -254,137 +256,201 @@ def _append_caveat(
     caveats.append(EvidenceCaveat(code=code, message=text, path=path))
 
 
+class _CaveatContext:
+    """Mutable packet slices for ordered caveat appliers (QI-09-02 / C-22).
+
+    Every applier runs. This is not a first-match walker — later rows may
+    append additional codes/limitations.
+    """
+
+    def __init__(
+        self,
+        *,
+        results: Mapping[str, Any],
+        assumptions: Mapping[str, Any],
+        provenance: Mapping[str, Any],
+    ) -> None:
+        self.results = results
+        self.assumptions = assumptions
+        self.provenance = provenance
+        self.caveats: list[EvidenceCaveat] = []
+        self.limitations: list[str] = []
+
+
+def _apply_diagnostic_only(ctx: _CaveatContext) -> None:
+    _append_caveat(ctx.caveats, "diagnostic_only")
+
+
+def _apply_sample_caveats(ctx: _CaveatContext) -> None:
+    summary = _as_mapping(ctx.results.get("trade_summary")) or {}
+    trade_count = _numeric(summary.get("trade_count"))
+    if trade_count is None:
+        _append_caveat(ctx.caveats, "sample_unavailable", path="results.trade_summary.trade_count")
+        ctx.limitations.append("Baseline trade_count is missing from evidence.")
+        return
+    if trade_count < LOW_SAMPLE_THRESHOLD:
+        _append_caveat(ctx.caveats, "low_sample", path="results.trade_summary.trade_count")
+
+
+def _apply_cost_caveats(ctx: _CaveatContext) -> None:
+    costs = _as_mapping(ctx.assumptions.get("costs_exposure")) or {}
+    if costs.get("commission_per_side") == 0 and costs.get("slippage_ticks") == 0:
+        _append_caveat(ctx.caveats, "zero_costs", path="assumptions.costs_exposure")
+        return
+    if costs.get("commission_per_side") is None and costs.get("slippage_ticks") is None:
+        ctx.limitations.append("Cost assumptions are not present in evidence.")
+
+
+def _apply_overlapping_exposure(ctx: _CaveatContext) -> None:
+    costs = _as_mapping(ctx.assumptions.get("costs_exposure")) or {}
+    if (
+        costs.get("exposure_policy") == "allow_all"
+        or costs.get("grid_exposure_policy") == "allow_all"
+    ):
+        _append_caveat(
+            ctx.caveats, "overlapping_exposure", path="assumptions.costs_exposure.exposure_policy"
+        )
+
+
+def _apply_intrabar_ambiguity(ctx: _CaveatContext) -> None:
+    # Real backtest_intrabar_policy / costs_exposure store `intrabar_model`.
+    # Accept legacy `model` for older packet fixtures.
+    costs = _as_mapping(ctx.assumptions.get("costs_exposure")) or {}
+    intrabar_policy = _as_mapping(ctx.assumptions.get("intrabar")) or {}
+    if intrabar_policy.get("intrabar_model") is not None:
+        intrabar_model = intrabar_policy.get("intrabar_model")
+    elif intrabar_policy.get("model") is not None:
+        intrabar_model = intrabar_policy.get("model")
+    else:
+        intrabar_model = costs.get("intrabar_model")
+    has_intrabar_diagnostic = ctx.results.get("backtest_intrabar_diagnostic") is not None
+    if not (has_intrabar_diagnostic or intrabar_model not in (None, "sl_first")):
+        return
+    if has_intrabar_diagnostic:
+        caveat_path = "results.backtest_intrabar_diagnostic"
+    elif intrabar_policy.get("intrabar_model") not in (None, "sl_first"):
+        caveat_path = "assumptions.intrabar.intrabar_model"
+    elif intrabar_policy.get("model") not in (None, "sl_first"):
+        caveat_path = "assumptions.intrabar.model"
+    else:
+        caveat_path = "assumptions.costs_exposure.intrabar_model"
+    _append_caveat(ctx.caveats, "intrabar_ambiguity", path=caveat_path)
+
+
+def _apply_grid_selection(ctx: _CaveatContext) -> None:
+    grid_result = _as_mapping(ctx.results.get("best_grid_result"))
+    grid_cfg = _as_mapping(ctx.assumptions.get("grid")) or {}
+    if (
+        grid_result is not None
+        or grid_cfg.get("enabled", False)
+        or (isinstance(grid_cfg.get("stop_loss_ticks_values"), list))
+    ):
+        _append_caveat(ctx.caveats, "grid_selection", path="results.best_grid_result")
+
+
+def _apply_wfa_caveats(ctx: _CaveatContext) -> None:
+    wfa = _as_mapping(ctx.results.get("walk_forward_summary"))
+    grid_result = _as_mapping(ctx.results.get("best_grid_result"))
+    if wfa is None:
+        if grid_result is not None:
+            _append_caveat(ctx.caveats, "missing_oos", path="results.walk_forward_summary")
+            ctx.limitations.append("OOS/WFA summary is missing while a grid candidate is present.")
+        return
+    valid_folds = _numeric(wfa.get("valid_fold_count"))
+    fold_count = _numeric(wfa.get("fold_count"))
+    if (valid_folds is not None and valid_folds <= 0) or (
+        fold_count is not None and fold_count > 0 and valid_folds == 0
+    ):
+        _append_caveat(
+            ctx.caveats, "failed_oos", path="results.walk_forward_summary.valid_fold_count"
+        )
+    warnings = ctx.results.get("walk_forward_warnings") or []
+    if isinstance(warnings, (list, tuple)) and warnings:
+        _append_caveat(
+            ctx.caveats,
+            "failed_oos",
+            path="results.walk_forward_warnings",
+            message="Walk-forward warnings indicate OOS fragility.",
+        )
+
+
+_ROBUSTNESS_RESULT_KEYS: tuple[str, ...] = (
+    "validation_summary",
+    "monte_carlo_summary",
+    "noise_summary",
+    "sensitivity_summary",
+    "overfitting_summary",
+)
+_FAILED_ROBUSTNESS_STATUSES = frozenset({"failed", "error", "unavailable"})
+
+
+def _robustness_leaf_failed(value: Any) -> bool:
+    if value == {} or value is False:
+        return True
+    mapping = _as_mapping(value)
+    if mapping is None:
+        return False
+    if mapping.get("available") is False:
+        return True
+    return str(mapping.get("status", "")).lower() in _FAILED_ROBUSTNESS_STATUSES
+
+
+def _apply_failed_robustness(ctx: _CaveatContext) -> None:
+    for key in _ROBUSTNESS_RESULT_KEYS:
+        value = ctx.results.get(key)
+        if value is not None and _robustness_leaf_failed(value):
+            _append_caveat(ctx.caveats, "failed_robustness", path="results.validation_summary")
+            return
+
+
+def _apply_multiple_testing(ctx: _CaveatContext) -> None:
+    grid_result = _as_mapping(ctx.results.get("best_grid_result"))
+    trial_count = _numeric((_as_mapping(ctx.provenance.get("summary")) or {}).get("trial_count"))
+    if trial_count is None:
+        trial_count = _numeric(ctx.provenance.get("trial_count"))
+    if grid_result is not None or (trial_count is not None and trial_count > 1):
+        _append_caveat(ctx.caveats, "multiple_testing", path="results.best_grid_result")
+
+
+def _apply_focus_post_hoc(ctx: _CaveatContext) -> None:
+    entry_window = _as_mapping(ctx.assumptions.get("entry_window")) or {}
+    focus = _as_mapping(entry_window.get("focus")) or {}
+    focus_enabled = focus.get("enabled") is True
+    focus_prov = _as_mapping(focus.get("provenance")) or {}
+    if focus_enabled or focus_prov:
+        _append_caveat(
+            ctx.caveats,
+            "focus_post_hoc",
+            path="assumptions.entry_window.focus",
+        )
+
+
+# Ordered appliers: diagnostic_only first; every row runs (not first-match).
+_CAVEAT_APPLIERS: tuple[Callable[[_CaveatContext], None], ...] = (
+    _apply_diagnostic_only,
+    _apply_sample_caveats,
+    _apply_cost_caveats,
+    _apply_overlapping_exposure,
+    _apply_intrabar_ambiguity,
+    _apply_grid_selection,
+    _apply_wfa_caveats,
+    _apply_failed_robustness,
+    _apply_multiple_testing,
+    _apply_focus_post_hoc,
+)
+
+
 def _derive_caveats(
     *,
     results: Mapping[str, Any],
     assumptions: Mapping[str, Any],
     provenance: Mapping[str, Any],
 ) -> tuple[list[EvidenceCaveat], list[str]]:
-    caveats: list[EvidenceCaveat] = []
-    limitations: list[str] = []
-    _append_caveat(caveats, "diagnostic_only")
-
-    summary = _as_mapping(results.get("trade_summary")) or {}
-    trade_count = _numeric(summary.get("trade_count"))
-    if trade_count is None:
-        _append_caveat(caveats, "sample_unavailable", path="results.trade_summary.trade_count")
-        limitations.append("Baseline trade_count is missing from evidence.")
-    elif trade_count < LOW_SAMPLE_THRESHOLD:
-        _append_caveat(caveats, "low_sample", path="results.trade_summary.trade_count")
-
-    costs = _as_mapping(assumptions.get("costs_exposure")) or {}
-    if costs.get("commission_per_side") == 0 and costs.get("slippage_ticks") == 0:
-        _append_caveat(caveats, "zero_costs", path="assumptions.costs_exposure")
-    elif costs.get("commission_per_side") is None and costs.get("slippage_ticks") is None:
-        limitations.append("Cost assumptions are not present in evidence.")
-
-    if (
-        costs.get("exposure_policy") == "allow_all"
-        or costs.get("grid_exposure_policy") == "allow_all"
-    ):
-        _append_caveat(
-            caveats, "overlapping_exposure", path="assumptions.costs_exposure.exposure_policy"
-        )
-
-    # Real backtest_intrabar_policy / costs_exposure store `intrabar_model`.
-    # Accept legacy `model` for older packet fixtures.
-    intrabar_policy = _as_mapping(assumptions.get("intrabar")) or {}
-    intrabar_model = (
-        intrabar_policy.get("intrabar_model")
-        if intrabar_policy.get("intrabar_model") is not None
-        else intrabar_policy.get("model")
-        if intrabar_policy.get("model") is not None
-        else costs.get("intrabar_model")
-    )
-    has_intrabar_diagnostic = results.get("backtest_intrabar_diagnostic") is not None
-    if has_intrabar_diagnostic or intrabar_model not in (None, "sl_first"):
-        if has_intrabar_diagnostic:
-            caveat_path = "results.backtest_intrabar_diagnostic"
-        elif intrabar_policy.get("intrabar_model") not in (None, "sl_first"):
-            caveat_path = "assumptions.intrabar.intrabar_model"
-        elif intrabar_policy.get("model") not in (None, "sl_first"):
-            caveat_path = "assumptions.intrabar.model"
-        else:
-            caveat_path = "assumptions.costs_exposure.intrabar_model"
-        _append_caveat(caveats, "intrabar_ambiguity", path=caveat_path)
-
-    grid_result = _as_mapping(results.get("best_grid_result"))
-    grid_cfg = _as_mapping(assumptions.get("grid")) or {}
-    if (
-        grid_result is not None
-        or grid_cfg.get("enabled", False)
-        or (isinstance(grid_cfg.get("stop_loss_ticks_values"), list))
-    ):
-        _append_caveat(caveats, "grid_selection", path="results.best_grid_result")
-
-    wfa = _as_mapping(results.get("walk_forward_summary"))
-    if wfa is None:
-        if grid_result is not None:
-            _append_caveat(caveats, "missing_oos", path="results.walk_forward_summary")
-            limitations.append("OOS/WFA summary is missing while a grid candidate is present.")
-    else:
-        valid_folds = _numeric(wfa.get("valid_fold_count"))
-        fold_count = _numeric(wfa.get("fold_count"))
-        if (valid_folds is not None and valid_folds <= 0) or (
-            fold_count is not None and fold_count > 0 and valid_folds == 0
-        ):
-            _append_caveat(
-                caveats, "failed_oos", path="results.walk_forward_summary.valid_fold_count"
-            )
-        warnings = results.get("walk_forward_warnings") or []
-        if isinstance(warnings, (list, tuple)) and warnings:
-            _append_caveat(
-                caveats,
-                "failed_oos",
-                path="results.walk_forward_warnings",
-                message="Walk-forward warnings indicate OOS fragility.",
-            )
-
-    robustness_keys = (
-        "validation_summary",
-        "monte_carlo_summary",
-        "noise_summary",
-        "sensitivity_summary",
-        "overfitting_summary",
-    )
-    failed_robustness = False
-    for key in robustness_keys:
-        value = results.get(key)
-        if value is None:
-            continue
-        if value == {} or value is False:
-            failed_robustness = True
-            continue
-        mapping = _as_mapping(value)
-        if mapping is not None and mapping.get("available") is False:
-            failed_robustness = True
-        if mapping is not None and str(mapping.get("status", "")).lower() in {
-            "failed",
-            "error",
-            "unavailable",
-        }:
-            failed_robustness = True
-    if failed_robustness:
-        _append_caveat(caveats, "failed_robustness", path="results.validation_summary")
-
-    trial_count = _numeric((_as_mapping(provenance.get("summary")) or {}).get("trial_count"))
-    if trial_count is None:
-        trial_count = _numeric(provenance.get("trial_count"))
-    if grid_result is not None or (trial_count is not None and trial_count > 1):
-        _append_caveat(caveats, "multiple_testing", path="results.best_grid_result")
-
-    entry_window = _as_mapping(assumptions.get("entry_window")) or {}
-    focus = _as_mapping(entry_window.get("focus")) or {}
-    focus_enabled = focus.get("enabled") is True
-    focus_prov = _as_mapping(focus.get("provenance")) or {}
-    if focus_enabled or focus_prov:
-        _append_caveat(
-            caveats,
-            "focus_post_hoc",
-            path="assumptions.entry_window.focus",
-        )
-
-    return caveats, limitations
+    """Walk ``_CAVEAT_APPLIERS`` (QI-09-02 / QR-C C-22). Codes/paths unchanged."""
+    ctx = _CaveatContext(results=results, assumptions=assumptions, provenance=provenance)
+    for apply in _CAVEAT_APPLIERS:
+        apply(ctx)
+    return ctx.caveats, ctx.limitations
 
 
 def _next_experiments(
