@@ -703,10 +703,15 @@ def test_study_dir_lock_fail_closed_when_held(tmp_path: Path):
 
 
 def test_study_dir_lock_released_after_context(tmp_path: Path):
+    lock_path = tmp_path / ".study.lock"
+    entered: list[str] = []
     with _study_dir_lock(tmp_path):
-        pass
+        entered.append("first")
+        assert lock_path.is_file()
     with _study_dir_lock(tmp_path):
-        pass
+        entered.append("second")
+        assert lock_path.is_file()
+    assert entered == ["first", "second"]
 
 
 def test_study_dir_lock_msvcrt_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

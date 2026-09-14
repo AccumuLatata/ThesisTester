@@ -359,8 +359,12 @@ def _fade_run_spec(*, trigger_params: dict) -> dict:
 
 
 def test_validate_run_spec_accepts_fade_require_close_confirmation():
-    validate_run_spec(_fade_run_spec(trigger_params={"require_close_confirmation": False}))
-    validate_run_spec(_fade_run_spec(trigger_params={"require_close_confirmation": True}))
+    for token in (False, True):
+        spec = _fade_run_spec(trigger_params={"require_close_confirmation": token})
+        assert spec["setup"]["trigger"] == "fade"
+        assert spec["setup"]["trigger"] in VALID_TRIGGERS
+        assert spec["setup"]["trigger_params"]["require_close_confirmation"] is token
+        assert validate_run_spec(spec) is None
 
 
 def test_validate_run_spec_rejects_unknown_and_non_bool_close_confirmation():
