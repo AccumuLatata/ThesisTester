@@ -1694,25 +1694,25 @@ class TestOtfMarkdownNoneFormatting:
         assert "None" not in md
 
     def test_dash_if_none_helper_none_gives_dash(self):
-        """_dash_if_none(None) returns '—'."""
+        """dash_if_none(None) returns '—'."""
         from thesistester.reporting import dash_if_none
 
         assert dash_if_none(None) == "—"
 
     def test_dash_if_none_helper_zero_gives_zero(self):
-        """_dash_if_none(0) returns 0, not '—'."""
+        """dash_if_none(0) returns 0, not '—'."""
         from thesistester.reporting import dash_if_none
 
         assert dash_if_none(0) == 0
 
     def test_dash_if_none_helper_string_gives_string(self):
-        """_dash_if_none('abc') returns 'abc'."""
+        """dash_if_none('abc') returns 'abc'."""
         from thesistester.reporting import dash_if_none
 
         assert dash_if_none("abc") == "abc"
 
     def test_dash_if_none_helper_false_gives_false(self):
-        """_dash_if_none(False) returns False, not '—'."""
+        """dash_if_none(False) returns False, not '—'."""
         from thesistester.reporting import dash_if_none
 
         assert dash_if_none(False) is False

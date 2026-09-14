@@ -55,9 +55,9 @@ table — do not import `SETUP_CONFIG_RULES` or `RUN_SPEC_RULES`. Omitted
 `ingestion_mode` stays the ingest-row `omit_means` (`primary`, AH §2 item 9).
 C-5 is reporting (`build_markdown_report` section table; walker AST-bound).
 C-6 (QI-05-14 / QI-06-11 / MG-29) promotes `directional_grid_metrics`,
-`SIMULATION_KWARGS`, `default_otf_filter_config`, `hash_dataframe`, and
-`dash_if_none` (private aliases kept). `_empty_trades_df` stays a QI-4
-handoff. Next: C-7.
+`SIMULATION_KWARGS`, `default_otf_filter_config` (copy of
+`DEFAULT_OTF_FILTER_CONFIG`), `hash_dataframe`, and `dash_if_none`
+(private aliases kept). `_empty_trades_df` stays a QI-4 handoff. Next: C-7.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -206,7 +206,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    stays the first line under `## Validation Diagnostics`, bound on
    `_md_validation`). C-6 (QI-05-14 / QI-06-11): analytics public surface is
    `directional_grid_metrics` and `SIMULATION_KWARGS` (R15/R19 share the
-   kwargs set); OTF default is `default_otf_filter_config`; bundle parquet
+   kwargs set); OTF default is `default_otf_filter_config` (copy of
+   `DEFAULT_OTF_FILTER_CONFIG`); bundle parquet
    projection is `hash_dataframe`; Report captions use `dash_if_none`.
    Private `_` aliases remain for same-module callers. Next: C-7.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,

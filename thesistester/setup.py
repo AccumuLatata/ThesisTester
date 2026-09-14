@@ -82,15 +82,14 @@ DEFAULT_OTF_FILTER_CONFIG: dict[str, Any] = {
 
 
 def default_otf_filter_config() -> dict[str, Any]:
-    """Canonical disabled OTF filter config (omit-means-off)."""
+    """Canonical disabled OTF filter config (omit-means-off).
+
+    Thin copy of :data:`DEFAULT_OTF_FILTER_CONFIG` so callers cannot mutate
+    the module constant (including its ``timeframes`` list).
+    """
     return {
-        "enabled": False,
-        "timeframes": [],
-        "alignment_mode": "all",
-        "minimum_consecutive_bars": 3,
-        "directional": True,
-        "use_completed_bars_only": True,
-        "session_reset": "session",
+        **DEFAULT_OTF_FILTER_CONFIG,
+        "timeframes": list(DEFAULT_OTF_FILTER_CONFIG["timeframes"]),
     }
 
 
