@@ -490,7 +490,9 @@ Every request must first parse as an `AssistantRequest`, then pass
   widget. Navigation phrases live in one place (`assistant/ux.py` constants from
   RUX-1) — do not hand-write them at call sites. Keep the rendered-structure
   baseline `tests/test_assistant_page_render.py` green and rewrite (never
-  delete) its assertions when layout changes.
+  delete) its assertions when layout changes. AppTest rule: `AGENT_GUIDE.md`
+  §Development environment (B-12 / QI-11-03) — no `proto.*`, no disabled
+  `set_value`.
 - Realtime voice review (VA-series) has a **single** contract for **voice
   transport**: `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (rewritten
   post-RQ / post-HC; do not add a parallel voice-transport plan). **VA series
@@ -622,6 +624,15 @@ Every request must first parse as an `AssistantRequest`, then pass
   a G-1 required check. Count is monotonically decreasing per release —
   do not raise the committed total. A later PR flips the same scope to
   blocking. Do not invoke mypy from required pytest cells.
+- **AppTest harness (B-12 / QI-11-03 / MG-26).** Assert widget `.disabled`,
+  named session keys, and rendered labels. `set_value` only on enabled
+  widgets via `tests.apptest_helpers.set_enabled_value`. Never read
+  `proto.*` — Streamlit 1.63 (#478 / plan §4.3) raises `AppTestError` on
+  disabled `chat_input.set_value`. Mark AppTest modules (or AppTest
+  functions in a mixed file) `serial`; B-15 adds the rest of the marker
+  set. RUX: rewrite assertions, never delete. Isolation fixtures stay
+  per-module until B-13 promotes `isolate_apptest_globals` to
+  `tests/conftest.py`. Do not `list(session_state)` (B-13).
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:

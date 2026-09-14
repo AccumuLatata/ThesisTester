@@ -13,6 +13,8 @@ import pandas as pd
 import pytest
 import yaml
 
+from tests.apptest_helpers import set_enabled_value
+
 from thesistester.cli import main as cli_main
 from thesistester.study.ledger import empty_ledger, save_ledger
 from thesistester.study.observatory import (
@@ -1933,6 +1935,7 @@ def isolate_observatory_apptest_globals():
         sys.path[:] = path_snapshot
 
 
+@pytest.mark.serial
 def test_observatory_page_renders_studies_pane(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1994,6 +1997,7 @@ def test_observatory_page_renders_studies_pane(
     assert not any(box.label == "useful_confluence" for box in app.multiselect)
 
 
+@pytest.mark.serial
 def test_observatory_empty_facets_do_not_claim_shared_cohort(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2031,8 +2035,8 @@ def test_observatory_empty_facets_do_not_claim_shared_cohort(
     assert not app.exception
     instrument = next(box for box in app.multiselect if box.label == "Instrument")
     study_name = next(box for box in app.multiselect if box.label == "Study name")
-    instrument.set_value(["MNQ"])
-    study_name.set_value(["es_study"])
+    set_enabled_value(instrument, ["MNQ"])
+    set_enabled_value(study_name, ["es_study"])
     app.run()
     assert not app.exception
     captions = [item.value for item in app.caption]
@@ -2041,6 +2045,7 @@ def test_observatory_empty_facets_do_not_claim_shared_cohort(
     assert any("No cells match the current facets." in text for text in captions)
 
 
+@pytest.mark.serial
 def test_observatory_page_lens_facets_and_heatmap_cell(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2075,7 +2080,7 @@ def test_observatory_page_lens_facets_and_heatmap_cell(
     assert any("ONH" in str(option) and "SMA" in str(option) for option in heatmap.options)
     captions = [item.value for item in app.caption]
     assert any("Heatmap focus writes the Core / Partner facets." in text for text in captions)
-    desk_class.set_value(["plus_e"])
+    set_enabled_value(desk_class, ["plus_e"])
     app.run()
     assert not app.exception
     cell_box = next(box for box in app.selectbox if box.label == "Cell")
@@ -2084,7 +2089,7 @@ def test_observatory_page_lens_facets_and_heatmap_cell(
     assert "plus_e" in list(still_desk.options)
     assert "hold" in list(still_desk.options)
     lens = next(box for box in app.radio if box.label == "Lens")
-    lens.set_value("generic")
+    set_enabled_value(lens, "generic")
     app.run()
     assert not app.exception
     assert not any(box.label == "Heatmap cell" for box in app.selectbox)
@@ -2097,25 +2102,25 @@ def test_observatory_page_lens_facets_and_heatmap_cell(
     cell_generic = next(box for box in app.selectbox if box.label == "Cell")
     assert "alpha / alpha_c0" in list(cell_generic.options)
     lens_on = next(box for box in app.radio if box.label == "Lens")
-    lens_on.set_value("program_b")
+    set_enabled_value(lens_on, "program_b")
     app.run()
     assert not app.exception
     heatmap_after = next(box for box in app.selectbox if box.label == "Heatmap cell")
-    heatmap_after.set_value(heatmap_focus_label("ONH", "SMA"))
+    set_enabled_value(heatmap_after, heatmap_focus_label("ONH", "SMA"))
     app.run()
     assert not app.exception
     core = next(box for box in app.multiselect if box.label == "Core level")
     partner = next(box for box in app.multiselect if box.label == "Partner levels")
     assert list(core.value) == ["ONH"]
     assert list(partner.value) == ["SMA"]
-    core.set_value([])
-    partner.set_value([])
+    set_enabled_value(core, [])
+    set_enabled_value(partner, [])
     useful_true = next(box for box in app.multiselect if box.label == "useful_confluence")
-    useful_true.set_value([True] if True in list(useful_true.options) else ["True"])
+    set_enabled_value(useful_true, [True] if True in list(useful_true.options) else ["True"])
     app.run()
     assert not app.exception
     heatmap_solo = next(box for box in app.selectbox if box.label == "Heatmap cell")
-    heatmap_solo.set_value(heatmap_focus_label("ONH", ""))
+    set_enabled_value(heatmap_solo, heatmap_focus_label("ONH", ""))
     app.run()
     assert not app.exception
     core_solo = next(box for box in app.multiselect if box.label == "Core level")
