@@ -135,7 +135,7 @@ Process peak RSS: ~223 MB after the 780-bar cold path; **749 MB** after the 3-mo
 |---|---|
 | 8 Perf envelope — official R22 | Serial medians match `SIMULATE_PERF.md` within **+0.0…+4.3%** on this VM. |
 | 8 Perf envelope — CAI small | Stages within +12% except `build_research_bundle` **+226%** (QI-14-07). |
-| 8 Perf envelope — CAI realistic documented command | **Raises** `rolling POC requires ticks` (QI-14-01). |
+| 8 Perf envelope — CAI realistic documented command | **B-18:** harness runs on the tick-gated path (`poc_windows=[]`); six stage rows (QI-14-01). |
 | 8 Perf envelope — current realistic (POC stripped) | e2e median **756 ms**; `generate_signals` 45% / `compute_levels` 26% (QI-14-02). |
 | Warm path | small speedup **2.328**, hash equal, `levels_hit`. realistic speedup **1.335**, hash equal, `levels_hit`. CAI-10 “no second signal cache yet” still the harness recommendation (QI-14-08). |
 | Study `--workers` 1/2/4 | Four cells. `bundle_hash` **byte-identical** across 1/2/4. Walls 2.087 / 1.353 / 0.966 s used a **shared store** (later runs `levels_hit`) and are **not** a workers-scaling efficiency claim. |
@@ -205,7 +205,7 @@ Do not re-audit these unless the owning file or the fixture recipe changes.
 | QI-3 | `generate_signals` is the current realistic hot function (QI-14-05). 6× `iterrows`. |
 | QI-4 | W12 structure unchanged (QI-14-03/09). Do not treat this slice’s battery 339 ms `simulate_trades` as the R22 ruler — that ruler is `tests/benchmarks/run.py`. |
 | QI-5 | WFA 2.6 s and 14× `.copy()` (QI-14-10). Grid 9.87×. |
-| QI-6 | `run_experiment` calls `disable_unneeded_tick_families` (CAI realistic e2e works). Direct `compute_levels(config=spec["levels"])` does not (CAI cold harness dies). Bundle 3.3× (QI-14-07). |
+| QI-6 | `run_experiment` calls `disable_unneeded_tick_families` (CAI realistic e2e works). **B-18:** isolated `compute_levels` uses the same named-token tick gate (`poc_windows=[]`); harness no longer dies. Bundle 3.3× (QI-14-07). |
 | QI-7 | Worker index `cache_outcome` is not part of `bundle_hash`. Observatory discovers only `results/studies/` and `out/` children. |
 | QI-10 | Loaded **1m** AppTest times above. Empty-page times match QI-10’s 0.12–0.17 s band. 15s page rerun was not measured. |
 | QI-11 | Benchmark tests remain informational. Warm harness cannot answer CAI-10’s “warm `generate_signals` share” question (QI-14-08). |
@@ -219,7 +219,7 @@ List only. **Not amended.**
 
 | Doc | Why QR would touch it |
 |---|---|
-| `docs/CAI_BASELINE.md` | Realistic command is broken; stage-share table is stale; note `prev30m` product-default merge; bundle 3.3× on small. |
+| `docs/CAI_BASELINE.md` | **B-18:** realistic command runs tick-gated; stage-share table is still the CAI-0 snapshot (F-10). Note `prev30m` product-default merge; bundle 3.3× on small. |
 | `docs/SIMULATE_PERF.md` | Re-record after any R22/P7 extract (numbers here are within 4% — optional footnote). State that W12 is still serial. |
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | W12 / resource envelope (3-month 20 s e2e / 749 MB RSS on this VM; 15s derive slope). |
 | `docs/USER_GUIDE.md` | 15s transport cap is still the vendor-frame story (QI-10). Optional: Studies `--workers` does not change cell `bundle_hash`. |
@@ -259,7 +259,7 @@ Warm small: cold 164.8 ms / warm 70.8 ms / speedup 2.328 / hash equal / `levels_
 
 | Path | Result |
 |---|---|
-| Documented `python3 -m tests.benchmarks.cai_cold_path --fixture both` | **`ValueError: rolling POC requires ticks: tick_paths is missing or empty`** at the harness’s direct `compute_levels` (before stage timing). |
+| Documented `python3 -m tests.benchmarks.cai_cold_path --fixture both` | **B-18:** runs on the tick-gated path (`poc_windows=[]` after `disable_unneeded_tick_families`). Six stage rows. Do not revive typical-price `_rolling_poc`. `CAI_BASELINE.md` tables stay the CAI-0 typical-price snapshot until F-10. |
 | Documented table (CAI-0) | levels 1,293 ms (**70.9%** of 1,825 ms e2e) with `poc_windows=["30min"]` (then typical-price `_rolling_poc`). |
 | `run_experiment` / warm harness | Succeeds: `disable_unneeded_tick_families` clears unused POC. Warm realistic: cold 732 ms / warm 548 ms / speedup 1.335 / hash equal. |
 | This slice, explicit `poc_windows=[]` (prev30m still default-on) | table below |

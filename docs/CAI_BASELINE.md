@@ -32,7 +32,14 @@ Initial classic-to-thesis attachment uses **manual record-after-run**:
 | Fixture | Bars | Levels intent | Use |
 |---|---:|---|---|
 | `small` | 60 | Cheap RTH hour; no rolling POC | CI smoke + exhaustive harness structure |
-| `realistic` | 780 | Two RTH sessions; `poc_windows=["30min"]` | Informational benchmark only |
+| `realistic` | 780 | Two RTH sessions; tick-gated `poc_windows=[]` | Informational benchmark only |
+
+`--fixture both` / `--fixture realistic` run on the tick-gated path. The
+harness calls `compute_levels` only after `disable_unneeded_tick_families`
+on named setup tokens (selected / anchor / rules). Do not revive
+typical-price `_rolling_poc`. The recorded tables below are the CAI-0
+typical-price snapshot; **F-10** re-records them on this path (QI-14-01 /
+QI-14-02).
 
 Source of truth:
 
@@ -46,7 +53,7 @@ Commands:
 # Informational baseline (small + realistic)
 python3 -m tests.benchmarks.cai_cold_path --fixture both --repeats 5
 
-# CI smoke only covers the small fixture structure (via pytest)
+# CI smoke: small + realistic harness structure (via pytest)
 python3 -m pytest tests/benchmarks/test_cai_cold_path.py -q
 ```
 
@@ -73,7 +80,7 @@ per stage; median and nearest-rank p95.
 | `build_research_bundle` | 17.006 | 17.026 |
 | `run_experiment_end_to_end` | 149.799 | 151.222 |
 
-### Realistic fixture (780 bars, rolling POC `30min`)
+### Realistic fixture (780 bars; CAI-0 table used typical-price rolling POC `30min`)
 
 | Stage | Median ms | P95 ms | Share of e2e median |
 |---|---:|---:|---:|
@@ -86,8 +93,9 @@ per stage; median and nearest-rank p95.
 
 ## Interpretation for later milestones
 
-1. On the realistic fixture, **levels dominate** cold recomputation. CAI-2/CAI-3
-   artifact reuse should target canonical data + levels first.
+1. On the CAI-0 typical-price snapshot, **levels dominate** cold recomputation.
+   The current tick-gated path is signal-dominated (QI-14 §9.3). F-10
+   re-records; do not treat the table above as the live envelope.
 2. CSV reload itself is currently cheap relative to levels; source-content
    identity checks remain mandatory even if parse time is small.
 3. Signal generation can be non-trivial once confluence density is high. Signal
@@ -105,9 +113,10 @@ Harness: `tests/benchmarks/cai_warm_path.py` (smoke:
 
 Rationale:
 
-- Levels remain the dominant cold cost on the realistic fixture (~71% of
-  end-to-end in the table above). CAI-3 data/levels reuse is the correct first
-  cache surface.
+- The CAI-0 table above still shows levels ~71% of e2e (typical-price rolling
+  POC). That path is gone. Current tick-gated realistic is signal-dominated
+  (QI-14 §9.3). CAI-3 data/levels reuse stays the first cache surface until
+  F-10 re-records; CAI-10 still says no second signal cache yet.
 - Warm-path harness proves cold↔warm canonical bundle-hash equality and reports
   end-to-end speedup informationally. A signal second layer is warranted only
   after warm runs still show a large `generate_signals` share once levels hits

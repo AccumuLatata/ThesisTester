@@ -1,9 +1,11 @@
 """Informational cold-path stage timings for CAI-0.
 
 This harness characterizes the current headless path that always reloads CSV
-and recomputes levels. It is intentionally non-gating: wall time varies by
-hardware and package versions. CI only smoke-tests that the scenarios run and
-emit the expected stage names.
+and recomputes levels. Isolated ``compute_levels`` runs on the tick-gated
+path (``disable_unneeded_tick_families``; ``poc_windows=[]``). Do not revive
+typical-price ``_rolling_poc``. It is intentionally non-gating: wall time
+varies by hardware and package versions. CI only smoke-tests that the
+scenarios run and emit the expected stage names.
 """
 
 from __future__ import annotations
@@ -19,12 +21,17 @@ from typing import Any, Callable
 
 from tests.fixtures.cai_baseline import CAI_FIXTURE_KIND, cai_run_spec, write_cai_bars
 from thesistester.api import (
+    _named_level_tokens_from_setup,
     build_setup,
     compute_levels,
     generate_signals,
     load_dataset,
     run_backtest,
     run_experiment,
+)
+from thesistester.levels.tick_requirements import (
+    dataset_has_tick_paths,
+    disable_unneeded_tick_families,
 )
 from thesistester.research_bundle import build_research_bundle
 
@@ -58,6 +65,17 @@ def measure_cai_cold_path(
     instrument = str(dataset["instrument"])
     source_timezone = str(dataset["source_timezone"])
     exchange_timezone = str(dataset["exchange_timezone"])
+    # Direct compute_levels does not apply the run_experiment tick gate.
+    # Realistic used to set poc_windows=["30min"] with no tick_paths and
+    # raised "rolling POC requires ticks" (QI-14-01). Clear unused families
+    # from named setup tokens (selected / anchor / rules). Passing the setup
+    # mapping itself is wrong: named_*_tokens iterates keys, not level names.
+    # Do not revive typical-price _rolling_poc.
+    if not dataset_has_tick_paths(dataset):
+        spec["levels"] = disable_unneeded_tick_families(
+            spec["levels"],
+            _named_level_tokens_from_setup(spec["setup"]),
+        )
 
     data = load_dataset(
         bars_path,
