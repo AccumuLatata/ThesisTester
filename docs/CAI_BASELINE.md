@@ -130,6 +130,23 @@ Retention/ops for the existing levels/data cache land in
 `thesistester/persistence/execution_artifacts.py` (inspect/evict/rebind) and
 must never auto-delete user snapshots, bundles, or thesis records.
 
+## C-15 `iterrows` replacement (QI-14-05)
+
+C-15 replaces `iterrows` with column arrays / `iloc` behind the C-14
+`generate_signals` helpers (`_index_trigger_rows_by_base_end`, zone-naked
+admission, 3c HTF `trigger_bar_index → base_end` map, and
+`_project_zones_to_trigger_df`). Nullable dtypes were **not** changed;
+`generate_signals` hashes stay identical to C-14. Timing below is
+informational on this image (CPython 3.12.3, tick-gated realistic,
+`--repeats 5`). It does **not** replace the CAI-0 historical table above.
+
+| Stage | Before (C-14 / `#561`) median ms | After (C-15) median ms |
+|---|---:|---:|
+| `generate_signals` | 331.765 | *(recorded after probe)* |
+| `run_experiment_end_to_end` | 756.672 | *(recorded after probe)* |
+
+F-10 still re-records the live envelope. Do not treat these rows as a CI gate.
+
 ## DEFAULT merge (H4 / QI-14-04)
 
 Omitted levels-family keys still merge product DEFAULT (`omit` ⇒ on).

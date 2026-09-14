@@ -25,6 +25,7 @@ from thesistester.engine.signals import (
     _check_reclaim,
     _check_reject,
     _check_touch,
+    _index_trigger_rows_by_base_end,
     _prepare_generate_trigger_frame,
     _safe_signal_float,
     _safe_signal_index,
@@ -1312,6 +1313,42 @@ class TestGenerateSignalsPhases:
         assert set(_SIMPLE_TRIGGER_CHECKERS) | set(_APPROACH_SIDE_CHECKERS) | {"3c"} == set(
             VALID_TRIGGERS
         )
+
+    def test_c14_helpers_have_no_iterrows(self):
+        import ast
+        from pathlib import Path
+
+        tree = ast.parse(Path("thesistester/engine/signals.py").read_text())
+        helpers = {
+            "_index_trigger_rows_by_base_end",
+            "_prepare_generate_trigger_frame",
+            "_admit_zones_for_signals",
+            "_generate_3c_signals",
+            "_project_zones_to_trigger_df",
+            "_dispatch_simple_triggers",
+            "_dispatch_approach_side_triggers",
+            "generate_signals",
+            "_classify_zone_triggers_detail",
+        }
+        hits: list[str] = []
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name in helpers:
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Attribute) and child.attr == "iterrows":
+                        hits.append(node.name)
+        assert hits == []
+
+    def test_index_trigger_rows_uses_column_arrays(self):
+        df = _df_bars(
+            [
+                {"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0},
+                {"open": 100.1, "high": 100.6, "low": 99.6, "close": 100.2},
+            ]
+        )
+        _, trigger_df, by_end = _prepare_generate_trigger_frame(df, "base")
+        indexed = _index_trigger_rows_by_base_end(trigger_df)
+        assert set(indexed) == set(by_end) == {0, 1}
+        assert int(indexed[1]["trigger_bar_index"]) == int(by_end[1]["trigger_bar_index"]) == 1
 
     def test_generate_signals_identity_vs_origin_main(self, tmp_path):
         """Live vs origin/main — same-process self-compare is false-green."""

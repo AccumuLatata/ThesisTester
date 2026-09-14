@@ -75,7 +75,9 @@ unchanged). C-13 (QI-05-03) splits pair/trigger summarizers into
 `confluence_attribution`. C-14 (QI-03-01) extracts `generate_signals`
 phases (TF prep, zone-naked admission, trigger dispatch table).
 `_check_touch`, the candidate sort key, 3c math (S3 / DA0), and public
-`VALID_TRIGGERS` stay untouched. Next: C-15.
+`VALID_TRIGGERS` stay untouched. C-15 (QI-14-05) replaces `iterrows`
+with column arrays / `iloc` behind those helpers (nullable dtypes
+unchanged — hashes stay identical). Next: C-16.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -252,10 +254,13 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    the candidate sort key, 3c detectors, and public `VALID_TRIGGERS` are
    unchanged. Identity vs `origin/main` is live `hash_dataframe` /
    `assert_frame_equal` (not same-process self-compare; hexes are not
-   frozen). Next: C-15.
+   frozen). C-15 (QI-14-05) replaces `iterrows` with column arrays /
+   `iloc` behind the C-14 helpers (`_index_trigger_rows_by_base_end`,
+   admission, 3c HTF lookup, zone projection). Nullable dtypes were
+   not changed. Next: C-16.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
-   is the C-14 helpers above; C-15 replaces `iterrows` behind them;
+   is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
    C-16 unifies the two 3c row-mappers.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`
    apply the shared OTF filter before the unchanged engine functions.
