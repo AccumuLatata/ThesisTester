@@ -390,7 +390,11 @@ These match live engine helpers. Do not re-derive them.
 5. **Qty.** Engine `simulate_trades` is 1-lot
    (`gross_pnl_currency = points × point_value`,
    `risk_currency = sl_ticks × tick × point_value`,
-   `commission_cost = 2 × commission_per_side`). Journal is not:
+   `commission_cost = 2 × commission_per_side`). Journal is not.
+   C-10 (QI-08-01): `qty_scaled_journal_pnl` in `journal/pair.py` is the
+   single write home (pair, then `reconcile._cost_row`). AMP rewrite
+   leaves `gross_pnl_points` unchanged. TJ7 uses shared
+   `journal_cost_ticks`. Do not copy 1-lot engine formulas:
    - `gross_pnl_points` = signed price difference (engine-shaped, **not × qty**)
    - `gross_pnl_currency` = `gross_pnl_points × point_value × qty`
    - `commission_cost` = AMP per-side × 2 × qty (TJ4)

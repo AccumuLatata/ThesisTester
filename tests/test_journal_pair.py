@@ -277,6 +277,25 @@ def test_invalid_journal_risk_ticks_fails(tmp_path: Path) -> None:
         pair_journal_trades(fills, journal_risk_ticks=10.0)  # type: ignore[arg-type]
 
 
+def test_qty_scaled_journal_pnl_points_unscaled_currency_times_qty() -> None:
+    """QI-08-01: 2-lot MNQ long 100→101 — points unscaled; currency/R/ticks × qty."""
+    one = pair_mod.qty_scaled_journal_pnl(
+        points=1.0, qty=1, instrument="MNQ", journal_risk_ticks=10
+    )
+    two = pair_mod.qty_scaled_journal_pnl(
+        points=1.0, qty=2, instrument="MNQ", journal_risk_ticks=10
+    )
+    assert one.gross_pnl_points == pytest.approx(1.0)
+    assert two.gross_pnl_points == pytest.approx(1.0)
+    assert two.gross_pnl_currency == pytest.approx(4.0)
+    assert two.net_ticks == pytest.approx(8.0)
+    assert two.r_multiple == pytest.approx(0.4)
+    assert two.fee_ticks is None
+    assert one.gross_pnl_currency == pytest.approx(2.0)
+    assert one.net_ticks == pytest.approx(4.0)
+    assert one.r_multiple == pytest.approx(0.4)
+
+
 def test_pair_does_not_import_engine_or_simulate_trades() -> None:
     source = Path(pair_mod.__file__).read_text(encoding="utf-8")
     assert "import simulate_trades" not in source

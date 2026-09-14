@@ -16,6 +16,7 @@ import math
 
 import pandas as pd
 
+from thesistester.journal.pair import currency_to_journal_ticks
 from thesistester.journal.schema import (
     DAY_INTENSE,
     DAY_QUIET,
@@ -24,9 +25,7 @@ from thesistester.journal.schema import (
     HOLD_GT_5MIN,
     HOLD_LT_15S,
     JOURNAL_EXCHANGE_TZ,
-    JOURNAL_POINT_VALUE,
     JOURNAL_STORE_SCHEMA,
-    JOURNAL_TICK_SIZE,
     RECON_UNKNOWN,
     REPORT_HONESTY,
     REPORT_MIN_N,
@@ -996,31 +995,18 @@ def _derive_gross_ticks(work: pd.DataFrame) -> list[float | None]:
         if explicit[index] is not None:
             derived.append(explicit[index])
             continue
-        from_currency = _currency_to_ticks(currencies[index], instruments[index])
+        from_currency = currency_to_journal_ticks(currencies[index], instruments[index])
         if from_currency is not None:
             derived.append(from_currency)
             continue
         net = nets[index]
         fee = fees[index]
-        extra = _currency_to_ticks(extras[index], instruments[index]) or 0.0
+        extra = currency_to_journal_ticks(extras[index], instruments[index]) or 0.0
         if net is not None and fee is not None:
             derived.append(net + fee + extra)
             continue
         derived.append(None)
     return derived
-
-
-def _currency_to_ticks(currency: object, instrument: object) -> float | None:
-    value = _optional_float(currency)
-    if value is None:
-        return None
-    name = str(instrument)
-    if name not in JOURNAL_POINT_VALUE:
-        return None
-    tick_value = JOURNAL_TICK_SIZE * JOURNAL_POINT_VALUE[name]
-    if tick_value <= 0:
-        return None
-    return value / tick_value
 
 
 def _hold_bucket(value: object) -> str | None:

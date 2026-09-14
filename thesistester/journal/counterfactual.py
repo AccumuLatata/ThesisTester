@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from thesistester.journal.pair import journal_cost_ticks as _cost_ticks
 from thesistester.journal.rules import JournalRule, apply_journal_rules, load_journal_rules
 from thesistester.journal.schema import (
     CF_EXIT_SESSION_END,
@@ -778,20 +779,6 @@ def _signed_points(direction: str, entry: float, exit_price: float) -> float:
     if direction == "short":
         return entry - exit_price
     raise JournalIngestError(f"invalid direction {direction!r}")
-
-
-def _cost_ticks(raw: Mapping[str, object], tick_value: float) -> float:
-    fee = _optional_float(raw.get("fee_ticks"))
-    extra = _optional_float(raw.get("day_fee_allocation"))
-    if fee is not None:
-        return fee + ((extra / tick_value) if extra is not None else 0.0)
-    commission = _optional_float(raw.get("commission_cost"))
-    total = 0.0
-    if commission is not None:
-        total += commission / tick_value
-    if extra is not None:
-        total += extra / tick_value
-    return total
 
 
 def _cf_frame(rows: Sequence[Mapping[str, object]]) -> pd.DataFrame:

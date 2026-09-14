@@ -5,14 +5,15 @@ FIFO inside the group. A group that does not qualify is FIFO-matched
 **inside the group** first (``fifo_fallback``); only residual lots, and
 fills without ``spread_id``, join qty-aware FIFO per
 ``(instrument, contract, session_date)``. Does not reconcile AMP, join
-bars, or call ``simulate_trades``.
+bars, or call ``simulate_trades``. C-10 (QI-08-01): ``qty_scaled_journal_pnl``
+is the TJ §3.0 formula home (points unscaled; currency / R / ticks × qty).
 """
 
 from __future__ import annotations
 
 import math
 from collections import defaultdict, deque
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -36,6 +37,102 @@ from thesistester.journal.schema import (
 
 _SIDES = frozenset({"buy", "sell"})
 _ENTRY_KINDS = frozenset({ENTRY_KIND_IMPORTED, ENTRY_KIND_MANUAL})
+
+
+@dataclass(frozen=True)
+class QtyScaledJournalPnl:
+    """TJ §3.0 qty-scaled P&L. Points unscaled; currency / R / ticks × qty."""
+
+    gross_pnl_points: float
+    gross_pnl_currency: float
+    net_pnl_currency: float
+    net_ticks: float
+    fee_ticks: float | None
+    r_multiple: float
+    r_multiple_declared: float | None
+
+
+def qty_scaled_journal_pnl(
+    *,
+    points: float,
+    qty: int,
+    instrument: str,
+    journal_risk_ticks: int,
+    net_pnl_currency: float | None = None,
+    commission_cost: float | None = None,
+    entry_price: float | None = None,
+    declared_stop: float | None = None,
+) -> QtyScaledJournalPnl:
+    """Qty-scaled journal P&L. Does not copy 1-lot ``simulate_trades`` formulas."""
+    if instrument not in JOURNAL_POINT_VALUE:
+        raise JournalIngestError(f"unknown journal instrument {instrument!r}")
+    point_value = JOURNAL_POINT_VALUE[instrument]
+    tick_value = JOURNAL_TICK_SIZE * point_value
+    gross_currency = points * point_value * qty
+    net = gross_currency if net_pnl_currency is None else net_pnl_currency
+    risk = journal_risk_ticks * tick_value * qty
+    r_declared = None
+    if entry_price is not None and declared_stop is not None:
+        distance = abs(entry_price - declared_stop)
+        if distance > 0:
+            r_declared = net / (distance * point_value * qty)
+    return QtyScaledJournalPnl(
+        gross_pnl_points=points,
+        gross_pnl_currency=gross_currency,
+        net_pnl_currency=net,
+        net_ticks=net / tick_value,
+        fee_ticks=None if commission_cost is None else commission_cost / tick_value,
+        r_multiple=net / risk,
+        r_multiple_declared=r_declared,
+    )
+
+
+def journal_cost_ticks(raw: Mapping[str, object], tick_value: float) -> float:
+    """Shared AMP-fee ticks for TJ7 replay / rules. Prefer ``fee_ticks``."""
+    fee = _finite_or_none(raw.get("fee_ticks"))
+    extra = _finite_or_none(raw.get("day_fee_allocation"))
+    if fee is not None:
+        return fee + ((extra / tick_value) if extra is not None else 0.0)
+    commission = _finite_or_none(raw.get("commission_cost"))
+    total = 0.0
+    if commission is not None:
+        total += commission / tick_value
+    if extra is not None:
+        total += extra / tick_value
+    return total
+
+
+def currency_to_journal_ticks(currency: object, instrument: object) -> float | None:
+    """``currency / (tick_size × point_value)`` — qty-scaled dollar-ticks."""
+    if isinstance(currency, bool):
+        return None
+    value = _finite_or_none(currency)
+    if value is None:
+        return None
+    name = str(instrument)
+    if name not in JOURNAL_POINT_VALUE:
+        return None
+    tick_value = JOURNAL_TICK_SIZE * JOURNAL_POINT_VALUE[name]
+    if tick_value <= 0:
+        return None
+    return value / tick_value
+
+
+def _finite_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
 
 
 @dataclass(frozen=True)
@@ -484,18 +581,15 @@ def _closed_trade(
         points = exit_fill.price - entry.price
     else:
         points = entry.price - exit_fill.price
-    point_value = JOURNAL_POINT_VALUE[entry.instrument]
-    tick_value = JOURNAL_TICK_SIZE * point_value
-    gross_currency = points * point_value * qty
-    # Costs stay null until TJ4; net equals gross so r / net_ticks stay defined.
-    net_currency = gross_currency
-    risk = journal_risk_ticks * tick_value * qty
-    r_multiple = net_currency / risk
-    r_declared = None
-    if intent.declared_stop is not None:
-        distance = abs(entry.price - intent.declared_stop)
-        if distance > 0:
-            r_declared = net_currency / (distance * point_value * qty)
+    # Costs stay null until TJ4; helper sets net = gross so r / net_ticks stay defined.
+    scaled = qty_scaled_journal_pnl(
+        points=points,
+        qty=qty,
+        instrument=entry.instrument,
+        journal_risk_ticks=journal_risk_ticks,
+        entry_price=entry.price,
+        declared_stop=intent.declared_stop,
+    )
     hold = (exit_fill.timestamp - entry.timestamp).total_seconds()
     return JournalTrade(
         trade_id=f"jt:{group_key}:{lot_seq}",
@@ -514,17 +608,17 @@ def _closed_trade(
         exit_price=exit_fill.price,
         entry_fill_id=entry.fill_id,
         exit_fill_id=exit_fill.fill_id,
-        gross_pnl_points=points,
-        gross_pnl_currency=gross_currency,
+        gross_pnl_points=scaled.gross_pnl_points,
+        gross_pnl_currency=scaled.gross_pnl_currency,
         commission_cost=None,
         slippage_cost=None,
         day_fee_allocation=None,
-        net_pnl_currency=net_currency,
-        r_multiple=r_multiple,
-        r_multiple_declared=r_declared,
+        net_pnl_currency=scaled.net_pnl_currency,
+        r_multiple=scaled.r_multiple,
+        r_multiple_declared=scaled.r_multiple_declared,
         journal_risk_ticks=journal_risk_ticks,
         fee_ticks=None,
-        net_ticks=net_currency / tick_value,
+        net_ticks=scaled.net_ticks,
         hold_seconds=hold,
         bars_held=None,
         mae_points=None,

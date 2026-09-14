@@ -127,6 +127,14 @@ def test_journal_cf_does_not_import_engine() -> None:
     assert "import thesistester.engine" not in source
 
 
+def test_cf_and_rules_share_journal_cost_ticks() -> None:
+    from thesistester.journal import pair as pair_mod
+    from thesistester.journal import rules as rules_mod
+
+    assert cf_mod._cost_ticks is pair_mod.journal_cost_ticks
+    assert rules_mod._cost_ticks is pair_mod.journal_cost_ticks
+
+
 def test_same_post_entry_bar_both_hit_is_sl() -> None:
     trades = pd.DataFrame([_trade()])
     out = replay_journal_brackets(trades, bars=_path_15s(), brackets=((10, 10, None),))
