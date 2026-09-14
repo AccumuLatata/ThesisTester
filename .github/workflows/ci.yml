@@ -182,20 +182,25 @@ jobs:
       - name: Install package + pip-audit
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e . pip-audit -c constraints.txt
+          python -m pip install -e . "pip-audit>=2.7,<3" -c constraints.txt
       - name: pip-audit (warn-first)
         run: |
           set +e
           out="$(pip-audit --progress-spinner off 2>&1)"
           code=$?
           printf '%s\n' "$out"
+          # Report text is required so an exit-1 crash cannot false-green as "advisories".
+          if ! printf '%s\n' "$out" | grep -qi "vulnerabilit"; then
+            echo "::error title=pip-audit::pip-audit failed before producing an advisory report (config/runtime error, not warn-first)."
+            exit 1
+          fi
           if [ "$code" -eq 0 ]; then
             echo "pip-audit: no known advisories (warn-first job; not a G-1 required check)."
             exit 0
           fi
           # Exit 1 is "vulnerabilities found". Other codes are runtime errors.
           if [ "$code" -ne 1 ]; then
-            echo "::error title=pip-audit::pip-audit failed before producing an advisory report (config/runtime error, not warn-first)."
+            echo "::error title=pip-audit::pip-audit failed with a runtime error (not warn-first)."
             exit 1
           fi
           echo "::warning title=pip-audit::Advisories on declared or transitive deps (QI-12-06 / G-4 warn-first, not blocking). Blocking flip is a later PR."

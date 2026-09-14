@@ -570,9 +570,10 @@ Tooling, CI, and documentation only. Engine, analytics, levels, persistence, and
     (a later PR flips the same floor to blocking, then ratchet +1 pt per
     release).
   - Warn-first `bandit -ll` and `pip-audit` (G-4 / QI-12-06 / QI-07-09).
-    High must stay 0 (`tests/test_g4_security_scans.py`). Actions are
-    SHA-pinned. `[build-system]` is `setuptools>=83,<85`. Blocking flip
-    is a later PR. These jobs are **not** G-1 required names.
+    High must stay 0 (`tests/test_g4_security_scans.py`; missing report
+    is a fail). Both scanners are in the `dev` extra and `constraints.txt`.
+    Actions are SHA-pinned. `[build-system]` is `setuptools>=83,<85`.
+    Blocking flip is a later PR. These jobs are **not** G-1 required names.
 - **Lint/format** — ruff rule set `E4`, `E7`, `E9`, `F`, `W`, plus **`B`**
   (QI-12-09 / B-17; first widening family). Line
   length 100, with documented per-file ignores: `E402` for `pages/1_Data.py`

@@ -9,8 +9,9 @@ envelope (QI-12-06 / QI-07-09). It is not a fill-correctness claim.
   (`tests/test_g4_security_scans.py`). Medium `urlopen` (B310 in assistant
   LLM/voice) is warn-first. Blocking flip is a later PR.
 - `pip-audit (warn-first)` — declared + transitive packages from
-  `pip install -e . -c constraints.txt`. Advisories emit `::warning`.
-  Blocking flip is a later PR.
+  `pip install -e . -c constraints.txt`, using the locked `pip-audit>=2.7,<3`
+  spec. A missing advisory report (no "vulnerabilit" text) fails the job.
+  Advisories emit `::warning`. Blocking flip is a later PR.
 
 Neither job is one of the six G-1 required display names.
 
