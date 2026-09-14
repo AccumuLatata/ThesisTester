@@ -119,6 +119,9 @@ forbidden_modules =
 # C7: journal ↛ engine.backtest / levels.all / sim_core.
 # Do not forbid engine.signals — JS2 classify_zone_triggers wrapper is legitimate.
 # Warn-first broken today via journal.levels → study.schema → api (see header).
+# C-25 (QI-08-04): match_classify / report_tables / counterfactual_tables /
+# join_rows stay under the journal package, so this package source already
+# covers them. Do not list them as C2-style module siblings.
 [importlinter:contract:c7-journal-no-engine-core]
 name = C7 journal ↛ engine.backtest / levels.all / sim_core (TJ; not engine.signals)
 type = forbidden

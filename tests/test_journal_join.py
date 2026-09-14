@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from tests.test_import_linter_contracts import _hits_ban, _imported_module_names
 from thesistester.journal import (
     TRADESVIZ_EXECUTIONS_PROFILE,
     join_journal_bars,
@@ -15,6 +17,7 @@ from thesistester.journal import (
     pair_journal_trades,
 )
 from thesistester.journal import join as join_mod
+from thesistester.journal import join_rows as join_rows_mod
 from thesistester.journal.schema import (
     FLAG_EXCURSION_UNAVAILABLE,
     FLAG_MISSING_BAR,
@@ -335,11 +338,21 @@ def test_tick_walk_skips_entry_print(tmp_path: Path) -> None:
 
 
 def test_join_does_not_import_engine_or_derive() -> None:
-    source = Path(join_mod.__file__).read_text(encoding="utf-8")
-    assert "from thesistester.engine" not in source
-    assert "import simulate_trades" not in source
-    assert "compute_all_levels(" not in source
-    assert "derive_complete_parent_ohlcv(" not in source
+    banned = ("thesistester.engine",)
+    for module in (join_mod, join_rows_mod):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        imported = _imported_module_names(ast.parse(source), module.__name__)
+        leaked = [name for name in imported for ban in banned if _hits_ban(name, ban)]
+        assert leaked == [], f"{module.__name__}: {leaked}"
+        assert "simulate_trades(" not in source
+        assert "compute_all_levels(" not in source
+        assert "derive_complete_parent_ohlcv(" not in source
+
+
+def test_c25_join_rows_stay_on_facade() -> None:
+    assert join_mod._rows_to_frame is join_rows_mod._rows_to_frame
+    assert hasattr(join_mod, "_join_trade")
+    assert not hasattr(join_rows_mod, "_join_trade")
 
 
 def test_naive_bar_timestamp_fails_closed(tmp_path: Path) -> None:

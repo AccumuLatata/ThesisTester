@@ -104,7 +104,10 @@ RQ/HC/DI channel contracts unchanged. C-23 (QI-07-02) extracts
 `run_study` confirm / lock / ledger-init / finalize helpers; public
 signature and RS3 abort semantics unchanged. C-24 (QI-07-07) splits
 Observatory join / desk / lens, viewer catalog / progress, and builder
-hydrate / emit; public signatures unchanged. Next: C-25.
+hydrate / emit; public signatures unchanged. C-25 (QI-08-04) extracts
+journal payload-to-table helpers (`report_tables` / `match_classify` /
+`counterfactual_tables` / `join_rows`); match classes and CF walk math
+unchanged. Next: D-1.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -308,7 +311,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    splits `handle_results_turn` phases. C-23 (QI-07-02) extracts
    `run_study` confirm / lock / ledger-init / finalize helpers.
    C-24 (QI-07-07) splits Observatory join / desk / lens and builder
-   hydrate / emit. Next: C-25.
+   hydrate / emit. C-25 (QI-08-04) extracts journal payload-to-table
+   helpers. Match classes and CF walk math unchanged. Next: D-1.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

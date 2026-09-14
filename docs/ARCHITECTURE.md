@@ -1280,7 +1280,11 @@ instrument / entry price fail closed. Writes
 **TJ8 landed.** `match_journal_to_cell` / `build_forward_ledger` and
 `python -m thesistester journal match` classify journal trades against
 **one** hash-verified bundle or named RunSpec (never the Observatory
-corpus). `executed_cell` requires hold/risk compatibility; otherwise
+corpus). C-25 keeps `load_named_cell` / hash verify on `match.py` and
+moves `_classify` row assembly to `match_classify.py`; class tokens
+(`executed_cell` / `near_level` / `product_mismatch` /
+`discretionary_only` / `systematic_unfilled`) are unchanged.
+`executed_cell` requires hold/risk compatibility; otherwise
 `product_mismatch` names the failing dimension. A lock-fail pair is not
 also `systematic_unfilled`. `near_level` is same-session. Qty /
 direction / instrument / entry price fail closed. Writes
@@ -1291,7 +1295,12 @@ registry, `results_index`, or research bundles. No
 
 **TJ9 landed.** `build_journal_report` / `python -m thesistester journal
 report` and `pages/17_Journal.py` read ingested `journal/v1` artifacts
-in Q1–Q8 order. Every table carries n, resolution, and recon status.
+in Q1–Q8 order. C-25 keeps `build_journal_report` on `report.py` and
+moves Q3 zone/trigger plus Q4–Q8 payload-to-table helpers to
+`report_tables.py`. TJ7 walk math stays on `counterfactual.py`;
+bracket-summary / row-frame helpers live in `counterfactual_tables.py`.
+TJ5 `_join_trade` MAE/MFE walk stays on `join.py`; row-to-frame helpers
+live in `join_rows.py`. Every table carries n, resolution, and recon status.
 Q2 slices with n < 30 stay hidden unless the explicit toggle is on.
 Missing attribution / counterfactual / match / zones files omit Q3–Q8; they
 are not errors. Persistence is `.thesistester_store/journal/v1/` —
