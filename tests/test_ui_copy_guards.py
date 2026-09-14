@@ -290,11 +290,25 @@ def _assert_phase8_permutation_copy(source: str) -> None:
     ), "p≤0.05 path must st.caption H13 needles (method caption is not enough)"
 
 
-def _assert_validation_diagnostics_banner(source: str) -> None:
-    """Banner must be the next non-empty string after the VD heading (AST list)."""
+def _module_level_function(source: str, name: str) -> ast.FunctionDef:
+    """Module-level ``def name`` only — nested / later aliases do not bind."""
     tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"missing module-level def {name}")
+
+
+def _assert_validation_diagnostics_banner(source: str) -> None:
+    """Banner must be the next non-empty string after the VD heading (AST list).
+
+    C-5 moved the list into ``_md_validation``. File-level decoy lists
+    (module constants, other helpers) must not bind — same class as A-4
+    file-level false-green.
+    """
+    fn = _module_level_function(source, "_md_validation")
     found = False
-    for node in ast.walk(tree):
+    for node in ast.walk(fn):
         if not isinstance(node, ast.List):
             continue
         texts = [_literal_str(elt) for elt in node.elts]
@@ -313,7 +327,7 @@ def _assert_validation_diagnostics_banner(source: str) -> None:
             break
         else:
             raise AssertionError(f"no banner string after {_VD_HEADING!r}")
-    assert found, f"no list containing {_VD_HEADING!r} in reporting.py"
+    assert found, f"no list containing {_VD_HEADING!r} in _md_validation"
 
 
 def _assert_allow_all_policy_disclosure(source: str) -> None:
@@ -944,11 +958,12 @@ def test_phase8_glossary_guard_ignores_notes_needles():
 def test_validation_diagnostics_banner_guard_rejects_late_or_comment_banner():
     """Banner after metric f-strings / heading-only list must fail closed."""
     late = (
-        "lines = [\n"
-        '    "## Validation Diagnostics",\n'
-        '    f"- P(mean R > 0): {x}",\n'
-        '    "⚠️ Diagnostic only — not a significance test and not proof of edge.",\n'
-        "]\n"
+        "def _md_validation(ctx):\n"
+        "    return [\n"
+        '        "## Validation Diagnostics",\n'
+        '        f"- P(mean R > 0): {x}",\n'
+        '        "⚠️ Diagnostic only — not a significance test and not proof of edge.",\n'
+        "    ]\n"
     )
     try:
         _assert_validation_diagnostics_banner(late)
@@ -957,13 +972,31 @@ def test_validation_diagnostics_banner_guard_rejects_late_or_comment_banner():
     else:
         raise AssertionError("banner after metric f-string must not pass")
 
-    heading_only = 'lines = ["## Validation Diagnostics", ""]\n'
+    heading_only = 'def _md_validation(ctx):\n    return ["## Validation Diagnostics", ""]\n'
     try:
         _assert_validation_diagnostics_banner(heading_only)
     except AssertionError as exc:
         assert "banner" in str(exc)
     else:
         raise AssertionError("heading without banner must not pass")
+
+
+def test_validation_diagnostics_banner_guard_ignores_decoy_list_outside_md_validation():
+    """Module-level heading+banner list must not satisfy the C-5 ``_md_validation`` bind."""
+    decoy = (
+        "_DECOY = [\n"
+        '    "## Validation Diagnostics",\n'
+        '    "⚠️ Diagnostic only — not a significance test and not proof of edge.",\n'
+        "]\n"
+        "def _md_other(ctx):\n"
+        "    return []\n"
+    )
+    try:
+        _assert_validation_diagnostics_banner(decoy)
+    except AssertionError as exc:
+        assert "_md_validation" in str(exc)
+    else:
+        raise AssertionError("decoy list outside _md_validation must not pass H13 banner guard")
 
 
 def test_validation_has_no_stale_r22_parallel_claim():

@@ -53,7 +53,8 @@ MG-17) walks own `STUDY_FACTOR_AXIS_RULES` / `STUDY_REPORT_FIELD_RULES` /
 (`STUDY_EXPAND_REQUIRED_AXES`) are derived from that factor table. Own
 table — do not import `SETUP_CONFIG_RULES` or `RUN_SPEC_RULES`. Omitted
 `ingestion_mode` stays the ingest-row `omit_means` (`primary`, AH §2 item 9).
-Next: C-5. Stage-first example:
+C-5 is reporting (`build_markdown_report` section table; walker AST-bound). Next: C-6.
+Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
 ```bash
@@ -196,7 +197,10 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    `generate_signals` time — not stored on the setup dict or in signal
    settings identity. AH §2 item 10 / AH6: `BASE_COLUMNS` and `close` fail
    closed. Omitted-key defaults stay unchanged. C-2 / C-3 reuse the
-   validator table pattern. Next: C-5.
+   validator table pattern. C-5 (QI-06-02): `build_markdown_report` walks
+   `MARKDOWN_REPORT_SECTIONS` (own table; walker AST-bound; A-4 H13 banner
+   stays the first line under `## Validation Diagnostics`, bound on
+   `_md_validation`). Next: C-6.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`
@@ -1077,7 +1081,7 @@ are B-1; H10/H11 lock tests are B-2.
 - **Phase 6 (Grid):** `pages/8_Grid_Search.py`, grid analytics in `thesistester/analytics/grid.py`.
 - **Phase 7 (Time):** `pages/9_Time_Analysis.py`, helpers in `thesistester/analytics/time_analysis.py`.
 - **Phase 8 (Validation):** `pages/10_Validation.py`, diagnostics in `thesistester/analytics/validation.py`.
-- **Phase 9 (Report/Export):** `pages/11_Report_Export.py`, artifact builders in `thesistester/reporting.py`.
+- **Phase 9 (Report/Export):** `pages/11_Report_Export.py`, artifact builders in `thesistester/reporting.py`. C-5 (QI-06-02): `build_markdown_report` walks `MARKDOWN_REPORT_SECTIONS` (walker AST-bound); emitted markdown is fixture-locked.
 - **Research Bundles:** `pages/12_Research_Bundles.py`, bundle helpers in `thesistester/research_bundle.py`.
 - **Portfolio:** `pages/13_Portfolio.py`.
 - **Research Assistant:** `pages/14_Research_Assistant.py`, `thesistester/assistant/`.
