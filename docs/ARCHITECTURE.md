@@ -768,6 +768,12 @@ priority-ordered per-intent deterministic slices (no per-slice overlay),
 concatenated summaries, path-deduped claims, merged/deduped caveats, one RI-7
 overlay + auditor once; compose ≤3 **raw** intents (>3 or missing slice →
 narrow remediation; dual overview collapses after the cap).
+**C-21 landed (QI-09-01):** `_format_scalar_for_claim` walks a first-match
+claim-format table (`path_pattern`, value type, template, reject).
+`compose_deterministic_replies` walks an intent→builder table (evidence gate
++ overlap). Auditor-safe claim strings, overlay/auditor order, and DI/RI/DX
+contracts are unchanged. This is a maintainability extract, not a claim that
+Discuss answers are correct or reliable.
 **RI-5 landed:** deterministic `robustness_tier2` recovery over the frozen §4.6
 presence-first path table (Monte Carlo / overfitting / sensitivity / noise /
 portfolio / OTF); MC + `otf validation` / `otf-validation` cues sunset from

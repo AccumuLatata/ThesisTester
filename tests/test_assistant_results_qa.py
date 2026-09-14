@@ -802,3 +802,34 @@ def test_results_history_trim_uses_channel_run_filter(tmp_path, monkeypatch):
     assert "prior-0" not in captured["user"]
     assert "other-run-noise" not in captured["user"]
     assert "latest question" in captured["user"]
+
+
+def test_c21_claim_format_table_first_match_order():
+    """QI-09-01: longer overlapping suffixes stay ahead of shorter ones."""
+    import inspect
+
+    from thesistester.assistant.results_overview import (
+        _CLAIM_FORMAT_RULES,
+        _COMPOSE_INTENT_SPECS,
+        _COMPOSE_PRIORITY,
+        _format_scalar_for_claim,
+        compose_deterministic_replies,
+        has_overview_negative_cue,
+        match_discuss_intent,
+    )
+
+    suffixes = [
+        rule.path_pattern
+        for rule in _CLAIM_FORMAT_RULES
+        if rule.match == "endswith" and rule.value_type == "number"
+    ]
+    assert suffixes.index("valid_fold_count") < suffixes.index("fold_count")
+    assert suffixes.index("nonempty_combo_trade_count") < suffixes.index("trade_count")
+    spec_intents = tuple(spec.intent for spec in _COMPOSE_INTENT_SPECS)
+    assert spec_intents == _COMPOSE_PRIORITY
+    source = inspect.getsource(_format_scalar_for_claim)
+    assert "_CLAIM_FORMAT_RULES" in source
+    compose_source = inspect.getsource(compose_deterministic_replies)
+    assert "_COMPOSE_INTENT_BY_ID" in compose_source
+    assert callable(match_discuss_intent)
+    assert callable(has_overview_negative_cue)
