@@ -74,10 +74,17 @@ TARGETS: dict[str, dict[str, Any]] = {
             "train_expectancy > 1e-12",
             'fold_mode == "sessions"',
         ),
+        # C-17 moved P0/P5 comparison sites out of run_walk_forward_sl_tp.
+        # Keep helpers in the named surface so the 12-site sample still
+        # covers fold/OTF policy and overlap-reject (B-4 / QI-11-04).
         "function_names": (
             "normalize_otf_history_policy",
             "_otf_source_for_fold",
             "_slice_signals",
+            "_validate_walk_forward_run",
+            "_train_fold_grid",
+            "_stitch_walk_forward_oos",
+            "_assemble_walk_forward_result",
             "run_walk_forward_sl_tp",
         ),
     },

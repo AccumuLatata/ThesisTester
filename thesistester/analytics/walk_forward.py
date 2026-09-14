@@ -450,6 +450,303 @@ def _slice_signals(
     return sliced.reset_index(drop=True)
 
 
+@dataclass(frozen=True)
+class _WalkForwardPrep:
+    """P0-validated inputs. Fold construction stays in the orchestrator (C-17)."""
+
+    otf_history_policy: str
+    normalized_entry_window: dict[str, Any]
+    simulate_entry_window: dict[str, Any] | None
+    exchange_tz_for_window: str
+    step: int
+    effective_step_sessions: int | None
+    otf_normalized_config: dict[str, Any] | None
+    otf_enabled: bool
+    otf_session_timezone: str | None
+
+
+def _validate_walk_forward_run(
+    df: pd.DataFrame,
+    *,
+    fold_mode: str,
+    window_mode: str,
+    overlap_policy: str,
+    otf_history_policy: str | None,
+    entry_window: dict | None,
+    entry_window_exchange_tz: str | None,
+    exchange_timezone: str,
+    train_bars: int,
+    test_bars: int,
+    step_bars: int | None,
+    train_sessions: int | None,
+    test_sessions: int | None,
+    step_sessions: int | None,
+    otf_config: dict[str, Any] | None,
+    session_timezone: str | None,
+) -> _WalkForwardPrep:
+    """P0: validate modes, windows, fold sizes, and OTF config (C-17 / QI-05-01)."""
+    if fold_mode not in {"bars", "sessions"}:
+        raise ValueError("fold_mode must be 'bars' or 'sessions'.")
+    if window_mode not in {"rolling", "anchored"}:
+        raise ValueError("window_mode must be 'rolling' or 'anchored'.")
+    if overlap_policy not in {"reject", "first", "last"}:
+        raise ValueError("overlap_policy must be 'reject', 'first', or 'last'.")
+    otf_history_policy_normalized = normalize_otf_history_policy(otf_history_policy)
+    _validate_timeline(df)
+    exchange_tz_for_window = entry_window_exchange_tz or exchange_timezone
+    try:
+        normalized_entry_window = normalize_entry_window(
+            entry_window, exchange_tz=exchange_tz_for_window
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid entry_window: {exc}") from exc
+    simulate_entry_window = (
+        normalized_entry_window if normalized_entry_window.get("enabled") else None
+    )
+
+    if fold_mode == "bars":
+        if train_bars <= 0:
+            raise ValueError("train_bars must be > 0.")
+        if test_bars <= 0:
+            raise ValueError("test_bars must be > 0.")
+        step = test_bars if step_bars is None else int(step_bars)
+        if step <= 0:
+            raise ValueError("step_bars must be > 0.")
+        effective_step_sessions = None
+    else:
+        if train_sessions is None or train_sessions <= 0:
+            raise ValueError("train_sessions must be > 0 in session mode.")
+        if test_sessions is None or test_sessions <= 0:
+            raise ValueError("test_sessions must be > 0 in session mode.")
+        effective_step_sessions = (
+            int(test_sessions) if step_sessions is None else int(step_sessions)
+        )
+        if effective_step_sessions <= 0:
+            raise ValueError("step_sessions must be > 0.")
+        step = test_bars if step_bars is None else int(step_bars)
+
+    otf_normalized_config: dict[str, Any] | None = None
+    if isinstance(otf_config, dict):
+        otf_normalized_config = normalize_otf_filter_config(otf_config)
+    otf_enabled = otf_normalized_config is not None and bool(
+        otf_normalized_config.get("enabled", False)
+    )
+    otf_session_timezone = resolve_otf_session_timezone(session_timezone, exchange_timezone)
+    return _WalkForwardPrep(
+        otf_history_policy=otf_history_policy_normalized,
+        normalized_entry_window=normalized_entry_window,
+        simulate_entry_window=simulate_entry_window,
+        exchange_tz_for_window=exchange_tz_for_window,
+        step=step,
+        effective_step_sessions=effective_step_sessions,
+        otf_normalized_config=otf_normalized_config,
+        otf_enabled=otf_enabled,
+        otf_session_timezone=otf_session_timezone,
+    )
+
+
+def _train_fold_grid(
+    *,
+    train_df: pd.DataFrame,
+    train_signals: pd.DataFrame,
+    tick_size: float,
+    point_value: float,
+    stop_loss_ticks_values: list[int | float],
+    take_profit_ticks_values: list[int | float],
+    ranking_metric: str,
+    min_train_trades: int,
+    max_holding_bars: int | None,
+    allow_same_bar_exit: bool,
+    commission_per_side: float,
+    slippage_ticks: float,
+    flat_by_session_close: bool,
+    session_close_time: str | None,
+    session_timezone: str | None,
+    no_new_entries_after: str | None,
+    exposure_policy: str,
+    cooldown_bars_after_exit: int,
+    intrabar_model: str,
+    train_subtimeframe: pd.DataFrame | None,
+    parent_interval: pd.Timedelta | str | None,
+    sub_interval: pd.Timedelta | str | None,
+    breakeven_after_r_values: list[float | None] | None,
+    trailing_after_r_values: list[float | None] | None,
+    trailing_distance_ticks_values: list[float | None] | None,
+    max_grid_cells: int,
+    simulate_entry_window: dict | None,
+    exchange_tz_for_window: str,
+) -> dict[str, Any] | None:
+    """P3: train-window SL/TP grid and ranking pick (C-17 / QI-05-01)."""
+    train_grid = run_sl_tp_grid(
+        df=train_df,
+        signals=train_signals,
+        tick_size=tick_size,
+        point_value=point_value,
+        stop_loss_ticks_values=stop_loss_ticks_values,
+        take_profit_ticks_values=take_profit_ticks_values,
+        max_holding_bars=max_holding_bars,
+        allow_same_bar_exit=allow_same_bar_exit,
+        commission_per_side=commission_per_side,
+        slippage_ticks=slippage_ticks,
+        flat_by_session_close=flat_by_session_close,
+        session_close_time=session_close_time,
+        session_timezone=session_timezone,
+        no_new_entries_after=no_new_entries_after,
+        exposure_policy=exposure_policy,
+        cooldown_bars_after_exit=cooldown_bars_after_exit,
+        intrabar_model=intrabar_model,
+        subtimeframe_data=train_subtimeframe,
+        parent_interval=parent_interval,
+        sub_interval=sub_interval,
+        breakeven_after_r_values=breakeven_after_r_values,
+        trailing_after_r_values=trailing_after_r_values,
+        trailing_distance_ticks_values=trailing_distance_ticks_values,
+        max_grid_cells=max_grid_cells,
+        entry_window=simulate_entry_window,
+        entry_window_exchange_tz=exchange_tz_for_window,
+    )
+    return best_grid_result(
+        train_grid,
+        metric=ranking_metric,
+        min_trades=min_train_trades,
+    )
+
+
+def _stitch_walk_forward_oos(
+    *,
+    oos_trade_frames: list[pd.DataFrame],
+    boundaries: list[FoldBoundary],
+    overlap_policy: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, str, list[str]]:
+    """P5: overlap policy, OOS ownership, and stitched equity (C-17 / QI-05-01)."""
+    raw_oos = pd.concat(oos_trade_frames, ignore_index=True) if oos_trade_frames else pd.DataFrame()
+    warnings: list[str] = []
+    overlap_exists = False
+    if len(boundaries) > 1:
+        overlap_exists = any(
+            current.test_start < previous.test_end_exclusive
+            for previous, current in zip(boundaries, boundaries[1:], strict=False)
+        )
+    stitched_trades = raw_oos.copy()
+    stitched_status = "ok"
+    if overlap_exists and overlap_policy == "reject":
+        stitched_trades = raw_oos.iloc[0:0].copy()
+        returned_oos_trades = raw_oos.copy()
+        stitched_status = "overlapping_oos_windows"
+        warnings.append(
+            "OOS windows overlap; stitched equity is unavailable under overlap_policy='reject'."
+        )
+    elif overlap_exists and not raw_oos.empty:
+        ascending = overlap_policy == "first"
+        stitched_trades = (
+            raw_oos.sort_values(
+                ["global_entry_bar_index", "signal_id", "fold_id"],
+                ascending=[True, True, ascending],
+                kind="mergesort",
+            )
+            .drop_duplicates(
+                subset=["global_entry_bar_index", "signal_id"],
+                keep="first",
+            )
+            .reset_index(drop=True)
+        )
+        warnings.append(
+            f"Overlapping OOS windows were deduplicated with overlap_policy={overlap_policy!r}."
+        )
+        returned_oos_trades = stitched_trades.copy()
+    else:
+        returned_oos_trades = stitched_trades.copy()
+    if not stitched_trades.empty:
+        stitched_trades = stitched_trades.sort_values(
+            ["exit_timestamp", "entry_timestamp", "signal_id", "fold_id"],
+            kind="mergesort",
+        ).reset_index(drop=True)
+        stitched_trades["trade_id"] = range(len(stitched_trades))
+        stitched_equity = equity_curve(stitched_trades)
+        if not (overlap_exists and overlap_policy == "reject"):
+            returned_oos_trades = stitched_trades.copy()
+    else:
+        stitched_equity = equity_curve(pd.DataFrame())
+    if not returned_oos_trades.empty:
+        returned_oos_trades = returned_oos_trades.reset_index(drop=True)
+        returned_oos_trades["trade_id"] = range(len(returned_oos_trades))
+    return returned_oos_trades, stitched_trades, stitched_equity, stitched_status, warnings
+
+
+def _assemble_walk_forward_result(
+    *,
+    results: pd.DataFrame,
+    returned_oos_trades: pd.DataFrame,
+    stitched_trades: pd.DataFrame,
+    stitched_equity: pd.DataFrame,
+    stitched_status: str,
+    warnings: list[str],
+    prep: _WalkForwardPrep,
+    fold_mode: str,
+    window_mode: str,
+    train_bars: int,
+    test_bars: int,
+    train_sessions: int | None,
+    test_sessions: int | None,
+    exchange_timezone: str,
+    eth_start: str,
+    overlap_policy: str,
+) -> WalkForwardResult:
+    """P6: schema-v2 summary plus ``WalkForwardResult`` assembly (C-17 / QI-05-01)."""
+    summary = summarize_walk_forward(results)
+    summary.update(
+        {
+            "schema_version": 2,
+            "stitched_oos_status": stitched_status,
+            "stitched_oos_trade_count": int(len(stitched_trades)),
+            "stitched_oos_total_r": (
+                float(pd.to_numeric(stitched_trades["r_multiple"], errors="coerce").sum())
+                if not stitched_trades.empty
+                else None
+            ),
+            "median_retention_ratio_expectancy": (
+                float(
+                    pd.to_numeric(results["retention_ratio_expectancy"], errors="coerce").median()
+                )
+                if not results.empty
+                and pd.to_numeric(results["retention_ratio_expectancy"], errors="coerce")
+                .notna()
+                .any()
+                else None
+            ),
+        }
+    )
+    summary = dict(summary)
+    summary["otf_history_policy"] = prep.otf_history_policy
+    summary["otf_filter_enabled"] = prep.otf_enabled
+    return WalkForwardResult(
+        schema_version=2,
+        config={
+            "fold_mode": fold_mode,
+            "window_mode": window_mode,
+            "train_bars": train_bars,
+            "test_bars": test_bars,
+            "step_bars": prep.step,
+            "train_sessions": train_sessions,
+            "test_sessions": test_sessions,
+            "step_sessions": prep.effective_step_sessions,
+            "exchange_timezone": exchange_timezone,
+            "eth_start": eth_start,
+            "overlap_policy": overlap_policy,
+            "otf_history_policy": prep.otf_history_policy,
+            "otf_filter_enabled": prep.otf_enabled,
+            "entry_window": prep.normalized_entry_window,
+            "entry_window_exchange_tz": prep.exchange_tz_for_window,
+            "entry_window_enabled": bool(prep.normalized_entry_window.get("enabled")),
+        },
+        folds=results,
+        oos_trades=returned_oos_trades,
+        stitched_equity=stitched_equity,
+        summary=summary,
+        warnings=tuple(warnings),
+    )
+
+
 def run_walk_forward_sl_tp(
     df: pd.DataFrame,
     signals: pd.DataFrame,
@@ -520,33 +817,35 @@ def run_walk_forward_sl_tp(
         ``fold_local`` or ``causal_prefix``. Missing / ``None`` defaults to
         ``fold_local``. Unsupported values raise ``ValueError``.
     """
-    if fold_mode not in {"bars", "sessions"}:
-        raise ValueError("fold_mode must be 'bars' or 'sessions'.")
-    if window_mode not in {"rolling", "anchored"}:
-        raise ValueError("window_mode must be 'rolling' or 'anchored'.")
-    if overlap_policy not in {"reject", "first", "last"}:
-        raise ValueError("overlap_policy must be 'reject', 'first', or 'last'.")
-    otf_history_policy_normalized = normalize_otf_history_policy(otf_history_policy)
-    _validate_timeline(df)
-    exchange_tz_for_window = entry_window_exchange_tz or exchange_timezone
-    try:
-        normalized_entry_window = normalize_entry_window(
-            entry_window, exchange_tz=exchange_tz_for_window
-        )
-    except ValueError as exc:
-        raise ValueError(f"Invalid entry_window: {exc}") from exc
-    simulate_entry_window = (
-        normalized_entry_window if normalized_entry_window.get("enabled") else None
+    prep = _validate_walk_forward_run(
+        df,
+        fold_mode=fold_mode,
+        window_mode=window_mode,
+        overlap_policy=overlap_policy,
+        otf_history_policy=otf_history_policy,
+        entry_window=entry_window,
+        entry_window_exchange_tz=entry_window_exchange_tz,
+        exchange_timezone=exchange_timezone,
+        train_bars=train_bars,
+        test_bars=test_bars,
+        step_bars=step_bars,
+        train_sessions=train_sessions,
+        test_sessions=test_sessions,
+        step_sessions=step_sessions,
+        otf_config=otf_config,
+        session_timezone=session_timezone,
     )
+    step = prep.step
+    effective_step_sessions = prep.effective_step_sessions
+    otf_history_policy_normalized = prep.otf_history_policy
+    simulate_entry_window = prep.simulate_entry_window
+    exchange_tz_for_window = prep.exchange_tz_for_window
+    otf_normalized_config = prep.otf_normalized_config
+    _otf_enabled = prep.otf_enabled
+    otf_session_timezone = prep.otf_session_timezone
 
+    # Fold construction stays here (S5 / AH §2 item 6). P0 only validated sizes.
     if fold_mode == "bars":
-        if train_bars <= 0:
-            raise ValueError("train_bars must be > 0.")
-        if test_bars <= 0:
-            raise ValueError("test_bars must be > 0.")
-        step = test_bars if step_bars is None else int(step_bars)
-        if step <= 0:
-            raise ValueError("step_bars must be > 0.")
         boundaries = _bar_fold_boundaries(
             n_bars=len(df),
             train_bars=train_bars,
@@ -554,17 +853,7 @@ def run_walk_forward_sl_tp(
             step_bars=step,
             window_mode=window_mode,
         )
-        effective_step_sessions = None
     else:
-        if train_sessions is None or train_sessions <= 0:
-            raise ValueError("train_sessions must be > 0 in session mode.")
-        if test_sessions is None or test_sessions <= 0:
-            raise ValueError("test_sessions must be > 0 in session mode.")
-        effective_step_sessions = (
-            int(test_sessions) if step_sessions is None else int(step_sessions)
-        )
-        if effective_step_sessions <= 0:
-            raise ValueError("step_sessions must be > 0.")
         boundaries, _session_ids = _session_fold_boundaries(
             df,
             train_sessions=int(train_sessions),
@@ -574,22 +863,6 @@ def run_walk_forward_sl_tp(
             exchange_timezone=exchange_timezone,
             eth_start=eth_start,
         )
-        step = test_bars if step_bars is None else int(step_bars)
-
-    # Validate and normalize OTF config before fold processing.
-    # normalize_otf_filter_config raises ValueError for explicit invalid config
-    # (e.g. enabled=True with no timeframes, unsupported timeframe).  This
-    # ensures invalid config is caught once, up front, rather than being
-    # silently converted into "all-rejected" fold results.
-    otf_normalized_config: dict[str, Any] | None = None
-    if isinstance(otf_config, dict):
-        otf_normalized_config = normalize_otf_filter_config(otf_config)
-    _otf_enabled = otf_normalized_config is not None and bool(
-        otf_normalized_config.get("enabled", False)
-    )
-    # OTF session alignment may fall back to exchange_timezone when session-exit
-    # policy omits a timezone; session-exit simulation keeps session_timezone as-is.
-    otf_session_timezone = resolve_otf_session_timezone(session_timezone, exchange_timezone)
 
     fold_rows: list[dict[str, Any]] = []
     oos_trade_frames: list[pd.DataFrame] = []
@@ -660,13 +933,15 @@ def run_walk_forward_sl_tp(
             )
             test_otf_accepted = int(len(test_signals))
 
-        train_grid = run_sl_tp_grid(
-            df=train_df,
-            signals=train_signals,
+        best_train = _train_fold_grid(
+            train_df=train_df,
+            train_signals=train_signals,
             tick_size=tick_size,
             point_value=point_value,
             stop_loss_ticks_values=stop_loss_ticks_values,
             take_profit_ticks_values=take_profit_ticks_values,
+            ranking_metric=ranking_metric,
+            min_train_trades=min_train_trades,
             max_holding_bars=max_holding_bars,
             allow_same_bar_exit=allow_same_bar_exit,
             commission_per_side=commission_per_side,
@@ -678,20 +953,15 @@ def run_walk_forward_sl_tp(
             exposure_policy=exposure_policy,
             cooldown_bars_after_exit=cooldown_bars_after_exit,
             intrabar_model=intrabar_model,
-            subtimeframe_data=train_subtimeframe,
+            train_subtimeframe=train_subtimeframe,
             parent_interval=parent_interval,
             sub_interval=sub_interval,
             breakeven_after_r_values=breakeven_after_r_values,
             trailing_after_r_values=trailing_after_r_values,
             trailing_distance_ticks_values=trailing_distance_ticks_values,
             max_grid_cells=max_grid_cells,
-            entry_window=simulate_entry_window,
-            entry_window_exchange_tz=exchange_tz_for_window,
-        )
-        best_train = best_grid_result(
-            train_grid,
-            metric=ranking_metric,
-            min_trades=min_train_trades,
+            simulate_entry_window=simulate_entry_window,
+            exchange_tz_for_window=exchange_tz_for_window,
         )
 
         row: dict[str, Any] = {
@@ -873,108 +1143,34 @@ def run_walk_forward_sl_tp(
     if not return_result:
         return results
 
-    raw_oos = pd.concat(oos_trade_frames, ignore_index=True) if oos_trade_frames else pd.DataFrame()
-    warnings: list[str] = []
-    overlap_exists = False
-    if len(boundaries) > 1:
-        overlap_exists = any(
-            current.test_start < previous.test_end_exclusive
-            for previous, current in zip(boundaries, boundaries[1:], strict=False)
-        )
-    stitched_trades = raw_oos.copy()
-    stitched_status = "ok"
-    if overlap_exists and overlap_policy == "reject":
-        stitched_trades = raw_oos.iloc[0:0].copy()
-        returned_oos_trades = raw_oos.copy()
-        stitched_status = "overlapping_oos_windows"
-        warnings.append(
-            "OOS windows overlap; stitched equity is unavailable under overlap_policy='reject'."
-        )
-    elif overlap_exists and not raw_oos.empty:
-        ascending = overlap_policy == "first"
-        stitched_trades = (
-            raw_oos.sort_values(
-                ["global_entry_bar_index", "signal_id", "fold_id"],
-                ascending=[True, True, ascending],
-                kind="mergesort",
-            )
-            .drop_duplicates(
-                subset=["global_entry_bar_index", "signal_id"],
-                keep="first",
-            )
-            .reset_index(drop=True)
-        )
-        warnings.append(
-            f"Overlapping OOS windows were deduplicated with overlap_policy={overlap_policy!r}."
-        )
-        returned_oos_trades = stitched_trades.copy()
-    else:
-        returned_oos_trades = stitched_trades.copy()
-    if not stitched_trades.empty:
-        stitched_trades = stitched_trades.sort_values(
-            ["exit_timestamp", "entry_timestamp", "signal_id", "fold_id"],
-            kind="mergesort",
-        ).reset_index(drop=True)
-        stitched_trades["trade_id"] = range(len(stitched_trades))
-        stitched_equity = equity_curve(stitched_trades)
-        if not (overlap_exists and overlap_policy == "reject"):
-            returned_oos_trades = stitched_trades.copy()
-    else:
-        stitched_equity = equity_curve(pd.DataFrame())
-    if not returned_oos_trades.empty:
-        returned_oos_trades = returned_oos_trades.reset_index(drop=True)
-        returned_oos_trades["trade_id"] = range(len(returned_oos_trades))
-    summary = summarize_walk_forward(results)
-    summary.update(
-        {
-            "schema_version": 2,
-            "stitched_oos_status": stitched_status,
-            "stitched_oos_trade_count": int(len(stitched_trades)),
-            "stitched_oos_total_r": (
-                float(pd.to_numeric(stitched_trades["r_multiple"], errors="coerce").sum())
-                if not stitched_trades.empty
-                else None
-            ),
-            "median_retention_ratio_expectancy": (
-                float(
-                    pd.to_numeric(results["retention_ratio_expectancy"], errors="coerce").median()
-                )
-                if not results.empty
-                and pd.to_numeric(results["retention_ratio_expectancy"], errors="coerce")
-                .notna()
-                .any()
-                else None
-            ),
-        }
+    (
+        returned_oos_trades,
+        stitched_trades,
+        stitched_equity,
+        stitched_status,
+        warnings,
+    ) = _stitch_walk_forward_oos(
+        oos_trade_frames=oos_trade_frames,
+        boundaries=boundaries,
+        overlap_policy=overlap_policy,
     )
-    summary = dict(summary)
-    summary["otf_history_policy"] = otf_history_policy_normalized
-    summary["otf_filter_enabled"] = _otf_enabled
-    return WalkForwardResult(
-        schema_version=2,
-        config={
-            "fold_mode": fold_mode,
-            "window_mode": window_mode,
-            "train_bars": train_bars,
-            "test_bars": test_bars,
-            "step_bars": step,
-            "train_sessions": train_sessions,
-            "test_sessions": test_sessions,
-            "step_sessions": effective_step_sessions,
-            "exchange_timezone": exchange_timezone,
-            "eth_start": eth_start,
-            "overlap_policy": overlap_policy,
-            "otf_history_policy": otf_history_policy_normalized,
-            "otf_filter_enabled": _otf_enabled,
-            "entry_window": normalized_entry_window,
-            "entry_window_exchange_tz": exchange_tz_for_window,
-            "entry_window_enabled": bool(normalized_entry_window.get("enabled")),
-        },
-        folds=results,
-        oos_trades=returned_oos_trades,
+    return _assemble_walk_forward_result(
+        results=results,
+        returned_oos_trades=returned_oos_trades,
+        stitched_trades=stitched_trades,
         stitched_equity=stitched_equity,
-        summary=summary,
-        warnings=tuple(warnings),
+        stitched_status=stitched_status,
+        warnings=warnings,
+        prep=prep,
+        fold_mode=fold_mode,
+        window_mode=window_mode,
+        train_bars=train_bars,
+        test_bars=test_bars,
+        train_sessions=train_sessions,
+        test_sessions=test_sessions,
+        exchange_timezone=exchange_timezone,
+        eth_start=eth_start,
+        overlap_policy=overlap_policy,
     )
 
 

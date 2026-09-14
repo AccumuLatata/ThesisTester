@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import ast
+import subprocess
+import sys
+import types
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -936,3 +942,322 @@ def test_overlap_first_oos_trades_follow_exit_timestamp_sort():
         assert entry_order != exit_order
         assert list(owned.oos_trades["signal_id"]) == exit_order
         assert owned.summary["stitched_oos_trade_count"] == len(owned.oos_trades)
+
+
+def _origin_main_walk_forward():
+    """Load walk-forward from the PR base (origin/main).
+
+    Hex digests are computed live in-process. Do not freeze them as CI goldens.
+    """
+    from tests.test_journal_triggers import _regression_base_ref
+
+    name = "thesistester.analytics._walk_forward_origin_main"
+    cached = sys.modules.get(name)
+    if cached is not None:
+        return cached
+    ref = _regression_base_ref()
+    src = subprocess.check_output(
+        ["git", "show", f"{ref}:thesistester/analytics/walk_forward.py"],
+        text=True,
+    )
+    module = types.ModuleType(name)
+    module.__file__ = f"<{ref} thesistester/analytics/walk_forward.py>"
+    module.__package__ = "thesistester.analytics"
+    sys.modules[name] = module
+    try:
+        exec(compile(src, module.__file__, "exec"), module.__dict__)
+    except Exception:
+        del sys.modules[name]
+        raise
+    return module
+
+
+def _copy_wfa_kwargs(kwargs: dict) -> dict:
+    copied = dict(kwargs)
+    for key, value in copied.items():
+        if isinstance(value, pd.DataFrame):
+            copied[key] = value.copy()
+    return copied
+
+
+def test_c17_orchestrator_calls_phase_helpers():
+    tree = ast.parse(Path("thesistester/analytics/walk_forward.py").read_text())
+    defined = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+    calls: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "run_walk_forward_sl_tp":
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
+                    calls.add(child.func.id)
+    helpers = (
+        "_validate_walk_forward_run",
+        "_train_fold_grid",
+        "_stitch_walk_forward_oos",
+        "_assemble_walk_forward_result",
+        "_filter_fold_signals_with_otf",
+        "_bar_fold_boundaries",
+        "_session_fold_boundaries",
+        "_otf_source_for_fold",
+    )
+    for name in helpers:
+        assert name in defined, name
+        assert name in calls, name
+
+
+def test_c17_fold_and_causal_prefix_ast_match_origin_main():
+    """S5 / AH §2 item 6: fold constructors and causal_prefix stay byte-identical."""
+    from tests.test_journal_triggers import _regression_base_ref
+
+    locked = (
+        "_bar_fold_boundaries",
+        "_session_fold_boundaries",
+        "_otf_source_for_fold",
+        "_filter_fold_signals_with_otf",
+    )
+    current_src = Path("thesistester/analytics/walk_forward.py").read_text()
+    current_tree = ast.parse(current_src)
+    current = {
+        node.name: ast.dump(node, include_attributes=False)
+        for node in current_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in locked
+    }
+    expected_src = subprocess.check_output(
+        ["git", "show", f"{_regression_base_ref()}:thesistester/analytics/walk_forward.py"],
+        text=True,
+    )
+    expected_tree = ast.parse(expected_src)
+    expected = {
+        node.name: ast.dump(node, include_attributes=False)
+        for node in expected_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in locked
+    }
+    assert set(current) == set(expected) == set(locked)
+    for name in locked:
+        assert current[name] == expected[name], name
+
+
+def _assert_wfa_result_equal(current, expected) -> None:
+    from thesistester.persistence.local_store import hash_dataframe
+
+    # WalkForwardResult from the exec'd origin/main module is a different class.
+    # Discriminate on DataFrame vs detailed result, never class identity or a
+    # pandas column-attribute hasattr (a `folds` column would false-route).
+    if isinstance(current, pd.DataFrame):
+        pd.testing.assert_frame_equal(current, expected)
+        assert hash_dataframe(current) == hash_dataframe(expected)
+        return
+    pd.testing.assert_frame_equal(current.folds, expected.folds)
+    pd.testing.assert_frame_equal(current.oos_trades, expected.oos_trades)
+    pd.testing.assert_frame_equal(current.stitched_equity, expected.stitched_equity)
+    assert current.summary == expected.summary
+    assert current.warnings == expected.warnings
+    assert current.config == expected.config
+    assert current.schema_version == expected.schema_version
+    assert hash_dataframe(current.folds) == hash_dataframe(expected.folds)
+    assert hash_dataframe(current.oos_trades) == hash_dataframe(expected.oos_trades)
+    assert hash_dataframe(current.stitched_equity) == hash_dataframe(expected.stitched_equity)
+
+
+def _otf_identity_ohlcv(n_bars: int = 80) -> pd.DataFrame:
+    start = pd.Timestamp("2026-01-05 22:00:00", tz=TZ)
+    rows = []
+    price = 100.0
+    for i in range(n_bars):
+        rows.append(
+            {
+                "timestamp": start + pd.Timedelta(minutes=i),
+                "open": price + 0.2,
+                "high": price + 1.0,
+                "low": price,
+                "close": price + 0.6,
+                "volume": 100.0,
+            }
+        )
+        price += 0.05
+    return pd.DataFrame(rows)
+
+
+def test_c17_wfa_artifacts_identity_vs_origin_main():
+    """Live vs origin/main — do not freeze hash_dataframe hexes as CI goldens."""
+    baseline = _origin_main_walk_forward().run_walk_forward_sl_tp
+    bar_df = _ohlcv(12)
+    bar_signals = _signal_df(*[_touch_signal(i, i) for i in range(10)])
+    session6 = _session_ohlcv(6)
+    session8 = _session_ohlcv(8)
+    otf_df = _otf_identity_ohlcv()
+    otf_signals = _signal_df(
+        {
+            **_touch_signal(1, 40),
+            "timestamp": pd.Timestamp("2026-01-05 22:40:00", tz=TZ),
+        }
+    )
+    otf = normalize_otf_filter_config(
+        {
+            "enabled": True,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    common_bar = dict(
+        df=bar_df,
+        signals=bar_signals,
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=4,
+        test_bars=2,
+        step_bars=2,
+    )
+    common_session = dict(
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=1,
+        test_bars=1,
+        fold_mode="sessions",
+        return_result=True,
+    )
+    cases = [
+        ("bars folds", dict(common_bar)),
+        ("bars detailed", dict(common_bar, return_result=True)),
+        ("bars anchored", dict(common_bar, window_mode="anchored")),
+        (
+            "session detailed",
+            dict(
+                common_session,
+                df=session6,
+                signals=_session_signals(session6),
+                train_sessions=2,
+                test_sessions=1,
+                step_sessions=1,
+            ),
+        ),
+        (
+            "session anchored",
+            dict(
+                common_session,
+                df=session6,
+                signals=_session_signals(session6),
+                window_mode="anchored",
+                train_sessions=2,
+                test_sessions=1,
+                step_sessions=1,
+            ),
+        ),
+        (
+            "overlap reject",
+            dict(
+                common_session,
+                df=session8,
+                signals=_session_signals(session8),
+                train_sessions=2,
+                test_sessions=2,
+                step_sessions=1,
+                overlap_policy="reject",
+            ),
+        ),
+        (
+            "overlap first",
+            dict(
+                common_session,
+                df=session8,
+                signals=_session_signals(session8),
+                train_sessions=2,
+                test_sessions=2,
+                step_sessions=1,
+                overlap_policy="first",
+            ),
+        ),
+        (
+            "overlap last",
+            dict(
+                common_session,
+                df=session8,
+                signals=_session_signals(session8),
+                train_sessions=2,
+                test_sessions=2,
+                step_sessions=1,
+                overlap_policy="last",
+            ),
+        ),
+        (
+            "otf fold_local",
+            dict(
+                df=otf_df,
+                signals=otf_signals,
+                tick_size=TICK,
+                point_value=POINT,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=20,
+                test_bars=20,
+                step_bars=20,
+                otf_config=otf,
+                session_timezone=TZ,
+                eth_start="18:00",
+                return_result=True,
+            ),
+        ),
+        (
+            "otf causal_prefix",
+            dict(
+                df=otf_df,
+                signals=otf_signals,
+                tick_size=TICK,
+                point_value=POINT,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=20,
+                test_bars=20,
+                step_bars=20,
+                otf_config=otf,
+                session_timezone=TZ,
+                eth_start="18:00",
+                otf_history_policy="causal_prefix",
+                return_result=True,
+            ),
+        ),
+        (
+            "entry_window enabled",
+            dict(
+                common_bar,
+                entry_window={
+                    "enabled": True,
+                    "mode": "rth_segments",
+                    "rth_segments": ["rth_open_30m"],
+                },
+                return_result=True,
+            ),
+        ),
+        (
+            "empty folds detailed",
+            dict(
+                df=_ohlcv(3),
+                signals=_signal_df(_touch_signal(0, 0)),
+                tick_size=TICK,
+                point_value=POINT,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=4,
+                test_bars=2,
+                return_result=True,
+            ),
+        ),
+        (
+            "no_train_candidate",
+            dict(common_bar, min_train_trades=999),
+        ),
+    ]
+    for label, kwargs in cases:
+        try:
+            current = run_walk_forward_sl_tp(**_copy_wfa_kwargs(kwargs))
+            expected = baseline(**_copy_wfa_kwargs(kwargs))
+            _assert_wfa_result_equal(current, expected)
+        except AssertionError as exc:
+            raise AssertionError(f"{label}: {exc}") from exc

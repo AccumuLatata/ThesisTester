@@ -83,7 +83,10 @@ empty HTF map. C-16 (QI-03-02) shares one 3c signal-row mapper
 reversal / retrace / SFP math is unchanged. The mapper branches on
 `effective_trigger_timeframe == "base"` (base trigger indices = base
 indices); HTF reads setup `trigger_*` and does not fall back to base
-indices when `trigger_df` is missing. Next: C-17.
+indices when `trigger_df` is missing. C-17 (QI-05-01) extracts WFA
+P0 validate / P3 train-grid / P5 stitch / P6 summary helpers from
+`run_walk_forward_sl_tp`. Fold construction and `causal_prefix` stay
+untouched (S5). Next: C-18.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -269,7 +272,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    3c row-mappers (`_map_3c_setup_to_signal`) and extracts shared
    detector scan/merge helpers so both public 3c detectors stay ≤ CC 30.
    Mapper path is the timeframe string, not `trigger_df is None`.
-   S3 math is unchanged. Next: C-17.
+   S3 math is unchanged. C-17 (QI-05-01) extracts WFA P0/P3/P5/P6
+   helpers; fold construction and `causal_prefix` stay untouched.
+   Next: C-18.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
@@ -771,7 +776,10 @@ Every request must first parse as an `AssistantRequest`, then pass
   baseline: `tests/fixtures/mutation/baseline.json`. Isolation: scratch
   package + `--import-mode=importlib` from a neutral cwd. The walk-forward
   sample **keeps** `tests/test_otf_integration.py` (`fold_local` already
-  lives there). Gate for C-14 / C-17 / C-19: ≥ 70 % own-file killed
+  lives there) and the C-17 helpers (`_validate_walk_forward_run`,
+  `_stitch_walk_forward_oos`) so P0 fold-size and overlap-reject
+  comparisons stay inside the 12-site named surface. Gate for C-14 /
+  C-17 / C-19: ≥ 70 % own-file killed
   (target 80 %). B-4 recorded adjusted rates: `backtest.py` 100 % and
   `walk_forward.py` 100 % (12/12). Timeouts count as killed. This is **not** a
   required CI cell. Do not add `[tool.mutmut]` here — QI-12 owns packaging.
@@ -965,6 +973,20 @@ as `st.error`. Do not restore
 `except Exception: return _empty_trades_df()`.
 
 ## WFO OTF history policy
+
+C-17 (QI-05-01) extracts P0 validate (`_validate_walk_forward_run`),
+P3 train-grid (`_train_fold_grid`), P5 stitch (`_stitch_walk_forward_oos`),
+and P6 summary (`_assemble_walk_forward_result`) from
+`run_walk_forward_sl_tp`. Fold constructors (`_bar_fold_boundaries`,
+`_session_fold_boundaries`) and `causal_prefix` (`_otf_source_for_fold`,
+`_filter_fold_signals_with_otf`) stay in-place. The B-4 mutation
+recipe names those P0/P5 helpers so overlap-reject and fold-size
+`==` / `<=` sites stay in the 12-site sample. Identity vs the PR base
+is live `assert_frame_equal` / field equality + `hash_dataframe` on
+folds, OOS trades, and stitched equity (bars, sessions, overlap
+first/last/reject, OTF, entry window, anchored, empty). Do not freeze
+hexes. Compare detailed results by fields, not `WalkForwardResult`
+class identity (the exec'd baseline class is a different object).
 
 When OTF is enabled in walk-forward:
 
