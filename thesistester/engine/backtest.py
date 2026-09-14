@@ -110,6 +110,67 @@ _SKIPPED_SIGNAL_COLUMNS: list[str] = [
     "cooldown_bars_after_exit",
 ]
 
+# Skip / exit tokens (C-18 / QI-04-09). String values are frozen for goldens.
+SKIP_OUTSIDE_ENTRY_WINDOW = "outside_entry_window"
+SKIP_AFTER_ENTRY_CUTOFF = "after_entry_cutoff"
+SKIP_DIRECTION_CONFLICT = "direction_conflict"
+SKIP_COOLDOWN_ACTIVE = "cooldown_active"
+SKIP_OVERLAPPING_POSITION = "overlapping_position"
+SKIP_OVERLAPPING_DIRECTION = "overlapping_direction"
+SKIP_OVERLAPPING_SETUP = "overlapping_setup"
+SKIP_EMPTY_SESSION_CLOSE_CAP = "empty_session_close_cap"
+
+SKIP_REASONS: frozenset[str] = frozenset(
+    {
+        SKIP_OUTSIDE_ENTRY_WINDOW,
+        SKIP_AFTER_ENTRY_CUTOFF,
+        SKIP_DIRECTION_CONFLICT,
+        SKIP_COOLDOWN_ACTIVE,
+        SKIP_OVERLAPPING_POSITION,
+        SKIP_OVERLAPPING_DIRECTION,
+        SKIP_OVERLAPPING_SETUP,
+        SKIP_EMPTY_SESSION_CLOSE_CAP,
+    }
+)
+
+EXIT_SL = "SL"
+EXIT_TP = "TP"
+EXIT_BE = "BE"
+EXIT_TRAIL = "TRAIL"
+EXIT_TIME = "TIME"
+EXIT_DATA_END = "DATA_END"
+EXIT_SESSION_CLOSE = "SESSION_CLOSE"
+EXIT_EOD = "EOD"
+EXIT_INTRABAR_PATH_SUFFIX = "_intrabar_path"
+EXIT_SUBTIMEFRAME_SUFFIX = "_subtimeframe"
+EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX = "_subtimeframe_fallback"
+EXIT_MANAGED_STOP_REASONS: frozenset[str] = frozenset({EXIT_BE, EXIT_TRAIL})
+
+EXIT_REASONS: frozenset[str] = frozenset(
+    {
+        EXIT_SL,
+        EXIT_TP,
+        EXIT_BE,
+        EXIT_TRAIL,
+        EXIT_TIME,
+        EXIT_DATA_END,
+        EXIT_SESSION_CLOSE,
+        EXIT_EOD,
+        f"{EXIT_SL}{EXIT_INTRABAR_PATH_SUFFIX}",
+        f"{EXIT_TP}{EXIT_INTRABAR_PATH_SUFFIX}",
+        f"{EXIT_SL}{EXIT_SUBTIMEFRAME_SUFFIX}",
+        f"{EXIT_TP}{EXIT_SUBTIMEFRAME_SUFFIX}",
+        f"{EXIT_SL}{EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX}",
+        f"{EXIT_TP}{EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX}",
+    }
+)
+
+
+def _exit_reason_with_suffix(kind: str, suffix: str) -> str:
+    """Compose an SL/TP path label. Values stay in ``EXIT_REASONS``."""
+    return f"{kind}{suffix}"
+
+
 _VALID_EXPOSURE_POLICIES = {
     "allow_all",
     "single_position",
@@ -807,7 +868,7 @@ def simulate_trades(
                             trigger=trigger,
                             direction=direction,
                         ),
-                        "skip_reason": "outside_entry_window",
+                        "skip_reason": SKIP_OUTSIDE_ENTRY_WINDOW,
                         "blocking_trade_id": pd.NA,
                         "blocking_exit_bar_index": pd.NA,
                         "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
@@ -837,7 +898,7 @@ def simulate_trades(
                             trigger=trigger,
                             direction=direction,
                         ),
-                        "skip_reason": "after_entry_cutoff",
+                        "skip_reason": SKIP_AFTER_ENTRY_CUTOFF,
                         "blocking_trade_id": pd.NA,
                         "blocking_exit_bar_index": pd.NA,
                         "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
@@ -926,7 +987,7 @@ def simulate_trades(
                         "direction": direction,
                         "exposure_policy": exposure_policy,
                         "exposure_group_key": exposure_group_key,
-                        "skip_reason": "direction_conflict",
+                        "skip_reason": SKIP_DIRECTION_CONFLICT,
                         "blocking_trade_id": pd.NA,
                         "blocking_exit_bar_index": pd.NA,
                         "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
@@ -961,13 +1022,13 @@ def simulate_trades(
             )[0]
             blocker_exit_bar_index = int(blocker["exit_bar_index"])
             if entry_bar_index > blocker_exit_bar_index:
-                skip_reason = "cooldown_active"
+                skip_reason = SKIP_COOLDOWN_ACTIVE
             elif exposure_policy == "single_position":
-                skip_reason = "overlapping_position"
+                skip_reason = SKIP_OVERLAPPING_POSITION
             elif exposure_policy == "single_direction":
-                skip_reason = "overlapping_direction"
+                skip_reason = SKIP_OVERLAPPING_DIRECTION
             else:
-                skip_reason = "overlapping_setup"
+                skip_reason = SKIP_OVERLAPPING_SETUP
 
             if return_skipped_signals or return_result:
                 skipped_signals.append(
@@ -1049,7 +1110,7 @@ def simulate_trades(
                             "direction": direction,
                             "exposure_policy": exposure_policy,
                             "exposure_group_key": exposure_group_key,
-                            "skip_reason": "empty_session_close_cap",
+                            "skip_reason": SKIP_EMPTY_SESSION_CLOSE_CAP,
                             "blocking_trade_id": pd.NA,
                             "blocking_exit_bar_index": pd.NA,
                             "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
@@ -1118,21 +1179,30 @@ def simulate_trades(
             if resolution.exit_kind is not None:
                 exit_bar_index = b
                 theoretical_exit_price = (
-                    stop_state.effective_stop if resolution.exit_kind == "SL" else target_price
+                    stop_state.effective_stop if resolution.exit_kind == EXIT_SL else target_price
                 )
-                if resolution.exit_kind == "SL" and stop_state.active_reason in {"BE", "TRAIL"}:
+                if (
+                    resolution.exit_kind == EXIT_SL
+                    and stop_state.active_reason in EXIT_MANAGED_STOP_REASONS
+                ):
                     exit_reason = stop_state.active_reason
                 elif intrabar_model == "sl_first":
                     exit_reason = resolution.exit_kind
                 elif intrabar_model == "path_open_proximity":
-                    exit_reason = f"{resolution.exit_kind}_intrabar_path"
+                    exit_reason = _exit_reason_with_suffix(
+                        resolution.exit_kind, EXIT_INTRABAR_PATH_SUFFIX
+                    )
                 elif (
                     intrabar_model == "subtimeframe_conservative"
                     and resolution.subtimeframe_fallback
                 ):
-                    exit_reason = f"{resolution.exit_kind}_subtimeframe_fallback"
+                    exit_reason = _exit_reason_with_suffix(
+                        resolution.exit_kind, EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX
+                    )
                 else:
-                    exit_reason = f"{resolution.exit_kind}_subtimeframe"
+                    exit_reason = _exit_reason_with_suffix(
+                        resolution.exit_kind, EXIT_SUBTIMEFRAME_SUFFIX
+                    )
                 intrabar_resolution = resolution.resolution
                 intrabar_parent_both_hit = resolution.parent_both_hit
                 intrabar_ambiguous = pending_intrabar_ambiguity
@@ -1179,7 +1249,7 @@ def simulate_trades(
             ):
                 exit_bar_index = max_bar
                 theoretical_exit_price = bars.close[max_bar]
-                exit_reason = "TIME"
+                exit_reason = EXIT_TIME
                 intrabar_resolution = "forced_time"
             elif flat_by_session_close:
                 exit_bar_index = max_bar
@@ -1189,15 +1259,15 @@ def simulate_trades(
                     and session_cap_bar is not None
                     and max_bar == session_cap_bar
                 ):
-                    exit_reason = "DATA_END"
+                    exit_reason = EXIT_DATA_END
                     intrabar_resolution = "forced_data_end"
                 else:
-                    exit_reason = "SESSION_CLOSE"
+                    exit_reason = EXIT_SESSION_CLOSE
                     intrabar_resolution = "forced_session_close"
             else:
                 exit_bar_index = n_bars - 1
                 theoretical_exit_price = bars.close[n_bars - 1]
-                exit_reason = "EOD"
+                exit_reason = EXIT_EOD
                 intrabar_resolution = "forced_eod"
             if pending_intrabar_ambiguity:
                 intrabar_ambiguous = True
@@ -1315,9 +1385,9 @@ def simulate_trades(
             )
             if exit_management_armed:
                 trades_with_exit_mgmt_count += 1
-            if exit_reason == "BE":
+            if exit_reason == EXIT_BE:
                 be_exit_count += 1
-            if exit_reason == "TRAIL":
+            if exit_reason == EXIT_TRAIL:
                 trail_exit_count += 1
             total_stop_adjustment_count += int(stop_state.adjustment_count)
         trades.append(trade)

@@ -86,7 +86,8 @@ indices); HTF reads setup `trigger_*` and does not fall back to base
 indices when `trigger_df` is missing. C-17 (QI-05-01) extracts WFA
 P0 validate / P3 train-grid / P5 stitch / P6 summary helpers from
 `run_walk_forward_sl_tp`. Fold construction and `causal_prefix` stay
-untouched (S5). Next: C-18.
+untouched (S5). C-18 (QI-04-09) centralizes skip/exit tokens next to
+`_SKIPPED_SIGNAL_COLUMNS`; string values unchanged. Next: C-19.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -274,7 +275,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Mapper path is the timeframe string, not `trigger_df is None`.
    S3 math is unchanged. C-17 (QI-05-01) extracts WFA P0/P3/P5/P6
    helpers; fold construction and `causal_prefix` stay untouched.
-   Next: C-18.
+   C-18 (QI-04-09) centralizes skip/exit tokens; values unchanged.
+   Next: C-19.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

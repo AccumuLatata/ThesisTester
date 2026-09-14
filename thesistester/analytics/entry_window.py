@@ -16,6 +16,10 @@ from thesistester.analytics.metrics import (
     summarize_trades_by_direction,
 )
 from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
+from thesistester.engine.backtest import (
+    SKIP_AFTER_ENTRY_CUTOFF,
+    SKIP_OUTSIDE_ENTRY_WINDOW,
+)
 from thesistester.entry_window_policy import (
     RTH_SEGMENT_LABELS,
     RTH_SEGMENTS,
@@ -47,8 +51,8 @@ ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING = (
     "Entry window is a fixed Admit constraint across all cells/folds — "
     "not a swept Grid/WFA axis. No per-fold time-bucket reselection."
 )
-OUTSIDE_ENTRY_WINDOW_REASON = "outside_entry_window"
-AFTER_ENTRY_CUTOFF_REASON = "after_entry_cutoff"
+OUTSIDE_ENTRY_WINDOW_REASON = SKIP_OUTSIDE_ENTRY_WINDOW
+AFTER_ENTRY_CUTOFF_REASON = SKIP_AFTER_ENTRY_CUTOFF
 
 
 def partition_skip_counts(skipped_signals: pd.DataFrame | None) -> dict[str, int]:
@@ -59,8 +63,8 @@ def partition_skip_counts(skipped_signals: pd.DataFrame | None) -> dict[str, int
     """
     empty = {
         "total": 0,
-        "outside_entry_window": 0,
-        "after_entry_cutoff": 0,
+        OUTSIDE_ENTRY_WINDOW_REASON: 0,
+        AFTER_ENTRY_CUTOFF_REASON: 0,
         "other": 0,
     }
     if skipped_signals is None or not isinstance(skipped_signals, pd.DataFrame):
@@ -69,8 +73,8 @@ def partition_skip_counts(skipped_signals: pd.DataFrame | None) -> dict[str, int
     if total == 0 or "skip_reason" not in skipped_signals.columns:
         return {
             "total": total,
-            "outside_entry_window": 0,
-            "after_entry_cutoff": 0,
+            OUTSIDE_ENTRY_WINDOW_REASON: 0,
+            AFTER_ENTRY_CUTOFF_REASON: 0,
             "other": total,
         }
     reasons = skipped_signals["skip_reason"].astype(str)
@@ -78,8 +82,8 @@ def partition_skip_counts(skipped_signals: pd.DataFrame | None) -> dict[str, int
     cutoff_n = int((reasons == AFTER_ENTRY_CUTOFF_REASON).sum())
     return {
         "total": total,
-        "outside_entry_window": window_n,
-        "after_entry_cutoff": cutoff_n,
+        OUTSIDE_ENTRY_WINDOW_REASON: window_n,
+        AFTER_ENTRY_CUTOFF_REASON: cutoff_n,
         "other": total - window_n - cutoff_n,
     }
 
