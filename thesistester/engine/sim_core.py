@@ -257,41 +257,6 @@ def _exit_walk_bounds(
     return start_bar, max_bar, time_cap_bar
 
 
-def _entry_activation_price(
-    *,
-    bar_index: int,
-    entry_bar_index: int,
-    trigger: str,
-    theoretical_entry_price: float,
-) -> float | None:
-    if bar_index == entry_bar_index and trigger in {"3c", "confirm_3bar"}:
-        return theoretical_entry_price
-    return None
-
-
-def _bar_excursions(
-    *,
-    direction: str,
-    entry_price: float,
-    bar_low: float,
-    bar_high: float,
-) -> tuple[float, float]:
-    if direction == "long":
-        return entry_price - bar_low, bar_high - entry_price
-    return bar_high - entry_price, entry_price - bar_low
-
-
-def _can_update_exit_management(
-    *,
-    entry_model: str,
-    bar_index: int,
-    entry_bar_index: int,
-) -> bool:
-    return (entry_model == "next_bar_open" and bar_index >= entry_bar_index) or (
-        entry_model != "next_bar_open" and bar_index > entry_bar_index
-    )
-
-
 def walk_trade_exit(
     bars: BarData,
     *,
@@ -380,19 +345,20 @@ def walk_trade_exit(
             stop_price=stop_state.effective_stop,
             target_price=target_price,
             direction=direction,
-            entry_activation_price=_entry_activation_price(
-                bar_index=b,
-                entry_bar_index=entry_bar_index,
-                trigger=trigger,
-                theoretical_entry_price=theoretical_entry_price,
+            entry_activation_price=(
+                theoretical_entry_price
+                if b == entry_bar_index and trigger in {"3c", "confirm_3bar"}
+                else None
             ),
         )
-        excursion_adverse, excursion_favorable = _bar_excursions(
-            direction=direction,
-            entry_price=entry_price,
-            bar_low=bar.low,
-            bar_high=bar.high,
-        )
+        bar_low = bar.low
+        bar_high = bar.high
+        if direction == "long":
+            excursion_adverse = entry_price - bar_low
+            excursion_favorable = bar_high - entry_price
+        else:
+            excursion_adverse = bar_high - entry_price
+            excursion_favorable = entry_price - bar_low
         mae_pts = max(mae_pts, excursion_adverse)
         mfe_pts = max(mfe_pts, excursion_favorable)
         pending_intrabar_ambiguity = pending_intrabar_ambiguity or resolution.ambiguous
@@ -409,15 +375,10 @@ def walk_trade_exit(
                 subtimeframe_fallback = bool(resolution.subtimeframe_fallback)
                 subtimeframe_resolved = not subtimeframe_fallback
             break
-        if (
-            exit_management_active
-            and _can_update_exit_management(
-                entry_model=entry_model,
-                bar_index=b,
-                entry_bar_index=entry_bar_index,
-            )
-            and b < max_bar
-        ):
+        can_update_exit_management = (entry_model == "next_bar_open" and b >= entry_bar_index) or (
+            entry_model != "next_bar_open" and b > entry_bar_index
+        )
+        if exit_management_active and can_update_exit_management and b < max_bar:
             stop_state = update_exit_management_after_bar(
                 state=stop_state,
                 direction=direction,
