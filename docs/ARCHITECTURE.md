@@ -770,6 +770,8 @@ overlay + auditor once; compose ≤3 **raw** intents (>3 or missing slice →
 narrow remediation; dual overview collapses after the cap).
 **C-21 landed (QI-09-01):** `_format_scalar_for_claim` walks a first-match
 claim-format table (`path_pattern`, value type, template, reject).
+Longer overlapping suffixes stay ordered (`valid_fold_count` /
+`stitched_oos_status` / `ranking_metric` before the shorter tails).
 `compose_deterministic_replies` walks an intent→builder table (evidence gate
 + overlap). Auditor-safe claim strings, overlay/auditor order, and DI/RI/DX
 contracts are unchanged. This is a maintainability extract, not a claim that

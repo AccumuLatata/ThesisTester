@@ -2944,7 +2944,11 @@ _CLAIM_FORMAT_RULES: tuple[_ClaimFormatRule, ...] = (
         reject="always",
     ),
     _claim_rule("selection_scope", "endswith", "str", "Selection scope is {text}."),
+    # Longer aliases before shorter suffixes (``stitched_oos_status`` /
+    # ``ranking_metric`` were explicit OR-clauses before the C-21 table).
+    _claim_rule("stitched_oos_status", "endswith", "str", "OOS status is {text}."),
     _claim_rule("oos_status", "endswith", "str", "OOS status is {text}."),
+    _claim_rule("ranking_metric", "endswith", "str", "Ranking metric is {text}."),
     _claim_rule("metric", "endswith", "str", "Ranking metric is {text}."),
     _claim_rule("metric_source_path", "endswith", "str", "Ranking metric source path is {text}."),
     _claim_rule("risk_level", "endswith", "str", "Grid overfit risk level is {text}."),
