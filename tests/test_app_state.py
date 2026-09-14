@@ -21,24 +21,31 @@ def _sample_frame() -> pd.DataFrame:
     )
 
 
-def test_store_import_does_not_load_streamlit(monkeypatch):
-    monkeypatch.delitem(sys.modules, "thesistester.persistence.saved_dataset_state", raising=False)
-    monkeypatch.delitem(sys.modules, "thesistester.app_state", raising=False)
+def _blocked_streamlit() -> types.ModuleType:
     blocked = types.ModuleType("streamlit")
 
     def _blocked_getattr(_name: str):
-        raise AssertionError("saved_dataset_state must not touch Streamlit")
+        raise AssertionError("C-8 store/adapter import must not touch Streamlit")
 
     blocked.__getattr__ = _blocked_getattr  # type: ignore[method-assign]
-    monkeypatch.setitem(sys.modules, "streamlit", blocked)
+    return blocked
+
+
+def test_store_import_does_not_load_streamlit(monkeypatch):
+    monkeypatch.delitem(sys.modules, "thesistester.persistence.saved_dataset_state", raising=False)
+    monkeypatch.setitem(sys.modules, "streamlit", _blocked_streamlit())
     reloaded = importlib.import_module("thesistester.persistence.saved_dataset_state")
     assert reloaded.ACTIVE_SAVED_DATASET_KEY == store.ACTIVE_SAVED_DATASET_KEY
+
+
+def test_adapter_import_does_not_load_streamlit(monkeypatch):
+    # Reimport the adapter against the already-loaded canonical store. Do not
+    # evict saved_dataset_state here — that would bind the adapter to a
+    # detached copy that later `store.*` patches miss.
+    monkeypatch.delitem(sys.modules, "thesistester.app_state", raising=False)
+    monkeypatch.setitem(sys.modules, "streamlit", _blocked_streamlit())
     adapter = importlib.import_module("thesistester.app_state")
     assert adapter.bootstrap_active_saved_dataset.__module__ == "thesistester.app_state"
-    # Drop the adapter bound to this ephemeral store copy. monkeypatch will
-    # restore the canonical store module; a leftover adapter would close over
-    # the detached copy and ignore later `store.*` patches.
-    sys.modules.pop("thesistester.app_state", None)
 
 
 def test_bootstrap_does_not_override_existing_data(monkeypatch):
@@ -343,7 +350,6 @@ def test_adapter_is_one_function_and_does_not_export_restore():
 def test_adapter_delegates_to_store(monkeypatch):
     from thesistester import app_state
 
-    importlib.reload(app_state)
     session_state = {"data": "already-loaded"}
     stub = types.ModuleType("streamlit")
     stub.session_state = session_state
