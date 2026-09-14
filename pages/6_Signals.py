@@ -38,6 +38,7 @@ from thesistester.setup import (
     TRIGGER_TIMEFRAME_CHOICES,
     VALID_TRIGGER_TIMEFRAMES,
     available_level_columns,
+    build_setup_config,
     default_selected_levels,
     get_effective_otf_filter_config,
     normalize_otf_filter_config,
@@ -278,19 +279,54 @@ def _safe_list(value: object) -> list:
     return value if isinstance(value, list) else []
 
 
-def _normalize_3c_params(params: object) -> dict:
-    if not isinstance(params, dict):
-        params = {}
-    return {
-        # arrival_tolerance_ticks may appear in legacy configs, but its value is
-        # intentionally ignored and normalized to 0.0.
-        "arrival_tolerance_ticks": 0.0,
-        "entry_retrace_ticks": _safe_float(params.get("entry_retrace_ticks", 4.0), default=4.0),
-        "max_entry_wait_bars_after_reversal": _safe_int(
-            params.get("max_entry_wait_bars_after_reversal", 5), default=5
-        ),
-        "_source_mode": str(params.get("_source_mode", "global_cluster")),
-    }
+def _generate_setup_from_page_fields(
+    *,
+    name: str,
+    description: str,
+    instrument: str,
+    selected_levels: list[str],
+    tolerance_ticks: float,
+    min_confluences: int,
+    max_confluences: int,
+    naked_only: bool,
+    naked_requirement: str,
+    trigger: str,
+    trigger_timeframe: str,
+    direction: str,
+    confluence_mode: str,
+    anchor_level: str | None,
+    confluence_rules: list[dict],
+    min_valid_confluences: int,
+    trigger_params: dict,
+    otf_filter: dict | None = None,
+    entry_window: dict | None = None,
+) -> dict:
+    """Build the generate-path setup via ``build_setup_config`` (C-4 / QI-03-10).
+
+    Classic Signals still calls engine ``generate_signals`` — not
+    ``run_experiment`` (AH §2 items 1–2).
+    """
+    return build_setup_config(
+        name=name,
+        description=description,
+        instrument=instrument,
+        selected_levels=selected_levels,
+        tolerance_ticks=tolerance_ticks,
+        min_confluences=min_confluences,
+        max_confluences=max_confluences,
+        naked_only=naked_only,
+        naked_requirement=naked_requirement,
+        trigger=trigger,
+        trigger_timeframe=trigger_timeframe,
+        direction=direction,
+        confluence_mode=confluence_mode,
+        anchor_level=anchor_level,
+        confluence_rules=confluence_rules,
+        min_valid_confluences=min_valid_confluences,
+        trigger_params=trigger_params,
+        otf_filter=otf_filter,
+        entry_window=entry_window,
+    )
 
 
 def _saved_setup_caption(config: dict) -> str:
@@ -991,7 +1027,6 @@ with st.sidebar:
                 selected_levels = []
             anchor_level = None
             confluence_rules = []
-            min_valid_confluences = 1
         tolerance_ticks = _safe_float(saved_setup.get("tolerance_ticks"), 4.0)
         min_conf = _safe_int(saved_setup.get("min_confluences"), 2)
         max_conf = _safe_int(saved_setup.get("max_confluences"), 5)
@@ -1005,8 +1040,6 @@ with st.sidebar:
         )
         direction = str(saved_setup.get("direction") or "both")
         trigger_params = _safe_dict(saved_setup.get("trigger_params"))
-        if trigger == "3c":
-            trigger_params = _normalize_3c_params(trigger_params)
 
         st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
@@ -1215,6 +1248,60 @@ with st.sidebar:
             trigger_params = {"require_close_confirmation": bool(require_close_confirmation)}
         else:
             trigger_params = {}
+
+    setup_name = "manual"
+    setup_description = ""
+    otf_filter = None
+    entry_window = None
+    if use_saved_setup and saved_setup is not None:
+        setup_name = str(saved_setup.get("name") or "Untitled setup")
+        setup_description = str(saved_setup.get("description") or "")
+        if saved_setup.get("instrument"):
+            instrument = str(saved_setup["instrument"])
+        otf_filter = saved_setup.get("otf_filter")
+        entry_window = saved_setup.get("entry_window")
+    try:
+        generate_setup = _generate_setup_from_page_fields(
+            name=setup_name,
+            description=setup_description,
+            instrument=str(instrument),
+            selected_levels=selected_levels,
+            tolerance_ticks=tolerance_ticks,
+            min_confluences=min_conf,
+            max_confluences=max_conf,
+            naked_only=naked_only,
+            naked_requirement=naked_requirement,
+            trigger=trigger,
+            trigger_timeframe=trigger_timeframe,
+            direction=direction,
+            confluence_mode=confluence_mode,
+            anchor_level=anchor_level,
+            confluence_rules=confluence_rules,
+            min_valid_confluences=min_valid_confluences,
+            trigger_params=trigger_params,
+            otf_filter=otf_filter if isinstance(otf_filter, dict) else None,
+            entry_window=entry_window if isinstance(entry_window, dict) else None,
+        )
+        confluence_mode = str(generate_setup["confluence_mode"])
+        anchor_level = generate_setup["anchor_level"]
+        confluence_rules = list(generate_setup["confluence_rules"])
+        min_valid_confluences = int(generate_setup["min_valid_confluences"])
+        tolerance_ticks = float(generate_setup["tolerance_ticks"])
+        min_conf = int(generate_setup["min_confluences"])
+        max_conf = int(generate_setup["max_confluences"])
+        naked_only = bool(generate_setup["naked_only"])
+        naked_requirement = str(generate_setup["naked_requirement"])
+        trigger = str(generate_setup["trigger"])
+        trigger_timeframe = str(generate_setup["trigger_timeframe"])
+        direction = str(generate_setup["direction"])
+        trigger_params = dict(generate_setup["trigger_params"])
+        if trigger == "3c":
+            trigger_params["_source_mode"] = confluence_mode
+    except (TypeError, ValueError) as exc:
+        generation_blockers.append(
+            f"Setup normalization failed: {exc} "
+            "Switch setup source or update the setup in Setup Builder."
+        )
 
     for blocker in generation_blockers:
         st.warning(blocker)

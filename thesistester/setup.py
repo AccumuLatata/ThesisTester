@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple
 
 import pandas as pd
@@ -400,6 +400,47 @@ def build_setup_config(
     }
 
 
+# C-4 / QI-03-10: Classic Signals generate kwargs. Keep in lockstep with
+# ``build_setup_config`` parameters (tested).
+SETUP_BUILD_KEYS: frozenset[str] = frozenset(
+    {
+        "name",
+        "description",
+        "instrument",
+        "selected_levels",
+        "tolerance_ticks",
+        "min_confluences",
+        "max_confluences",
+        "naked_only",
+        "naked_requirement",
+        "trigger",
+        "trigger_timeframe",
+        "direction",
+        "confluence_mode",
+        "anchor_level",
+        "confluence_rules",
+        "min_valid_confluences",
+        "trigger_params",
+        "otf_filter",
+        "entry_window",
+    }
+)
+
+
+def build_setup_kwargs_from_mapping(
+    raw: Mapping[str, Any],
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Collect ``build_setup_config`` kwargs from a saved or page-6 mapping.
+
+    Unknown keys are dropped. Present keys are kept, including explicit
+    ``min_valid_confluences=0`` (AO1). Missing keys stay omitted so
+    ``build_setup_config`` defaults apply. C-4 / QI-03-10.
+    """
+    payload = {**dict(raw), **overrides}
+    return {key: payload[key] for key in SETUP_BUILD_KEYS if key in payload}
+
+
 class SetupConfigRule(NamedTuple):
     """One ``validate_setup_config`` cluster (C-1 / QI-03-03 / MG-17). Not pydantic."""
 
@@ -666,7 +707,8 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
     """Validate setup config and return a list of user-facing error messages.
 
     Walks :data:`SETUP_CONFIG_RULES` (C-1 / QI-03-03). Error strings and
-    omitted-key defaults are unchanged. ``build_setup_config`` is separate.
+    omitted-key defaults are unchanged. ``build_setup_config`` is the SoT
+    builder (C-4 / QI-03-10); this function only validates.
     """
     errors: list[str] = []
     for rule in SETUP_CONFIG_RULES:

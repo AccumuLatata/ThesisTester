@@ -115,7 +115,7 @@ def _import_page_helpers():
         mod._saved_setup_caption,
         mod._no_zones_message,
         mod._saved_setup_generation_blockers,
-        mod._normalize_3c_params,
+        mod._generate_setup_from_page_fields,
         mod._safe_float,
         mod._safe_int,
         mod._safe_bool,
@@ -147,7 +147,7 @@ def _import_page_helpers():
     _saved_setup_caption,
     _no_zones_message,
     _saved_setup_generation_blockers,
-    _normalize_3c_params,
+    _generate_setup_from_page_fields,
     _safe_float,
     _safe_int,
     _safe_bool,
@@ -642,42 +642,79 @@ def test_generation_blockers_missing_available_level_references():
 
 
 # ---------------------------------------------------------------------------
-# _normalize_3c_params — safe coercion tests
+# C-4 / QI-03-10 — generate path uses build_setup_config
 # ---------------------------------------------------------------------------
 
 
-def test_normalize_3c_params_none_returns_defaults():
-    result = _normalize_3c_params(None)
-    assert result["entry_retrace_ticks"] == 4.0
-    assert result["max_entry_wait_bars_after_reversal"] == 5
-    assert result["arrival_tolerance_ticks"] == 0.0
+def _page6_saved_ao1_3c_kwargs() -> dict:
+    return {
+        "name": "ao1_3c",
+        "description": "C-4 AO1 probe",
+        "instrument": "ES",
+        "selected_levels": ["ONH"],
+        "tolerance_ticks": 4.0,
+        "min_confluences": 1,
+        "max_confluences": 2,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "3c",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "ONH",
+        "confluence_rules": [],
+        "min_valid_confluences": 0,
+        "trigger_params": {
+            "entry_retrace_ticks": 6.0,
+            "max_entry_wait_bars_after_reversal": 10,
+            "arrival_tolerance_ticks": 1.0,
+        },
+        "otf_filter": None,
+        "entry_window": None,
+    }
 
 
-def test_normalize_3c_params_non_dict_string_returns_defaults():
-    result = _normalize_3c_params("bad")
-    assert result["entry_retrace_ticks"] == 4.0
-    assert result["max_entry_wait_bars_after_reversal"] == 5
-    assert result["arrival_tolerance_ticks"] == 0.0
+def test_page6_generate_setup_hashes_equal_build_setup_config():
+    """Page-6 kwargs vs ``build_setup_config`` hash, incl. 3c + AO1 min_valid=0."""
+    from thesistester.setup import build_setup_config, build_setup_kwargs_from_mapping
 
-
-def test_normalize_3c_params_bad_entry_retrace_returns_default():
-    result = _normalize_3c_params({"entry_retrace_ticks": "bad"})
-    assert result["entry_retrace_ticks"] == 4.0
-    assert result["max_entry_wait_bars_after_reversal"] == 5
-
-
-def test_normalize_3c_params_bad_max_wait_bars_returns_default():
-    result = _normalize_3c_params({"max_entry_wait_bars_after_reversal": "bad"})
-    assert result["entry_retrace_ticks"] == 4.0
-    assert result["max_entry_wait_bars_after_reversal"] == 5
-
-
-def test_normalize_3c_params_valid_values_are_preserved():
-    result = _normalize_3c_params(
-        {"entry_retrace_ticks": 6.0, "max_entry_wait_bars_after_reversal": 10}
+    kwargs = _page6_saved_ao1_3c_kwargs()
+    page_setup = _generate_setup_from_page_fields(**kwargs)
+    so_t = build_setup_config(**build_setup_kwargs_from_mapping(kwargs))
+    assert page_setup == so_t
+    assert json.dumps(page_setup, sort_keys=True, default=str) == json.dumps(
+        so_t, sort_keys=True, default=str
     )
-    assert result["entry_retrace_ticks"] == 6.0
-    assert result["max_entry_wait_bars_after_reversal"] == 10
+    assert so_t["min_valid_confluences"] == 0
+    assert so_t["trigger_params"]["entry_retrace_ticks"] == 6.0
+    assert so_t["trigger_params"]["max_entry_wait_bars_after_reversal"] == 10
+    assert so_t["trigger_params"]["arrival_tolerance_ticks"] == 0.0
+    assert "_source_mode" not in so_t["trigger_params"]
+
+
+def test_signals_page_generate_uses_bsc_not_run_experiment():
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse((Path(__file__).parent.parent / "pages" / "6_Signals.py").read_text())
+    defined = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+    assert "_generate_setup_from_page_fields" in defined
+    assert "_normalize_3c_params" not in defined
+    imported: set[str] = set()
+    called: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            imported.update(alias.name for alias in node.names)
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name):
+                called.add(func.id)
+            elif isinstance(func, ast.Attribute):
+                called.add(func.attr)
+    assert "build_setup_config" in imported
+    assert "build_setup_config" in called
+    assert "run_experiment" not in imported
+    assert "run_experiment" not in called
 
 
 # ---------------------------------------------------------------------------
@@ -1224,3 +1261,74 @@ def test_signals_page_has_no_stale_pre_pr5_otf_copy():
         assert snippet not in text, f"Stale OTF copy still present: {snippet!r}"
     assert "complete candidate population" in text
     assert "OTF admission is applied later" in text
+
+
+def test_c4_cai_signals_byte_identical_page6_bsc_vs_api(tmp_path):
+    """CAI fixture: page-6 ``build_setup_config`` path == ``api.generate_signals``."""
+    import hashlib
+
+    from thesistester.api import compute_levels, generate_signals as api_generate_signals
+    from thesistester.api import load_dataset
+    from thesistester.config import INSTRUMENTS
+    from thesistester.engine import (
+        detect_confluence_zones,
+        flag_naked_levels,
+        generate_signals as engine_generate_signals,
+    )
+    from thesistester.setup import build_setup_config, build_setup_kwargs_from_mapping
+    from tests.fixtures.cai_baseline import cai_run_spec, write_cai_bars
+
+    bars = write_cai_bars(tmp_path / "cai.csv", kind="small")
+    spec = cai_run_spec(dataset_path=str(bars), kind="small")
+    data = load_dataset(
+        bars,
+        instrument=spec["dataset"]["instrument"],
+        source_timezone=spec["dataset"]["source_timezone"],
+        exchange_timezone=spec["dataset"]["exchange_timezone"],
+        format_profile=spec["dataset"]["format_profile"],
+    )
+    levels = compute_levels(data, instrument=spec["dataset"]["instrument"], config=spec["levels"])[
+        "levels"
+    ]
+    kwargs = build_setup_kwargs_from_mapping(spec["setup"])
+    page_setup = _generate_setup_from_page_fields(**kwargs)
+    so_t = build_setup_config(**kwargs)
+    assert page_setup == so_t
+
+    tick_size = INSTRUMENTS[spec["dataset"]["instrument"]].tick_size
+    api_result = api_generate_signals(levels, so_t, instrument=spec["dataset"]["instrument"])
+    zones = detect_confluence_zones(
+        levels,
+        level_columns=list(page_setup["selected_levels"]),
+        tick_size=tick_size,
+        tolerance_ticks=float(page_setup["tolerance_ticks"]),
+        min_confluences=int(page_setup["min_confluences"]),
+        max_confluences=int(page_setup["max_confluences"]),
+    )
+    naked_flags = flag_naked_levels(
+        levels,
+        level_columns=list(page_setup["selected_levels"]),
+        tick_size=tick_size,
+        touch_tolerance_ticks=0,
+    )
+    trigger_params = dict(page_setup["trigger_params"])
+    if page_setup["trigger"] == "3c":
+        trigger_params["_source_mode"] = page_setup["confluence_mode"]
+    page_signals = engine_generate_signals(
+        levels,
+        zones=zones,
+        trigger=str(page_setup["trigger"]),
+        direction=str(page_setup["direction"]),
+        tick_size=tick_size,
+        trigger_timeframe=str(page_setup["trigger_timeframe"]),
+        trigger_params=trigger_params,
+        naked_only=bool(page_setup["naked_only"]),
+        naked_flags=naked_flags if page_setup["naked_only"] else None,
+        naked_requirement=str(page_setup["naked_requirement"]),
+    )
+    page_signals = page_signals.copy()
+    page_signals["setup_name"] = page_setup["name"]
+    pd.testing.assert_frame_equal(api_result["signals"], page_signals, check_dtype=False)
+    api_hash = hashlib.sha256(api_result["signals"].to_csv(index=False).encode()).hexdigest()
+    page_hash = hashlib.sha256(page_signals.to_csv(index=False).encode()).hexdigest()
+    assert api_hash == page_hash

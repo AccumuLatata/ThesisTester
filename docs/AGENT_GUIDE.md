@@ -187,9 +187,13 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    is the SoT validator: C-1 (QI-03-03 / MG-17) walks a declarative
    `SETUP_CONFIG_RULES` table (identity, enums, `global_cluster`,
    `anchor_rules`, `trigger_params`, otf, `entry_window`). No pydantic.
-   `build_setup_config` is unchanged. AH §2 item 10 / AH6: `BASE_COLUMNS`
-   and `close` fail closed. Omitted-key defaults stay unchanged. C-2 /
-   C-3 reuse this table pattern.
+   `build_setup_config` is the SoT builder. C-4 (QI-03-10 / MG-17): Classic
+   Signals generate calls `build_setup_config` for the setup dict only —
+   still **not** `run_experiment` (AH §2 items 1–2). Page-local
+   `_normalize_3c_params` is deleted; 3c / AO1 `min_valid=0` go through BSC.
+   AH §2 item 10 / AH6: `BASE_COLUMNS` and `close` fail closed. Omitted-key
+   defaults stay unchanged. C-2 / C-3 reuse the validator table pattern.
+   Next: C-5.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pandas as pd
 import pytest
 
@@ -7,12 +9,14 @@ from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.setup import (
     BASE_COLUMNS,
     DEFAULT_OTF_FILTER_CONFIG,
+    SETUP_BUILD_KEYS,
     SETUP_CONFIG_CLUSTERS,
     SETUP_CONFIG_RULES,
     SUGGESTED_DEFAULT_LEVELS,
     VALID_TRIGGERS,
     available_level_columns,
     build_setup_config,
+    build_setup_kwargs_from_mapping,
     default_selected_levels,
     get_effective_entry_window_config,
     get_effective_otf_filter_config,
@@ -741,3 +745,35 @@ def test_validate_setup_config_concatenates_clusters_in_table_order():
         f"Trigger must be one of {sorted(VALID_TRIGGERS)}.",
         "Selected levels include OHLCV/base columns that cannot be used for confluence: ['close'].",
     ]
+
+
+def test_setup_build_keys_match_build_setup_config_signature():
+    assert SETUP_BUILD_KEYS == frozenset(inspect.signature(build_setup_config).parameters)
+
+
+def test_build_setup_kwargs_from_mapping_keeps_ao1_zero_and_drops_unknown():
+    raw = {
+        "name": "ao1",
+        "description": "",
+        "instrument": "ES",
+        "selected_levels": ["ONH"],
+        "tolerance_ticks": 4.0,
+        "min_confluences": 1,
+        "max_confluences": 2,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "3c",
+        "direction": "both",
+        "min_valid_confluences": 0,
+        "trigger_params": {"entry_retrace_ticks": 6.0, "max_entry_wait_bars_after_reversal": 10},
+        "setup_id": "drop-me",
+        "dataset_id": "also-drop",
+    }
+    kwargs = build_setup_kwargs_from_mapping(raw)
+    assert "setup_id" not in kwargs
+    assert "dataset_id" not in kwargs
+    assert kwargs["min_valid_confluences"] == 0
+    built = build_setup_config(**kwargs)
+    assert built["min_valid_confluences"] == 0
+    assert built["trigger_params"]["entry_retrace_ticks"] == 6.0
+    assert built["trigger_params"]["arrival_tolerance_ticks"] == 0.0

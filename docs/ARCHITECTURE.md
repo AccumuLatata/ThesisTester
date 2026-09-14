@@ -74,6 +74,12 @@ allow-lists are `loader.FORMAT_PROFILES` / `DERIVE_15S_SUPPORTED_PROFILES`
 / `SUBTIMEFRAME_FORMAT_PROFILES` (Data page `getattr` fallback; builder
 R17 fallback kept). Fail-closed messages unchanged. No composer collapse.
 
+Classic Signals (Composer A, `pages/6_Signals.py`) generate builds the
+setup dict through `build_setup_config` (C-4 / QI-03-10). It still calls
+engine `generate_signals` and does **not** call `run_experiment`
+(Composer B; AH §2 items 1–2). Setup Builder already used BSC; Study/API
+assembly stays on their own paths.
+
 `thesistester/cli.py` validates experiment schema version 1, calls the facade,
 and sends its bundle-ready mapping to `build_research_bundle()`.
 `thesistester/__main__.py` supplies `python -m thesistester run ...`. Spawned
