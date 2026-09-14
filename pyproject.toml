@@ -119,8 +119,9 @@ extend-exclude = [".thesistester_store", "sample_data", "*.md"]
 select = ["E4", "E7", "E9", "F", "W"]
 
 [tool.ruff.lint.per-file-ignores]
-# Streamlit pages bootstrap `sys.path` before importing `thesistester`, so module-level
-# imports intentionally follow executable code.
-"pages/*.py" = ["E402"]
+# QI-10-08 / B-14: only Data executes code before importing `thesistester`
+# (REPO_ROOT onto sys.path). Other pages import at module top and resolve
+# via `pip install -e .` (or AppTest inserting the repo root).
+"pages/1_Data.py" = ["E402"]
 # Test fixtures use `l`/`O` as level/OHLC shorthand in dense hand-built bar tables.
 "tests/**" = ["E741"]
