@@ -6,10 +6,11 @@ Regression-safe onboarding guide for contributors/agents working in ThesisTester
 ## Fast start
 1. App install: `pip install -e . -c constraints.txt` (`README.md` Run locally).
    `pyproject.toml` is the only range SoT; `constraints.txt` is the lock
-   (QI-12-03 / QR G-3). There is no `requirements.txt`. Streamlit and AppTest
-   set `sys.path[0]` to `pages/`; `thesistester` then resolves because of
-   this editable install (QI-10-08 / B-14). `pages/1_Data.py` also
-   self-bootstraps `REPO_ROOT`.
+   (QI-12-03 / QR G-3). There is no `requirements.txt`. `streamlit run app.py`
+   puts the main-script directory (repo root) on `sys.path`. AppTest
+   `from_file` of a page puts `pages/` on `sys.path[0]`; non-Data pages then
+   resolve `thesistester` via this editable install (QI-10-08 / B-14).
+   `pages/1_Data.py` also self-bootstraps `REPO_ROOT`.
 2. Tests (needs the `dev` extra — `pytest` is not on the app path):
    `pip install -e ".[dev]" -c constraints.txt` then `pytest -q`.
 3. Optional app run: `streamlit run app.py`. Repo
@@ -572,11 +573,14 @@ Every request must first parse as an `AssistantRequest`, then pass
   `sys.path`). The ruff `E402` per-file ignore is that file only — do not
   restore `"pages/*.py" = ["E402"]`. Other pages import at module top and
   resolve `thesistester` via the documented editable install
-  (`pip install -e . -c constraints.txt`). Streamlit and AppTest set
-  `sys.path[0]` to `pages/`; without the editable install, non-Data pages
-  need the repo root on `sys.path` (B-13 smoke does this). Do not drop
-  Data's bootstrap in a product PR until AppTest always injects the repo
-  root and the editable-install job remains required.
+  (`pip install -e . -c constraints.txt`). `streamlit run app.py` puts the
+  repo root on `sys.path` (Streamlit 1.63 prepends the **main** script
+  directory). AppTest `from_file` of a page puts `pages/` on `sys.path[0]`.
+  Without the editable install, non-Data pages then need the repo root on
+  `sys.path` (B-13 smoke does this). Fail-closed lock:
+  `tests/test_ruff_e402_pages.py`. Do not drop Data's bootstrap in a
+  product PR until AppTest always injects the repo root and the
+  editable-install job remains required.
 - `ruff` is version-capped in the `dev` extra so formatting decisions cannot change under CI
   without an explicit bump. CI installs that spec with `-c constraints.txt`.
 - **Lock + caps (G-2).** CI installs with `-c constraints.txt`. Streamlit is
@@ -655,6 +659,8 @@ Every request must first parse as an `AssistantRequest`, then pass
   `signals`/`levels` before Backtest widgets). Per-page first render < 1 s.
   E402 ignore is `pages/1_Data.py` only (B-14 / QI-10-08); other pages
   rely on `pip install -e .` or the smoke helper that inserts repo root.
+  `tests/test_ruff_e402_pages.py` fails closed if the ignore widens or
+  another page grows a `sys.path` bootstrap.
   `tests/test_apptest_harness_rules.py` is fail-closed: discovers every
   `AppTest` import, AST-binds `serial`, rejects `proto` / bound
   `.set_value` / `list(session_state)`. RUX: rewrite assertions, never
