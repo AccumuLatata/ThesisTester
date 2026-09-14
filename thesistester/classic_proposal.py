@@ -3,6 +3,8 @@
 The Assistant may stage a JSON-safe draft change for review. Classic pages own
 mutation: settings change only when the user clicks Apply on the owning page.
 Kept out of ``classic_context`` so link/create remain non-recording / non-mutating.
+Streamlit is lazy-imported inside render helpers (C-8 / QI-06-05;
+import-linter C8 allow-list).
 """
 
 from __future__ import annotations

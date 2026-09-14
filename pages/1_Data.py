@@ -48,8 +48,8 @@ from thesistester.app_state import (
     ACTIVE_SAVED_DATASET_KEY,
     BOOTSTRAP_MESSAGE_KEY,
     bootstrap_active_saved_dataset,
-    restore_saved_dataset_provenance,
 )
+from thesistester.persistence.saved_dataset_state import restore_saved_dataset_provenance
 from thesistester.research_bundle import (
     BUNDLE_IMPORT_OMITTED_DATA_KEY,
     DATA_PAGE_INVALIDATE_SOURCE_KEY,
@@ -1681,6 +1681,7 @@ if saved_datasets:
             saved_dataset_id=loaded_meta["dataset_id"],
         )
         restore_saved_dataset_provenance(
+            st.session_state,
             loaded_meta["dataset_id"],
             loaded_meta,
         )
