@@ -111,6 +111,7 @@ def _is_serial_mark(node: ast.AST) -> bool:
 
 
 def _module_pytestmark_is_serial(tree: ast.Module) -> bool:
+    """True if any module ``pytestmark`` is ``serial`` (scalar, list, or tuple)."""
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
@@ -118,7 +119,12 @@ def _module_pytestmark_is_serial(tree: ast.Module) -> bool:
             isinstance(target, ast.Name) and target.id == "pytestmark" for target in node.targets
         ):
             continue
-        return _is_serial_mark(node.value)
+        if _is_serial_mark(node.value):
+            return True
+        if isinstance(node.value, (ast.List, ast.Tuple)) and any(
+            _is_serial_mark(elt) for elt in node.value.elts
+        ):
+            return True
     return False
 
 
@@ -252,6 +258,12 @@ def test_serial_gate_rejects_non_serial_pytestmark() -> None:
     assert _module_pytestmark_is_serial(tree) is False
     tree = ast.parse("import pytest\npytestmark = pytest.mark.serial\n")
     assert _module_pytestmark_is_serial(tree) is True
+    tree = ast.parse("import pytest\npytestmark = [pytest.mark.serial]\n")
+    assert _module_pytestmark_is_serial(tree) is True
+    tree = ast.parse("import pytest\npytestmark = (pytest.mark.serial, pytest.mark.skip)\n")
+    assert _module_pytestmark_is_serial(tree) is True
+    tree = ast.parse("import pytest\npytestmark = [pytest.mark.skip]\n")
+    assert _module_pytestmark_is_serial(tree) is False
 
 
 def test_serial_gate_rejects_unmarked_or_wrong_function() -> None:

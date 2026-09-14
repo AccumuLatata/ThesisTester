@@ -573,7 +573,9 @@ Every request must first parse as an `AssistantRequest`, then pass
   names only. Do not add `pytest-xdist` until every AppTest module (or
   AppTest function in a mixed file) is `serial` (already true: B-12 /
   B-13). `oracle` is env-gated desk data and stays skipped in CI.
+  Mixed oracle files keep unit siblings unmarked at module level.
   Benchmarks assert `median_ms >= 0` only — not a performance gate.
+  Fail-closed lock: `tests/test_pytest_markers.py`.
 - Lint scope is deliberately narrow (`E4`, `E7`, `E9`, `F`, `W` at line length 100) and applies
   to Python only — Markdown is excluded so documentation snippets are never rewritten by the
   formatter. Widening the rule set is a separate, reviewable PR — never a side effect of
