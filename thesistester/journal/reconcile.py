@@ -19,7 +19,7 @@ import math
 import pandas as pd
 
 from thesistester.journal.amp_statement import load_amp_statement, parse_amp_statement_text
-from thesistester.journal.pair import pair_journal_trades
+from thesistester.journal.pair import pair_journal_trades, qty_scaled_journal_pnl
 from thesistester.journal.schema import (
     DEFAULT_JOURNAL_RISK_TICKS,
     ENTRY_KIND_IMPORTED,
@@ -463,8 +463,6 @@ def _cost_row(
     instrument = str(row["instrument"])
     if instrument not in JOURNAL_POINT_VALUE:
         raise JournalIngestError(f"unknown journal instrument {instrument!r}")
-    point_value = JOURNAL_POINT_VALUE[instrument]
-    tick_value = JOURNAL_TICK_SIZE * point_value
     status = str(row["status"])
     commission = per_side * 2 * qty if status == STATUS_CLOSED else None
     gross = row["gross_pnl_currency"]
@@ -480,18 +478,48 @@ def _cost_row(
     ):
         return row
     net = gross_f - commission - day_fee_allocation
-    risk = int(row["journal_risk_ticks"]) * tick_value * qty
-    row["net_pnl_currency"] = net
-    row["fee_ticks"] = commission / tick_value
-    row["net_ticks"] = net / tick_value
-    if risk > 0:
-        row["r_multiple"] = net / risk
-    stop = row.get("stop_price")
-    if stop is not None and not (isinstance(stop, float) and pd.isna(stop)):
-        distance = abs(float(row["entry_price"]) - float(stop))
-        if distance > 0:
-            row["r_multiple_declared"] = net / (distance * point_value * qty)
+    # Points are unused for net/R/ticks when net is provided. Do not float()
+    # blindly: pre-C-10 _cost_row never required a finite points cell.
+    points = _as_finite(row.get("gross_pnl_points"))
+    declared_stop = _as_finite(row.get("stop_price"))
+    entry_price = _as_finite(row.get("entry_price")) if declared_stop is not None else None
+    scaled = qty_scaled_journal_pnl(
+        points=points,
+        qty=qty,
+        instrument=instrument,
+        journal_risk_ticks=int(row["journal_risk_ticks"]),
+        net_pnl_currency=net,
+        commission_cost=commission,
+        entry_price=entry_price,
+        declared_stop=declared_stop,
+    )
+    # AMP rewrite leaves gross_pnl_points unchanged.
+    row["net_pnl_currency"] = scaled.net_pnl_currency
+    row["fee_ticks"] = scaled.fee_ticks
+    row["net_ticks"] = scaled.net_ticks
+    if int(row["journal_risk_ticks"]) * qty > 0 and scaled.r_multiple is not None:
+        row["r_multiple"] = scaled.r_multiple
+    if scaled.r_multiple_declared is not None:
+        row["r_multiple_declared"] = scaled.r_multiple_declared
     return row
+
+
+def _as_finite(value: object) -> float | None:
+    """Parse a scalar for AMP rewrite. ``None`` / NA / non-finite → ``None``."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
 
 
 def _day_to_json(day: DayReconcile) -> dict[str, object]:

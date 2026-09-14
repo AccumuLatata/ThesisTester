@@ -277,6 +277,53 @@ def test_invalid_journal_risk_ticks_fails(tmp_path: Path) -> None:
         pair_journal_trades(fills, journal_risk_ticks=10.0)  # type: ignore[arg-type]
 
 
+def test_qty_scaled_journal_pnl_points_unscaled_currency_times_qty() -> None:
+    """QI-08-01: 2-lot MNQ long 100→101 — points unscaled; currency/R/ticks × qty."""
+    one = pair_mod.qty_scaled_journal_pnl(
+        points=1.0, qty=1, instrument="MNQ", journal_risk_ticks=10
+    )
+    two = pair_mod.qty_scaled_journal_pnl(
+        points=1.0, qty=2, instrument="MNQ", journal_risk_ticks=10
+    )
+    assert one.gross_pnl_points == pytest.approx(1.0)
+    assert two.gross_pnl_points == pytest.approx(1.0)
+    assert two.gross_pnl_currency == pytest.approx(4.0)
+    assert two.net_ticks == pytest.approx(8.0)
+    assert two.r_multiple == pytest.approx(0.4)
+    assert two.fee_ticks is None
+    assert one.gross_pnl_currency == pytest.approx(2.0)
+    assert one.net_ticks == pytest.approx(4.0)
+    assert one.r_multiple == pytest.approx(0.4)
+
+
+def test_qty_scaled_journal_pnl_risk_zero_leaves_r_none() -> None:
+    """AMP rewrite used to divide by risk after the ``risk > 0`` guard moved."""
+    scaled = pair_mod.qty_scaled_journal_pnl(
+        points=1.0, qty=2, instrument="MNQ", journal_risk_ticks=0, net_pnl_currency=1.52
+    )
+    assert scaled.gross_pnl_points == pytest.approx(1.0)
+    assert scaled.net_pnl_currency == pytest.approx(1.52)
+    assert scaled.net_ticks == pytest.approx(3.04)
+    assert scaled.r_multiple is None
+
+
+def test_qty_scaled_journal_pnl_amp_net_without_points() -> None:
+    scaled = pair_mod.qty_scaled_journal_pnl(
+        qty=2, instrument="MNQ", journal_risk_ticks=10, net_pnl_currency=1.52, commission_cost=2.48
+    )
+    assert scaled.gross_pnl_points is None
+    assert scaled.gross_pnl_currency is None
+    assert scaled.net_pnl_currency == pytest.approx(1.52)
+    assert scaled.fee_ticks == pytest.approx(4.96)
+    assert scaled.net_ticks == pytest.approx(3.04)
+    assert scaled.r_multiple == pytest.approx(1.52 / (10 * 0.25 * 2.0 * 2))
+
+
+def test_qty_scaled_journal_pnl_requires_points_or_net() -> None:
+    with pytest.raises(JournalIngestError, match="points or net_pnl_currency"):
+        pair_mod.qty_scaled_journal_pnl(qty=1, instrument="MNQ", journal_risk_ticks=10)
+
+
 def test_pair_does_not_import_engine_or_simulate_trades() -> None:
     source = Path(pair_mod.__file__).read_text(encoding="utf-8")
     assert "import simulate_trades" not in source

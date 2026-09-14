@@ -751,7 +751,11 @@ Journal trades are **not** study cells. These quantities live on
 | `rule_delta_ticks` | Per declared rule × split: `rule_net_ticks − Σ original net_ticks`. `in_sample` (`session_date < declared_on`) and `forward` are never blended. |
 
 Point values are MNQ $2 / MES $5; tick 0.25. Engine `simulate_trades` is 1-lot
-— do not copy those formulas onto journal rows.
+— do not copy those formulas onto journal rows. C-10 (QI-08-01): one home
+`qty_scaled_journal_pnl` in `thesistester/journal/pair.py` (used by pair, then
+`reconcile._cost_row`). AMP rewrite leaves `gross_pnl_points` unchanged.
+TJ7 fee conversion is shared `journal_cost_ticks`. Report read-side ticks use
+`currency_to_journal_ticks`.
 
 ## Trade journal metrics (JS1)
 

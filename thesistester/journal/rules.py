@@ -18,6 +18,7 @@ import math
 import pandas as pd
 import yaml
 
+from thesistester.journal.pair import journal_cost_ticks as _cost_ticks
 from thesistester.journal.schema import (
     JOURNAL_EXCHANGE_TZ,
     JOURNAL_POINT_VALUE,
@@ -392,33 +393,6 @@ def _net_ticks(raw: Mapping[str, object]) -> float | None:
     if not math.isfinite(number):
         raise JournalIngestError(f"net_ticks must be finite (got {value!r})")
     return number
-
-
-def _cost_ticks(raw: Mapping[str, object], tick_value: float) -> float:
-    fee = raw.get("fee_ticks")
-    if fee is not None:
-        try:
-            if not pd.isna(fee):
-                extra = raw.get("day_fee_allocation")
-                extra_ticks = 0.0
-                if extra is not None and not (isinstance(extra, float) and pd.isna(extra)):
-                    extra_ticks = float(extra) / tick_value
-                return float(fee) + extra_ticks
-        except (TypeError, ValueError):
-            pass
-    commission = raw.get("commission_cost")
-    allocation = raw.get("day_fee_allocation")
-    total = 0.0
-    for item in (commission, allocation):
-        if item is None:
-            continue
-        try:
-            if pd.isna(item):
-                continue
-        except (TypeError, ValueError):
-            pass
-        total += float(item) / tick_value
-    return total
 
 
 def _signed_points(direction: str, entry: float, exit_price: float) -> float:
