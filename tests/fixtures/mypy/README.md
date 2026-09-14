@@ -12,7 +12,9 @@ aborting a 3.10-target run.
 
 The CI job `mypy (informational)` is **not** a G-1 required check. Type
 errors and ratchet increases emit `::warning` and stay green. Config/runtime
-crashes still fail. Do not invoke mypy from required pytest cells.
+crashes still fail. Do not invoke mypy from required pytest cells. Schema
+tests in `tests/test_mypy_ratchet.py` must collect on 3.10 (`tomli`
+fallback; `tomllib` is 3.11+).
 
 ## Command
 

@@ -2,13 +2,21 @@
 
 Does not invoke mypy. Type-error status stays CI-informational so required
 pytest cells cannot become a merge gate.
+
+``tomllib`` is 3.11+; CI ``pytest (py3.10)`` is a G-1 required cell and
+must collect on 3.10 via the same ``tomli`` fallback as other schema tests.
 """
 
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
-import tomllib
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 from tests.fixtures.mypy.check_ratchet import (
     BASELINE_PATH,
@@ -130,6 +138,13 @@ def test_compare_to_baseline_flags_increase_not_decrease() -> None:
     )
     assert regressions == []
     assert any("total 1 < baseline 3" in item for item in improvements)
+
+
+def test_mypy_ratchet_schema_tests_keep_python310_tomli_fallback() -> None:
+    """CI pytest (py3.10) is a G-1 required cell; tomllib is 3.11+."""
+    source = Path(__file__).read_text(encoding="utf-8")
+    assert "import tomli as tomllib" in source
+    assert "sys.version_info >= (3, 11)" in source
 
 
 def test_ci_mypy_job_is_informational_not_g1() -> None:
