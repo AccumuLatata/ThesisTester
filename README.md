@@ -58,6 +58,22 @@ pytest -q --cov=thesistester --cov-report=term-missing
 the CI lock (G-2). App install is `pip install -e .`; tooling (`pytest`,
 `pytest-cov`, `ruff`) is the `dev` extra only. There is no `requirements.txt`.
 
+## Codespaces / Dev Containers (G-5 / QI-12-08)
+
+`.devcontainer/devcontainer.json` is the **CI pytest (py3.12)** envelope
+(pandas 3), not a third install path:
+
+- Image: `mcr.microsoft.com/devcontainers/python:1-3.12-bookworm`
+- Interpreter: `/usr/local/bin/python` (image 3.12; not Debian bookworm 3.11)
+- Install: `/usr/local/bin/python -m pip install --user -e '.[dev]'
+  -c constraints.txt` (no extra `streamlit` install; no `requirements.txt`;
+  no `packages.txt`)
+- Attach: `/usr/local/bin/python -m streamlit run app.py` on port 8501 (same
+  interpreter as the install; not a PATH `streamlit`). XSRF and CORS stay at
+  Streamlit defaults (on). Do **not** pass `--server.enableCORS false` or
+  `--server.enableXsrfProtection false`.
+- `.streamlit/config.toml` is unchanged (upload / websocket size only).
+
 ## Headless API and batch CLI
 
 R18 exposes the existing research pipeline without Streamlit:
