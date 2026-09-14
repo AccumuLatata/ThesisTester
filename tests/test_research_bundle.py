@@ -1290,6 +1290,18 @@ def _managed_set_string_literals(source: str) -> set[str]:
             }
         if isinstance(node.value, ast.SetComp):
             return set()
+        # D-1: frozenset(APPLY_CLEAR_KEYS). Residuals bind on the
+        # research-key registry + C-7 BUNDLE_KEY_REGISTRY session_keys.
+        if isinstance(node.value, ast.Call):
+            func = node.value.func
+            if (
+                isinstance(func, ast.Name)
+                and func.id == "frozenset"
+                and node.value.args
+                and isinstance(node.value.args[0], ast.Name)
+                and node.value.args[0].id == "APPLY_CLEAR_KEYS"
+            ):
+                return set()
         raise AssertionError("_MANAGED_RESEARCH_KEYS must be a set display")
     raise AssertionError("missing _MANAGED_RESEARCH_KEYS assignment")
 

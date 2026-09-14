@@ -22,6 +22,10 @@ from thesistester.research_identity import (
     build_identity_metadata,
     identity_meta_filename,
 )
+from thesistester.research_keys import (
+    APPLY_CLEAR_KEYS,
+    BACKTEST_ENTRY_WINDOW_WIDGET_KEYS,
+)
 
 BUNDLE_SCHEMA_VERSION = 1
 BUNDLE_KIND = "thesistester_research_bundle"
@@ -74,16 +78,9 @@ _CONFLUENCE_COMBO_FRAME_FROM_ARTIFACT = {
     "pairs": "confluence_by_pairs",
 }
 
-# Backtest page builds Admit from these Streamlit widget keys (not session
-# ``entry_window`` alone). Cleared + rehydrated on bundle import (SW6).
-_BACKTEST_ENTRY_WINDOW_WIDGET_KEYS = (
-    "backtest_entry_window_enabled",
-    "backtest_entry_window_mode",
-    "backtest_entry_window_rth_segments",
-    "backtest_entry_window_start_time",
-    "backtest_entry_window_end_time",
-    "backtest_entry_window_timezone",
-)
+# Backtest Admit widgets (D-1 / QI-10-03 widget flag). Cleared + rehydrated
+# on bundle import (SW6). Not hashed research keys.
+_BACKTEST_ENTRY_WINDOW_WIDGET_KEYS = BACKTEST_ENTRY_WINDOW_WIDGET_KEYS
 
 BUNDLE_KEY_REGISTRY: tuple[BundleKeySpec, ...] = (
     BundleKeySpec(
@@ -467,9 +464,9 @@ _OVERFITTING_META_KEYS = _spec_meta("_OVERFITTING_META_KEYS")
 _SENSITIVITY_META_KEYS = _spec_meta("_SENSITIVITY_META_KEYS")
 _PORTFOLIO_META_KEYS = _spec_meta("_PORTFOLIO_META_KEYS")
 
-_MANAGED_RESEARCH_KEYS = {
-    key for spec in BUNDLE_KEY_REGISTRY if spec.managed for key in spec.session_keys
-}
+# D-1 / QI-10-03: apply-clear membership is the research-key registry.
+# C-7 still owns section → files → hashed?  Completeness locks the two sets.
+_MANAGED_RESEARCH_KEYS = frozenset(APPLY_CLEAR_KEYS)
 _KNOWN_FILES = {
     MANIFEST_FILENAME,
     *(name for spec in BUNDLE_KEY_REGISTRY for name in spec.known_files),

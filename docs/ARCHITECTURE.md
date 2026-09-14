@@ -270,11 +270,14 @@ restore falls back to `data_identity.format_profile`.
 
 **Bundle key registry (C-7 / QI-06-04).** `BUNDLE_KEY_REGISTRY` is the single
 table: section → files → session keys → managed? → hashed?. It generates
-`_MANAGED_RESEARCH_KEYS`, `_*_META_KEYS`, `_KNOWN_FILES`,
-`_SECTION_REQUIRED_FILES`, and `_CANONICAL_HASH_EXCLUDED_FILES`.
+`_*_META_KEYS`, `_KNOWN_FILES`, `_SECTION_REQUIRED_FILES`, and
+`_CANONICAL_HASH_EXCLUDED_FILES`.
 `build_research_bundle` / `load_research_bundle` walk `BUNDLE_SECTION_IO`.
 A-7 residuals stay `clear_only` (apply-clear, not hashed, not zip members).
-D-1 still owns dataset-clear / thesis-clear / widget flags.
+**Research-key registry (D-1 / QI-10-03).** `thesistester.research_keys`
+owns dataset-clear / apply-clear / thesis-clear / widget flags and generates
+the pop lists. `research_bundle` consumes `APPLY_CLEAR_KEYS` as
+`_MANAGED_RESEARCH_KEYS`. Additive-only: do not drop a key a page still reads.
 
 Known zip members (plus always-written `manifest.json`):
 
@@ -1067,7 +1070,8 @@ in A-7 (QI-06-03):** `direction_collision_diagnostic` is **clear-only** in
 `_MANAGED_RESEARCH_KEYS` — leftover values are popped on bundle apply and
 are not restored (no export schema, not hashed). A-8 dataset-switch does
 **not** pop this A-7 residual (apply-clear only). C-7 landed the bundle key
-registry; D-1 still owns dataset-clear / thesis-clear flags.
+registry; D-1 generates apply-clear / dataset-clear / thesis-clear / widget
+pop lists from `research_keys.RESEARCH_KEY_REGISTRY`.
 DA3 reports the active
 `same_bar_opposite_direction` token in `policy`. `skip_both` collisions
 appear as `resolved_none` without a second pass; conflicted candidates stay
@@ -1611,7 +1615,8 @@ a file is present. `apply_research_bundle_to_session` sets the one-shot
 lower-TF, or tick-last CSV widget must not replace a just-imported session
 dataset (a leftover lower file would re-apply on signature mismatch and clear
 execution dependents).
-Uploader nonce ≠ leftover research keys: apply also clears
+Uploader nonce ≠ leftover research keys: apply pops `APPLY_CLEAR_KEYS`
+(D-1 / QI-10-03), which includes
 `otf_filter_summary`, `otf_filter_result`, `backtest_otf_filter`,
 `grid_otf_filter`, `otf_rejected_signals`, `otf_candidate_signals`,
 `otf_accepted_signals`, `setup_config`, `focused_trades`,
@@ -1619,7 +1624,8 @@ Uploader nonce ≠ leftover research keys: apply also clears
 `otf_validation_matrix`, `otf_validation_config`, `otf_validation_summary`,
 `skipped_signals`, `direction_collision_diagnostic` (clear-only; not hashed).
 `display_timezone` is also clear-only and **reset** on apply to the restored
-`exchange_timezone` (QI-10-01 / A-8). Dataset switch (`_clear_dataset_dependent_state`)
+`exchange_timezone` (QI-10-01 / A-8). Dataset switch iterates
+`DATASET_CLEAR_KEYS` (`_clear_dataset_dependent_state`) and
 pops the AH4 leftover set and the Focus/OTF overlays that would otherwise
 re-arm after a later Backtest/Report: `focused_trades`, `focused_equity_curve`,
 `focus_entry_window`, `focused_trade_summary`, `focus_provenance`,
@@ -1629,7 +1635,11 @@ re-arm after a later Backtest/Report: `focused_trades`, `focused_equity_curve`,
 `otf_accepted_signals`, `signal_settings`, `signal_settings_hash`,
 `setup_config`, plus `display_timezone`. A-7 residuals
 (`otf_validation_*` / `skipped_signals` / `direction_collision_diagnostic`)
-stay apply-clear only.
+stay apply-clear / sticky (not dataset-clear).
+Classic chrome (`classic_*`) lives in the CAI-5 table, not this research
+table. Widget nonce / Admit / roll-selector keys are flagged `widget` on
+`research_keys.RESEARCH_KEY_REGISTRY` and stay out of the consumer-contract
+assertion. `data_identity` / `levels_identity` are also named in CAI-1.
 After a dataset-less import,
 `bundle_import_omitted_data` skips page-12 and Data-page
 `bootstrap_active_saved_dataset` and blocks Data-page Sample auto-load
@@ -1638,11 +1648,12 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
-| `data` | Data (`pages/1_Data.py`), Research Bundle import | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Report/Bundles (`pages/12_Research_Bundles.py`); TJ5 `join_journal_bars` (read-only 1m parent) | `pd.DataFrame` OHLCV/session columns. Data page Sample auto-load applies only to empty sessions; navigation must not replace in-session bars. |
+| `data` | Data (`pages/1_Data.py`), Research Bundle import | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Validation (`pages/10_Validation.py`), Report/Bundles (`pages/12_Research_Bundles.py`); TJ5 `join_journal_bars` (read-only 1m parent) | `pd.DataFrame` OHLCV/session columns. Data page Sample auto-load applies only to empty sessions; navigation must not replace in-session bars. |
 | `bundle_import_omitted_data` | Research Bundle apply | Page 12 / Data bootstrap and Sample auto-load gate; cleared on Data-page successful load | `bool` — True when the imported zip omitted `data` |
 | `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
 | `raw_data` | NinjaTrader capture, data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated NinjaTrader 3/5-field capture or tick/trade rows restored from `raw.parquet`; never consumed by the bar engine. A canonical-only resave preserves an existing sidecar and its provenance. |
 | `raw_interval` | Data capture profiles / saved-dataset bootstrap | Local dataset provenance | Inferred raw capture interval restored from saved metadata and preserved with an existing raw sidecar |
+| `raw_capture_warning` | Data capture profiles | Data page caption | Optional ingest warning string; not an engine input |
 | `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles; TJ5 `join_journal_bars` (read-only 15s clock) | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
 | `subtimeframe_interval` | Data page, R18 API/CLI, or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
@@ -1652,6 +1663,8 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `_tick_upload_signature` | Data page tick attach | Data page only | Installed-path signature; not bundle-managed |
 | `tick_row_count` / `tick_session_count` | Data page tick attach | Data page caption | Optional attach diagnostics; not engine inputs |
 | `tick_attach_warnings` | Data page tick attach | Data page caption | Filename-window / content-dedupe warnings that must survive `st.rerun()` |
+| `roll_policy` | Data page roll assumptions | Data page / saved-dataset provenance | Selected roll method / contract-column policy. Popped on dataset switch. |
+| `roll_validation` | Data page roll assumptions | Data page caption | Roll-metadata validation report. Popped on dataset switch. |
 | `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count, sparse-minute count; when 15s source opens were OHLC-identical duplicates, also `source_duplicate_resolution` / group and discarded-row counts / `source_duplicate_audit`) |
 | `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Mapping with `sparse_buckets` (`incomplete_coverage`, retained) and `dropped_buckets` (`timestamp_misalignment`, absent from canonical); never used to patch source or parent bars |
 | `resampled_data` | Data (`pages/1_Data.py`) | Data summary (`pages/1_Data.py`) | `dict[str, pd.DataFrame]` |
@@ -1661,7 +1674,9 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `exchange_timezone` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), Backtest/Report TZ handling (`pages/7_Backtest.py`, `pages/11_Report_Export.py`) | `str \| None` |
 | `display_timezone` | Data/Backtest/Time/Report widgets (`pages/1_Data.py`, `pages/7_Backtest.py`, `pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | Time/Report export conversions (`pages/9_Time_Analysis.py`, `pages/11_Report_Export.py`) | `str`. Display/export only — not a fill TZ. AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-8 / QI-10-01); not hashed. Bundle apply resets it to the restored `exchange_timezone`. Dataset switch calls `reset_display_timezone` (ensure alone does not overwrite a valid leftover TZ). Same-dataset / first load still uses `ensure_display_timezone`. |
 | `dataset_id` | Data (`pages/1_Data.py`) | Levels/Signals persistence (`pages/2_Levels.py`, `pages/6_Signals.py`) | `str` |
-| `levels` | Levels (`pages/2_Levels.py`) | Setup/Signals/Backtest/Grid/Report/Bundles (`pages/3_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV + derived level columns |
+| `data_identity` | Data / bundle apply / CAI-8 open-exact | Bundles / identity restore (CAI-1) | Identity mapping for the active dataset. Also named in CAI-1. Apply-clear / sticky (not dataset-clear). |
+| `levels_identity` | Levels / bundle apply / CAI-8 open-exact | Bundles / identity restore (CAI-1) | Identity mapping for computed levels. Also named in CAI-1. Apply-clear / sticky (not dataset-clear). |
+| `levels` | Levels (`pages/2_Levels.py`) | Setup/Signals/Backtest/Grid/Validation/Report/Bundles (`pages/3_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV + derived level columns |
 | `session_levels` | Levels (`pages/2_Levels.py`) | Bundles/save (`pages/2_Levels.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` session-level table |
 | `levels_settings` | Levels (`pages/2_Levels.py`) | Levels stale checks (`pages/2_Levels.py`), Signals persistence context (`pages/6_Signals.py`) | `dict` |
 | `levels_data_fingerprint` | Levels (`pages/2_Levels.py`) | Levels stale checks (`pages/2_Levels.py`) | `dict` |
@@ -1669,18 +1684,21 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `setup_configs` | Setup Builder (`pages/3_Setup_Builder.py`) | Setup Builder only | `list[dict]` |
 | `confluence_zones` | Signals (`pages/6_Signals.py`) | Signals display (`pages/6_Signals.py`), Backtest chart overlay (`pages/7_Backtest.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` zone rows |
 | `naked_flags` | Signals (`pages/6_Signals.py`) | Signals logic/save (`pages/6_Signals.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` naked-level flags |
-| `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Report/Bundles (`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` candidate/fill signal rows |
+| `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Validation/Report/Bundles (`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` candidate/fill signal rows |
 | `signal_settings` | Signals (`pages/6_Signals.py`) | Signals save consistency checks (`pages/6_Signals.py`) | `dict`. Also popped on dataset switch (`_clear_dataset_dependent_state`, A-8 / QI-10-01). |
 | `signal_settings_hash` | Signals (`pages/6_Signals.py`) | Signals save/load matching (`pages/6_Signals.py`) | `str`. Also popped on dataset switch with `signal_settings` (A-8 / QI-10-01) so a leftover hash cannot look like a match. |
 | `signal_context` | Signals (`pages/6_Signals.py`) | Backtest caption (`pages/7_Backtest.py`) | `dict` (`setup_name`, `confluence_mode`, `setup_caption`) |
 | `last_signal_setup` | Signals (`pages/6_Signals.py`) | Signals persistence/report artifact (`pages/6_Signals.py`, `thesistester/reporting.py`) | `dict` |
-| `trades` | Backtest (`pages/7_Backtest.py`) | Time/Validation/Report/Bundles (`pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` simulated trade rows |
+| `trades` | Backtest (`pages/7_Backtest.py`) | Time/Validation/Report/Bundles/Portfolio (`pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`) | `pd.DataFrame` simulated trade rows |
 | `trade_summary` | Backtest (`pages/7_Backtest.py`) | Time/Report (`pages/9_Time_Analysis.py`, `thesistester/reporting.py`) | `dict` KPI summary |
 | `equity_curve` | Backtest (`pages/7_Backtest.py`) | Backtest display/Report/Bundles (`pages/7_Backtest.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` cumulative-R curve |
 | `backtest_intrabar_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R12 schema-versioned model/data-availability snapshot |
 | `backtest_intrabar_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R12 schema-versioned both-hit/ambiguity diagnostic |
 | `backtest_exit_management_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R13 schema-versioned BE/trailing parameter snapshot |
 | `backtest_exit_management_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R13 schema-versioned BE/TRAIL counts and adjustment diagnostics |
+| `backtest_execution_costs` | Backtest (`pages/7_Backtest.py`) / R18 | Backtest persist / Bundles | Commission / slip snapshot used by the last run. Apply-clear / sticky (not dataset-clear). |
+| `backtest_session_exit_policy` | Backtest (`pages/7_Backtest.py`) / R18 | Backtest persist / Bundles | Session-exit policy snapshot. Apply-clear / sticky (not dataset-clear). |
+| `exposure_policy` | Backtest (`pages/7_Backtest.py`) / R18 | Backtest persist / Bundles | Overlap / flatten exposure snapshot. Apply-clear / sticky (not dataset-clear). |
 | `direction_collision_diagnostic` | Backtest persist after `return_result` (`pages/7_Backtest.py`); also `run_backtest` / `run_experiment` (DA1) | Backtest caption next to skip table | Same-bar opposite-direction pair counts. Not an admission gate. Additive unhashed session key — **not** in `_BACKTEST_META_KEYS` / hashed `session_keys` (AH §2 item 8). AH4 **clear-only** in `_MANAGED_RESEARCH_KEYS` (A-7 / QI-06-03): leftover values are popped on apply and not restored. A-8 dataset-switch does **not** pop this A-7 residual (apply-clear only). DA3 `policy` reports `legacy` / `skip_both` / `raise`. |
 | `backtest_same_bar_opposite_direction` | Backtest (`pages/7_Backtest.py`) advanced expander | Backtest `simulate_trades`; save/reset via `execution_defaults` | Widget token `legacy` (default) / `skip_both` / `raise`. Not a hashed bundle key. |
 | DA2 study-index keys (`long_trade_count`, `short_trade_count`, `long_expectancy_r`, `short_expectancy_r`, `long_share`, `directional_integrity`, `collision_pairs`, `collision_resolved_long`) | `execute_study_cell` / `_index_row_from_existing_bundle` / `study report --rebuild-direction` | `results_index.csv` (`STUDY_INDEX_KEYS` only; not R18 / not hashed) | Long/short n and E plus integrity class. Collision copies are live-cell only. |
@@ -1695,6 +1713,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `focused_trade_summary` | Time Focus (SW1) | Backtest/Time display | Same shape as `trade_summary` on the subset. Also popped on dataset switch (A-8 / QI-10-01) so leftover KPIs cannot arm the overlay. |
 | `focused_equity_curve` | Time Focus (SW1) | Backtest/Time display | Subset-replay equity (C8); same shape as `equity_curve`. Also popped on dataset switch (A-8 / QI-10-01). |
 | `focus_provenance` | Time Focus (SW1) | Banners / Report / Bundles (SW6) | Counts, `sample_warning`, honesty flags. Also popped on dataset switch (A-8 / QI-10-01). |
+| `focused_direction_summary` | Time Focus (SW1) | Backtest/Time display | Long/short counts on the focused subset. Popped on dataset switch (A-8 / QI-10-01); not apply-clear. |
 | `entry_window` | Backtest Admit (SW3) / Promote (SW4) | Backtest / Grid / Validation | Normalized Admit window (armed or last applied) |
 | `entry_window_armed` | Time Analysis Promote (SW4) | Backtest / Time Analysis | `bool` — pending re-sim after Promote |
 | `entry_window_promote_provenance` | Time Analysis Promote (SW4) | banners / audit | Promote source, counts, `sample_warning`, status |
