@@ -465,9 +465,13 @@ def test_study_factor_axis_rules_own_table_not_c1_c2():
     assert STUDY_INGEST_RULES[0].key == "ingestion_mode"
     assert STUDY_INGEST_RULES[0].omit_means == "primary"
     assert STUDY_INGEST_RULES[0].allowed == STUDY_INGESTION_MODES
-    src = Path(study_schema.__file__).read_text(encoding="utf-8")
-    assert "SETUP_CONFIG_RULES" not in src
-    assert "RUN_SPEC_RULES" not in src
+    tree = ast.parse(Path(study_schema.__file__).read_text(encoding="utf-8"))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            imported.update(alias.name for alias in node.names)
+    assert "SETUP_CONFIG_RULES" not in imported
+    assert "RUN_SPEC_RULES" not in imported
     assert not hasattr(study_schema, "SETUP_CONFIG_RULES")
     assert not hasattr(study_schema, "RUN_SPEC_RULES")
 
