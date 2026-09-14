@@ -346,6 +346,16 @@ Cache invalidation semantics: delete/evict remove store entries only; the next
 `read_write` pipeline miss recomputes cold and may republish. Stale or corrupt
 artifacts already fail closed as `ArtifactMiss` (CAI-2).
 
+**Cache vs identity (C-11 / QI-06-10).** The artifact store is a reuse cache,
+not a second identity. `dataset_id` omits ingest story (H9 / AUDIT §5.1 item 9);
+`source_binding_key` includes source bytes + mode/policy. Verify / publish /
+evict helpers live in `execution_artifact_ops.py`. The store facade applies
+`_contain_path` (verify) or `_assert_path_under_execution_artifacts`
+(publish / replace / evict) before those helpers read, rename, or delete.
+`_cleanup_temp` no-ops on a path-escape so it cannot mask a stage/publish
+error. Cache-policy default stays `off`. Warm `read_write` reuse must
+produce the same content-addressed hashes as a cold compute.
+
 Cold vs warm performance is characterized by
 `tests/benchmarks/cai_cold_path.py` and `tests/benchmarks/cai_warm_path.py`
 (informational). A second signal-artifact cache layer stays deferred until warm

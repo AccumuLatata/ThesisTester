@@ -504,3 +504,82 @@ def test_fsync_file_swallows_close_oserror(tmp_path: Path, monkeypatch: pytest.M
     # the patched close would raise on some interpreters' file teardown.
     assert path.stat().st_size == len(before)
     assert tmp_path.is_dir()
+
+
+def test_cache_policy_default_stays_off() -> None:
+    from thesistester.persistence.execution_artifacts import normalize_cache_policy
+
+    assert normalize_cache_policy(None) == "off"
+    assert normalize_cache_policy("legacy") == "off"
+    assert normalize_cache_policy("read_write") == "read_write"
+
+
+def test_eviction_helpers_select_without_deleting() -> None:
+    from datetime import datetime, timezone
+
+    from thesistester.persistence.execution_artifact_ops import (
+        select_eviction_victims,
+        validate_eviction_limits,
+    )
+
+    with pytest.raises(ValueError, match="at least one"):
+        validate_eviction_limits(max_entries=None, max_total_bytes=None, max_age_seconds=None)
+    records = [
+        {"artifact_key": "old", "accessed_at": "2020-01-01T00:00:00+00:00", "size_bytes": 10},
+        {"artifact_key": "new", "accessed_at": "2026-01-01T00:00:00+00:00", "size_bytes": 10},
+    ]
+    snapshot = [dict(row) for row in records]
+    victims = select_eviction_victims(
+        records, max_entries=1, max_total_bytes=None, max_age_seconds=None
+    )
+    assert [row["artifact_key"] for row in victims] == ["old"]
+    assert records == snapshot
+
+    naive_now = datetime(2026, 6, 1, 12, 0, 0)
+    # 2020-01-01 is ~6y old; 2026-01-01 is ~151d old. 180d keeps only "new".
+    aged = select_eviction_victims(
+        records,
+        max_entries=None,
+        max_total_bytes=None,
+        max_age_seconds=180 * 86_400,
+        now=naive_now,
+    )
+    assert [row["artifact_key"] for row in aged] == ["old"]
+
+    by_bytes = select_eviction_victims(
+        records,
+        max_entries=None,
+        max_total_bytes=10,
+        max_age_seconds=None,
+        now=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    assert [row["artifact_key"] for row in by_bytes] == ["old"]
+
+
+def test_publish_and_cleanup_refuse_escaped_paths(tmp_path: Path) -> None:
+    from thesistester.persistence.execution_artifacts import (
+        _cleanup_temp,
+        _publish_directory,
+        _verify_data_dir,
+    )
+
+    store = tmp_path / "store"
+    root = get_execution_artifacts_root(store)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("safe", encoding="utf-8")
+    escaped_final = outside / "final"
+
+    with pytest.raises(ValueError, match="Refusing to mutate"):
+        _publish_directory(outside, escaped_final, artifacts_root=root)
+    assert marker.is_file()
+    assert not escaped_final.exists()
+
+    _cleanup_temp(outside, artifacts_root=root)
+    assert marker.is_file()
+
+    identity = _data_identity(_bars())
+    miss = _verify_data_dir(outside, expected=identity, artifacts_root=root)
+    assert isinstance(miss, ArtifactMiss)
+    assert miss.reason == "path_escape"

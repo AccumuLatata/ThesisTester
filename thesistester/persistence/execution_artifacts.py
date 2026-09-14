@@ -4,6 +4,10 @@ This namespace is separate from user-facing datasets/ and levels/ snapshots.
 CAI-3 wires verified reuse into ``run_experiment`` / ``compute_levels`` behind
 an explicit cache policy (default off).
 
+C-11 (QI-06-10): verify / publish / evict bodies live in
+``execution_artifact_ops`` behind ``_contain_path`` /
+``_assert_path_under_execution_artifacts``. Cache is not identity.
+
 Read APIs never raise for corrupt or incompatible artifacts — they return
 :class:`ArtifactMiss` so callers can fall through to a cold computation.
 """
@@ -25,8 +29,6 @@ import pandas as pd
 
 from thesistester import __version__
 from thesistester.persistence.local_store import (
-    LEVEL_ENGINE_VERSION,
-    _canonicalize_dataframe,
     _fs_path,
     hash_dataframe,
     _stable_json_bytes,
@@ -34,8 +36,6 @@ from thesistester.persistence.local_store import (
     get_store_root,
 )
 from thesistester.research_identity import (
-    LEVELS_ARTIFACT_SCHEMA_VERSION,
-    RESEARCH_IDENTITY_SCHEMA_VERSION,
     DataIdentity,
     LevelsIdentity,
 )
@@ -372,18 +372,29 @@ def _parse_iso_timestamp(value: Any) -> datetime | None:
     return parsed
 
 
-def _publish_directory(temp_dir: Path, final_dir: Path) -> None:
-    final_dir.parent.mkdir(parents=True, exist_ok=True)
-    if final_dir.exists():
-        shutil.rmtree(final_dir)
-    os.rename(temp_dir, final_dir)
-    _fsync_dir(final_dir)
-    _fsync_dir(final_dir.parent)
+def _publish_directory(temp_dir: Path, final_dir: Path, *, artifacts_root: Path) -> None:
+    """Rename a staged temp dir onto ``final_dir`` after containment."""
+    from thesistester.persistence.execution_artifact_ops import publish_directory
+
+    contained_final = _assert_path_under_execution_artifacts(
+        final_dir, artifacts_root=artifacts_root
+    )
+    contained_temp = _assert_path_under_execution_artifacts(temp_dir, artifacts_root=artifacts_root)
+    publish_directory(contained_temp, contained_final)
 
 
-def _cleanup_temp(temp_dir: Path) -> None:
-    if temp_dir.exists():
-        shutil.rmtree(temp_dir, ignore_errors=True)
+def _cleanup_temp(temp_dir: Path, *, artifacts_root: Path) -> None:
+    """Best-effort temp removal; refuse escaped paths without raising.
+
+    Must not raise: write paths call this from ``except`` and then re-raise
+    the original publish/stage error.
+    """
+    from thesistester.persistence.execution_artifact_ops import cleanup_temp
+
+    contained = _contain_path(temp_dir, root=artifacts_root)
+    if contained is None:
+        return
+    cleanup_temp(contained)
 
 
 def _verify_data_dir(
@@ -392,69 +403,12 @@ def _verify_data_dir(
     expected: DataIdentity,
     artifacts_root: Path,
 ) -> DataArtifact | ArtifactMiss:
+    from thesistester.persistence.execution_artifact_ops import verify_data_dir
+
     contained = _contain_path(artifact_dir, root=artifacts_root)
     if contained is None:
         return ArtifactMiss(_MISS_PATH_ESCAPE, detail=str(artifact_dir))
-
-    manifest_path = contained / MANIFEST_FILENAME
-    data_path = contained / DATA_PARQUET_FILENAME
-    identity_path = contained / IDENTITY_FILENAME
-    if not manifest_path.exists():
-        return ArtifactMiss(_MISS_MISSING, detail="manifest")
-    if not data_path.exists() or not identity_path.exists():
-        return ArtifactMiss(_MISS_INCOMPLETE, detail="missing required files")
-
-    try:
-        manifest = _read_json(manifest_path)
-        stored_identity = DataIdentity.from_dict(_read_json(identity_path))
-    except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
-        return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail=str(exc))
-
-    if stored_identity is None:
-        return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="identity")
-    if manifest.get("kind") != _DATA_KIND:
-        return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="kind")
-    schema_version = _try_int(manifest.get("artifact_schema_version", -1))
-    if schema_version is None:
-        return ArtifactMiss(
-            _MISS_CORRUPT_MANIFEST,
-            detail=f"artifact_schema_version={manifest.get('artifact_schema_version')!r}",
-        )
-    if schema_version != DATA_ARTIFACT_SCHEMA_VERSION:
-        return ArtifactMiss(
-            _MISS_SCHEMA_DRIFT,
-            detail=f"artifact_schema_version={manifest.get('artifact_schema_version')}",
-        )
-    if (
-        stored_identity.data_content_hash != expected.data_content_hash
-        or stored_identity.instrument != expected.instrument
-        or stored_identity.base_interval != expected.base_interval
-        or stored_identity.source_timezone != expected.source_timezone
-        or stored_identity.exchange_timezone != expected.exchange_timezone
-        or stored_identity.format_profile != expected.format_profile
-    ):
-        return ArtifactMiss(_MISS_IDENTITY_MISMATCH)
-
-    try:
-        data = pd.read_parquet(data_path)
-    except Exception as exc:  # pragma: no cover - pyarrow/pandas variance
-        return ArtifactMiss(_MISS_INCOMPLETE, detail=f"parquet:{exc}")
-
-    content_hash = hash_dataframe(data)
-    if content_hash != expected.data_content_hash:
-        return ArtifactMiss(_MISS_CONTENT_MISMATCH, detail="data_content_hash")
-
-    try:
-        manifest = _touch_accessed_at(manifest_path)
-    except (OSError, ValueError, json.JSONDecodeError):
-        pass
-
-    return DataArtifact(
-        identity=expected,
-        data=data,
-        manifest=manifest,
-        path=contained,
-    )
+    return verify_data_dir(contained, expected=expected, artifacts_root=artifacts_root)
 
 
 def _verify_levels_dir(
@@ -463,89 +417,12 @@ def _verify_levels_dir(
     expected: LevelsIdentity,
     artifacts_root: Path,
 ) -> LevelsArtifact | ArtifactMiss:
+    from thesistester.persistence.execution_artifact_ops import verify_levels_dir
+
     contained = _contain_path(artifact_dir, root=artifacts_root)
     if contained is None:
         return ArtifactMiss(_MISS_PATH_ESCAPE, detail=str(artifact_dir))
-
-    manifest_path = contained / MANIFEST_FILENAME
-    levels_path = contained / LEVELS_PARQUET_FILENAME
-    session_path = contained / SESSION_LEVELS_PARQUET_FILENAME
-    identity_path = contained / IDENTITY_FILENAME
-    settings_path = contained / LEVELS_SETTINGS_FILENAME
-    required = (manifest_path, levels_path, session_path, identity_path, settings_path)
-    if not manifest_path.exists():
-        return ArtifactMiss(_MISS_MISSING, detail="manifest")
-    if any(not path.exists() for path in required[1:]):
-        return ArtifactMiss(_MISS_INCOMPLETE, detail="missing required files")
-
-    try:
-        manifest = _read_json(manifest_path)
-        stored_identity = LevelsIdentity.from_dict(_read_json(identity_path))
-        levels_settings = _read_json(settings_path)
-    except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
-        return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail=str(exc))
-
-    if stored_identity is None:
-        return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="identity")
-    if manifest.get("kind") != _LEVELS_KIND:
-        return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="kind")
-    schema_version = _try_int(manifest.get("artifact_schema_version", -1))
-    if schema_version is None:
-        return ArtifactMiss(
-            _MISS_CORRUPT_MANIFEST,
-            detail=f"artifact_schema_version={manifest.get('artifact_schema_version')!r}",
-        )
-    if schema_version != LEVELS_ARTIFACT_SCHEMA_VERSION:
-        return ArtifactMiss(
-            _MISS_SCHEMA_DRIFT,
-            detail=f"artifact_schema_version={manifest.get('artifact_schema_version')}",
-        )
-    engine_version = _try_int(manifest.get("level_engine_version", -1))
-    if engine_version is None:
-        return ArtifactMiss(
-            _MISS_CORRUPT_MANIFEST,
-            detail=f"level_engine_version={manifest.get('level_engine_version')!r}",
-        )
-    if engine_version != LEVEL_ENGINE_VERSION:
-        return ArtifactMiss(
-            _MISS_ENGINE_INCOMPATIBLE,
-            detail=f"level_engine_version={manifest.get('level_engine_version')}",
-        )
-    if stored_identity.level_engine_version != expected.level_engine_version:
-        return ArtifactMiss(
-            _MISS_ENGINE_INCOMPATIBLE,
-            detail="identity.level_engine_version",
-        )
-    if stored_identity.levels_settings_hash != expected.levels_settings_hash:
-        return ArtifactMiss(_MISS_IDENTITY_MISMATCH, detail="levels_settings_hash")
-    if data_artifact_key(stored_identity.data_identity) != data_artifact_key(
-        expected.data_identity
-    ):
-        return ArtifactMiss(_MISS_IDENTITY_MISMATCH, detail="data_identity")
-
-    settings_hash = compute_levels_settings_hash(levels_settings)
-    if settings_hash != expected.levels_settings_hash:
-        return ArtifactMiss(_MISS_CONTENT_MISMATCH, detail="levels_settings_hash")
-
-    try:
-        levels = pd.read_parquet(levels_path)
-        session_levels = pd.read_parquet(session_path)
-    except Exception as exc:  # pragma: no cover
-        return ArtifactMiss(_MISS_INCOMPLETE, detail=f"parquet:{exc}")
-
-    try:
-        manifest = _touch_accessed_at(manifest_path)
-    except (OSError, ValueError, json.JSONDecodeError):
-        pass
-
-    return LevelsArtifact(
-        identity=expected,
-        levels=levels,
-        session_levels=session_levels,
-        levels_settings=levels_settings,
-        manifest=manifest,
-        path=contained,
-    )
+    return verify_levels_dir(contained, expected=expected, artifacts_root=artifacts_root)
 
 
 def read_verified_data_artifact(
@@ -615,54 +492,26 @@ def write_data_artifact(
             )
             if isinstance(existing, DataArtifact):
                 return existing
-            shutil.rmtree(artifact_dir, ignore_errors=True)
+            contained_existing = _assert_path_under_execution_artifacts(
+                artifact_dir, artifacts_root=artifacts_root
+            )
+            shutil.rmtree(contained_existing, ignore_errors=True)
 
         artifact_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f".{key}.tmp.", dir=str(artifact_dir.parent)))
         try:
-            canonical = _canonicalize_dataframe(data)
-            data_path = temp_dir / DATA_PARQUET_FILENAME
-            canonical.to_parquet(data_path, index=False)
-            identity_payload = identity.to_dict()
-            _write_json(temp_dir / IDENTITY_FILENAME, identity_payload)
-            ingestion = dict(ingestion_meta or {})
-            ingestion.setdefault("rows", int(len(canonical)))
-            ingestion.setdefault("columns", [str(column) for column in canonical.columns])
-            _write_json(temp_dir / INGESTION_META_FILENAME, ingestion)
-            created_at = _utcnow_iso()
-            manifest = {
-                "kind": _DATA_KIND,
-                "artifact_schema_version": DATA_ARTIFACT_SCHEMA_VERSION,
-                "identity_schema_version": RESEARCH_IDENTITY_SCHEMA_VERSION,
-                "persistence_schema_version": identity.persistence_schema_version,
-                "artifact_key": key,
-                "identity": identity_payload,
-                "files": {
-                    DATA_PARQUET_FILENAME: {
-                        "sha256": _hash_file_bytes(data_path),
-                        "rows": int(len(canonical)),
-                        "content_hash": identity.data_content_hash,
-                    }
-                },
-                "ingestion": ingestion,
-                "created_at": created_at,
-                "accessed_at": created_at,
-                "hit_count": 0,
-                "producer": "execution_artifacts.write_data_artifact",
-                "app_version": __version__,
-            }
-            _write_json(temp_dir / MANIFEST_FILENAME, manifest)
-            for path in (
-                data_path,
-                temp_dir / IDENTITY_FILENAME,
-                temp_dir / INGESTION_META_FILENAME,
-                temp_dir / MANIFEST_FILENAME,
-            ):
-                _fsync_file(path)
-            _fsync_dir(temp_dir)
-            _publish_directory(temp_dir, artifact_dir)
+            from thesistester.persistence.execution_artifact_ops import stage_data_artifact
+
+            stage_data_artifact(
+                temp_dir,
+                identity=identity,
+                data=data,
+                key=key,
+                ingestion_meta=ingestion_meta,
+            )
+            _publish_directory(temp_dir, artifact_dir, artifacts_root=artifacts_root)
         except Exception:
-            _cleanup_temp(temp_dir)
+            _cleanup_temp(temp_dir, artifacts_root=artifacts_root)
             raise
 
         verified = _verify_data_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
@@ -700,57 +549,27 @@ def write_levels_artifact(
             )
             if isinstance(existing, LevelsArtifact):
                 return existing
-            shutil.rmtree(artifact_dir, ignore_errors=True)
+            contained_existing = _assert_path_under_execution_artifacts(
+                artifact_dir, artifacts_root=artifacts_root
+            )
+            shutil.rmtree(contained_existing, ignore_errors=True)
 
         artifact_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f".{key}.tmp.", dir=str(artifact_dir.parent)))
         try:
-            levels_path = temp_dir / LEVELS_PARQUET_FILENAME
-            session_path = temp_dir / SESSION_LEVELS_PARQUET_FILENAME
-            _canonicalize_dataframe(levels).to_parquet(levels_path, index=False)
-            _canonicalize_dataframe(session_levels).to_parquet(session_path, index=False)
-            identity_payload = identity.to_dict()
-            _write_json(temp_dir / IDENTITY_FILENAME, identity_payload)
-            _write_json(temp_dir / LEVELS_SETTINGS_FILENAME, settings)
-            created_at = _utcnow_iso()
-            manifest = {
-                "kind": _LEVELS_KIND,
-                "artifact_schema_version": LEVELS_ARTIFACT_SCHEMA_VERSION,
-                "level_engine_version": identity.level_engine_version,
-                "identity_schema_version": RESEARCH_IDENTITY_SCHEMA_VERSION,
-                "artifact_key": key,
-                "data_artifact_key": data_artifact_key(identity.data_identity),
-                "levels_settings_hash": identity.levels_settings_hash,
-                "identity": identity_payload,
-                "files": {
-                    LEVELS_PARQUET_FILENAME: {
-                        "sha256": _hash_file_bytes(levels_path),
-                        "rows": int(len(levels)),
-                    },
-                    SESSION_LEVELS_PARQUET_FILENAME: {
-                        "sha256": _hash_file_bytes(session_path),
-                        "rows": int(len(session_levels)),
-                    },
-                },
-                "created_at": created_at,
-                "accessed_at": created_at,
-                "hit_count": 0,
-                "producer": "execution_artifacts.write_levels_artifact",
-                "app_version": __version__,
-            }
-            _write_json(temp_dir / MANIFEST_FILENAME, manifest)
-            for path in (
-                levels_path,
-                session_path,
-                temp_dir / IDENTITY_FILENAME,
-                temp_dir / LEVELS_SETTINGS_FILENAME,
-                temp_dir / MANIFEST_FILENAME,
-            ):
-                _fsync_file(path)
-            _fsync_dir(temp_dir)
-            _publish_directory(temp_dir, artifact_dir)
+            from thesistester.persistence.execution_artifact_ops import stage_levels_artifact
+
+            stage_levels_artifact(
+                temp_dir,
+                identity=identity,
+                levels=levels,
+                session_levels=session_levels,
+                settings=settings,
+                key=key,
+            )
+            _publish_directory(temp_dir, artifact_dir, artifacts_root=artifacts_root)
         except Exception:
-            _cleanup_temp(temp_dir)
+            _cleanup_temp(temp_dir, artifacts_root=artifacts_root)
             raise
 
         verified = _verify_levels_dir(
@@ -1361,56 +1180,25 @@ def evict_execution_artifacts(
     Research bundles independently contain required data, so eviction is
     cold-recompute-safe for retained completed runs.
     """
-    if max_entries is None and max_total_bytes is None and max_age_seconds is None:
-        raise ValueError(
-            "Provide at least one of max_entries, max_total_bytes, or max_age_seconds."
-        )
-    if max_entries is not None and (not isinstance(max_entries, int) or max_entries < 0):
-        raise ValueError("max_entries must be a non-negative integer.")
-    if max_total_bytes is not None and (
-        not isinstance(max_total_bytes, int) or max_total_bytes < 0
-    ):
-        raise ValueError("max_total_bytes must be a non-negative integer.")
-    if max_age_seconds is not None and (
-        not isinstance(max_age_seconds, int) or max_age_seconds < 0
-    ):
-        raise ValueError("max_age_seconds must be a non-negative integer.")
+    from thesistester.persistence.execution_artifact_ops import (
+        select_eviction_victims,
+        validate_eviction_limits,
+    )
 
+    validate_eviction_limits(
+        max_entries=max_entries,
+        max_total_bytes=max_total_bytes,
+        max_age_seconds=max_age_seconds,
+    )
     artifacts_root = get_execution_artifacts_root(store_root)
     # Unbounded scan so max_entries / bytes / age can bound the full store.
     records = list_execution_artifacts(store_root=store_root, limit=None)
-    # Evict oldest accessed first (LRU); missing accessed_at falls back to created_at.
-    records.sort(key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""))
-    now = datetime.now(timezone.utc)
-    to_delete: list[dict[str, Any]] = []
-    if max_age_seconds is not None:
-        for record in records:
-            # LRU age: prefer last access so hot artifacts are retained.
-            age_dt = _parse_iso_timestamp(record.get("accessed_at")) or _parse_iso_timestamp(
-                record.get("created_at")
-            )
-            if age_dt is None:
-                continue
-            age = (now - age_dt.astimezone(timezone.utc)).total_seconds()
-            if age > max_age_seconds:
-                to_delete.append(record)
-
-    remaining = [r for r in records if r not in to_delete]
-    if max_entries is not None and len(remaining) > max_entries:
-        overflow = len(remaining) - max_entries
-        to_delete.extend(remaining[:overflow])
-        remaining = remaining[overflow:]
-
-    if max_total_bytes is not None:
-        total = sum(int(r.get("size_bytes") or 0) for r in remaining)
-        idx = 0
-        while total > max_total_bytes and idx < len(remaining):
-            victim = remaining[idx]
-            to_delete.append(victim)
-            total -= int(victim.get("size_bytes") or 0)
-            idx += 1
-        remaining = remaining[idx:]
-
+    to_delete = select_eviction_victims(
+        records,
+        max_entries=max_entries,
+        max_total_bytes=max_total_bytes,
+        max_age_seconds=max_age_seconds,
+    )
     deleted: list[dict[str, Any]] = []
     for record in to_delete:
         kind = str(record.get("kind"))
