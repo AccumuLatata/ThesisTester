@@ -10,12 +10,14 @@ from thesistester.assistant.help_corpus import (
     HELP_CORPUS_MANIFEST,
     PREFACE_SECTION,
     HelpCorpusError,
+    _CORPUS_BOOST_RULES,
     build_registry_digest,
     get_corpus_doc_spec,
     load_allowlisted_corpus,
     load_corpus_chunks,
     manifest_doc_ids,
     resolve_corpus_path,
+    score_corpus_chunk,
     select_help_corpus_chunks,
 )
 
@@ -294,3 +296,21 @@ def test_select_help_corpus_chunks_zero_overlap_preserves_allowlist_order(monkey
     # allowlist order: readme → metrics → architecture (not alpha: architecture first)
     assert [chunk.doc_id for chunk in selected] == ["readme", "metrics"]
     assert "architecture" not in {chunk.doc_id for chunk in selected}
+
+
+def test_c22_corpus_boost_table_drives_score_corpus_chunk():
+    """QI-09-02: `score_corpus_chunk` walks `_CORPUS_BOOST_RULES`."""
+    import inspect
+
+    from thesistester.assistant.help_corpus import CorpusChunk
+
+    assert _CORPUS_BOOST_RULES
+    source = inspect.getsource(score_corpus_chunk)
+    assert "_CORPUS_BOOST_RULES" in source
+    assert (
+        score_corpus_chunk(
+            CorpusChunk(doc_id="metrics", section="Core", text="expectancy"),
+            query_tokens=set(),
+        )
+        == 0
+    )

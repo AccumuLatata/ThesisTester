@@ -3,6 +3,7 @@
 Encodes ``docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`` §7.1 exactly
 (including HC-1…HC-3 ``user_guide`` §7.1.4 full §6.1 set). No orchestrator
 wiring, network I/O, or OpenAI calls.
+C-22 tables ``score_corpus_chunk`` boosts; HC ranking contract unchanged.
 """
 
 from __future__ import annotations
@@ -637,15 +638,92 @@ def _tokenize_query(text: str) -> set[str]:
     return expanded
 
 
-def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
-    """Cheap lexical score for Help retrieval (local docs only).
+@dataclass(frozen=True)
+class _CorpusBoostRule:
+    """One additive Help-retrieval boost row (QI-09-02 / QR-C C-22)."""
 
-    HC §1.1: additive intent-aware ``user_guide`` how-to boost. Existing
-    metrics/OTF/architecture boosts remain; definition queries are not forced
-    onto USER_GUIDE.
-    """
-    if not query_tokens:
-        return 0
+    doc_ids: frozenset[str]
+    tokens: frozenset[str] | None
+    predicate: str | None
+    base: int
+    section_any: tuple[str, ...] = ()
+    section_all: tuple[str, ...] = ()
+    section_bonus: int = 0
+
+
+_CORPUS_BOOST_RULES: tuple[_CorpusBoostRule, ...] = (
+    _CorpusBoostRule(
+        frozenset({"metrics", "architecture", "assumptions"}),
+        frozenset({"grid", "ranking", "metric", "expectancy", "sl", "tp"}),
+        None,
+        3,
+    ),
+    _CorpusBoostRule(
+        frozenset({"metrics"}),
+        _COST_QUERY_TOKENS,
+        None,
+        3,
+        section_any=("cost", "commission", "slippage"),
+        section_bonus=4,
+    ),
+    _CorpusBoostRule(
+        frozenset({"user_guide"}),
+        _EXPOSURE_QUERY_TOKENS,
+        None,
+        3,
+        section_any=("exposure",),
+        section_bonus=5,
+    ),
+    _CorpusBoostRule(
+        frozenset({"user_guide"}),
+        _INTRABAR_QUERY_TOKENS,
+        None,
+        3,
+        section_any=("intrabar",),
+        section_bonus=5,
+    ),
+    _CorpusBoostRule(
+        frozenset({"user_guide"}),
+        None,
+        "exit_mgmt",
+        3,
+        section_any=("exit management", "break-even"),
+        section_bonus=5,
+    ),
+    _CorpusBoostRule(
+        frozenset({"user_guide"}),
+        None,
+        "session_exit",
+        3,
+        section_any=("session close", "entry cutoff"),
+        section_bonus=5,
+    ),
+    _CorpusBoostRule(
+        frozenset({"user_guide"}),
+        None,
+        "focus_admit",
+        3,
+        section_all=("focus", "admit"),
+        section_bonus=5,
+    ),
+    _CorpusBoostRule(
+        frozenset({"otf"}),
+        frozenset({"otf", "one", "timeframing", "timeframe", "filter"}),
+        None,
+        3,
+        section_any=("concept",),
+        section_bonus=2,
+    ),
+    _CorpusBoostRule(
+        frozenset({"architecture", "assumptions"}),
+        frozenset({"assistant", "capability", "registry", "confirm"}),
+        None,
+        2,
+    ),
+)
+
+
+def _lexical_corpus_score(chunk: CorpusChunk, query_tokens: set[str]) -> int:
     haystack = f"{chunk.doc_id} {chunk.section} {chunk.text}".lower()
     score = 0
     for token in query_tokens:
@@ -655,59 +733,36 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
             score += 1
             if token in chunk.doc_id.lower() or token in chunk.section.lower():
                 score += 2
-    # Prefer glossary/architecture for ranking/metric questions.
-    if {"grid", "ranking", "metric", "expectancy", "sl", "tp"} & query_tokens:
-        if chunk.doc_id in {"metrics", "architecture", "assumptions"}:
-            score += 3
-    if query_tokens & _COST_QUERY_TOKENS and chunk.doc_id == "metrics":
-        # Mixed how-to + cost nouns (Q-H5): keep glossary in the selected set.
-        score += 3
-        section_l = chunk.section.lower()
-        if any(marker in section_l for marker in ("cost", "commission", "slippage")):
-            # Prefer the dedicated Execution cost inputs H2 over incidental
-            # cost mentions inside Core formulas / other metrics sections.
-            score += 4
-    if query_tokens & _EXPOSURE_QUERY_TOKENS and chunk.doc_id == "user_guide":
-        # HC-5: definition/how-to asks about Policy / allow_all / single_* must
-        # attach the dedicated Exposure policy H2 (ASSUMPTIONS mega-chunk is
-        # oversized for max_corpus_chars and is skipped entirely).
-        score += 3
-        if "exposure" in chunk.section.lower():
-            score += 5
-    if query_tokens & _INTRABAR_QUERY_TOKENS and chunk.doc_id == "user_guide":
-        score += 3
-        if "intrabar" in chunk.section.lower():
-            score += 5
-    if _is_exit_mgmt_ask(query_tokens) and chunk.doc_id == "user_guide":
-        score += 3
-        section_l = chunk.section.lower()
-        if "exit management" in section_l or "break-even" in section_l:
-            score += 5
-    if _is_session_exit_ask(query_tokens) and chunk.doc_id == "user_guide":
-        score += 3
-        section_l = chunk.section.lower()
-        if "session close" in section_l or "entry cutoff" in section_l:
-            score += 5
-    if _is_focus_admit_ask(query_tokens) and chunk.doc_id == "user_guide":
-        score += 3
-        section_l = chunk.section.lower()
-        if "focus" in section_l and "admit" in section_l:
-            score += 5
-    if {
-        "otf",
-        "one",
-        "timeframing",
-        "timeframe",
-        "filter",
-    } & query_tokens and chunk.doc_id == "otf":
-        score += 3
-        # Prefer the definitional §1 — Concept chunk over Purpose meta-spec text
-        # for "what is an OTF filter?" style questions (HC-4 Q-D3).
-        if "concept" in chunk.section.lower():
-            score += 2
-    if {"assistant", "capability", "registry", "confirm"} & query_tokens:
-        if chunk.doc_id in {"architecture", "assumptions"}:
-            score += 2
+    return score
+
+
+def _corpus_query_matches(rule: _CorpusBoostRule, query_tokens: set[str]) -> bool:
+    if rule.predicate == "exit_mgmt":
+        return _is_exit_mgmt_ask(query_tokens)
+    if rule.predicate == "session_exit":
+        return _is_session_exit_ask(query_tokens)
+    if rule.predicate == "focus_admit":
+        return _is_focus_admit_ask(query_tokens)
+    if rule.tokens is None:
+        return False
+    return bool(query_tokens & rule.tokens)
+
+
+def _apply_corpus_boost(rule: _CorpusBoostRule, chunk: CorpusChunk, query_tokens: set[str]) -> int:
+    if chunk.doc_id not in rule.doc_ids:
+        return 0
+    if not _corpus_query_matches(rule, query_tokens):
+        return 0
+    delta = rule.base
+    section_l = chunk.section.lower()
+    if rule.section_all and all(marker in section_l for marker in rule.section_all):
+        delta += rule.section_bonus
+    elif rule.section_any and any(marker in section_l for marker in rule.section_any):
+        delta += rule.section_bonus
+    return delta
+
+
+def _howto_definitional_adjust(chunk: CorpusChunk, query_tokens: set[str]) -> int:
     # HC-1 §1.1: how-to cues prefer user_guide without removing other boosts.
     # Boost only title-overlapping sections (non-stopword tokens) so template
     # phrases like "How to use" do not flood max_corpus_chars with every H2.
@@ -715,31 +770,41 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
     definitional = bool(query_tokens & _DEFINITION_QUERY_TOKENS)
     if how_to and chunk.doc_id == "user_guide":
         section_tokens = _tokenize_query(chunk.section) - _SECTION_TITLE_STOPWORDS
-        overlap = query_tokens & section_tokens
-        if overlap:
-            section_l = chunk.section.lower()
-            # HC-6: title tokens like bare ``focus`` / ``trailing`` / ``session``
-            # must not how-to-boost P0 settings H2s without a real settings ask.
-            if (
-                "focus" in section_l
-                and "admit" in section_l
-                and not _is_focus_admit_ask(query_tokens)
-            ):
-                pass
-            elif (
-                "exit management" in section_l or "break-even" in section_l
-            ) and not _is_exit_mgmt_ask(query_tokens):
-                pass
-            elif (
-                "session close" in section_l or "entry cutoff" in section_l
-            ) and not _is_session_exit_ask(query_tokens):
-                pass
-            else:
-                score += 5
-    elif definitional and not how_to and chunk.doc_id == "user_guide":
+        if not (query_tokens & section_tokens):
+            return 0
+        section_l = chunk.section.lower()
+        # HC-6: title tokens like bare ``focus`` / ``trailing`` / ``session``
+        # must not how-to-boost P0 settings H2s without a real settings ask.
+        if "focus" in section_l and "admit" in section_l and not _is_focus_admit_ask(query_tokens):
+            return 0
+        if ("exit management" in section_l or "break-even" in section_l) and not _is_exit_mgmt_ask(
+            query_tokens
+        ):
+            return 0
+        if (
+            "session close" in section_l or "entry cutoff" in section_l
+        ) and not _is_session_exit_ask(query_tokens):
+            return 0
+        return 5
+    if definitional and not how_to and chunk.doc_id == "user_guide":
         # Soft preference away from forcing USER_GUIDE on pure definitions.
-        score -= 1
-    return score
+        return -1
+    return 0
+
+
+def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
+    """Cheap lexical score for Help retrieval (local docs only).
+
+    HC §1.1: additive intent-aware ``user_guide`` how-to boost. Existing
+    metrics/OTF/architecture boosts remain; definition queries are not forced
+    onto USER_GUIDE. Boost rows live in ``_CORPUS_BOOST_RULES`` (QI-09-02).
+    """
+    if not query_tokens:
+        return 0
+    score = _lexical_corpus_score(chunk, query_tokens)
+    for rule in _CORPUS_BOOST_RULES:
+        score += _apply_corpus_boost(rule, chunk, query_tokens)
+    return score + _howto_definitional_adjust(chunk, query_tokens)
 
 
 def select_help_corpus_chunks(

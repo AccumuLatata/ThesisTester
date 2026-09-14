@@ -98,7 +98,9 @@ silent `continue` stay untouched. C-20 (QI-14-09) stores `BarData` OHLC
 as write-protected `float64` arrays; `resolve_ohlc_bar` math is
 unchanged. C-21 (QI-09-01) tables claim-format + intent→builder in
 `results_overview.py`; auditor-safe strings and DI/RI/DX contracts
-unchanged. Next: C-22.
+unchanged. C-22 (QI-09-02) tables `_derive_caveats` and
+`score_corpus_chunk` and splits `handle_results_turn` phases;
+RQ/HC/DI channel contracts unchanged. Next: C-23.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -294,7 +296,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    C-20 (QI-14-09) stores `BarData` as `float64` arrays; `at()` still
    returns Python floats. C-21 (QI-09-01) tables claim-format +
    intent→builder in `results_overview.py`; auditor-safe strings
-   unchanged. Next: C-22.
+   unchanged. C-22 (QI-09-02) tables caveats + Help scoring and
+   splits `handle_results_turn` phases. Next: C-23.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
@@ -536,7 +539,11 @@ Every request must first parse as an `AssistantRequest`, then pass
   `thesistester/assistant/explainer.py` templates rather than free-text UI
   claims. Every numeric claim needs a packet path; missing evidence becomes a
   limitation. “Best”/“better” language must state metric, candidate set, sample,
-  costs, and OOS status. Keep `tests/test_assistant_explainer.py` and
+  costs, and OOS status. C-22 (QI-09-02) walks `_CAVEAT_APPLIERS` in
+  `explainer.py` and `_CORPUS_BOOST_RULES` in `help_corpus.py`;
+  `handle_results_turn` is a phase façade (load / tables / time / persist).
+  Caveat codes/paths, Help ranking, and RQ/HC/DI channel contracts stay
+  unchanged. Keep `tests/test_assistant_explainer.py` and
   `tests/test_assistant_comparison.py` green when changing explanation or
   comparison contracts.
 - Optional LLM paraphrase (`llm_explainer.explain_packet_with_llm`) is

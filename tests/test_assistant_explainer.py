@@ -554,3 +554,25 @@ def test_evidence_packet_round_trip_preserves_versioned_fields():
     )
     restored = EvidencePacket.from_dict(original.to_dict())
     assert restored.to_dict() == original.to_dict()
+
+
+def test_c22_caveat_appliers_table_covers_codes():
+    """QI-09-02: `_derive_caveats` walks `_CAVEAT_APPLIERS`; codes stay emit-able."""
+    import inspect
+
+    from thesistester.assistant import explainer as explainer_mod
+
+    assert explainer_mod._CAVEAT_APPLIERS
+    source = inspect.getsource(explainer_mod._derive_caveats)
+    assert "_CAVEAT_APPLIERS" in source
+    names = {fn.__name__ for fn in explainer_mod._CAVEAT_APPLIERS}
+    assert "_apply_diagnostic_only" in names
+    assert "_apply_sample_caveats" in names
+    assert "_apply_wfa_caveats" in names
+    caveats, limitations = explainer_mod._derive_caveats(
+        results={},
+        assumptions={},
+        provenance={},
+    )
+    assert caveats[0].code == "diagnostic_only"
+    assert any("trade_count is missing" in line for line in limitations)
