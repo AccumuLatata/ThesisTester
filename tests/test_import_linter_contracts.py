@@ -290,6 +290,22 @@ def test_c9_sim_core_does_not_import_admission_or_analytics():
     assert _multiline(parser, section, "forbidden_modules") == forbidden
 
 
+def _contract_kept_or_broken(out: str, label: str) -> str | None:
+    """Read KEPT/BROKEN even when lint-imports wraps a long contract name."""
+    section = out.split("Broken contracts")[0]
+    idx = section.find(label)
+    if idx < 0:
+        return None
+    tail = section[idx:]
+    kept = tail.find("KEPT")
+    broken = tail.find("BROKEN")
+    if kept < 0 and broken < 0:
+        return None
+    if broken >= 0 and (kept < 0 or broken < kept):
+        return "BROKEN"
+    return "KEPT"
+
+
 def test_c2_c3_c24_siblings_stay_kept():
     """C-24: C2/C3 name the split helpers; contracts stay KEPT."""
     result = subprocess.run(
@@ -306,10 +322,7 @@ def test_c2_c3_c24_siblings_stay_kept():
         "C4 launch.py ↛ viewer family",
         "C5 admit_followup.py ↛ execute / launch / viewer family",
     ):
-        lines = [line for line in out.splitlines() if label in line]
-        assert lines, out
-        assert any(line.endswith("KEPT") for line in lines), lines
-        assert not any(line.endswith("BROKEN") for line in lines), lines
+        assert _contract_kept_or_broken(out, label) == "KEPT", out
 
 
 def test_c9_sim_core_contract_is_kept():
