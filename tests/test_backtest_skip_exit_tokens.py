@@ -156,7 +156,7 @@ def test_entry_window_does_not_import_engine_backtest():
         or name == "thesistester.engine"
         or name.startswith("thesistester.engine.")
     }
-    assert leaked == []
+    assert leaked == set()
 
 
 def test_every_skip_emit_site_uses_frozen_skip_reason():
@@ -198,6 +198,9 @@ def test_every_exit_assign_is_token_or_composed_suffix():
             for kind in (EXIT_SL, EXIT_TP):
                 composed = _exit_reason_with_suffix(kind, suffix)
                 assert composed in EXIT_REASONS
+            continue
+        if isinstance(node, ast.Constant) and node.value is None:
+            # ``exit_reason: str | None = None`` initializer before the walk.
             continue
         raise AssertionError(f"unhandled exit_reason emit {ast.dump(node)}")
 
