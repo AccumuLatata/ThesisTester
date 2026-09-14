@@ -93,6 +93,13 @@ spec = load_study_spec("path/to/study.yaml")  # load + normalize + validate
 Fail-closed: unknown StudySpec / study / factors / constants / report / stage keys
 raise `StudySpecError`.
 
+C-3 (QI-07-03 / MG-17): `validate_study_spec` walks own `STUDY_FACTOR_AXIS_RULES`,
+`STUDY_REPORT_FIELD_RULES`, and `STUDY_INGEST_RULES` (C-1 pattern; do **not**
+import `SETUP_CONFIG_RULES` / `RUN_SPEC_RULES`). Expand required-cell re-checks
+reuse `STUDY_EXPAND_REQUIRED_AXES` from that factor table. Omitted
+`ingestion_mode` still means `primary` (AH §2 item 9); Quantower + omit/primary
+is a warning, not a rewrite to 15s-primary.
+
 ### Top-level shape
 
 ```yaml

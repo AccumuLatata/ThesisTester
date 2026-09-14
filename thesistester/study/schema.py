@@ -12,7 +12,8 @@ import copy
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Mapping
+from collections.abc import Callable
+from typing import Any, Mapping, NamedTuple
 
 import yaml
 
@@ -161,7 +162,19 @@ _INDEX_PRIMARY_METRICS = frozenset(
     {"expectancy_r", "total_r", "max_drawdown_r", "trade_count", "profit_factor"}
 )
 _MULTIPLE_TESTING_MODES = frozenset({"warn", "error"})
-_ENABLED_SECTIONS = ("grid", "validation", "walk_forward")
+
+
+class StudyConstantEnabledRule(NamedTuple):
+    """grid/validation/walk_forward must name ``enabled`` (C-3 / QI-07-03)."""
+
+    key: str
+
+
+STUDY_CONSTANTS_ENABLED_RULES: tuple[StudyConstantEnabledRule, ...] = (
+    StudyConstantEnabledRule("grid"),
+    StudyConstantEnabledRule("validation"),
+    StudyConstantEnabledRule("walk_forward"),
+)
 
 
 class StudySpecError(ValueError):
@@ -499,12 +512,13 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
             "injected into every expanded setup)"
         )
     ingestion_mode = dataset.get("ingestion_mode")
+    ingest = STUDY_INGEST_RULES[0]
     if ingestion_mode is not None and (
-        not isinstance(ingestion_mode, str) or ingestion_mode not in STUDY_INGESTION_MODES
+        not isinstance(ingestion_mode, str) or ingestion_mode not in ingest.allowed
     ):
         raise StudySpecError(
             "study.dataset.ingestion_mode must be one of "
-            f"{sorted(STUDY_INGESTION_MODES)!r} when present; got {ingestion_mode!r}"
+            f"{sorted(ingest.allowed)!r} when present; got {ingestion_mode!r}"
         )
     format_profile = dataset.get("format_profile")
     profile_token = format_profile.strip() if isinstance(format_profile, str) else format_profile
@@ -623,17 +637,17 @@ def _validate_constants(constants: Mapping[str, Any]) -> None:
                     f"{sorted(_VALID_SAME_BAR_OPPOSITE_DIRECTION)}; got {policy!r}"
                 )
 
-    for section in _ENABLED_SECTIONS:
-        if section not in constants:
+    for rule in STUDY_CONSTANTS_ENABLED_RULES:
+        if rule.key not in constants:
             continue
-        mapping = _require_mapping(constants.get(section), section=f"study.constants.{section}")
+        mapping = _require_mapping(constants.get(rule.key), section=f"study.constants.{rule.key}")
         if "enabled" not in mapping:
             raise StudySpecError(
-                f"study.constants.{section} must include explicit enabled "
+                f"study.constants.{rule.key} must include explicit enabled "
                 f"(true/false); bare mappings default-on in run_experiment"
             )
         if not isinstance(mapping["enabled"], bool):
-            raise StudySpecError(f"study.constants.{section}.enabled must be a boolean")
+            raise StudySpecError(f"study.constants.{rule.key}.enabled must be a boolean")
 
 
 def _anchor_only_empty_partners_allowed(
@@ -652,21 +666,55 @@ def _anchor_only_empty_partners_allowed(
     return float(raw) == 0.0
 
 
-def _validate_factors(
+class StudyFactorAxisRule(NamedTuple):
+    """One StudySpec factor axis (C-3 / QI-07-03 / MG-17). Not pydantic."""
+
+    axis: str
+    required: bool
+    expand_required: bool
+    allowed: frozenset[str] | None
+    extra_reject: str
+    check: Callable[..., None] | None
+
+
+class StudyReportFieldRule(NamedTuple):
+    """One StudySpec report membership field (C-3 / QI-07-03)."""
+
+    field: str
+    allowed: frozenset[str]
+
+
+class StudyIngestRule(NamedTuple):
+    """One StudySpec ingest token (C-3 / QI-07-03). Omit → primary (AH §2 item 9)."""
+
+    key: str
+    allowed: frozenset[str]
+    omit_means: str
+
+
+def _validate_enum_factor_axis(
+    factors: Mapping[str, Any],
+    rule: StudyFactorAxisRule,
+) -> None:
+    values = factors[rule.axis]
+    if not isinstance(values, list) or not values:
+        raise StudySpecError(f"factors.{rule.axis} must be a non-empty list")
+    allowed = rule.allowed or frozenset()
+    for index, value in enumerate(values):
+        if value not in allowed:
+            raise StudySpecError(
+                f"factors.{rule.axis}[{index}] must be one of "
+                f"{sorted(allowed)}; got {value!r}{rule.extra_reject}"
+            )
+
+
+def _validate_factor_core_level(
     factors: Mapping[str, Any],
     *,
     closed_tokens: frozenset[str],
     constants: Mapping[str, Any],
 ) -> None:
-    unknown = sorted(set(factors) - _SUPPORTED_FACTOR_AXES)
-    if unknown:
-        raise StudySpecError(
-            f"Unsupported factor axes: {unknown}; supported axes: {sorted(_SUPPORTED_FACTOR_AXES)}"
-        )
-    missing = sorted(_REQUIRED_FACTOR_AXES - set(factors))
-    if missing:
-        raise StudySpecError(f"Missing required factor axes: {missing}")
-
+    del constants
     core = factors.get("core_level")
     if not isinstance(core, list) or not core:
         raise StudySpecError("factors.core_level must be a non-empty list")
@@ -679,6 +727,13 @@ def _validate_factors(
                 f"implied by study.levels + static catalog"
             )
 
+
+def _validate_factor_partner_levels(
+    factors: Mapping[str, Any],
+    *,
+    closed_tokens: frozenset[str],
+    constants: Mapping[str, Any],
+) -> None:
     partners = factors.get("partner_levels")
     if not isinstance(partners, list) or not partners:
         raise StudySpecError("factors.partner_levels must be a non-empty list of partner-sets")
@@ -712,64 +767,86 @@ def _validate_factors(
                 )
             seen_partners.add(token)
 
-    if "confluence_mode" in factors:
-        modes = factors["confluence_mode"]
-        if not isinstance(modes, list) or not modes:
-            raise StudySpecError("factors.confluence_mode must be a non-empty list")
-        for index, mode in enumerate(modes):
-            if mode not in VALID_CONFLUENCE_MODES:
-                raise StudySpecError(
-                    f"factors.confluence_mode[{index}] must be one of "
-                    f"{sorted(VALID_CONFLUENCE_MODES)}; got {mode!r}"
-                )
 
-    if "trigger" in factors:
-        triggers = factors["trigger"]
-        if not isinstance(triggers, list) or not triggers:
-            raise StudySpecError("factors.trigger must be a non-empty list")
-        for index, trigger in enumerate(triggers):
-            if trigger not in VALID_TRIGGERS:
-                raise StudySpecError(
-                    f"factors.trigger[{index}] must be one of "
-                    f"{sorted(VALID_TRIGGERS)}; got {trigger!r}"
-                )
+def _validate_factor_otf(
+    factors: Mapping[str, Any],
+    *,
+    closed_tokens: frozenset[str],
+    constants: Mapping[str, Any],
+) -> None:
+    del closed_tokens, constants
+    otf_values = factors["otf"]
+    if not isinstance(otf_values, list) or not otf_values:
+        raise StudySpecError("factors.otf must be a non-empty list")
+    seen_otf: list[dict[str, Any]] = []
+    for index, entry in enumerate(otf_values):
+        normalized = _normalize_otf_factor_entry(entry, path=f"factors.otf[{index}]")
+        if normalized in seen_otf:
+            raise StudySpecError(
+                f"factors.otf[{index}] duplicates a prior OTF config after "
+                f"normalization (alias forks are not distinct factor levels)"
+            )
+        seen_otf.append(normalized)
 
-    if "trigger_timeframe" in factors:
-        timeframes = factors["trigger_timeframe"]
-        if not isinstance(timeframes, list) or not timeframes:
-            raise StudySpecError("factors.trigger_timeframe must be a non-empty list")
-        for index, timeframe in enumerate(timeframes):
-            if timeframe not in VALID_TRIGGER_TIMEFRAMES:
-                raise StudySpecError(
-                    f"factors.trigger_timeframe[{index}] must be one of "
-                    f"{sorted(VALID_TRIGGER_TIMEFRAMES)}; got {timeframe!r} "
-                    f"(30min is not a valid trigger timeframe)"
-                )
 
-    if "direction" in factors:
-        directions = factors["direction"]
-        if not isinstance(directions, list) or not directions:
-            raise StudySpecError("factors.direction must be a non-empty list")
-        for index, direction in enumerate(directions):
-            if direction not in VALID_DIRECTIONS:
-                raise StudySpecError(
-                    f"factors.direction[{index}] must be one of "
-                    f"{sorted(VALID_DIRECTIONS)}; got {direction!r}"
-                )
+# QI-07-03 clusters. Own table (do not import SETUP_CONFIG_RULES / RUN_SPEC_RULES).
+STUDY_FACTOR_AXIS_RULES: tuple[StudyFactorAxisRule, ...] = (
+    StudyFactorAxisRule("core_level", True, False, None, "", _validate_factor_core_level),
+    StudyFactorAxisRule("partner_levels", True, False, None, "", _validate_factor_partner_levels),
+    StudyFactorAxisRule("confluence_mode", False, True, VALID_CONFLUENCE_MODES, "", None),
+    StudyFactorAxisRule("trigger", False, True, VALID_TRIGGERS, "", None),
+    StudyFactorAxisRule(
+        "trigger_timeframe",
+        False,
+        True,
+        VALID_TRIGGER_TIMEFRAMES,
+        " (30min is not a valid trigger timeframe)",
+        None,
+    ),
+    StudyFactorAxisRule("otf", False, False, None, "", _validate_factor_otf),
+    StudyFactorAxisRule("direction", False, False, VALID_DIRECTIONS, "", None),
+)
+STUDY_EXPAND_REQUIRED_AXES: tuple[str, ...] = tuple(
+    rule.axis for rule in STUDY_FACTOR_AXIS_RULES if rule.expand_required
+)
+STUDY_FACTOR_AXIS_ALLOWED: dict[str, frozenset[str]] = {
+    rule.axis: rule.allowed for rule in STUDY_FACTOR_AXIS_RULES if rule.allowed is not None
+}
+STUDY_REPORT_FIELD_RULES: tuple[StudyReportFieldRule, ...] = (
+    StudyReportFieldRule("primary_metric", _INDEX_PRIMARY_METRICS),
+    StudyReportFieldRule("multiple_testing", _MULTIPLE_TESTING_MODES),
+)
+STUDY_REPORT_FIELD_ALLOWED: dict[str, frozenset[str]] = {
+    rule.field: rule.allowed for rule in STUDY_REPORT_FIELD_RULES
+}
+STUDY_PRIMARY_METRICS = _INDEX_PRIMARY_METRICS
+STUDY_INGEST_RULES: tuple[StudyIngestRule, ...] = (
+    StudyIngestRule("ingestion_mode", STUDY_INGESTION_MODES, "primary"),
+)
 
-    if "otf" in factors:
-        otf_values = factors["otf"]
-        if not isinstance(otf_values, list) or not otf_values:
-            raise StudySpecError("factors.otf must be a non-empty list")
-        seen_otf: list[dict[str, Any]] = []
-        for index, entry in enumerate(otf_values):
-            normalized = _normalize_otf_factor_entry(entry, path=f"factors.otf[{index}]")
-            if normalized in seen_otf:
-                raise StudySpecError(
-                    f"factors.otf[{index}] duplicates a prior OTF config after "
-                    f"normalization (alias forks are not distinct factor levels)"
-                )
-            seen_otf.append(normalized)
+
+def _validate_factors(
+    factors: Mapping[str, Any],
+    *,
+    closed_tokens: frozenset[str],
+    constants: Mapping[str, Any],
+) -> None:
+    unknown = sorted(set(factors) - _SUPPORTED_FACTOR_AXES)
+    if unknown:
+        raise StudySpecError(
+            f"Unsupported factor axes: {unknown}; supported axes: {sorted(_SUPPORTED_FACTOR_AXES)}"
+        )
+    missing = sorted(_REQUIRED_FACTOR_AXES - set(factors))
+    if missing:
+        raise StudySpecError(f"Missing required factor axes: {missing}")
+
+    for rule in STUDY_FACTOR_AXIS_RULES:
+        if rule.axis not in factors:
+            continue
+        if rule.check is not None:
+            rule.check(factors, closed_tokens=closed_tokens, constants=constants)
+            continue
+        _validate_enum_factor_axis(factors, rule)
 
 
 def _validate_mode_rules(mode_rules: Mapping[str, Any], *, factors: Mapping[str, Any]) -> None:
@@ -808,10 +885,10 @@ def _validate_mode_rules(mode_rules: Mapping[str, Any], *, factors: Mapping[str,
 
 def _validate_report(report: Mapping[str, Any], *, factor_keys: set[str]) -> None:
     primary = report.get("primary_metric")
-    if primary not in _INDEX_PRIMARY_METRICS:
+    primary_allowed = STUDY_REPORT_FIELD_ALLOWED["primary_metric"]
+    if primary not in primary_allowed:
         raise StudySpecError(
-            f"study.report.primary_metric must be one of "
-            f"{sorted(_INDEX_PRIMARY_METRICS)}; got {primary!r}"
+            f"study.report.primary_metric must be one of {sorted(primary_allowed)}; got {primary!r}"
         )
     secondary = report.get("secondary_metrics")
     if not isinstance(secondary, list):
@@ -832,10 +909,11 @@ def _validate_report(report: Mapping[str, Any], *, factor_keys: set[str]) -> Non
                 )
 
     multiple_testing = report.get("multiple_testing")
-    if multiple_testing not in _MULTIPLE_TESTING_MODES:
+    testing_allowed = STUDY_REPORT_FIELD_ALLOWED["multiple_testing"]
+    if multiple_testing not in testing_allowed:
         raise StudySpecError(
             f"study.report.multiple_testing must be one of "
-            f"{sorted(_MULTIPLE_TESTING_MODES)}; got {multiple_testing!r}"
+            f"{sorted(testing_allowed)}; got {multiple_testing!r}"
         )
 
     baseline = report.get("otf_baseline")

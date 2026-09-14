@@ -24,14 +24,12 @@ from thesistester.study.naming import build_run_name
 from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.schema import (
     RUN_NAME_RE,
+    STUDY_EXPAND_REQUIRED_AXES,
     StudySpecError,
     normalize_study_spec,
     validate_study_spec,
 )
 
-# Axes that must appear on every expansion cell (factors or explicit_cells).
-# Omitting them previously invented silent defaults (touch / base / global_cluster).
-_REQUIRED_CELL_AXES = ("confluence_mode", "trigger", "trigger_timeframe")
 _DATASET_PATH_KEYS = ("path", "subtimeframe_path")
 # QI-07-06 / QR A-15: prefix only. Clause SoT is ``REPLAY_NOT_STUDY_RUN``.
 _EXPERIMENT_YAML_REPLAY_COMMENT = f"# Replay: {REPLAY_NOT_STUDY_RUN}\n"
@@ -251,7 +249,8 @@ def _build_setup_for_cell(
             "study.dataset.instrument is required for expansion (setup.instrument must match)"
         )
 
-    for axis in _REQUIRED_CELL_AXES:
+    # C-3 / QI-07-03: required-cell axes come from STUDY_FACTOR_AXIS_RULES.
+    for axis in STUDY_EXPAND_REQUIRED_AXES:
         if axis not in cell:
             raise StudySpecError(
                 f"Expansion cell missing {axis!r}; declare it under factors "

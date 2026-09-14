@@ -25,7 +25,12 @@ from thesistester.levels.catalog import (
 from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES, compute_pivot_levels
 from thesistester.study import schema as study_schema
 from thesistester.study.schema import (
+    STUDY_EXPAND_REQUIRED_AXES,
+    STUDY_FACTOR_AXIS_ALLOWED,
+    STUDY_FACTOR_AXIS_RULES,
+    STUDY_INGEST_RULES,
     STUDY_INGESTION_MODES,
+    STUDY_REPORT_FIELD_RULES,
     STUDY_SCHEMA_VERSION,
     STUDY_STATIC_LEVEL_NAMES,
     VALID_DIRECTIONS,
@@ -432,6 +437,116 @@ def test_direction_factor_axis_allowed():
     validated = validate_study_spec(normalize_study_spec(raw))
     assert validated["study"]["factors"]["direction"] == ["long", "short"]
     assert set(validated["study"]["factors"]["direction"]) <= VALID_DIRECTIONS
+
+
+def test_study_factor_axis_rules_own_table_not_c1_c2():
+    """C-3 / QI-07-03: own tables; seven axes; omit ingestion_mode → primary."""
+    assert tuple(rule.axis for rule in STUDY_FACTOR_AXIS_RULES) == (
+        "core_level",
+        "partner_levels",
+        "confluence_mode",
+        "trigger",
+        "trigger_timeframe",
+        "otf",
+        "direction",
+    )
+    assert {rule.axis for rule in STUDY_FACTOR_AXIS_RULES} == study_schema._SUPPORTED_FACTOR_AXES
+    assert STUDY_EXPAND_REQUIRED_AXES == ("confluence_mode", "trigger", "trigger_timeframe")
+    assert set(STUDY_FACTOR_AXIS_ALLOWED) == {
+        "confluence_mode",
+        "trigger",
+        "trigger_timeframe",
+        "direction",
+    }
+    assert tuple(rule.field for rule in STUDY_REPORT_FIELD_RULES) == (
+        "primary_metric",
+        "multiple_testing",
+    )
+    assert STUDY_INGEST_RULES[0].key == "ingestion_mode"
+    assert STUDY_INGEST_RULES[0].omit_means == "primary"
+    assert STUDY_INGEST_RULES[0].allowed == STUDY_INGESTION_MODES
+    src = Path(study_schema.__file__).read_text(encoding="utf-8")
+    assert "SETUP_CONFIG_RULES" not in src
+    assert "RUN_SPEC_RULES" not in src
+    assert not hasattr(study_schema, "SETUP_CONFIG_RULES")
+    assert not hasattr(study_schema, "RUN_SPEC_RULES")
+
+
+def _c3_probe_core_level():
+    raw = _minimal_study()
+    raw["study"]["factors"]["core_level"] = ["NOT_A_LEVEL"]
+    return raw
+
+
+def _c3_probe_partner_levels():
+    raw = _minimal_study()
+    raw["study"]["factors"]["partner_levels"] = [["NOT_A_LEVEL"]]
+    return raw
+
+
+def _c3_probe_confluence_mode():
+    raw = _minimal_study()
+    raw["study"]["factors"]["confluence_mode"] = ["nope"]
+    return raw
+
+
+def _c3_probe_trigger():
+    raw = _minimal_study()
+    raw["study"]["factors"]["trigger"] = ["nope"]
+    return raw
+
+
+def _c3_probe_trigger_timeframe():
+    raw = _minimal_study()
+    raw["study"]["factors"]["trigger_timeframe"] = ["30min"]
+    return raw
+
+
+def _c3_probe_otf():
+    raw = _minimal_study()
+    raw["study"]["factors"]["otf"] = ["not-a-mapping"]
+    return raw
+
+
+def _c3_probe_direction():
+    raw = _minimal_study()
+    raw["study"]["factors"]["direction"] = ["sideways"]
+    return raw
+
+
+_FACTOR_AXIS_PROBES: tuple[tuple[str, object, str], ...] = (
+    ("core_level", _c3_probe_core_level, "Unknown core_level"),
+    ("partner_levels", _c3_probe_partner_levels, "Unknown partner"),
+    ("confluence_mode", _c3_probe_confluence_mode, "factors.confluence_mode"),
+    ("trigger", _c3_probe_trigger, "factors.trigger"),
+    ("trigger_timeframe", _c3_probe_trigger_timeframe, "30min is not a valid trigger timeframe"),
+    ("otf", _c3_probe_otf, r"factors.otf\[0\] must be a mapping"),
+    ("direction", _c3_probe_direction, "factors.direction"),
+)
+
+
+def test_validate_study_spec_rule_table_probe_names_match_axes():
+    assert tuple(row[0] for row in _FACTOR_AXIS_PROBES) == tuple(
+        rule.axis for rule in STUDY_FACTOR_AXIS_RULES
+    )
+
+
+@pytest.mark.parametrize(("axis", "make_spec", "expected"), _FACTOR_AXIS_PROBES)
+def test_validate_study_spec_one_row_per_supported_axis(axis, make_spec, expected):
+    raw = make_spec()
+    spec = normalize_study_spec(raw)
+    with pytest.raises(StudySpecError, match=expected):
+        validate_study_spec(spec)
+    factors = spec["study"]["factors"]
+    constants = spec["study"]["constants"]
+    tokens = closed_level_token_set(spec["study"].get("levels") or {})
+    rule = next(item for item in STUDY_FACTOR_AXIS_RULES if item.axis == axis)
+    if rule.check is not None:
+        with pytest.raises(StudySpecError, match=expected):
+            rule.check(factors, closed_tokens=tokens, constants=constants)
+    else:
+        with pytest.raises(StudySpecError, match=expected):
+            study_schema._validate_enum_factor_axis(factors, rule)
 
 
 def test_grid_without_enabled_fails():
