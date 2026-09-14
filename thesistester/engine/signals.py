@@ -961,10 +961,7 @@ def _index_base_end_by_trigger_bar(trigger_df: pd.DataFrame) -> dict[int, int]:
         return {}
     trigger_idx = trigger_df["trigger_bar_index"].to_numpy()
     trigger_base_end = trigger_df["base_end_bar_index"].to_numpy()
-    return {
-        int(trig): int(base)
-        for trig, base in zip(trigger_idx, trigger_base_end, strict=True)
-    }
+    return {int(trig): int(base) for trig, base in zip(trigger_idx, trigger_base_end, strict=True)}
 
 
 def _prepare_generate_trigger_frame(

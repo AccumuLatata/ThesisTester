@@ -1396,7 +1396,9 @@ class TestGenerateSignalsPhases:
 
         def _capture_touch(frame, zone, mapped_idx, base_bar_idx, effective_tf, *args, **kwargs):
             seen.append(effective_tf)
-            return _check_touch(frame, zone, mapped_idx, base_bar_idx, effective_tf, *args, **kwargs)
+            return _check_touch(
+                frame, zone, mapped_idx, base_bar_idx, effective_tf, *args, **kwargs
+            )
 
         monkeypatch.setattr("thesistester.engine.signals._check_touch", _capture_touch)
         zone = _zone_df(0, 100.0, 100.25).iloc[0]
@@ -1573,9 +1575,7 @@ class TestGenerateSignalsPhases:
             )
         )
 
-        empty_df = _df_bars(
-            [{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}]
-        ).iloc[0:0]
+        empty_df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}]).iloc[0:0]
         cases.append(
             (
                 "empty df 3c HTF naked_flags",
