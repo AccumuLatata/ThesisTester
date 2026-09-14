@@ -1,4 +1,8 @@
-"""B-10 / QI-12-07: import-linter contract file and C10 page-scoped gate."""
+"""B-10 / QI-12-07: import-linter contract file and C10 page-scoped gate.
+
+B-19 / C9: sim_core AST gate resolves parent-package and relative imports
+so those forms cannot false-green. C12 lives in ``tests/test_validation.py``.
+"""
 
 from __future__ import annotations
 
@@ -101,6 +105,10 @@ C10_BANNED_BUILDER_NAMES = (
     "WIDGET_KEY_INGESTION_MODE",
 )
 
+C9_SOURCE_MODULE = "thesistester.engine.sim_core"
+C9_BANNED_PREFIXES = ("thesistester.entry_window_policy", "thesistester.analytics")
+C9_CONTRACT_NAME = "C9 sim_core ↛ entry_window_policy / analytics (R22)"
+
 
 def _load_importlinter() -> configparser.ConfigParser:
     parser = configparser.ConfigParser()
@@ -112,6 +120,48 @@ def _load_importlinter() -> configparser.ConfigParser:
 def _multiline(parser: configparser.ConfigParser, section: str, key: str) -> tuple[str, ...]:
     raw = parser.get(section, key, fallback="")
     return tuple(line.strip() for line in raw.splitlines() if line.strip())
+
+
+def _resolve_from_module(module: str | None, level: int, source_module: str) -> str:
+    """Resolve a relative ImportFrom module against ``source_module``."""
+    if level <= 0:
+        return module or ""
+    parts = source_module.split(".")
+    if level > len(parts):
+        return module or ""
+    base = parts[: len(parts) - level]
+    if module:
+        base.append(module)
+    return ".".join(base)
+
+
+def _imported_module_names(tree: ast.AST, source_module: str) -> tuple[str, ...]:
+    """Absolute module names referenced by ``import`` / ``from … import``.
+
+    Includes parent-package forms (``from thesistester import analytics``)
+    and relatives (``from .. import entry_window_policy``). A walker that
+    only checks ``node.module`` / ``alias.name`` against fully-qualified
+    prefixes false-greens those (B-2 fail-closed class).
+    """
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            resolved = _resolve_from_module(node.module, node.level, source_module)
+            if resolved:
+                names.append(resolved)
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                names.append(f"{resolved}.{alias.name}" if resolved else alias.name)
+    return tuple(names)
+
+
+def _violates_c9(imported: str) -> bool:
+    return any(
+        imported == banned or imported.startswith(f"{banned}.") for banned in C9_BANNED_PREFIXES
+    )
 
 
 def test_importlinter_declares_qi15_contracts():
@@ -160,6 +210,52 @@ def test_c8_streamlit_allowlist_is_explicit():
     ignored = _multiline(parser, section, "ignore_imports")
     assert ignored == C8_STREAMLIT_ALLOWLIST
     assert parser.get(section, "unmatched_ignore_imports_alerting") == "error"
+
+
+def test_c9_ast_gate_catches_parent_and_relative_imports():
+    """C9 AST must not false-green parent-package or relative hops."""
+    snippets = (
+        "from thesistester import analytics",
+        "from thesistester import entry_window_policy",
+        "from .. import entry_window_policy",
+        "from ..analytics import validation",
+        "from ..entry_window_policy import normalize_entry_window",
+        "import thesistester.analytics.validation",
+        "from thesistester.analytics.validation import validation_summary",
+    )
+    for src in snippets:
+        imported = _imported_module_names(ast.parse(src), C9_SOURCE_MODULE)
+        assert any(_violates_c9(name) for name in imported), src
+
+
+def test_c9_sim_core_does_not_import_admission_or_analytics():
+    """QI-4 §6.3 / C9 (B-19): sim_core ↛ entry_window_policy / analytics.*."""
+    source = (ROOT / "thesistester" / "engine" / "sim_core.py").read_text(encoding="utf-8")
+    imported = _imported_module_names(ast.parse(source), C9_SOURCE_MODULE)
+    leaked = [name for name in imported if _violates_c9(name)]
+    assert leaked == []
+    parser = _load_importlinter()
+    section = "importlinter:contract:c9-sim-core-no-admission"
+    sources, forbidden = QI15_CONTRACTS["c9-sim-core-no-admission"]
+    assert _multiline(parser, section, "source_modules") == sources
+    assert _multiline(parser, section, "forbidden_modules") == forbidden
+
+
+def test_c9_sim_core_contract_is_kept():
+    """C9 is kept today (unlike C7). Warn-first CI still reports the status."""
+    result = subprocess.run(
+        ["lint-imports", "--config", str(IMPORTLINTER), "--no-cache", "--no-logo"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    out = f"{result.stdout}\n{result.stderr}"
+    assert "Contracts:" in out
+    # CI awk '/BROKEN$/' — status is the last token on the contract line.
+    c9_lines = [line for line in out.splitlines() if C9_CONTRACT_NAME in line]
+    assert c9_lines, out
+    assert any(line.endswith("KEPT") for line in c9_lines), c9_lines
+    assert not any(line.endswith("BROKEN") for line in c9_lines), c9_lines
 
 
 def test_importlinter_config_is_loadable():
