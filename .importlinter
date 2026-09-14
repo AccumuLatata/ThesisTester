@@ -1,0 +1,138 @@
+# QR B-10 / QI-12-07 — import contracts from QI-15_SYNTHESIS.md §5.4
+# (C1–C5, C7–C10). Probe: QI-12 §2.6 draft.
+#
+# Warn-first in CI (`import-linter (warn-first)`). Broken contracts emit
+# ::warning and do not fail the job. Blocking flip is a later PR.
+# Do not add that job to the G-1 six required display names.
+#
+# C6 is a call-ban (AST in tests/study), not an import contract.
+# C7 is expected broken via the layering chain
+# journal.levels → study.schema → tick_vap → execution_artifacts → api
+# → engine.backtest / levels.all (sim_core via backtest). That is not
+# JS2 (engine.signals stays allowed). C-9 slims journal/__init__.py so a
+# runtime `import thesistester.journal` does not load backtest; it does
+# not keep this contract. C8 allow-list stays until C-8/F-9 extract
+# Streamlit-free readers.
+# C10 is page-scoped: pages/ are not a Python package, so import-linter
+# cannot name pages/15_Studies.py. The FORMAT_PROFILE_LABELS-from-builder
+# ban is this file's C10 comment plus tests/study/test_study_builder.py
+# and tests/test_import_linter_contracts.py.
+
+[importlinter]
+root_package = thesistester
+include_external_packages = True
+
+# C1/C4: a layers stack is not used. execute and cli_study import expand
+# (and launch/preview import expand), so a preview>expand>cli>cli_study>execute
+# layer would invert. Ignore only the known expand → cli hop
+# (QI-12 §2.6 / QI-15 §5.4). Do not set allow_indirect_imports — that
+# would hide a new preview/launch → X → execute|viewer chain.
+
+[importlinter:contract:c1-preview-no-execute]
+name = C1 preview.py must not import study.execute (RS-D8)
+type = forbidden
+source_modules =
+    thesistester.study.preview
+forbidden_modules =
+    thesistester.study.execute
+# Known chain: preview → expand → cli → cli_study → execute.
+ignore_imports =
+    thesistester.study.expand -> thesistester.cli
+unmatched_ignore_imports_alerting = error
+
+[importlinter:contract:c2-viewer-independence]
+name = C2 viewer.py ↛ cli_study / cli / execute / rollup / observatory / Plotly / Streamlit
+type = forbidden
+source_modules =
+    thesistester.study.viewer
+forbidden_modules =
+    thesistester.study.cli_study
+    thesistester.cli
+    thesistester.study.execute
+    thesistester.study.rollup
+    thesistester.study.observatory
+    plotly
+    streamlit
+
+[importlinter:contract:c3-observatory-independence]
+name = C3 observatory.py ↛ cli_study / execute / Streamlit / Plotly
+type = forbidden
+source_modules =
+    thesistester.study.observatory
+forbidden_modules =
+    thesistester.study.cli_study
+    thesistester.study.execute
+    streamlit
+    plotly
+
+[importlinter:contract:c4-launch-no-viewer-execute]
+name = C4 launch.py ↛ viewer / execute (AH2 / RS-D9)
+type = forbidden
+source_modules =
+    thesistester.study.launch
+forbidden_modules =
+    thesistester.study.viewer
+    thesistester.study.execute
+# Same expand → cli → cli_study chain as C1 (QI-12 §2.6).
+ignore_imports =
+    thesistester.study.expand -> thesistester.cli
+unmatched_ignore_imports_alerting = error
+
+[importlinter:contract:c5-admit-followup-independence]
+name = C5 admit_followup.py ↛ execute / launch / viewer / cli / Streamlit
+type = forbidden
+source_modules =
+    thesistester.study.admit_followup
+forbidden_modules =
+    thesistester.study.execute
+    thesistester.study.launch
+    thesistester.study.viewer
+    thesistester.cli
+    streamlit
+
+# C7: journal ↛ engine.backtest / levels.all / sim_core.
+# Do not forbid engine.signals — JS2 classify_zone_triggers wrapper is legitimate.
+# Warn-first broken today via journal.levels → study.schema → api (see header).
+[importlinter:contract:c7-journal-no-engine-core]
+name = C7 journal ↛ engine.backtest / levels.all / sim_core (TJ; not engine.signals)
+type = forbidden
+source_modules =
+    thesistester.journal
+forbidden_modules =
+    thesistester.engine.backtest
+    thesistester.levels.all
+    thesistester.engine.sim_core
+
+# C8: library ↛ streamlit except the documented allow-list (R18 / H-C).
+[importlinter:contract:c8-library-streamlit-allowlist]
+name = C8 library is Streamlit-free except app_state / classic chrome / two secret readers
+type = forbidden
+source_modules =
+    thesistester
+forbidden_modules =
+    streamlit
+ignore_imports =
+    thesistester.app_state -> streamlit
+    thesistester.classic_context -> streamlit
+    thesistester.classic_ledger -> streamlit
+    thesistester.classic_nav -> streamlit
+    thesistester.classic_proposal -> streamlit
+    thesistester.classic_record -> streamlit
+    thesistester.assistant.llm -> streamlit
+    thesistester.assistant.voice.xai_realtime -> streamlit
+unmatched_ignore_imports_alerting = error
+
+[importlinter:contract:c9-sim-core-no-admission]
+name = C9 sim_core ↛ entry_window_policy / analytics (R22)
+type = forbidden
+source_modules =
+    thesistester.engine.sim_core
+forbidden_modules =
+    thesistester.entry_window_policy
+    thesistester.analytics
+
+# C10 (QI-15 §5.4 / R17): pages/15_Studies.py must not import
+# FORMAT_PROFILE_LABELS from thesistester.study.builder.
+# Streamlit page modules are not a Python package, so there is no
+# import-linter source module. Mechanized in
+# tests/test_import_linter_contracts.py (and test_study_builder.py).

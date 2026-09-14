@@ -11,18 +11,45 @@ Lean documentation index: [`README.md`](README.md) (living vs contract vs
 | `app.py`, `pages/**` | No | Streamlit entry points; run from a repo checkout. |
 | `tests/**` | No | Runs from the checkout; `testpaths = ["tests"]`. |
 
-Consequence that matters for later milestones: `thesistester/app_state.py` is currently the
-only library module that imports `streamlit` at module scope — data, levels, engine,
-analytics, persistence, reporting, and visualization modules are Streamlit-free. That is what
-makes the R18 headless facade a pure addition rather than a refactor. `streamlit`
-nevertheless remains a hard dependency in `pyproject.toml` (the range SoT;
-QI-12-03 / QR G-3). R18 keeps it there to avoid changing the established
-install contract. Dependency ranges carry next-major caps; app install is
-`pip install -e .` (`constraints.txt` is the lock).
+Consequence that matters for later milestones: the library is Streamlit-free
+except an explicit allow-list mechanized as import-linter **C8** (`.importlinter`,
+B-10 / QI-12-07, warn-first): eager `thesistester.app_state` plus lazy classic
+chrome (`classic_context`, `classic_ledger`, `classic_nav`, `classic_proposal`,
+`classic_record`) and two secret readers (`assistant.llm`,
+`assistant.voice.xai_realtime`) until C-8/F-9 extract Streamlit-free readers.
+Data, levels, engine, analytics, persistence, reporting, and visualization
+modules stay off that list. That is what makes the R18 headless facade a pure
+addition rather than a refactor. `streamlit` nevertheless remains a hard
+dependency in `pyproject.toml` (the range SoT; QI-12-03 / QR G-3). R18 keeps
+it there to avoid changing the established install contract. Dependency ranges
+carry next-major caps; app install is `pip install -e .` (`constraints.txt` is
+the lock).
 
-Tool configuration is centralized in `pyproject.toml` (`ruff`, `pytest`, `coverage`).
-CI jobs and the golden-master regeneration guard are defined in `.github/workflows/ci.yml`;
-the golden fixture contract lives in `tests/fixtures/golden/README.md`.
+Tool configuration is centralized in `pyproject.toml` (`ruff`, `pytest`,
+`coverage`). Import contracts C1–C5 and C7–C10 live in `.importlinter`
+(QI-15 §5.4). CI jobs and the golden-master regeneration guard are defined in
+`.github/workflows/ci.yml`; the golden fixture contract lives in
+`tests/fixtures/golden/README.md`. The `import-linter (warn-first)` job is
+**not** one of the six G-1 required checks; a later PR flips it to blocking.
+
+### Import bans (mechanized)
+
+Prose rules below stay the human contract. `.importlinter` is the mechanical
+gate (warn-first):
+
+| ID | Rule | Notes |
+|---|---|---|
+| C1 | `study/preview.py` ↛ `study.execute` | Direct and other chains. Ignores only the known `expand → cli` hop of `expand → cli → cli_study` (a layers stack would invert: `execute` imports `expand`). Not `allow_indirect_imports` |
+| C2 | `study/viewer.py` ↛ `cli_study` / `cli` / `execute` / `rollup` / `observatory` / Plotly / Streamlit | Direct and chain |
+| C3 | `study/observatory.py` ↛ `cli_study` / `execute` / Streamlit / Plotly | Direct and chain |
+| C4 | `study/launch.py` ↛ `viewer` / `execute` | Direct and other chains. Same `expand → cli` ignore as C1 |
+| C5 | `study/admit_followup.py` ↛ execute / launch / viewer / cli / Streamlit | Direct and chain |
+| C7 | `journal` ↛ `engine.backtest` / `levels.all` / `engine.sim_core` | **Not** `engine.signals` (JS2). Warn-first broken via `journal.levels → study.schema → tick_vap → execution_artifacts → api`. C-9 slims package-init runtime load; it does not keep this contract |
+| C8 | `thesistester` ↛ `streamlit` except the allow-list above | New Streamlit importers fail this contract |
+| C9 | `engine.sim_core` ↛ `entry_window_policy` / `analytics.*` | R22: no admission / P&L in `sim_core` |
+| C10 | Studies page ↛ `FORMAT_PROFILE_LABELS` from `study.builder` | `pages/` is not a package; gated by `tests/test_import_linter_contracts.py` |
+
+C6 (pages must not **call** `run_study()`) stays an AST call-ban in `tests/study`, not an import contract.
 
 Streamlit server limits live in checkout-local `.streamlit/config.toml` (not
 packaged): `server.maxUploadSize = 350` (file uploader, MB) and
@@ -130,7 +157,7 @@ call `report_study`. Time-of-day stays a post-hoc projection, not a new
 StudySpec factor.
 `viewer.py` must not import `cli_study`, `thesistester.cli`, `execute`,
 `rollup`, Plotly, or Streamlit (`cli_study` may import `viewer`; Plotly stays
-on `pages/15_Studies.py`).
+on `pages/15_Studies.py`). Import-linter **C2**.
 **SAF** (Study Admit Follow-up, `docs/STUDY_ADMIT_FOLLOWUP_IMPLEMENTATION_PLAN.md`)
 SAF1–SAF3 are shipped: optional fail-closed
 `study.lineage` + `study promote --admit-tod auto` drafts a child Admit spec
@@ -145,7 +172,8 @@ Refuse is `st.error` via `studies_admit_followup_error`; success flash is
 hydrates (Load-example pattern). The notice is consumed after that rerun.
 Default promote stays RS5. The button must not call `run_study`.
 `viewer.py` must not import `promote` or `admit_followup`.
-`admit_followup.py` must not import execute / launch / viewer / cli / Streamlit.
+`admit_followup.py` must not import execute / launch / viewer / cli / Streamlit
+(import-linter **C5**).
 Engine Admit remains `backtest.entry_window` / `grid.entry_window` (SW).
 No `engine/` edit.
 **SO** (Study Observatory, `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`)
@@ -153,7 +181,7 @@ SO1 is the read-only corpus compiler (`thesistester/study/observatory.py`)
 plus additive CLI `python -m thesistester study observatory`. It concatenates
 existing index + expansion + spec locks via SV1 `discover_study_dirs`. It
 must not call `report_study` / `rollup_study` / `run_study`, must not unzip
-every cell, must not import Streamlit/Plotly inside `observatory.py`, and
+every cell, must not import Streamlit/Plotly inside `observatory.py` (import-linter **C3**), and
 must not be imported by `viewer.py`. SO2 adds `pages/16_Study_Observatory.py`
 (facets, cohort lock, n×E scatter, Inspect drill). SO3 attaches the Program B
 lens (`desk_class`, ΔE vs Wave 0, heatmap) when `progB_*` cells are present.
@@ -167,8 +195,10 @@ on and focuses the heatmap through existing Core / Partner facets via
 the one-shot `_observatory_pending_facets` key (same pending pattern as
 SO4 desks). It must not bump desk `schema_version`, change
 `cohort_key`, or unpark SO5/SO6.
-`launch.py` must not import `viewer` (trusted roots
-are inlined; the Studies page imports launch before viewer). Catalog table
+`launch.py` must not import `viewer` (import-linter **C4**; trusted roots
+are inlined; the Studies page imports launch before viewer). The known
+`expand → cli → cli_study` chain is allowed as an indirect import until a
+later structural PR. Catalog table
 cap (`CATALOG_DISPLAY_CAP = 50`) and Studies session-key constants are
 page-local — do not `from viewer import` those names. Studies-scoped keys:
 `studies_catalog_entries`, `studies_catalog_roots_key`,
@@ -1095,7 +1125,11 @@ claims about capital, margin, liquidity, or fill interactions.
 `thesistester/journal/` is an additive, Streamlit-free post-trade package
 (R21-shaped). It does **not** sit on the R18 path
 (`load_dataset → compute_levels → … → simulate_trades`) and never writes
-research bundles.
+research bundles. Import-linter **C7** forbids `engine.backtest` /
+`levels.all` / `engine.sim_core` (not `engine.signals` — JS2). The contract
+is warn-first-broken today via the
+`journal.levels → study.schema → api` layering chain (QI-12 §2.6). C-9 slims
+package init so `import thesistester.journal` does not bind `simulate_trades`.
 
 **TJ1 landed.** `load_tradesviz_executions(path, *, profile=)` is the only
 public loader. `profile` is keyword-only and must be
