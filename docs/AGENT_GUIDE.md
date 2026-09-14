@@ -1163,8 +1163,8 @@ are B-1; H10/H11 lock tests are B-2.
   Any accelerated path must be opt-in and exactly equal to serial golden and
   feature-path outputs.
 - Keep optimization work inside `engine.sim_core`. C-19 placed the serial
-  P7 walk (`walk_trade_exit`) and AH1 flatten-cap math
-  (`compute_session_close_cap`) behind `resolve_trade_bar`. Admission
+  P7 walk (`walk_trade_exit`, which calls `resolve_trade_bar`) and AH1
+  flatten-cap math (`compute_session_close_cap`) on the R22 boundary. Admission
   (window / cutoff / exposure / 3c-void), skip-row schema, costs, P&L,
   trade records, and diagnostics remain orchestrated by `backtest.py`.
   Do not widen `sim_core` into those concerns. C-20 may switch `BarData`

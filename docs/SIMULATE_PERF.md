@@ -59,5 +59,5 @@ remains the sole public orchestrator for admission, skip/exit labels,
 costs, trade records, and diagnostics. `sim_core` still holds no
 admission or P&L. This keeps any future hot-loop acceleration (E-10)
 constrained to the small internal boundary while preserving exact legacy
-semantics. C-19 is a behavior-preserving extract; the ruler below is
+semantics. C-19 is a behavior-preserving extract; the ruler above is
 re-timed on that extract.
