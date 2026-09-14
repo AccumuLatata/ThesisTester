@@ -256,13 +256,18 @@ def test_page_inspect_admit_ast_and_no_execute():
 
 
 def test_viewer_still_does_not_import_promote_or_admit_followup():
-    source = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
-        elif isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-    assert "thesistester.study.promote" not in imported
-    assert "thesistester.study.admit_followup" not in imported
+    for path in (
+        Path("thesistester/study/viewer.py"),
+        Path("thesistester/study/viewer_catalog.py"),
+        Path("thesistester/study/viewer_progress.py"),
+    ):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+            elif isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+        assert "thesistester.study.promote" not in imported, path
+        assert "thesistester.study.admit_followup" not in imported, path

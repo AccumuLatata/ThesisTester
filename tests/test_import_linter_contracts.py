@@ -26,26 +26,41 @@ REQUIRED_CONTRACT_IDS = (
     "c9-sim-core-no-admission",
 )
 
-# QI-15 §5.4 payloads. Values are (source_modules, forbidden_modules).
+# QI-15 §5.4 payloads, C-24-extended. Values are (source_modules, forbidden_modules).
+# C-24 moved join/desk/lens/catalog/progress off the façades; C2–C5 must name
+# those siblings or a banned import in a helper would false-green the contract.
+_C24_VIEWER_MODULES = (
+    "thesistester.study.viewer",
+    "thesistester.study.viewer_catalog",
+    "thesistester.study.viewer_progress",
+)
+_C24_OBSERVATORY_MODULES = (
+    "thesistester.study.observatory",
+    "thesistester.study.observatory_support",
+    "thesistester.study.observatory_join",
+    "thesistester.study.observatory_desks",
+    "thesistester.study.observatory_lens",
+    "thesistester.study.observatory_query",
+)
 QI15_CONTRACTS = {
     "c1-preview-no-execute": (
         ("thesistester.study.preview",),
         ("thesistester.study.execute",),
     ),
     "c2-viewer-independence": (
-        ("thesistester.study.viewer",),
+        _C24_VIEWER_MODULES,
         (
             "thesistester.study.cli_study",
             "thesistester.cli",
             "thesistester.study.execute",
             "thesistester.study.rollup",
-            "thesistester.study.observatory",
+            *_C24_OBSERVATORY_MODULES,
             "plotly",
             "streamlit",
         ),
     ),
     "c3-observatory-independence": (
-        ("thesistester.study.observatory",),
+        _C24_OBSERVATORY_MODULES,
         (
             "thesistester.study.cli_study",
             "thesistester.study.execute",
@@ -55,14 +70,14 @@ QI15_CONTRACTS = {
     ),
     "c4-launch-no-viewer-execute": (
         ("thesistester.study.launch",),
-        ("thesistester.study.viewer", "thesistester.study.execute"),
+        (*_C24_VIEWER_MODULES, "thesistester.study.execute"),
     ),
     "c5-admit-followup-independence": (
         ("thesistester.study.admit_followup",),
         (
             "thesistester.study.execute",
             "thesistester.study.launch",
-            "thesistester.study.viewer",
+            *_C24_VIEWER_MODULES,
             "thesistester.cli",
             "streamlit",
         ),
@@ -158,10 +173,22 @@ def _imported_module_names(tree: ast.AST, source_module: str) -> tuple[str, ...]
     return tuple(names)
 
 
-def _violates_c9(imported: str) -> bool:
-    return any(
-        imported == banned or imported.startswith(f"{banned}.") for banned in C9_BANNED_PREFIXES
+def _hits_ban(imported: str, banned: str) -> bool:
+    """True when ``imported`` is ``banned`` or a submodule (``banned.*``)."""
+    return imported == banned or imported.startswith(f"{banned}.")
+
+
+def _hits_observatory_family(imported: str) -> bool:
+    """C-24 siblings are ``observatory_join``, not ``observatory.join``."""
+    return (
+        imported == "thesistester.study.observatory"
+        or imported.startswith("thesistester.study.observatory_")
+        or imported.startswith("thesistester.study.observatory.")
     )
+
+
+def _violates_c9(imported: str) -> bool:
+    return any(_hits_ban(imported, banned) for banned in C9_BANNED_PREFIXES)
 
 
 def test_importlinter_declares_qi15_contracts():
@@ -212,6 +239,28 @@ def test_c8_streamlit_allowlist_is_explicit():
     assert parser.get(section, "unmatched_ignore_imports_alerting") == "error"
 
 
+def test_c24_import_ban_catches_parent_and_submodule_forms():
+    """C-24 AST bans must not false-green ``from pkg import execute`` / ``plotly.express``."""
+    snippets = (
+        ("from thesistester.study import execute", "thesistester.study.execute"),
+        ("from thesistester.study.execute import run_study", "thesistester.study.execute"),
+        ("import thesistester.study.execute", "thesistester.study.execute"),
+        ("from plotly.express import px", "plotly"),
+        ("import plotly.graph_objects", "plotly"),
+        ("from thesistester.study import observatory_join", "observatory_family"),
+        (
+            "from thesistester.study.observatory_join import load_observatory_frame",
+            "observatory_family",
+        ),
+    )
+    for src, banned in snippets:
+        imported = _imported_module_names(ast.parse(src), "thesistester.study.viewer")
+        if banned == "observatory_family":
+            assert any(_hits_observatory_family(name) for name in imported), src
+        else:
+            assert any(_hits_ban(name, banned) for name in imported), src
+
+
 def test_c9_ast_gate_catches_parent_and_relative_imports():
     """C9 AST must not false-green parent-package or relative hops."""
     snippets = (
@@ -239,6 +288,41 @@ def test_c9_sim_core_does_not_import_admission_or_analytics():
     sources, forbidden = QI15_CONTRACTS["c9-sim-core-no-admission"]
     assert _multiline(parser, section, "source_modules") == sources
     assert _multiline(parser, section, "forbidden_modules") == forbidden
+
+
+def _contract_kept_or_broken(out: str, label: str) -> str | None:
+    """Read KEPT/BROKEN even when lint-imports wraps a long contract name."""
+    section = out.split("Broken contracts")[0]
+    idx = section.find(label)
+    if idx < 0:
+        return None
+    tail = section[idx:]
+    kept = tail.find("KEPT")
+    broken = tail.find("BROKEN")
+    if kept < 0 and broken < 0:
+        return None
+    if broken >= 0 and (kept < 0 or broken < kept):
+        return "BROKEN"
+    return "KEPT"
+
+
+def test_c2_c3_c24_siblings_stay_kept():
+    """C-24: C2/C3 name the split helpers; contracts stay KEPT."""
+    result = subprocess.run(
+        ["lint-imports", "--config", str(IMPORTLINTER), "--no-cache", "--no-logo"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    out = f"{result.stdout}\n{result.stderr}"
+    assert "Contracts:" in out
+    for label in (
+        "C2 viewer family",
+        "C3 observatory family",
+        "C4 launch.py ↛ viewer family",
+        "C5 admit_followup.py ↛ execute / launch / viewer family",
+    ):
+        assert _contract_kept_or_broken(out, label) == "KEPT", out
 
 
 def test_c9_sim_core_contract_is_kept():

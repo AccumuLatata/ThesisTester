@@ -33,7 +33,7 @@ ALLOWED_STRICT_FALSE_COUNTS = {
 }
 INVARIANT_STRICT_TRUE = (
     ("thesistester/levels/tpo.py", 1),
-    ("thesistester/study/observatory.py", 2),
+    ("thesistester/study/observatory_query.py", 2),
     ("thesistester/analytics/metrics.py", 1),
     ("thesistester/analytics/time_analysis.py", 1),
     ("pages/16_Study_Observatory.py", 1),

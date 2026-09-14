@@ -193,16 +193,27 @@ Default promote stays RS5. The button must not call `run_study`.
 Engine Admit remains `backtest.entry_window` / `grid.entry_window` (SW).
 No `engine/` edit.
 **SO** (Study Observatory, `docs/STUDY_OBSERVATORY_IMPLEMENTATION_PLAN.md`)
-SO1 is the read-only corpus compiler (`thesistester/study/observatory.py`)
-plus additive CLI `python -m thesistester study observatory`. It concatenates
+SO1 is the read-only corpus compiler. C-24 (QI-07-07) keeps public names on
+`thesistester/study/observatory.py` and splits the body: join/corpus
+(`observatory_join.py`), SO4 desks (`observatory_desks.py`; writes only
+`{store}/study_observatory/desks`), Program B lens (`observatory_lens.py`),
+query/display (`observatory_query.py`), shared scalars (`observatory_support.py`).
+SV catalog/inspect stay on `viewer.py` with `viewer_catalog.py` (SV1 discover)
+and `viewer_progress.py` (SV2 ledger/rollup/log). StudyDraft emit/hydrate
+live in `builder_emit.py` / `builder_hydrate.py` behind `builder.py`.
+Plus additive CLI `python -m thesistester study observatory`. It concatenates
 existing index + expansion + spec locks via SV1 `discover_study_dirs`. It
 must not call `report_study` / `rollup_study` / `run_study`, must not unzip
-every cell, must not import Streamlit/Plotly inside `observatory.py` (import-linter **C3**), and
+every cell, must not import Streamlit/Plotly inside `observatory.py` or the
+C-24 siblings (import-linter **C3** on the façade and join/desk/lens/query/support
+helpers; **C2** names `viewer_catalog` / `viewer_progress` and forbids the
+observatory siblings so a helper cannot bypass the façade), and
 must not be imported by `viewer.py`. SO2 adds `pages/16_Study_Observatory.py`
-(facets, cohort lock, n×E scatter, Inspect drill). SO3 attaches the Program B
+(facets, cohort lock, n×E scatter, Inspect drill). Streamlit/Plotly stay on
+pages. SO3 attaches the Program B
 lens (`desk_class`, ΔE vs Wave 0, heatmap) when `progB_*` cells are present.
 SO4 persists query-only desks under `{store}/study_observatory/desks`
-(`schema_version: 1`; unknown schema ignored). SO7 surfaces the existing
+(`schema_version: 1`; unknown schema ignored; never write study dirs). SO7 surfaces the existing
 `studies` grain (ledger strip + catalog-dir table + study-level Inspect
 drill) without inventing cell rows. SO8 adds display-only cohort labels
 (raw `cohort_key` unchanged; no new session keys). SO9 makes
