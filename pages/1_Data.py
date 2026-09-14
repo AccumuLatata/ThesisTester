@@ -89,8 +89,16 @@ INGESTION_MODE_LABELS = {
     ),
     INGESTION_MODE_PRIMARY: "Legacy: one-minute primary (advanced)",
 }
+def _bind_loader_profile_allow_list(loader_module, name, fallback):
+    """R17 type-checked getattr; stale or mistyped loader names keep the page up."""
+    value = getattr(loader_module, name, None)
+    if isinstance(value, (tuple, list, set, frozenset)) and value:
+        return value
+    return fallback
+
+
 # R17 getattr fallback: stale loader.py without the C-2 names keeps the page up.
-DERIVE_15S_SUPPORTED_PROFILES = getattr(
+DERIVE_15S_SUPPORTED_PROFILES = _bind_loader_profile_allow_list(
     _data_loader,
     "DERIVE_15S_SUPPORTED_PROFILES",
     frozenset({"quantower_history_exporter"}),
@@ -118,7 +126,7 @@ SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY = "_subtimeframe_duplicate_signature"
 SUBTIMEFRAME_DUPLICATE_SOURCE_KEY = "_subtimeframe_duplicate_source"
 SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY = "subtimeframe_duplicate_resolution"
 SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY = "_subtimeframe_diagnostic_data"
-SUBTIMEFRAME_FORMAT_PROFILES = getattr(
+SUBTIMEFRAME_FORMAT_PROFILES = _bind_loader_profile_allow_list(
     _data_loader,
     "SUBTIMEFRAME_FORMAT_PROFILES",
     ("canonical", "quantower_history_exporter"),

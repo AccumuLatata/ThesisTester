@@ -565,6 +565,7 @@ def _validate_run_spec_run(spec: Mapping[str, Any]) -> None:
     run = _require_mapping(spec, section="run")
     _validate_keys(run, _RUN_KEYS, section="run")
 
+
 def _validate_run_spec_dataset(spec: Mapping[str, Any]) -> None:
     """QI-06-01 cluster ``dataset`` (C-2 / MG-17)."""
     run = _require_mapping(spec, section="run")
@@ -634,6 +635,7 @@ def _validate_run_spec_dataset(spec: Mapping[str, Any]) -> None:
             )
     instrument = str(dataset.get("instrument", "ES"))
     _instrument(instrument)
+
 
 def _validate_run_spec_levels(spec: Mapping[str, Any]) -> None:
     """QI-06-01 cluster ``levels`` (C-2 / MG-17)."""
@@ -742,6 +744,7 @@ def _validate_run_spec_levels(spec: Mapping[str, Any]) -> None:
             )
         else:
             _validate_range(levels, key, section="levels", minimum=1)
+
 
 def _validate_run_spec_setup(spec: Mapping[str, Any]) -> None:
     """QI-06-01 cluster ``setup`` (C-2 / MG-17)."""
@@ -883,6 +886,7 @@ def _validate_run_spec_setup(spec: Mapping[str, Any]) -> None:
             f"({normalized_setup['instrument']!r} != {instrument!r})"
         )
 
+
 def _validate_run_spec_backtest(spec: Mapping[str, Any]) -> None:
     """QI-06-01 cluster ``backtest`` (C-2 / MG-17)."""
     run = _require_mapping(spec, section="run")
@@ -967,6 +971,7 @@ def _validate_run_spec_backtest(spec: Mapping[str, Any]) -> None:
             normalize_entry_window(dict(entry_window), exchange_tz=exchange_tz)
         except ValueError as exc:
             raise ValueError(f"Invalid backtest.entry_window: {exc}") from exc
+
 
 def _validate_run_spec_grid(spec: Mapping[str, Any]) -> None:
     """QI-06-01 cluster ``grid`` (C-2 / MG-17)."""
@@ -1076,6 +1081,7 @@ def _validate_run_spec_grid(spec: Mapping[str, Any]) -> None:
             )
             _validate_range(grid, "max_holding_bars", section="grid", minimum=1)
 
+
 def _validate_run_spec_subtimeframe(spec: Mapping[str, Any]) -> None:
     """QI-06-01 cluster ``subtimeframe`` (C-2 / MG-17)."""
     run = _require_mapping(spec, section="run")
@@ -1096,6 +1102,7 @@ def _validate_run_spec_subtimeframe(spec: Mapping[str, Any]) -> None:
                 "uses intrabar_model='subtimeframe', unless dataset.ingestion_mode="
                 f"{INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
             )
+
 
 def _validate_run_spec_walk_forward(spec: Mapping[str, Any]) -> None:
     """QI-06-01 cluster ``walk_forward`` (C-2 / MG-17)."""
@@ -1197,6 +1204,7 @@ def _validate_run_spec_walk_forward(spec: Mapping[str, Any]) -> None:
                         "walk_forward.matrix.matrix_metric must be one of "
                         f"{sorted(valid_matrix_metrics)}"
                     )
+
 
 def _validate_run_spec_validation(spec: Mapping[str, Any]) -> None:
     """QI-06-01 cluster ``validation`` (C-2 / MG-17)."""
@@ -1471,6 +1479,7 @@ def _validate_run_spec_validation(spec: Mapping[str, Any]) -> None:
                     section="validation.sensitivity",
                 )
 
+
 class RunSpecRule(NamedTuple):
     """One ``validate_run_spec`` cluster (C-2 / QI-06-01 / MG-17). Not pydantic."""
 
@@ -1502,6 +1511,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     """
     for rule in RUN_SPEC_RULES:
         rule.check(spec)
+
 
 def _setup_caption(config: Mapping[str, Any]) -> str:
     """Build the setup audit caption stored by the Signals page."""

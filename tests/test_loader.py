@@ -4,8 +4,10 @@ import pandas as pd
 import pytest
 
 from thesistester.data.loader import (
+    DERIVE_15S_SUPPORTED_PROFILES,
     FORMAT_PROFILE_LABELS,
     FORMAT_PROFILES,
+    SUBTIMEFRAME_FORMAT_PROFILES,
     duplicate_timestamp_report,
     DataValidationError,
     format_interval,
@@ -30,6 +32,11 @@ def test_format_profile_labels_match_allow_list_and_data_page_order():
         "canonical",
         "quantower_history_exporter",
     ]
+
+
+def test_derive_and_subtimeframe_profiles_are_format_profile_subsets():
+    assert set(DERIVE_15S_SUPPORTED_PROFILES) <= set(FORMAT_PROFILES)
+    assert set(SUBTIMEFRAME_FORMAT_PROFILES) <= set(FORMAT_PROFILES)
 
 
 def test_sample_loads_clean():

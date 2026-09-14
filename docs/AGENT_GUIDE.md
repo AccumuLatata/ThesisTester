@@ -976,7 +976,8 @@ are B-1; H10/H11 lock tests are B-2.
   `validate_run_spec` imports `FORMAT_PROFILES` /
   `DERIVE_15S_SUPPORTED_PROFILES` / `SUBTIMEFRAME_FORMAT_PROFILES` from
   loader. The Data page binds the derive and dual-upload subsets with the
-  same `getattr` fallback. Builder `_FORMAT_PROFILE_LABELS_FALLBACK` stays.
+  same type-checked `getattr` fallback. Builder `_FORMAT_PROFILE_LABELS_FALLBACK`
+  stays.
 - `dataset.subtimeframe_path` is always canonical OHLCV for R12 replay; it
   never inherits the primary dataset's vendor `format_profile`. Prefer
   `dataset.ingestion_mode: 15s_primary_derive_1m` when the primary file is
