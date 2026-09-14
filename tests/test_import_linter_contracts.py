@@ -162,6 +162,40 @@ def test_c8_streamlit_allowlist_is_explicit():
     assert parser.get(section, "unmatched_ignore_imports_alerting") == "error"
 
 
+def test_c9_sim_core_does_not_import_admission_or_analytics():
+    """QI-4 §6.3 / C9 (B-19): sim_core ↛ entry_window_policy / analytics.*."""
+    source = (ROOT / "thesistester" / "engine" / "sim_core.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    banned = ("thesistester.entry_window_policy", "thesistester.analytics")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert not any(
+                    alias.name == item or alias.name.startswith(f"{item}.") for item in banned
+                ), alias.name
+        if isinstance(node, ast.ImportFrom) and node.module:
+            assert not any(
+                node.module == item or node.module.startswith(f"{item}.") for item in banned
+            ), node.module
+    parser = _load_importlinter()
+    section = "importlinter:contract:c9-sim-core-no-admission"
+    sources, forbidden = QI15_CONTRACTS["c9-sim-core-no-admission"]
+    assert _multiline(parser, section, "source_modules") == sources
+    assert _multiline(parser, section, "forbidden_modules") == forbidden
+
+
+def test_c9_sim_core_contract_is_kept():
+    """C9 is kept today (unlike C7). Warn-first CI still reports the status."""
+    result = subprocess.run(
+        ["lint-imports", "--config", str(IMPORTLINTER), "--no-cache", "--no-logo"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    out = f"{result.stdout}\n{result.stderr}"
+    assert "C9 sim_core ↛ entry_window_policy / analytics (R22) KEPT" in out
+
+
 def test_importlinter_config_is_loadable():
     """Config/module errors fail here. Kept/broken status stays CI-warn-first."""
     result = subprocess.run(

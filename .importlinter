@@ -1,5 +1,9 @@
 # QR B-10 / QI-12-07 — import contracts from QI-15_SYNTHESIS.md §5.4
 # (C1–C5, C7–C10). Probe: QI-12 §2.6 draft.
+# QR B-19 / QI-05-13 — C9 stays the sim_core admission/P&L ban
+# (sim_core ↛ entry_window_policy / analytics.*). C12 is the
+# validation_summary() four-key freeze in tests/test_validation.py,
+# not an import contract.
 #
 # Warn-first in CI (`import-linter (warn-first)`). Broken contracts emit
 # ::warning and do not fail the job. Blocking flip is a later PR.
@@ -122,6 +126,8 @@ ignore_imports =
     thesistester.assistant.voice.xai_realtime -> streamlit
 unmatched_ignore_imports_alerting = error
 
+# C9 (B-19 / QI-4 §6.3 / R22): sim_core is BarData + resolve_trade_bar only.
+# Forbidding thesistester.analytics covers analytics.* descendants.
 [importlinter:contract:c9-sim-core-no-admission]
 name = C9 sim_core ↛ entry_window_policy / analytics (R22)
 type = forbidden
