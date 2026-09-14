@@ -321,6 +321,10 @@ clause under Honesty (QI-07-06). Study runs do **not** call `run_batch`; they lo
 | Workers | `workers>1` uses spawn pool; cell tasks **return** ok/failed payloads (continue-on-failure); pool deaths mark the cell failed |
 | Lock | Exclusive `.study.lock` on `output_dir` (fail-closed if another study run holds it). POSIX: `fcntl.flock`; Windows: `msvcrt.locking`. Contention → “holds the lock”; unsupported/I/O lock failures keep a distinct error (not a phantom concurrent run). Importing `thesistester.study` must not require POSIX-only `fcntl` (Studies viewer on Windows). |
 
+C-23 (QI-07-02): `run_study` confirm / lock / ledger-init / finalize are
+helpers. Public signature and abort / soft-resume / leftover-`running`
+re-queue semantics are unchanged.
+
 ### Artifacts (under output_dir)
 
 | File | Role |

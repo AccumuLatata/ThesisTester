@@ -34,7 +34,7 @@ from thesistester.study.execute import (
     rebuild_direction_index,
     run_study,
 )
-from thesistester.study.ledger import load_ledger
+from thesistester.study.ledger import load_ledger, save_ledger
 from thesistester.study.replay_disclosure import REPLAY_NOT_STUDY_RUN
 from thesistester.study.schema import STUDY_SCHEMA_VERSION, StudySpecError
 
@@ -490,6 +490,31 @@ def test_soft_resume_requeues_missing_bundle(tmp_path: Path):
     second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
     assert second["executed"] == 1
     assert zip_path.is_file()
+
+
+def test_leftover_running_requeues_missing_bundle(tmp_path: Path):
+    """QI-7 §9: leftover ``running`` + missing zip is re-queued without ``--force``."""
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    first = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert first["executed"] == 4
+    name = first["run_names"][0]
+    zip_path = out / f"{name}.research.zip"
+    assert zip_path.is_file()
+    zip_path.unlink()
+    ledger = load_ledger(out)
+    assert ledger is not None
+    cells = dict(ledger.get("cells") or {})
+    cell = dict(cells.get(name) or {})
+    cell["status"] = "running"
+    cells[name] = cell
+    ledger["cells"] = cells
+    save_ledger(out, ledger)
+    second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 1
+    assert zip_path.is_file()
+    resumed = load_ledger(out) or {}
+    assert (resumed.get("cells") or {}).get(name, {}).get("status") == "ok"
 
 
 def test_soft_resume_rehydrates_metrics_when_index_row_missing(tmp_path: Path):
@@ -1337,3 +1362,26 @@ def test_random_baseline_fields_real_vs_random_is_available():
     assert fields["random_p_value_ge"] is not None
     assert 0.0 < float(fields["random_p_value_ge"]) <= 1.0
     assert "replica_expectancies" not in fields
+
+
+def test_c23_run_study_is_phase_facade():
+    """QI-07-02: public ``run_study`` delegates confirm / lock / ledger / finalize."""
+    import inspect
+
+    from thesistester.study import execute as execute_mod
+
+    source = inspect.getsource(execute_mod.run_study)
+    assert "_require_study_confirm" in source
+    assert "_assert_study_identity" in source
+    assert "_init_study_ledger" in source
+    assert "_finalize_running_cells" in source
+    assert "_finalize_study_index" in source
+    sig = inspect.signature(execute_mod.run_study)
+    assert list(sig.parameters) == [
+        "study_path",
+        "output_dir",
+        "workers",
+        "confirm",
+        "force",
+        "cell_executor",
+    ]
