@@ -1,5 +1,7 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# G-4 / QI-12-06: floor clears PYSEC-2025-49 / 2026-1918 / 2026-3447
+# (fixed by 78.1.1 / 70.0.0 / 83.0.0). Cap so a 85+ bump is a gated PR.
+requires = ["setuptools>=83,<85", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -52,6 +54,9 @@ dev = [
     # mypy is capped to one major: --strict error inventory drifts across
     # minors, and B-11's per-file ratchet must not jump because of a release.
     "mypy>=2.3,<3",
+    # G-4 / QI-12-06: warn-first scanners. Blocking flip is a later PR.
+    "bandit>=1.7,<2",
+    "pip-audit>=2.7,<3",
 ]
 
 [project.urls]
@@ -114,6 +119,13 @@ no_site_packages = true
 strict = true
 pretty = false
 show_error_codes = true
+
+# G-4 / QI-12-06: CI `bandit (warn-first)` uses the same tree. High must
+# stay 0 (lock: tests/test_g4_security_scans.py). Medium urlopen (B310)
+# is warn-first. Blocking flip is a later PR.
+[tool.bandit]
+targets = ["thesistester"]
+exclude_dirs = ["tests", ".thesistester_store"]
 
 [tool.ruff]
 line-length = 100

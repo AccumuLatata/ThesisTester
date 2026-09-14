@@ -691,6 +691,19 @@ Every request must first parse as an `AssistantRequest`, then pass
   a G-1 required check. Count is monotonically decreasing per release —
   do not raise the committed total. A later PR flips the same scope to
   blocking. Do not invoke mypy from required pytest cells.
+- **Security scans (G-4 / QI-12-06 / QI-07-09).** CI jobs
+  `bandit (warn-first)` (`bandit -ll` on `thesistester`) and
+  `pip-audit (warn-first)` (declared + transitive of the locked install)
+  emit `::warning` and stay green. Config/runtime crashes still fail.
+  Neither job is a G-1 required check. **High must stay 0**
+  (`tests/test_g4_security_scans.py`). Medium `urlopen` (B310 in
+  assistant LLM/voice) is warn-first. Blocking flip is a later PR.
+  Actions are SHA-pinned (`checkout` / `setup-python` / `upload-artifact`
+  v7.x commits). `[build-system]` is `setuptools>=83,<85` (clears
+  PYSEC-2025-49 / 2026-1918 / 2026-3447). Study run-name fingerprints
+  keep SHA-1 with `usedforsecurity=False` — digest unchanged; RS2
+  golden names stay identical. SHA-256 switch is a dedicated identity
+  PR. Do not add these jobs to the six frozen display names.
 - **AppTest harness (B-12 / B-13 / MG-26).** Assert widget `.disabled`,
   named session keys, and rendered labels. `set_value` only on enabled
   widgets via `tests.apptest_helpers.set_enabled_value`. Missing
@@ -752,6 +765,8 @@ cells do not block merge.
 | `golden-master regeneration guard` | required on `main`; fails any PR that changes legacy golden artifacts without the `GOLDEN_REGEN` label. Job is `pull_request`-only (`ci.yml`); that is the merge path |
 | `import-linter (warn-first)` | **not** required. B-10 / QI-12-07: `lint-imports` on `.importlinter` (C1–C5, C7–C10). Emits `::warning` on broken contracts; job stays green. Config/runtime errors (no contract report) still fail the job. Blocking flip is a later PR |
 | `mypy (informational)` | **not** required. B-11 / QI-12-05: `--strict --ignore-missing-imports --no-site-packages` on `engine/` + `analytics/` only (not repo-wide). Per-file ratchet vs `tests/fixtures/mypy/baseline.json` (scoped paths only). Emits `::warning` on type errors / ratchet-up; job stays green. Config/runtime errors (no type-check report) still fail the job. `api.py` later. Blocking flip is a later PR |
+| `bandit (warn-first)` | **not** required. G-4 / QI-12-06: `bandit -ll` on `thesistester`. High = 0 via `tests/test_g4_security_scans.py`. Medium findings emit `::warning`; job stays green. Config/runtime errors (no report) still fail. Blocking flip is a later PR |
+| `pip-audit (warn-first)` | **not** required. G-4 / QI-12-06: declared + transitive audit of `pip install -e . -c constraints.txt`. Advisories emit `::warning`; job stays green. Runtime errors still fail. Blocking flip is a later PR |
 
 Verify the live gate from a non-admin token. `GET …/branches/main/protection`
 is admin-only and returns **403** for integration tokens — do not treat that

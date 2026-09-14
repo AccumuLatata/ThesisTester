@@ -35,7 +35,9 @@ def _slug_token(value: Any) -> str:
 def factor_cell_fingerprint(factors: Mapping[str, Any]) -> str:
     """Stable short fingerprint of one factor cell (canonical JSON)."""
     payload = json.dumps(factors, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:10]
+    # Identity suffix only (QI-07-09 / G-4). Digest is unchanged.
+    # SHA-256 switch is a dedicated run-name identity PR.
+    return hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()[:10]
 
 
 def build_run_name(

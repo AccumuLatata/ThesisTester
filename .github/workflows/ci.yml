@@ -31,8 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -69,8 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -110,8 +110,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -124,6 +124,82 @@ jobs:
           python -m pip install -e . mypy -c constraints.txt
       - name: mypy engine+analytics (informational ratchet)
         run: python -m tests.fixtures.mypy.check_ratchet
+
+  bandit:
+    # G-4 / QI-12-06: warn-first. Not a G-1 required check — do not rename
+    # this job onto the six frozen display names. High must stay 0
+    # (pytest lock). Medium findings emit ::warning. Blocking flip is a
+    # later PR. Config/runtime crash still fails.
+    name: bandit (warn-first)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - name: Install bandit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "bandit>=1.7,<2" -c constraints.txt
+      - name: bandit -ll (warn-first)
+        run: |
+          set +e
+          out="$(bandit -r thesistester -ll -f txt 2>&1)"
+          code=$?
+          printf '%s\n' "$out"
+          if ! printf '%s\n' "$out" | grep -q "Code scanned:"; then
+            echo "::error title=bandit::bandit failed before producing a report (config/runtime error, not warn-first)."
+            exit 1
+          fi
+          if [ "$code" -eq 0 ]; then
+            echo "bandit: no Medium+ findings (warn-first job; not a G-1 required check)."
+            exit 0
+          fi
+          echo "::warning title=bandit::Medium+ findings (QI-12-06 / G-4 warn-first, not blocking). High must stay 0 via tests/test_g4_security_scans.py. Blocking flip is a later PR."
+          exit 0
+
+  pip-audit:
+    # G-4 / QI-12-06: warn-first declared + transitive scan of the locked
+    # install. Not a G-1 required check. Advisories emit ::warning.
+    # Blocking flip is a later PR. Config/runtime crash still fails.
+    name: pip-audit (warn-first)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - name: Install package + pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pip-audit -c constraints.txt
+      - name: pip-audit (warn-first)
+        run: |
+          set +e
+          out="$(pip-audit --progress-spinner off 2>&1)"
+          code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -eq 0 ]; then
+            echo "pip-audit: no known advisories (warn-first job; not a G-1 required check)."
+            exit 0
+          fi
+          # Exit 1 is "vulnerabilities found". Other codes are runtime errors.
+          if [ "$code" -ne 1 ]; then
+            echo "::error title=pip-audit::pip-audit failed before producing an advisory report (config/runtime error, not warn-first)."
+            exit 1
+          fi
+          echo "::warning title=pip-audit::Advisories on declared or transitive deps (QI-12-06 / G-4 warn-first, not blocking). Blocking flip is a later PR."
+          exit 0
 
   tests:
     name: pytest (py${{ matrix.python-version }})
@@ -143,8 +219,8 @@ jobs:
           - python-version: "3.12"
             pandas-major: "3"
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -193,7 +269,7 @@ jobs:
           fi
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: coverage-xml
           path: coverage.xml
@@ -204,8 +280,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -229,7 +305,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
       - name: Check for golden-fixture changes
