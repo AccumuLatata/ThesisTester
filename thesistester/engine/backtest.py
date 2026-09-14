@@ -37,12 +37,10 @@ from .intrabar import (
     prepare_subtimeframe_conservative_context,
     validate_intrabar_model,
 )
-from .sim_core import BarData, resolve_trade_bar
+from .sim_core import BarData, TradeExitWalk, compute_session_close_cap, walk_trade_exit
 from .exit_management import (
     exit_management_enabled,
-    initial_exit_management_state,
     policy_dict as exit_management_policy_dict,
-    update_exit_management_after_bar,
     validate_exit_management_config,
 )
 
@@ -503,6 +501,826 @@ def _candidate_conflict_id(row: dict[str, Any]) -> tuple[int, int, int]:
     )
 
 
+@dataclass(frozen=True)
+class _SimulatePrep:
+    """P0 validate/normalize outputs used by the public orchestrator."""
+
+    exit_management_active: bool
+    parsed_session_close: time | None
+    parsed_no_new_entries_after: time | None
+    normalized_entry_window: dict[str, Any]
+    exchange_tz_for_window: str
+
+
+@dataclass(frozen=True)
+class _ExitOutcome:
+    """P7 finalize: labeled exit + diagnostic increments. No P&L."""
+
+    exit_bar_index: int
+    theoretical_exit_price: float
+    exit_reason: str
+    intrabar_resolution: str
+    intrabar_parent_both_hit: bool
+    intrabar_ambiguous: bool
+    exit_subbar_timestamp: pd.Timestamp | None
+    stop_price: float
+    target_price: float
+    stop_state: Any
+    mae_pts: float
+    mfe_pts: float
+    bracket_exit_count: int
+    both_hit_count: int
+    ambiguous_count: int
+    affected_bar: int | None
+    proximity_tie_count: int
+    subtimeframe_resolved_count: int
+    subtimeframe_fallback_exit_count: int
+
+
+def _validate_simulate_trades(
+    *,
+    stop_loss_ticks: int | float,
+    tick_size: float,
+    point_value: float,
+    commission_per_side: float,
+    slippage_ticks: float,
+    exposure_policy: str,
+    same_bar_opposite_direction: str,
+    cooldown_bars_after_exit: int,
+    intrabar_model: str,
+    breakeven_after_r: float | None,
+    trailing_after_r: float | None,
+    trailing_distance_ticks: float | None,
+    session_close_time: str | None,
+    flat_by_session_close: bool,
+    no_new_entries_after: str | None,
+    entry_window: dict[str, Any] | None,
+    entry_window_exchange_tz: str | None,
+    session_timezone: str | None,
+) -> _SimulatePrep:
+    """P0: fail-closed inputs and Admit normalize (C-19 / QI-04-01)."""
+    if stop_loss_ticks <= 0:
+        raise ValueError(f"stop_loss_ticks must be > 0, got {stop_loss_ticks!r}")
+    if tick_size <= 0:
+        raise ValueError(f"tick_size must be > 0, got {tick_size!r}")
+    if point_value <= 0:
+        raise ValueError(f"point_value must be > 0, got {point_value!r}")
+    if commission_per_side < 0:
+        raise ValueError(f"commission_per_side must be >= 0, got {commission_per_side!r}")
+    if slippage_ticks < 0:
+        raise ValueError(f"slippage_ticks must be >= 0, got {slippage_ticks!r}")
+    if exposure_policy not in _VALID_EXPOSURE_POLICIES:
+        raise ValueError(
+            f"exposure_policy must be one of {sorted(_VALID_EXPOSURE_POLICIES)!r}, "
+            f"got {exposure_policy!r}"
+        )
+    if same_bar_opposite_direction not in VALID_SAME_BAR_OPPOSITE_DIRECTION:
+        raise ValueError(
+            "same_bar_opposite_direction must be one of "
+            f"{sorted(VALID_SAME_BAR_OPPOSITE_DIRECTION)!r}, "
+            f"got {same_bar_opposite_direction!r}"
+        )
+    if cooldown_bars_after_exit < 0:
+        raise ValueError(f"cooldown_bars_after_exit must be >= 0, got {cooldown_bars_after_exit!r}")
+    validate_intrabar_model(intrabar_model)
+    validate_exit_management_config(
+        breakeven_after_r=breakeven_after_r,
+        trailing_after_r=trailing_after_r,
+        trailing_distance_ticks=trailing_distance_ticks,
+    )
+    exit_management_active = exit_management_enabled(
+        breakeven_after_r=breakeven_after_r,
+        trailing_after_r=trailing_after_r,
+        trailing_distance_ticks=trailing_distance_ticks,
+    )
+    parsed_session_close = _parse_time_input(session_close_time, field_name="session_close_time")
+    if flat_by_session_close and parsed_session_close is None:
+        raise ValueError("flat_by_session_close=True requires a valid session_close_time.")
+    parsed_no_new_entries_after = _parse_time_input(
+        no_new_entries_after, field_name="no_new_entries_after"
+    )
+    exchange_tz_for_window = entry_window_exchange_tz or session_timezone or "America/New_York"
+    try:
+        normalized_entry_window = normalize_entry_window(
+            entry_window, exchange_tz=exchange_tz_for_window
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid entry_window: {exc}") from exc
+    return _SimulatePrep(
+        exit_management_active=exit_management_active,
+        parsed_session_close=parsed_session_close,
+        parsed_no_new_entries_after=parsed_no_new_entries_after,
+        normalized_entry_window=normalized_entry_window,
+        exchange_tz_for_window=exchange_tz_for_window,
+    )
+
+
+def _empty_simulation_return(
+    *,
+    return_result: bool,
+    return_skipped_signals: bool,
+    intrabar_model: str,
+    breakeven_after_r: float | None,
+    trailing_after_r: float | None,
+    trailing_distance_ticks: float | None,
+    same_bar_opposite_direction: str,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame] | SimulationResult:
+    """P2: empty-signals payload. Schema only; no admission change."""
+    empty_trades = _empty_trades_df()
+    empty_skipped = _empty_skipped_signals_df()
+    if return_result:
+        return SimulationResult(
+            trades=empty_trades,
+            skipped_signals=empty_skipped,
+            intrabar_diagnostic=_intrabar_diagnostic(
+                model=intrabar_model,
+                trade_count=0,
+                bracket_exit_count=0,
+                both_hit_count=0,
+                ambiguous_count=0,
+                affected_bars=set(),
+                proximity_tie_count=0,
+                subtimeframe_resolved_count=0,
+                subtimeframe_fallback_exit_count=0,
+                subtimeframe_fallback_bars=[],
+                subtimeframe_interval=None,
+            ),
+            exit_management_diagnostic=_exit_management_diagnostic(
+                breakeven_after_r=breakeven_after_r,
+                trailing_after_r=trailing_after_r,
+                trailing_distance_ticks=trailing_distance_ticks,
+                trade_count=0,
+                trades_with_exit_mgmt_count=0,
+                be_exit_count=0,
+                trail_exit_count=0,
+                stop_adjustment_count=0,
+            ),
+            direction_collision_diagnostic=_empty_direction_collision_diagnostic(
+                policy=same_bar_opposite_direction
+            ),
+        )
+    if return_skipped_signals:
+        return empty_trades, empty_skipped
+    return empty_trades
+
+
+def _skipped_signal_row(
+    *,
+    sig: pd.Series,
+    bar_idx: int,
+    entry_bar_index: int,
+    trigger: str,
+    direction: str,
+    exposure_policy: str,
+    exposure_group_key: str,
+    skip_reason: str,
+    cooldown_bars_after_exit: int,
+    blocking_trade_id: object = pd.NA,
+    blocking_exit_bar_index: object = pd.NA,
+) -> dict[str, Any]:
+    return {
+        "signal_id": int(sig["signal_id"]),
+        "bar_index": bar_idx,
+        "entry_bar_index": entry_bar_index,
+        "trigger": trigger,
+        "direction": direction,
+        "exposure_policy": exposure_policy,
+        "exposure_group_key": exposure_group_key,
+        "skip_reason": skip_reason,
+        "blocking_trade_id": blocking_trade_id,
+        "blocking_exit_bar_index": blocking_exit_bar_index,
+        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+    }
+
+
+def _admit_entry_candidates(
+    signals: pd.DataFrame,
+    *,
+    df_reset: pd.DataFrame,
+    n_bars: int,
+    local_timestamps: pd.Series,
+    slip_pts: float,
+    exposure_policy: str,
+    cooldown_bars_after_exit: int,
+    capture_skips: bool,
+    normalized_entry_window: dict[str, Any],
+    exchange_tz_for_window: str,
+    parsed_no_new_entries_after: time | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """P4: entry bar/price + window-then-cutoff (C9). 3c void stays silent."""
+    candidate_rows: list[dict[str, Any]] = []
+    skipped_signals: list[dict[str, Any]] = []
+    for _, sig in signals.iterrows():
+        trigger = str(sig["trigger"])
+        direction = str(sig["direction"])
+        bar_idx = int(sig["bar_index"])
+
+        if trigger == "3c":
+            if str(sig.get("status", "")) != "filled":
+                # Void 3c signals are skipped.
+                continue
+            entry_bar_index = int(sig["entry_bar_index"])
+            if entry_bar_index >= n_bars:
+                continue
+            theoretical_entry_price = float(sig["retrace_entry_price"])
+            entry_model = "3c_retrace_market"
+        elif trigger == "confirm_3bar":
+            if str(sig.get("status", "")) != "filled":
+                continue
+            entry_bar_index = bar_idx
+            theoretical_entry_price = float(sig["entry_reference_price"])
+            entry_model = "bar3_stop_limit_fill"
+        else:
+            entry_bar_index = bar_idx + 1
+            if entry_bar_index >= n_bars:
+                continue
+            theoretical_entry_price = float(df_reset["open"].iloc[entry_bar_index])
+            entry_model = "next_bar_open"
+
+        if direction == "long":
+            entry_price = theoretical_entry_price + slip_pts
+        else:
+            entry_price = theoretical_entry_price - slip_pts
+
+        entry_ts = df_reset["timestamp"].iloc[entry_bar_index]
+        entry_local_ts = local_timestamps.iloc[entry_bar_index]
+        exposure_group_key = _exposure_group_key(
+            sig,
+            exposure_policy=exposure_policy,
+            trigger=trigger,
+            direction=direction,
+        )
+
+        if normalized_entry_window["enabled"] and not entry_window_contains(
+            entry_ts,
+            normalized_entry_window,
+            exchange_tz=exchange_tz_for_window,
+        ):
+            skip_reason = SKIP_OUTSIDE_ENTRY_WINDOW
+            if capture_skips:
+                skipped_signals.append(
+                    _skipped_signal_row(
+                        sig=sig,
+                        bar_idx=bar_idx,
+                        entry_bar_index=entry_bar_index,
+                        trigger=trigger,
+                        direction=direction,
+                        exposure_policy=exposure_policy,
+                        exposure_group_key=exposure_group_key,
+                        skip_reason=skip_reason,
+                        cooldown_bars_after_exit=cooldown_bars_after_exit,
+                    )
+                )
+            continue
+
+        if (
+            parsed_no_new_entries_after is not None
+            and entry_local_ts.time() > parsed_no_new_entries_after
+        ):
+            skip_reason = SKIP_AFTER_ENTRY_CUTOFF
+            if capture_skips:
+                skipped_signals.append(
+                    _skipped_signal_row(
+                        sig=sig,
+                        bar_idx=bar_idx,
+                        entry_bar_index=entry_bar_index,
+                        trigger=trigger,
+                        direction=direction,
+                        exposure_policy=exposure_policy,
+                        exposure_group_key=exposure_group_key,
+                        skip_reason=skip_reason,
+                        cooldown_bars_after_exit=cooldown_bars_after_exit,
+                    )
+                )
+            continue
+
+        candidate_rows.append(
+            {
+                "sig": sig,
+                "trigger": trigger,
+                "direction": direction,
+                "bar_idx": bar_idx,
+                "entry_bar_index": entry_bar_index,
+                "entry_ts": entry_ts,
+                "entry_local_ts": entry_local_ts,
+                "theoretical_entry_price": theoretical_entry_price,
+                "entry_price": entry_price,
+                "entry_model": entry_model,
+                "exposure_group_key": exposure_group_key,
+            }
+        )
+    return candidate_rows, skipped_signals
+
+
+def _order_candidates_and_da3(
+    candidate_rows: list[dict[str, Any]],
+    *,
+    exposure_policy: str,
+    same_bar_opposite_direction: str,
+) -> tuple[list[dict[str, Any]], set[tuple[int, int, int]]]:
+    """P5: restrictive sort + DA3 skip_both / raise."""
+    if exposure_policy == "allow_all":
+        ordered_candidates = candidate_rows
+    else:
+        ordered_candidates = sorted(
+            candidate_rows,
+            key=lambda row: (
+                int(row["entry_bar_index"]),
+                int(row["bar_idx"]),
+                int(row["sig"]["signal_id"]),
+            ),
+        )
+    conflict_candidate_ids: set[tuple[int, int, int]] = set()
+    if same_bar_opposite_direction == "legacy":
+        return ordered_candidates, conflict_candidate_ids
+    collision_groups = _same_bar_collision_groups(
+        ordered_candidates, exposure_policy=exposure_policy
+    )
+    if collision_groups and same_bar_opposite_direction == "raise":
+        first_group = collision_groups[0]
+        first_entry = int(first_group[0]["entry_bar_index"])
+        signal_ids = sorted(int(row["sig"]["signal_id"]) for row in first_group)
+        raise ValueError(
+            "same_bar_opposite_direction='raise' refused the run: "
+            f"opposite-direction collision at entry_bar_index={first_entry} "
+            f"with signal_ids={signal_ids}"
+        )
+    if same_bar_opposite_direction == "skip_both":
+        conflict_candidate_ids = {
+            _candidate_conflict_id(row) for group in collision_groups for row in group
+        }
+    return ordered_candidates, conflict_candidate_ids
+
+
+def _exposure_skip_for_candidate(
+    candidate: dict[str, Any],
+    *,
+    accepted_for_blocking: list[dict[str, Any]],
+    exposure_policy: str,
+    cooldown_bars_after_exit: int,
+) -> dict[str, Any] | None:
+    """P6: occupancy / cooldown skip row, or None when the candidate is free."""
+    direction = candidate["direction"]
+    entry_bar_index = int(candidate["entry_bar_index"])
+    exposure_group_key = str(candidate["exposure_group_key"])
+    if exposure_policy == "single_position":
+        relevant_prior = accepted_for_blocking
+    elif exposure_policy == "single_direction":
+        relevant_prior = [
+            prior for prior in accepted_for_blocking if prior["direction"] == direction
+        ]
+    elif exposure_policy == "single_setup":
+        relevant_prior = [
+            prior
+            for prior in accepted_for_blocking
+            if prior["exposure_group_key"] == exposure_group_key
+        ]
+    else:
+        relevant_prior = []
+
+    blockers = [
+        prior
+        for prior in relevant_prior
+        if entry_bar_index <= (int(prior["exit_bar_index"]) + cooldown_bars_after_exit)
+    ]
+    if not blockers:
+        return None
+    blocker = sorted(
+        blockers,
+        key=lambda prior: (-int(prior["exit_bar_index"]), int(prior["trade_id"])),
+    )[0]
+    blocker_exit_bar_index = int(blocker["exit_bar_index"])
+    if entry_bar_index > blocker_exit_bar_index:
+        skip_reason = SKIP_COOLDOWN_ACTIVE
+    elif exposure_policy == "single_position":
+        skip_reason = SKIP_OVERLAPPING_POSITION
+    elif exposure_policy == "single_direction":
+        skip_reason = SKIP_OVERLAPPING_DIRECTION
+    else:
+        skip_reason = SKIP_OVERLAPPING_SETUP
+    return _skipped_signal_row(
+        sig=candidate["sig"],
+        bar_idx=int(candidate["bar_idx"]),
+        entry_bar_index=entry_bar_index,
+        trigger=candidate["trigger"],
+        direction=direction,
+        exposure_policy=exposure_policy,
+        exposure_group_key=exposure_group_key,
+        skip_reason=skip_reason,
+        cooldown_bars_after_exit=cooldown_bars_after_exit,
+        blocking_trade_id=int(blocker["trade_id"]),
+        blocking_exit_bar_index=blocker_exit_bar_index,
+    )
+
+
+def _finalize_exit_walk(
+    walk: TradeExitWalk,
+    *,
+    bars: BarData,
+    n_bars: int,
+    max_holding_bars: int | None,
+    flat_by_session_close: bool,
+    data_end_before_session_close: bool,
+    session_cap_bar: int | None,
+    intrabar_model: str,
+) -> _ExitOutcome:
+    """Map a serial P7 walk onto C-18 exit tokens. No P&L."""
+    exit_reason: str
+    intrabar_resolution = "not_evaluated"
+    intrabar_parent_both_hit = False
+    intrabar_ambiguous = False
+    exit_subbar_timestamp: pd.Timestamp | None = None
+    bracket_exit_count = 0
+    both_hit_count = 0
+    ambiguous_count = 0
+    affected_bar: int | None = None
+    proximity_tie_count = 0
+    subtimeframe_resolved_count = 0
+    subtimeframe_fallback_exit_count = 0
+    resolution = walk.resolution
+    if resolution is not None and resolution.exit_kind is not None:
+        if walk.exit_bar_index is None or walk.theoretical_exit_price is None:
+            raise RuntimeError("P7 walk reported a bracket hit without exit coordinates")
+        exit_bar_index = walk.exit_bar_index
+        theoretical_exit_price = walk.theoretical_exit_price
+        if (
+            resolution.exit_kind == EXIT_SL
+            and walk.stop_state.active_reason in EXIT_MANAGED_STOP_REASONS
+        ):
+            exit_reason = walk.stop_state.active_reason
+        elif intrabar_model == "sl_first":
+            exit_reason = resolution.exit_kind
+        elif intrabar_model == "path_open_proximity":
+            exit_reason = _exit_reason_with_suffix(resolution.exit_kind, EXIT_INTRABAR_PATH_SUFFIX)
+        elif intrabar_model == "subtimeframe_conservative" and resolution.subtimeframe_fallback:
+            exit_reason = _exit_reason_with_suffix(
+                resolution.exit_kind, EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX
+            )
+        else:
+            exit_reason = _exit_reason_with_suffix(resolution.exit_kind, EXIT_SUBTIMEFRAME_SUFFIX)
+        intrabar_resolution = resolution.resolution
+        intrabar_parent_both_hit = resolution.parent_both_hit
+        intrabar_ambiguous = walk.bracket_ambiguous
+        exit_subbar_timestamp = resolution.exit_subbar_timestamp
+        bracket_exit_count = 1
+        if resolution.parent_both_hit:
+            both_hit_count = 1
+            affected_bar = exit_bar_index
+        if intrabar_ambiguous:
+            ambiguous_count = 1
+        if resolution.proximity_tie:
+            proximity_tie_count = 1
+        if walk.subtimeframe_fallback:
+            subtimeframe_fallback_exit_count = 1
+        elif walk.subtimeframe_resolved:
+            subtimeframe_resolved_count = 1
+    else:
+        if (
+            max_holding_bars is not None
+            and walk.time_cap_bar is not None
+            and walk.max_bar == walk.time_cap_bar
+        ):
+            exit_bar_index = walk.max_bar
+            theoretical_exit_price = bars.close[walk.max_bar]
+            exit_reason = EXIT_TIME
+            intrabar_resolution = "forced_time"
+        elif flat_by_session_close:
+            exit_bar_index = walk.max_bar
+            theoretical_exit_price = bars.close[walk.max_bar]
+            if (
+                data_end_before_session_close
+                and session_cap_bar is not None
+                and walk.max_bar == session_cap_bar
+            ):
+                exit_reason = EXIT_DATA_END
+                intrabar_resolution = "forced_data_end"
+            else:
+                exit_reason = EXIT_SESSION_CLOSE
+                intrabar_resolution = "forced_session_close"
+        else:
+            exit_bar_index = n_bars - 1
+            theoretical_exit_price = bars.close[n_bars - 1]
+            exit_reason = EXIT_EOD
+            intrabar_resolution = "forced_eod"
+        if walk.pending_intrabar_ambiguity:
+            intrabar_ambiguous = True
+            ambiguous_count = 1
+
+    return _ExitOutcome(
+        exit_bar_index=exit_bar_index,
+        theoretical_exit_price=theoretical_exit_price,
+        exit_reason=exit_reason,
+        intrabar_resolution=intrabar_resolution,
+        intrabar_parent_both_hit=intrabar_parent_both_hit,
+        intrabar_ambiguous=intrabar_ambiguous,
+        exit_subbar_timestamp=exit_subbar_timestamp,
+        stop_price=walk.stop_price,
+        target_price=walk.target_price,
+        stop_state=walk.stop_state,
+        mae_pts=walk.mae_pts,
+        mfe_pts=walk.mfe_pts,
+        bracket_exit_count=bracket_exit_count,
+        both_hit_count=both_hit_count,
+        ambiguous_count=ambiguous_count,
+        affected_bar=affected_bar,
+        proximity_tie_count=proximity_tie_count,
+        subtimeframe_resolved_count=subtimeframe_resolved_count,
+        subtimeframe_fallback_exit_count=subtimeframe_fallback_exit_count,
+    )
+
+
+def _simulate_trade_exit(
+    *,
+    bars: BarData,
+    n_bars: int,
+    local_timestamps: pd.Series,
+    direction: str,
+    entry_price: float,
+    theoretical_entry_price: float,
+    entry_bar_index: int,
+    entry_local_ts: pd.Timestamp,
+    entry_model: str,
+    trigger: str,
+    sl_pts: float,
+    tp_pts: float,
+    allow_same_bar_exit: bool,
+    max_holding_bars: int | None,
+    flat_by_session_close: bool,
+    parsed_session_close: time | None,
+    exit_management_active: bool,
+    tick_size: float,
+    breakeven_after_r: float | None,
+    trailing_after_r: float | None,
+    trailing_distance_ticks: float | None,
+    intrabar_model: str,
+    subtimeframe_context: Any,
+) -> _ExitOutcome | None:
+    """P7 orchestrator: flatten cap + R22 walk + C-18 reason labels.
+
+    Returns ``None`` when flatten finds no bar at or before the per-entry
+    close (caller emits ``empty_session_close_cap``).
+    """
+    session_cap_bar: int | None = None
+    data_end_before_session_close = False
+    if flat_by_session_close:
+        # Narrow before the R22 call. Public simulate_trades already rejects
+        # flatten-without-clock; do not AttributeError on session_close.hour.
+        if parsed_session_close is None:
+            raise ValueError("flat_by_session_close=True requires a valid session_close_time.")
+        cap = compute_session_close_cap(
+            local_timestamps,
+            entry_bar_index=entry_bar_index,
+            entry_local_ts=entry_local_ts,
+            session_close=parsed_session_close,
+            n_bars=n_bars,
+        )
+        if cap.empty:
+            return None
+        session_cap_bar = cap.session_cap_bar
+        data_end_before_session_close = cap.data_end_before_session_close
+    walk = walk_trade_exit(
+        bars,
+        direction=direction,
+        entry_price=entry_price,
+        theoretical_entry_price=theoretical_entry_price,
+        entry_bar_index=entry_bar_index,
+        entry_model=entry_model,
+        trigger=trigger,
+        sl_pts=sl_pts,
+        tp_pts=tp_pts,
+        n_bars=n_bars,
+        allow_same_bar_exit=allow_same_bar_exit,
+        max_holding_bars=max_holding_bars,
+        session_cap_bar=session_cap_bar,
+        exit_management_active=exit_management_active,
+        tick_size=tick_size,
+        breakeven_after_r=breakeven_after_r,
+        trailing_after_r=trailing_after_r,
+        trailing_distance_ticks=trailing_distance_ticks,
+        intrabar_model=intrabar_model,
+        subtimeframe_context=subtimeframe_context,
+    )
+    return _finalize_exit_walk(
+        walk,
+        bars=bars,
+        n_bars=n_bars,
+        max_holding_bars=max_holding_bars,
+        flat_by_session_close=flat_by_session_close,
+        data_end_before_session_close=data_end_before_session_close,
+        session_cap_bar=session_cap_bar,
+        intrabar_model=intrabar_model,
+    )
+
+
+def _record_closed_trade(
+    *,
+    trade_id: int,
+    candidate: dict[str, Any],
+    outcome: _ExitOutcome,
+    df_reset: pd.DataFrame,
+    slip_pts: float,
+    stop_loss_ticks: int | float,
+    take_profit_ticks: int | float,
+    point_value: float,
+    total_commission_cost: float,
+    risk_currency: float,
+    exposure_policy: str,
+    cooldown_bars_after_exit: int,
+    intrabar_model: str,
+    exit_management_active: bool,
+    breakeven_after_r: float | None,
+    trailing_after_r: float | None,
+    trailing_distance_ticks: float | None,
+) -> dict[str, Any]:
+    """P8/P9: costs, trade schema, optional diagnostic columns."""
+    sig = candidate["sig"]
+    direction = candidate["direction"]
+    theoretical_entry_price = float(candidate["theoretical_entry_price"])
+    entry_price = float(candidate["entry_price"])
+    theoretical_exit_price = outcome.theoretical_exit_price
+    if direction == "long":
+        exit_price = float(theoretical_exit_price) - slip_pts
+        theoretical_pnl_points = float(theoretical_exit_price) - theoretical_entry_price
+        gross_pnl_points = float(exit_price) - entry_price
+    else:
+        exit_price = float(theoretical_exit_price) + slip_pts
+        theoretical_pnl_points = theoretical_entry_price - float(theoretical_exit_price)
+        gross_pnl_points = entry_price - float(exit_price)
+    exit_bar_index = outcome.exit_bar_index
+    exit_ts = df_reset["timestamp"].iloc[exit_bar_index]
+    gross_pnl_currency = gross_pnl_points * float(point_value)
+    slippage_cost = max(
+        0.0,
+        (theoretical_pnl_points - gross_pnl_points) * float(point_value),
+    )
+    net_pnl_currency = gross_pnl_currency - total_commission_cost
+    r_multiple = net_pnl_currency / risk_currency
+    entry_bar_index = int(candidate["entry_bar_index"])
+    trade = {
+        "trade_id": trade_id,
+        "signal_id": int(sig["signal_id"]),
+        "trigger": candidate["trigger"],
+        "direction": direction,
+        "entry_timestamp": candidate["entry_ts"],
+        "entry_bar_index": entry_bar_index,
+        "theoretical_entry_price": theoretical_entry_price,
+        "entry_price": entry_price,
+        "entry_model": candidate["entry_model"],
+        "exit_timestamp": exit_ts,
+        "exit_bar_index": exit_bar_index,
+        "theoretical_exit_price": float(theoretical_exit_price),
+        "exit_price": float(exit_price),
+        "exit_reason": outcome.exit_reason,
+        "stop_price": outcome.stop_price,
+        "target_price": outcome.target_price,
+        "stop_loss_ticks": stop_loss_ticks,
+        "take_profit_ticks": take_profit_ticks,
+        "gross_pnl_points": gross_pnl_points,
+        "gross_pnl_currency": gross_pnl_currency,
+        "commission_cost": total_commission_cost,
+        "slippage_cost": slippage_cost,
+        "net_pnl_currency": net_pnl_currency,
+        "pnl_points": gross_pnl_points,
+        "pnl_currency": net_pnl_currency,
+        "r_multiple": r_multiple,
+        "bars_held": exit_bar_index - entry_bar_index + 1,
+        "zone_low": sig.get("zone_low"),
+        "zone_high": sig.get("zone_high"),
+        "zone_mid": sig.get("zone_mid"),
+        "level_count": sig.get("level_count"),
+        "level_names": sig.get("level_names"),
+        "trigger_variant": sig.get("trigger_variant"),
+        "is_muted": sig.get("is_muted"),
+        "is_sfp": sig.get("is_sfp"),
+        "inside_candle_count": sig.get("inside_candle_count"),
+        "level_source_mode": sig.get("level_source_mode"),
+        "mae_points": outcome.mae_pts,
+        "mfe_points": outcome.mfe_pts,
+        "exposure_policy": exposure_policy,
+        "exposure_group_key": str(candidate["exposure_group_key"]),
+        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+        "status": "closed",
+    }
+    if intrabar_model != "sl_first":
+        trade.update(
+            {
+                "intrabar_model": intrabar_model,
+                "intrabar_resolution": outcome.intrabar_resolution,
+                "intrabar_parent_both_hit": outcome.intrabar_parent_both_hit,
+                "intrabar_ambiguous": outcome.intrabar_ambiguous,
+                "exit_subbar_timestamp": outcome.exit_subbar_timestamp,
+            }
+        )
+    if exit_management_active:
+        stop_management_mode = "fixed"
+        if breakeven_after_r is not None and trailing_after_r is not None:
+            stop_management_mode = "breakeven_trailing"
+        elif breakeven_after_r is not None:
+            stop_management_mode = "breakeven"
+        elif trailing_after_r is not None:
+            stop_management_mode = "trailing"
+        stop_state = outcome.stop_state
+        exit_management_armed = stop_state.breakeven_armed or stop_state.trailing_armed
+        trade.update(
+            {
+                "breakeven_after_r": breakeven_after_r,
+                "trailing_after_r": trailing_after_r,
+                "trailing_distance_ticks": trailing_distance_ticks,
+                "initial_stop_price": outcome.stop_price,
+                "active_stop_price_at_exit": stop_state.effective_stop,
+                "final_stop_price": stop_state.effective_stop,
+                "stop_management_mode": stop_management_mode,
+                "breakeven_activated_bar_index": stop_state.breakeven_activated_bar_index,
+                "trailing_activated_bar_index": stop_state.trailing_activated_bar_index,
+                "stop_adjustment_count": stop_state.adjustment_count,
+                "stop_adjustment_path": "|".join(stop_state.adjustment_path),
+                "exit_management_armed": bool(exit_management_armed),
+            }
+        )
+    return trade
+
+
+def _assemble_simulate_result(
+    *,
+    trades: list[dict[str, Any]],
+    skipped_signals: list[dict[str, Any]],
+    ordered_candidates: list[dict[str, Any]],
+    return_result: bool,
+    return_skipped_signals: bool,
+    intrabar_model: str,
+    exit_management_active: bool,
+    df_reset: pd.DataFrame,
+    subtimeframe_context: Any,
+    bracket_exit_count: int,
+    both_hit_count: int,
+    ambiguous_count: int,
+    affected_bars: set[int],
+    proximity_tie_count: int,
+    subtimeframe_resolved_count: int,
+    subtimeframe_fallback_exit_count: int,
+    breakeven_after_r: float | None,
+    trailing_after_r: float | None,
+    trailing_distance_ticks: float | None,
+    trades_with_exit_mgmt_count: int,
+    be_exit_count: int,
+    trail_exit_count: int,
+    total_stop_adjustment_count: int,
+    same_bar_opposite_direction: str,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame] | SimulationResult:
+    """P10: trades / skips / three diagnostics."""
+    trades_df = pd.DataFrame(trades) if trades else _empty_trades_df()
+    if intrabar_model != "sl_first" and trades_df.empty:
+        for column in _INTRABAR_TRADE_COLUMNS:
+            trades_df[column] = pd.Series(dtype="object")
+    if exit_management_active and trades_df.empty:
+        for column in _EXIT_MANAGEMENT_TRADE_COLUMNS:
+            trades_df[column] = pd.Series(dtype="object")
+    skipped_df = pd.DataFrame(skipped_signals) if skipped_signals else _empty_skipped_signals_df()
+    if return_result:
+        return SimulationResult(
+            trades=trades_df,
+            skipped_signals=skipped_df,
+            intrabar_diagnostic=_intrabar_diagnostic(
+                model=intrabar_model,
+                trade_count=len(trades_df),
+                bracket_exit_count=bracket_exit_count,
+                both_hit_count=both_hit_count,
+                ambiguous_count=ambiguous_count,
+                affected_bars=affected_bars,
+                proximity_tie_count=proximity_tie_count,
+                subtimeframe_resolved_count=subtimeframe_resolved_count,
+                subtimeframe_fallback_exit_count=subtimeframe_fallback_exit_count,
+                subtimeframe_fallback_bars=(
+                    subtimeframe_context.fallback_diagnostics(df_reset)
+                    if subtimeframe_context is not None
+                    else []
+                ),
+                subtimeframe_interval=(
+                    subtimeframe_context.sub_interval if subtimeframe_context is not None else None
+                ),
+            ),
+            exit_management_diagnostic=_exit_management_diagnostic(
+                breakeven_after_r=breakeven_after_r,
+                trailing_after_r=trailing_after_r,
+                trailing_distance_ticks=trailing_distance_ticks,
+                trade_count=len(trades_df),
+                trades_with_exit_mgmt_count=trades_with_exit_mgmt_count,
+                be_exit_count=be_exit_count,
+                trail_exit_count=trail_exit_count,
+                stop_adjustment_count=total_stop_adjustment_count,
+            ),
+            direction_collision_diagnostic=_direction_collision_diagnostic(
+                ordered_candidates=ordered_candidates,
+                accepted_trades=trades,
+                skipped_signals=skipped_signals,
+                policy=same_bar_opposite_direction,
+            ),
+        )
+    if return_skipped_signals:
+        return trades_df, skipped_df
+    return trades_df
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -670,92 +1488,36 @@ def simulate_trades(
     - R1 execution costs (slippage/commission) still apply to ``SESSION_CLOSE``,
       ``TIME``, ``DATA_END``, and ``EOD`` exits.
     """
-    if stop_loss_ticks <= 0:
-        raise ValueError(f"stop_loss_ticks must be > 0, got {stop_loss_ticks!r}")
-    if tick_size <= 0:
-        raise ValueError(f"tick_size must be > 0, got {tick_size!r}")
-    if point_value <= 0:
-        raise ValueError(f"point_value must be > 0, got {point_value!r}")
-    if commission_per_side < 0:
-        raise ValueError(f"commission_per_side must be >= 0, got {commission_per_side!r}")
-    if slippage_ticks < 0:
-        raise ValueError(f"slippage_ticks must be >= 0, got {slippage_ticks!r}")
-    if exposure_policy not in _VALID_EXPOSURE_POLICIES:
-        raise ValueError(
-            f"exposure_policy must be one of {sorted(_VALID_EXPOSURE_POLICIES)!r}, "
-            f"got {exposure_policy!r}"
-        )
-    if same_bar_opposite_direction not in VALID_SAME_BAR_OPPOSITE_DIRECTION:
-        raise ValueError(
-            "same_bar_opposite_direction must be one of "
-            f"{sorted(VALID_SAME_BAR_OPPOSITE_DIRECTION)!r}, "
-            f"got {same_bar_opposite_direction!r}"
-        )
-    if cooldown_bars_after_exit < 0:
-        raise ValueError(f"cooldown_bars_after_exit must be >= 0, got {cooldown_bars_after_exit!r}")
-    validate_intrabar_model(intrabar_model)
-    validate_exit_management_config(
+    prep = _validate_simulate_trades(
+        stop_loss_ticks=stop_loss_ticks,
+        tick_size=tick_size,
+        point_value=point_value,
+        commission_per_side=commission_per_side,
+        slippage_ticks=slippage_ticks,
+        exposure_policy=exposure_policy,
+        same_bar_opposite_direction=same_bar_opposite_direction,
+        cooldown_bars_after_exit=cooldown_bars_after_exit,
+        intrabar_model=intrabar_model,
         breakeven_after_r=breakeven_after_r,
         trailing_after_r=trailing_after_r,
         trailing_distance_ticks=trailing_distance_ticks,
+        session_close_time=session_close_time,
+        flat_by_session_close=flat_by_session_close,
+        no_new_entries_after=no_new_entries_after,
+        entry_window=entry_window,
+        entry_window_exchange_tz=entry_window_exchange_tz,
+        session_timezone=session_timezone,
     )
-    exit_management_active = exit_management_enabled(
-        breakeven_after_r=breakeven_after_r,
-        trailing_after_r=trailing_after_r,
-        trailing_distance_ticks=trailing_distance_ticks,
-    )
-    parsed_session_close = _parse_time_input(session_close_time, field_name="session_close_time")
-    if flat_by_session_close and parsed_session_close is None:
-        raise ValueError("flat_by_session_close=True requires a valid session_close_time.")
-    parsed_no_new_entries_after = _parse_time_input(
-        no_new_entries_after, field_name="no_new_entries_after"
-    )
-    # C5: RTH / naive basis is instrument exchange TZ, not session-close TZ.
-    exchange_tz_for_window = entry_window_exchange_tz or session_timezone or "America/New_York"
-    try:
-        normalized_entry_window = normalize_entry_window(
-            entry_window, exchange_tz=exchange_tz_for_window
-        )
-    except ValueError as exc:
-        raise ValueError(f"Invalid entry_window: {exc}") from exc
-
     if signals is None or signals.empty:
-        empty_trades = _empty_trades_df()
-        empty_skipped = _empty_skipped_signals_df()
-        if return_result:
-            return SimulationResult(
-                trades=empty_trades,
-                skipped_signals=empty_skipped,
-                intrabar_diagnostic=_intrabar_diagnostic(
-                    model=intrabar_model,
-                    trade_count=0,
-                    bracket_exit_count=0,
-                    both_hit_count=0,
-                    ambiguous_count=0,
-                    affected_bars=set(),
-                    proximity_tie_count=0,
-                    subtimeframe_resolved_count=0,
-                    subtimeframe_fallback_exit_count=0,
-                    subtimeframe_fallback_bars=[],
-                    subtimeframe_interval=None,
-                ),
-                exit_management_diagnostic=_exit_management_diagnostic(
-                    breakeven_after_r=breakeven_after_r,
-                    trailing_after_r=trailing_after_r,
-                    trailing_distance_ticks=trailing_distance_ticks,
-                    trade_count=0,
-                    trades_with_exit_mgmt_count=0,
-                    be_exit_count=0,
-                    trail_exit_count=0,
-                    stop_adjustment_count=0,
-                ),
-                direction_collision_diagnostic=_empty_direction_collision_diagnostic(
-                    policy=same_bar_opposite_direction
-                ),
-            )
-        if return_skipped_signals:
-            return empty_trades, empty_skipped
-        return empty_trades
+        return _empty_simulation_return(
+            return_result=return_result,
+            return_skipped_signals=return_skipped_signals,
+            intrabar_model=intrabar_model,
+            breakeven_after_r=breakeven_after_r,
+            trailing_after_r=trailing_after_r,
+            trailing_distance_ticks=trailing_distance_ticks,
+            same_bar_opposite_direction=same_bar_opposite_direction,
+        )
 
     df_reset = df.reset_index(drop=True)
     n_bars = len(df_reset)
@@ -787,11 +1549,11 @@ def simulate_trades(
     slip_pts = float(slippage_ticks) * float(tick_size)
     total_commission_cost = 2.0 * float(commission_per_side)
     risk_currency = float(stop_loss_ticks) * float(tick_size) * float(point_value)
+    capture_skips = return_skipped_signals or return_result
 
-    trades: list[dict] = []
-    skipped_signals: list[dict] = []
+    trades: list[dict[str, Any]] = []
+    skipped_signals: list[dict[str, Any]] = []
     trade_id = 0
-    candidate_rows: list[dict] = []
     bracket_exit_count = 0
     both_hit_count = 0
     ambiguous_count = 0
@@ -804,654 +1566,173 @@ def simulate_trades(
     trades_with_exit_mgmt_count = 0
     total_stop_adjustment_count = 0
 
-    for _, sig in signals.iterrows():
-        trigger = str(sig["trigger"])
-        direction = str(sig["direction"])
-        bar_idx = int(sig["bar_index"])
+    candidate_rows, window_skips = _admit_entry_candidates(
+        signals,
+        df_reset=df_reset,
+        n_bars=n_bars,
+        local_timestamps=local_timestamps,
+        slip_pts=slip_pts,
+        exposure_policy=exposure_policy,
+        cooldown_bars_after_exit=cooldown_bars_after_exit,
+        capture_skips=capture_skips,
+        normalized_entry_window=prep.normalized_entry_window,
+        exchange_tz_for_window=prep.exchange_tz_for_window,
+        parsed_no_new_entries_after=prep.parsed_no_new_entries_after,
+    )
+    skipped_signals.extend(window_skips)
+    ordered_candidates, conflict_candidate_ids = _order_candidates_and_da3(
+        candidate_rows,
+        exposure_policy=exposure_policy,
+        same_bar_opposite_direction=same_bar_opposite_direction,
+    )
 
-        # ------------------------------------------------------------------
-        # Determine entry bar and price
-        # ------------------------------------------------------------------
-        if trigger == "3c":
-            if str(sig.get("status", "")) != "filled":
-                # Void 3c signals are skipped.
-                continue
-            entry_bar_index = int(sig["entry_bar_index"])
-            if entry_bar_index >= n_bars:
-                continue
-            theoretical_entry_price = float(sig["retrace_entry_price"])
-            entry_model = "3c_retrace_market"
-        elif trigger == "confirm_3bar":
-            if str(sig.get("status", "")) != "filled":
-                continue
-            entry_bar_index = bar_idx
-            theoretical_entry_price = float(sig["entry_reference_price"])
-            entry_model = "bar3_stop_limit_fill"
-        else:
-            # Simple triggers enter at next-bar open (no look-ahead).
-            entry_bar_index = bar_idx + 1
-            if entry_bar_index >= n_bars:
-                continue
-            theoretical_entry_price = float(df_reset["open"].iloc[entry_bar_index])
-            entry_model = "next_bar_open"
-
-        if direction == "long":
-            entry_price = theoretical_entry_price + slip_pts
-        else:
-            entry_price = theoretical_entry_price - slip_pts
-
-        entry_ts = df_reset["timestamp"].iloc[entry_bar_index]
-        entry_local_ts = local_timestamps.iloc[entry_bar_index]
-
-        # C9 AND admission: both entry_window and no_new_entries_after apply.
-        # Evaluate window before cutoff so dual-failures label as
-        # outside_entry_window (C9: prefer entry_window for new UX). Trades are
-        # identical either order — only skip_reason labeling differs.
-        #
-        # C5: classify window membership on the raw entry-bar timestamp with
-        # exchange-TZ naive semantics. Do not reuse session-localized clocks —
-        # those are reserved for session-close / no_new_entries_after only.
-        if normalized_entry_window["enabled"] and not entry_window_contains(
-            entry_ts,
-            normalized_entry_window,
-            exchange_tz=exchange_tz_for_window,
-        ):
-            if return_skipped_signals or return_result:
-                skipped_signals.append(
-                    {
-                        "signal_id": int(sig["signal_id"]),
-                        "bar_index": bar_idx,
-                        "entry_bar_index": entry_bar_index,
-                        "trigger": trigger,
-                        "direction": direction,
-                        "exposure_policy": exposure_policy,
-                        "exposure_group_key": _exposure_group_key(
-                            sig,
-                            exposure_policy=exposure_policy,
-                            trigger=trigger,
-                            direction=direction,
-                        ),
-                        "skip_reason": SKIP_OUTSIDE_ENTRY_WINDOW,
-                        "blocking_trade_id": pd.NA,
-                        "blocking_exit_bar_index": pd.NA,
-                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-                    }
-                )
-            continue
-
-        if (
-            parsed_no_new_entries_after is not None
-            and entry_local_ts.time() > parsed_no_new_entries_after
-        ):
-            # SW2b: audit cutoff rejects when skip capture is on. Admission
-            # outcome is unchanged (still not a trade); golden/default path
-            # with return_result=False stays trades-identical.
-            if return_skipped_signals or return_result:
-                skipped_signals.append(
-                    {
-                        "signal_id": int(sig["signal_id"]),
-                        "bar_index": bar_idx,
-                        "entry_bar_index": entry_bar_index,
-                        "trigger": trigger,
-                        "direction": direction,
-                        "exposure_policy": exposure_policy,
-                        "exposure_group_key": _exposure_group_key(
-                            sig,
-                            exposure_policy=exposure_policy,
-                            trigger=trigger,
-                            direction=direction,
-                        ),
-                        "skip_reason": SKIP_AFTER_ENTRY_CUTOFF,
-                        "blocking_trade_id": pd.NA,
-                        "blocking_exit_bar_index": pd.NA,
-                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-                    }
-                )
-            continue
-
-        candidate_rows.append(
-            {
-                "sig": sig,
-                "trigger": trigger,
-                "direction": direction,
-                "bar_idx": bar_idx,
-                "entry_bar_index": entry_bar_index,
-                "entry_ts": entry_ts,
-                "entry_local_ts": entry_local_ts,
-                "theoretical_entry_price": theoretical_entry_price,
-                "entry_price": entry_price,
-                "entry_model": entry_model,
-                "exposure_group_key": _exposure_group_key(
-                    sig,
-                    exposure_policy=exposure_policy,
-                    trigger=trigger,
-                    direction=direction,
-                ),
-            }
-        )
-
-    if exposure_policy == "allow_all":
-        ordered_candidates = candidate_rows
-    else:
-        ordered_candidates = sorted(
-            candidate_rows,
-            key=lambda row: (
-                int(row["entry_bar_index"]),
-                int(row["bar_idx"]),
-                int(row["sig"]["signal_id"]),
-            ),
-        )
-
-    collision_groups: list[list[dict[str, Any]]] = []
-    conflict_candidate_ids: set[tuple[int, int, int]] = set()
-    if same_bar_opposite_direction != "legacy":
-        collision_groups = _same_bar_collision_groups(
-            ordered_candidates, exposure_policy=exposure_policy
-        )
-        if collision_groups and same_bar_opposite_direction == "raise":
-            first_group = collision_groups[0]
-            first_entry = int(first_group[0]["entry_bar_index"])
-            signal_ids = sorted(int(row["sig"]["signal_id"]) for row in first_group)
-            raise ValueError(
-                "same_bar_opposite_direction='raise' refused the run: "
-                f"opposite-direction collision at entry_bar_index={first_entry} "
-                f"with signal_ids={signal_ids}"
-            )
-        if same_bar_opposite_direction == "skip_both":
-            conflict_candidate_ids = {
-                _candidate_conflict_id(row) for group in collision_groups for row in group
-            }
-
-    accepted_for_blocking: list[dict] = []
+    accepted_for_blocking: list[dict[str, Any]] = []
     for candidate in ordered_candidates:
         sig = candidate["sig"]
-        trigger = candidate["trigger"]
-        direction = candidate["direction"]
-        bar_idx = int(candidate["bar_idx"])
-        entry_bar_index = int(candidate["entry_bar_index"])
-        entry_ts = candidate["entry_ts"]
-        entry_local_ts = candidate["entry_local_ts"]
-        theoretical_entry_price = float(candidate["theoretical_entry_price"])
-        entry_price = float(candidate["entry_price"])
-        entry_model = str(candidate["entry_model"])
-        exposure_group_key = str(candidate["exposure_group_key"])
-
         if (
             same_bar_opposite_direction == "skip_both"
             and _candidate_conflict_id(candidate) in conflict_candidate_ids
         ):
-            if return_skipped_signals or return_result:
+            skip_reason = SKIP_DIRECTION_CONFLICT
+            if capture_skips:
                 skipped_signals.append(
-                    {
-                        "signal_id": int(sig["signal_id"]),
-                        "bar_index": bar_idx,
-                        "entry_bar_index": entry_bar_index,
-                        "trigger": trigger,
-                        "direction": direction,
-                        "exposure_policy": exposure_policy,
-                        "exposure_group_key": exposure_group_key,
-                        "skip_reason": SKIP_DIRECTION_CONFLICT,
-                        "blocking_trade_id": pd.NA,
-                        "blocking_exit_bar_index": pd.NA,
-                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-                    }
+                    _skipped_signal_row(
+                        sig=sig,
+                        bar_idx=int(candidate["bar_idx"]),
+                        entry_bar_index=int(candidate["entry_bar_index"]),
+                        trigger=candidate["trigger"],
+                        direction=candidate["direction"],
+                        exposure_policy=exposure_policy,
+                        exposure_group_key=str(candidate["exposure_group_key"]),
+                        skip_reason=skip_reason,
+                        cooldown_bars_after_exit=cooldown_bars_after_exit,
+                    )
                 )
             continue
 
-        if exposure_policy == "single_position":
-            relevant_prior = accepted_for_blocking
-        elif exposure_policy == "single_direction":
-            relevant_prior = [
-                prior for prior in accepted_for_blocking if prior["direction"] == direction
-            ]
-        elif exposure_policy == "single_setup":
-            relevant_prior = [
-                prior
-                for prior in accepted_for_blocking
-                if prior["exposure_group_key"] == exposure_group_key
-            ]
-        else:
-            relevant_prior = []
+        occupancy_skip = _exposure_skip_for_candidate(
+            candidate,
+            accepted_for_blocking=accepted_for_blocking,
+            exposure_policy=exposure_policy,
+            cooldown_bars_after_exit=cooldown_bars_after_exit,
+        )
+        if occupancy_skip is not None:
+            if capture_skips:
+                skipped_signals.append(occupancy_skip)
+            continue
 
-        blockers = [
-            prior
-            for prior in relevant_prior
-            if entry_bar_index <= (int(prior["exit_bar_index"]) + cooldown_bars_after_exit)
-        ]
-        if blockers:
-            blocker = sorted(
-                blockers,
-                key=lambda prior: (-int(prior["exit_bar_index"]), int(prior["trade_id"])),
-            )[0]
-            blocker_exit_bar_index = int(blocker["exit_bar_index"])
-            if entry_bar_index > blocker_exit_bar_index:
-                skip_reason = SKIP_COOLDOWN_ACTIVE
-            elif exposure_policy == "single_position":
-                skip_reason = SKIP_OVERLAPPING_POSITION
-            elif exposure_policy == "single_direction":
-                skip_reason = SKIP_OVERLAPPING_DIRECTION
-            else:
-                skip_reason = SKIP_OVERLAPPING_SETUP
-
-            if return_skipped_signals or return_result:
+        outcome = _simulate_trade_exit(
+            bars=bars,
+            n_bars=n_bars,
+            local_timestamps=local_timestamps,
+            direction=str(candidate["direction"]),
+            entry_price=float(candidate["entry_price"]),
+            theoretical_entry_price=float(candidate["theoretical_entry_price"]),
+            entry_bar_index=int(candidate["entry_bar_index"]),
+            entry_local_ts=candidate["entry_local_ts"],
+            entry_model=str(candidate["entry_model"]),
+            trigger=str(candidate["trigger"]),
+            sl_pts=sl_pts,
+            tp_pts=tp_pts,
+            allow_same_bar_exit=allow_same_bar_exit,
+            max_holding_bars=max_holding_bars,
+            flat_by_session_close=flat_by_session_close,
+            parsed_session_close=prep.parsed_session_close,
+            exit_management_active=prep.exit_management_active,
+            tick_size=tick_size,
+            breakeven_after_r=breakeven_after_r,
+            trailing_after_r=trailing_after_r,
+            trailing_distance_ticks=trailing_distance_ticks,
+            intrabar_model=intrabar_model,
+            subtimeframe_context=subtimeframe_context,
+        )
+        if outcome is None:
+            skip_reason = SKIP_EMPTY_SESSION_CLOSE_CAP
+            if capture_skips:
                 skipped_signals.append(
-                    {
-                        "signal_id": int(sig["signal_id"]),
-                        "bar_index": bar_idx,
-                        "entry_bar_index": entry_bar_index,
-                        "trigger": trigger,
-                        "direction": direction,
-                        "exposure_policy": exposure_policy,
-                        "exposure_group_key": exposure_group_key,
-                        "skip_reason": skip_reason,
-                        "blocking_trade_id": int(blocker["trade_id"]),
-                        "blocking_exit_bar_index": blocker_exit_bar_index,
-                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-                    }
+                    _skipped_signal_row(
+                        sig=sig,
+                        bar_idx=int(candidate["bar_idx"]),
+                        entry_bar_index=int(candidate["entry_bar_index"]),
+                        trigger=candidate["trigger"],
+                        direction=candidate["direction"],
+                        exposure_policy=exposure_policy,
+                        exposure_group_key=str(candidate["exposure_group_key"]),
+                        skip_reason=skip_reason,
+                        cooldown_bars_after_exit=cooldown_bars_after_exit,
+                    )
                 )
             continue
 
-        # ------------------------------------------------------------------
-        # Fixed SL / TP prices
-        # ------------------------------------------------------------------
-        if direction == "long":
-            stop_price = entry_price - sl_pts
-            target_price = entry_price + tp_pts
-        else:
-            stop_price = entry_price + sl_pts
-            target_price = entry_price - tp_pts
-        stop_state = initial_exit_management_state(
-            initial_stop=stop_price,
-            entry_price=entry_price,
-            direction=direction,
+        trade = _record_closed_trade(
+            trade_id=trade_id,
+            candidate=candidate,
+            outcome=outcome,
+            df_reset=df_reset,
+            slip_pts=slip_pts,
+            stop_loss_ticks=stop_loss_ticks,
+            take_profit_ticks=take_profit_ticks,
+            point_value=point_value,
+            total_commission_cost=total_commission_cost,
+            risk_currency=risk_currency,
+            exposure_policy=exposure_policy,
+            cooldown_bars_after_exit=cooldown_bars_after_exit,
+            intrabar_model=intrabar_model,
+            exit_management_active=prep.exit_management_active,
+            breakeven_after_r=breakeven_after_r,
+            trailing_after_r=trailing_after_r,
+            trailing_distance_ticks=trailing_distance_ticks,
         )
-
-        # ------------------------------------------------------------------
-        # Bar-by-bar exit walk
-        # ------------------------------------------------------------------
-        exit_bar_index: int | None = None
-        theoretical_exit_price: float | None = None
-        exit_price: float | None = None
-        exit_reason: str | None = None
-        intrabar_resolution = "not_evaluated"
-        intrabar_parent_both_hit = False
-        intrabar_ambiguous = False
-        pending_intrabar_ambiguity = False
-        exit_subbar_timestamp: pd.Timestamp | None = None
-
-        # MAE / MFE tracking (adverse / favorable excursion in points)
-        mae_pts = 0.0  # worst excursion against position
-        mfe_pts = 0.0  # best excursion in favour of position
-
-        start_bar = entry_bar_index if allow_same_bar_exit else entry_bar_index + 1
-
-        max_bar = n_bars - 1
-        time_cap_bar: int | None = None
-        if max_holding_bars is not None:
-            time_cap_bar = entry_bar_index + max_holding_bars - 1
-            max_bar = min(max_bar, time_cap_bar)
-
-        session_cap_bar: int | None = None
-        data_end_before_session_close = False
-        if flat_by_session_close:
-            session_close_ts = entry_local_ts.normalize() + pd.Timedelta(
-                hours=parsed_session_close.hour,
-                minutes=parsed_session_close.minute,
-                seconds=parsed_session_close.second,
-            )
-            bars_until_close = local_timestamps[
-                (local_timestamps.index >= entry_bar_index) & (local_timestamps <= session_close_ts)
-            ]
-            if bars_until_close.empty:
-                if return_skipped_signals or return_result:
-                    skipped_signals.append(
-                        {
-                            "signal_id": int(sig["signal_id"]),
-                            "bar_index": bar_idx,
-                            "entry_bar_index": entry_bar_index,
-                            "trigger": trigger,
-                            "direction": direction,
-                            "exposure_policy": exposure_policy,
-                            "exposure_group_key": exposure_group_key,
-                            "skip_reason": SKIP_EMPTY_SESSION_CLOSE_CAP,
-                            "blocking_trade_id": pd.NA,
-                            "blocking_exit_bar_index": pd.NA,
-                            "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-                        }
-                    )
-                continue
-            session_cap_bar = int(bars_until_close.index[-1])
-            max_bar = min(max_bar, session_cap_bar)
-            last_available_ts = local_timestamps.iloc[n_bars - 1]
-            data_end_before_session_close = (
-                session_cap_bar == n_bars - 1 and last_available_ts < session_close_ts
-            )
-
-        if (
-            exit_management_active
-            and not allow_same_bar_exit
-            and entry_model == "next_bar_open"
-            and entry_bar_index < max_bar
-        ):
-            entry_bar = bars.at(entry_bar_index)
-            stop_state = update_exit_management_after_bar(
-                state=stop_state,
-                direction=direction,
-                entry_price=entry_price,
-                initial_stop=stop_price,
-                tick_size=tick_size,
-                risk_points=sl_pts,
-                bar_high=entry_bar.high,
-                bar_low=entry_bar.low,
-                bar_index=entry_bar_index,
-                breakeven_after_r=breakeven_after_r,
-                trailing_after_r=trailing_after_r,
-                trailing_distance_ticks=trailing_distance_ticks,
-            )
-
-        for b in range(start_bar, max_bar + 1):
-            bar, resolution = resolve_trade_bar(
-                bars,
-                bar_index=b,
-                intrabar_model=intrabar_model,
-                subtimeframe_context=subtimeframe_context,
-                stop_price=stop_state.effective_stop,
-                target_price=target_price,
-                direction=direction,
-                entry_activation_price=(
-                    theoretical_entry_price
-                    if b == entry_bar_index and trigger in {"3c", "confirm_3bar"}
-                    else None
-                ),
-            )
-            bar_low = bar.low
-            bar_high = bar.high
-
-            # Track MAE / MFE
-            if direction == "long":
-                excursion_adverse = entry_price - bar_low
-                excursion_favorable = bar_high - entry_price
-            else:
-                excursion_adverse = bar_high - entry_price
-                excursion_favorable = entry_price - bar_low
-
-            mae_pts = max(mae_pts, excursion_adverse)
-            mfe_pts = max(mfe_pts, excursion_favorable)
-
-            pending_intrabar_ambiguity = pending_intrabar_ambiguity or resolution.ambiguous
-            if resolution.exit_kind is not None:
-                exit_bar_index = b
-                theoretical_exit_price = (
-                    stop_state.effective_stop if resolution.exit_kind == EXIT_SL else target_price
-                )
-                if (
-                    resolution.exit_kind == EXIT_SL
-                    and stop_state.active_reason in EXIT_MANAGED_STOP_REASONS
-                ):
-                    exit_reason = stop_state.active_reason
-                elif intrabar_model == "sl_first":
-                    exit_reason = resolution.exit_kind
-                elif intrabar_model == "path_open_proximity":
-                    exit_reason = _exit_reason_with_suffix(
-                        resolution.exit_kind, EXIT_INTRABAR_PATH_SUFFIX
-                    )
-                elif (
-                    intrabar_model == "subtimeframe_conservative"
-                    and resolution.subtimeframe_fallback
-                ):
-                    exit_reason = _exit_reason_with_suffix(
-                        resolution.exit_kind, EXIT_SUBTIMEFRAME_FALLBACK_SUFFIX
-                    )
-                else:
-                    exit_reason = _exit_reason_with_suffix(
-                        resolution.exit_kind, EXIT_SUBTIMEFRAME_SUFFIX
-                    )
-                intrabar_resolution = resolution.resolution
-                intrabar_parent_both_hit = resolution.parent_both_hit
-                intrabar_ambiguous = pending_intrabar_ambiguity
-                exit_subbar_timestamp = resolution.exit_subbar_timestamp
-                bracket_exit_count += 1
-                if resolution.parent_both_hit:
-                    both_hit_count += 1
-                    affected_bars.add(b)
-                if intrabar_ambiguous:
-                    ambiguous_count += 1
-                if resolution.proximity_tie:
-                    proximity_tie_count += 1
-                if intrabar_model in {"subtimeframe", "subtimeframe_conservative"}:
-                    if resolution.subtimeframe_fallback:
-                        subtimeframe_fallback_exit_count += 1
-                    else:
-                        subtimeframe_resolved_count += 1
-                break
-            can_update_exit_management = (
-                entry_model == "next_bar_open" and b >= entry_bar_index
-            ) or (entry_model != "next_bar_open" and b > entry_bar_index)
-            if exit_management_active and can_update_exit_management and b < max_bar:
-                stop_state = update_exit_management_after_bar(
-                    state=stop_state,
-                    direction=direction,
-                    entry_price=entry_price,
-                    initial_stop=stop_price,
-                    tick_size=tick_size,
-                    risk_points=sl_pts,
-                    bar_high=bar_high,
-                    bar_low=bar_low,
-                    bar_index=b,
-                    breakeven_after_r=breakeven_after_r,
-                    trailing_after_r=trailing_after_r,
-                    trailing_distance_ticks=trailing_distance_ticks,
-                )
-
-        if exit_bar_index is None:
-            # No SL/TP hit — TIME or EOD
-            if (
-                max_holding_bars is not None
-                and time_cap_bar is not None
-                and max_bar == time_cap_bar
-            ):
-                exit_bar_index = max_bar
-                theoretical_exit_price = bars.close[max_bar]
-                exit_reason = EXIT_TIME
-                intrabar_resolution = "forced_time"
-            elif flat_by_session_close:
-                exit_bar_index = max_bar
-                theoretical_exit_price = bars.close[max_bar]
-                if (
-                    data_end_before_session_close
-                    and session_cap_bar is not None
-                    and max_bar == session_cap_bar
-                ):
-                    exit_reason = EXIT_DATA_END
-                    intrabar_resolution = "forced_data_end"
-                else:
-                    exit_reason = EXIT_SESSION_CLOSE
-                    intrabar_resolution = "forced_session_close"
-            else:
-                exit_bar_index = n_bars - 1
-                theoretical_exit_price = bars.close[n_bars - 1]
-                exit_reason = EXIT_EOD
-                intrabar_resolution = "forced_eod"
-            if pending_intrabar_ambiguity:
-                intrabar_ambiguous = True
-                ambiguous_count += 1
-
-        if direction == "long":
-            exit_price = float(theoretical_exit_price) - slip_pts
-        else:
-            exit_price = float(theoretical_exit_price) + slip_pts
-
-        exit_ts = df_reset["timestamp"].iloc[exit_bar_index]
-
-        # ------------------------------------------------------------------
-        # P&L and R calculation
-        # ------------------------------------------------------------------
-        if direction == "long":
-            theoretical_pnl_points = float(theoretical_exit_price) - theoretical_entry_price
-            gross_pnl_points = float(exit_price) - entry_price
-        else:
-            theoretical_pnl_points = theoretical_entry_price - float(theoretical_exit_price)
-            gross_pnl_points = entry_price - float(exit_price)
-
-        gross_pnl_currency = gross_pnl_points * float(point_value)
-        # Cost modeling is adverse-only: any favorable rounding/noise is floored at 0.
-        slippage_cost = max(
-            0.0,
-            (theoretical_pnl_points - gross_pnl_points) * float(point_value),
-        )
-        # gross_pnl_currency already reflects entry+exit slippage via slipped fills.
-        # Net P&L subtracts round-turn commissions on top of that gross value.
-        net_pnl_currency = gross_pnl_currency - total_commission_cost
-        r_multiple = net_pnl_currency / risk_currency  # risk_currency is > 0
-
-        bars_held = exit_bar_index - entry_bar_index + 1
-
-        trade = {
-            "trade_id": trade_id,
-            "signal_id": int(sig["signal_id"]),
-            "trigger": trigger,
-            "direction": direction,
-            "entry_timestamp": entry_ts,
-            "entry_bar_index": entry_bar_index,
-            "theoretical_entry_price": theoretical_entry_price,
-            "entry_price": entry_price,
-            "entry_model": entry_model,
-            "exit_timestamp": exit_ts,
-            "exit_bar_index": exit_bar_index,
-            "theoretical_exit_price": float(theoretical_exit_price),
-            "exit_price": float(exit_price),
-            "exit_reason": exit_reason,
-            "stop_price": stop_price,
-            "target_price": target_price,
-            "stop_loss_ticks": stop_loss_ticks,
-            "take_profit_ticks": take_profit_ticks,
-            "gross_pnl_points": gross_pnl_points,
-            "gross_pnl_currency": gross_pnl_currency,
-            "commission_cost": total_commission_cost,
-            "slippage_cost": slippage_cost,
-            "net_pnl_currency": net_pnl_currency,
-            "pnl_points": gross_pnl_points,
-            "pnl_currency": net_pnl_currency,
-            "r_multiple": r_multiple,
-            "bars_held": bars_held,
-            "zone_low": sig.get("zone_low"),
-            "zone_high": sig.get("zone_high"),
-            "zone_mid": sig.get("zone_mid"),
-            "level_count": sig.get("level_count"),
-            "level_names": sig.get("level_names"),
-            "trigger_variant": sig.get("trigger_variant"),
-            "is_muted": sig.get("is_muted"),
-            "is_sfp": sig.get("is_sfp"),
-            "inside_candle_count": sig.get("inside_candle_count"),
-            "level_source_mode": sig.get("level_source_mode"),
-            "mae_points": mae_pts,
-            "mfe_points": mfe_pts,
-            "exposure_policy": exposure_policy,
-            "exposure_group_key": exposure_group_key,
-            "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-            "status": "closed",
-        }
-        if intrabar_model != "sl_first":
-            trade.update(
-                {
-                    "intrabar_model": intrabar_model,
-                    "intrabar_resolution": intrabar_resolution,
-                    "intrabar_parent_both_hit": intrabar_parent_both_hit,
-                    "intrabar_ambiguous": intrabar_ambiguous,
-                    "exit_subbar_timestamp": exit_subbar_timestamp,
-                }
-            )
-        if exit_management_active:
-            stop_management_mode = "fixed"
-            if breakeven_after_r is not None and trailing_after_r is not None:
-                stop_management_mode = "breakeven_trailing"
-            elif breakeven_after_r is not None:
-                stop_management_mode = "breakeven"
-            elif trailing_after_r is not None:
-                stop_management_mode = "trailing"
-            exit_management_armed = stop_state.breakeven_armed or stop_state.trailing_armed
-            trade.update(
-                {
-                    "breakeven_after_r": breakeven_after_r,
-                    "trailing_after_r": trailing_after_r,
-                    "trailing_distance_ticks": trailing_distance_ticks,
-                    "initial_stop_price": stop_price,
-                    "active_stop_price_at_exit": stop_state.effective_stop,
-                    "final_stop_price": stop_state.effective_stop,
-                    "stop_management_mode": stop_management_mode,
-                    "breakeven_activated_bar_index": stop_state.breakeven_activated_bar_index,
-                    "trailing_activated_bar_index": stop_state.trailing_activated_bar_index,
-                    "stop_adjustment_count": stop_state.adjustment_count,
-                    "stop_adjustment_path": "|".join(stop_state.adjustment_path),
-                    "exit_management_armed": bool(exit_management_armed),
-                }
-            )
-            if exit_management_armed:
+        bracket_exit_count += outcome.bracket_exit_count
+        both_hit_count += outcome.both_hit_count
+        ambiguous_count += outcome.ambiguous_count
+        if outcome.affected_bar is not None:
+            affected_bars.add(outcome.affected_bar)
+        proximity_tie_count += outcome.proximity_tie_count
+        subtimeframe_resolved_count += outcome.subtimeframe_resolved_count
+        subtimeframe_fallback_exit_count += outcome.subtimeframe_fallback_exit_count
+        if prep.exit_management_active:
+            if trade.get("exit_management_armed"):
                 trades_with_exit_mgmt_count += 1
-            if exit_reason == EXIT_BE:
+            if outcome.exit_reason == EXIT_BE:
                 be_exit_count += 1
-            if exit_reason == EXIT_TRAIL:
+            if outcome.exit_reason == EXIT_TRAIL:
                 trail_exit_count += 1
-            total_stop_adjustment_count += int(stop_state.adjustment_count)
+            total_stop_adjustment_count += int(outcome.stop_state.adjustment_count)
         trades.append(trade)
         accepted_for_blocking.append(
             {
                 "trade_id": trade_id,
-                "exit_bar_index": exit_bar_index,
-                "direction": direction,
-                "exposure_group_key": exposure_group_key,
+                "exit_bar_index": outcome.exit_bar_index,
+                "direction": candidate["direction"],
+                "exposure_group_key": str(candidate["exposure_group_key"]),
             }
         )
         trade_id += 1
 
-    trades_df = pd.DataFrame(trades) if trades else _empty_trades_df()
-    if intrabar_model != "sl_first" and trades_df.empty:
-        for column in _INTRABAR_TRADE_COLUMNS:
-            trades_df[column] = pd.Series(dtype="object")
-    if exit_management_active and trades_df.empty:
-        for column in _EXIT_MANAGEMENT_TRADE_COLUMNS:
-            trades_df[column] = pd.Series(dtype="object")
-    skipped_df = pd.DataFrame(skipped_signals) if skipped_signals else _empty_skipped_signals_df()
-    if return_result:
-        return SimulationResult(
-            trades=trades_df,
-            skipped_signals=skipped_df,
-            intrabar_diagnostic=_intrabar_diagnostic(
-                model=intrabar_model,
-                trade_count=len(trades_df),
-                bracket_exit_count=bracket_exit_count,
-                both_hit_count=both_hit_count,
-                ambiguous_count=ambiguous_count,
-                affected_bars=affected_bars,
-                proximity_tie_count=proximity_tie_count,
-                subtimeframe_resolved_count=subtimeframe_resolved_count,
-                subtimeframe_fallback_exit_count=subtimeframe_fallback_exit_count,
-                subtimeframe_fallback_bars=(
-                    subtimeframe_context.fallback_diagnostics(df_reset)
-                    if subtimeframe_context is not None
-                    else []
-                ),
-                subtimeframe_interval=(
-                    subtimeframe_context.sub_interval if subtimeframe_context is not None else None
-                ),
-            ),
-            exit_management_diagnostic=_exit_management_diagnostic(
-                breakeven_after_r=breakeven_after_r,
-                trailing_after_r=trailing_after_r,
-                trailing_distance_ticks=trailing_distance_ticks,
-                trade_count=len(trades_df),
-                trades_with_exit_mgmt_count=trades_with_exit_mgmt_count,
-                be_exit_count=be_exit_count,
-                trail_exit_count=trail_exit_count,
-                stop_adjustment_count=total_stop_adjustment_count,
-            ),
-            direction_collision_diagnostic=_direction_collision_diagnostic(
-                ordered_candidates=ordered_candidates,
-                accepted_trades=trades,
-                skipped_signals=skipped_signals,
-                policy=same_bar_opposite_direction,
-            ),
-        )
-    if return_skipped_signals:
-        return trades_df, skipped_df
-    return trades_df
+    return _assemble_simulate_result(
+        trades=trades,
+        skipped_signals=skipped_signals,
+        ordered_candidates=ordered_candidates,
+        return_result=return_result,
+        return_skipped_signals=return_skipped_signals,
+        intrabar_model=intrabar_model,
+        exit_management_active=prep.exit_management_active,
+        df_reset=df_reset,
+        subtimeframe_context=subtimeframe_context,
+        bracket_exit_count=bracket_exit_count,
+        both_hit_count=both_hit_count,
+        ambiguous_count=ambiguous_count,
+        affected_bars=affected_bars,
+        proximity_tie_count=proximity_tie_count,
+        subtimeframe_resolved_count=subtimeframe_resolved_count,
+        subtimeframe_fallback_exit_count=subtimeframe_fallback_exit_count,
+        breakeven_after_r=breakeven_after_r,
+        trailing_after_r=trailing_after_r,
+        trailing_distance_ticks=trailing_distance_ticks,
+        trades_with_exit_mgmt_count=trades_with_exit_mgmt_count,
+        be_exit_count=be_exit_count,
+        trail_exit_count=trail_exit_count,
+        total_stop_adjustment_count=total_stop_adjustment_count,
+        same_bar_opposite_direction=same_bar_opposite_direction,
+    )

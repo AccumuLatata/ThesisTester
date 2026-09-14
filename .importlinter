@@ -127,7 +127,8 @@ ignore_imports =
     thesistester.assistant.voice.xai_realtime -> streamlit
 unmatched_ignore_imports_alerting = error
 
-# C9 (B-19 / QI-4 §6.3 / R22): sim_core is BarData + resolve_trade_bar only.
+# C9 (B-19 / QI-4 §6.3 / R22 / C-19): sim_core is BarData + resolve_trade_bar
+# + P7 walk / flatten-cap math. Still no admission / P&L.
 # Forbidding thesistester.analytics covers analytics.* descendants.
 [importlinter:contract:c9-sim-core-no-admission]
 name = C9 sim_core ↛ entry_window_policy / analytics (R22)

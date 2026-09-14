@@ -89,7 +89,12 @@ P0 validate / P3 train-grid / P5 stitch / P6 summary helpers from
 untouched (S5). C-18 (QI-04-09) centralizes skip/exit tokens next to
 `_SKIPPED_SIGNAL_COLUMNS`; string values unchanged. `entry_window`
 aliases window/cutoff tokens locally (does not import `engine.backtest`).
-Next: C-19.
+C-19 (QI-04-01) extracts `simulate_trades` P7 (SL/TP + flatten + exit
+walk) behind the R22 boundary (`sim_core.compute_session_close_cap` /
+`walk_trade_exit` calling `resolve_trade_bar`); then P4/P6 admission
+helpers. Public signature unchanged. `sim_core` still holds no
+admission / P&L. AH §2.1 defaults, C1/AH1 flatten clock, and 3c-void
+silent `continue` stay untouched. Next: C-20.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -279,7 +284,10 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    helpers; fold construction and `causal_prefix` stay untouched.
    C-18 (QI-04-09) centralizes skip/exit tokens; values unchanged.
    `entry_window` aliases stay local (no `engine.backtest` import).
-   Next: C-19.
+   C-19 (QI-04-01) extracts `simulate_trades` P7 behind R22
+   (`walk_trade_exit` / flatten cap in `sim_core`); P4/P6 admission
+   helpers stay in `backtest.py`. No public signature change.
+   Next: C-20.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
@@ -783,7 +791,12 @@ Every request must first parse as an `AssistantRequest`, then pass
   sample **keeps** `tests/test_otf_integration.py` (`fold_local` already
   lives there) and the C-17 helpers (`_validate_walk_forward_run`,
   `_stitch_walk_forward_oos`) so P0 fold-size and overlap-reject
-  comparisons stay inside the 12-site named surface. Gate for C-14 /
+  comparisons stay inside the 12-site named surface. The backtest sample
+  **keeps** the C-19 helpers (`_validate_simulate_trades`,
+  `_admit_entry_candidates`, `_exposure_skip_for_candidate`,
+  `_finalize_exit_walk`, `walk_trade_exit` on `engine/sim_core.py`) so
+  path-proximity, `next_bar_open`, and P0 validation comparisons stay
+  inside the same 12-site cap. Gate for C-14 /
   C-17 / C-19: ≥ 70 % own-file killed
   (target 80 %). B-4 recorded adjusted rates: `backtest.py` 100 % and
   `walk_forward.py` 100 % (12/12). Timeouts count as killed. This is **not** a
@@ -1154,8 +1167,13 @@ are B-1; H10/H11 lock tests are B-2.
 - Keep all public `simulate_trades` behavior unchanged through core refactors.
   Any accelerated path must be opt-in and exactly equal to serial golden and
   feature-path outputs.
-- Keep optimization work inside `engine.sim_core`; admission, P&L, trade
-  schema, and diagnostics remain orchestrated by `backtest.py`.
+- Keep optimization work inside `engine.sim_core`. C-19 placed the serial
+  P7 walk (`walk_trade_exit`, which calls `resolve_trade_bar`) and AH1
+  flatten-cap math (`compute_session_close_cap`) on the R22 boundary. Admission
+  (window / cutoff / exposure / 3c-void), skip-row schema, costs, P&L,
+  trade records, and diagnostics remain orchestrated by `backtest.py`.
+  Do not widen `sim_core` into those concerns. C-20 may switch `BarData`
+  storage; E-10 may accelerate only inside this boundary.
 - Run `pytest -q tests/benchmarks/test_simulate_baseline.py tests/test_golden_master.py tests/test_intrabar.py tests/test_exit_management.py tests/test_phase5_backtest.py`
   after R22 changes.
 

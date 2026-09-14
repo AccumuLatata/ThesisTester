@@ -1310,11 +1310,13 @@ HTF trigger frame is missing). C-15 owns `iterrows` replacement behind these hel
 ## R22 simulation-core boundary
 
 `thesistester.engine.sim_core` is an internal-only hot-path boundary. It owns
-immutable parent-bar OHLC snapshots and one-bar intrabar resolution, while
-`simulate_trades` retains all public orchestration: signal admission, caps,
-MAE/MFE, exit management, costs, record construction, and diagnostics. No
-accelerated execution mode is enabled; `docs/SIMULATE_PERF.md` is the
-informational serial baseline for future parity-gated work.
+immutable parent-bar OHLC snapshots, one-bar intrabar resolution, and the
+serial C-19 P7 walk (`compute_session_close_cap`, `walk_trade_exit`).
+`simulate_trades` retains public orchestration: signal admission, skip-row
+schema, C-18 exit-reason labels, costs, record construction, and
+diagnostics. `sim_core` still holds no admission or P&L. No accelerated
+execution mode is enabled; `docs/SIMULATE_PERF.md` is the informational
+serial baseline for future parity-gated work (C-20 / E-10).
 
 ## SW2–SW6 entry-window admission boundary
 

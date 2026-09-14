@@ -9,7 +9,7 @@ from tests.fixtures.mutation.mutate_sample import (
     BASELINE_PATH,
     REPO_ROOT,
     TARGETS,
-    _collect_sites,
+    collect_target_sites,
 )
 
 _PYPROJECT = REPO_ROOT / "pyproject.toml"
@@ -31,6 +31,16 @@ def test_walk_forward_sample_keeps_otf_integration() -> None:
         "tests/test_ah1_session_flatten.py",
         "tests/test_golden_master.py",
     ]
+    backtest_fns = TARGETS["thesistester/engine/backtest.py"]["function_names"]
+    assert "_validate_simulate_trades" in backtest_fns
+    assert "_admit_entry_candidates" in backtest_fns
+    assert "_exposure_skip_for_candidate" in backtest_fns
+    assert "_finalize_exit_walk" in backtest_fns
+    assert "walk_trade_exit" in backtest_fns
+    assert "simulate_trades" in backtest_fns
+    assert TARGETS["thesistester/engine/backtest.py"]["source_modules"] == (
+        "thesistester/engine/sim_core.py",
+    )
 
 
 def test_recipe_sample_includes_named_b4_surfaces() -> None:
@@ -38,18 +48,21 @@ def test_recipe_sample_includes_named_b4_surfaces() -> None:
 
     C-17 extracted P0/P5 helpers; the WFA ``function_names`` must keep those
     helpers so overlap-reject / fold-size sites are not dropped from the cap.
+    C-19 extracted P7/P4/P6 from ``simulate_trades``; the backtest named
+    surface must keep ``walk_trade_exit`` / admission / finalize helpers so
+    path-proximity and ``next_bar_open`` sites stay inside the cap.
     """
     for relpath, spec in TARGETS.items():
-        source = (REPO_ROOT / relpath).read_text(encoding="utf-8")
-        sites = _collect_sites(
-            source,
-            priority_needles=tuple(spec["priority_needles"]),
-            function_names=tuple(spec["function_names"]),
-        )
+        sites = collect_target_sites(relpath, spec)
         assert len(sites) == 12
         sampled = "\n".join(site.line for site in sites)
         for needle in spec["priority_needles"]:
             assert needle in sampled
+    backtest_sites = collect_target_sites(
+        "thesistester/engine/backtest.py",
+        TARGETS["thesistester/engine/backtest.py"],
+    )
+    assert any(site.relpath.endswith("sim_core.py") for site in backtest_sites)
 
 
 def test_committed_mutation_baseline_meets_c14_gate() -> None:

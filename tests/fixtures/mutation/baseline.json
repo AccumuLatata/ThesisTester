@@ -139,108 +139,120 @@
           "index": 0,
           "killed": true,
           "line": "\"same_bar_both_hit_pct\": (float(both_hit_count / denominator) if denominator > 0 else 0.0),",
-          "lineno": 185,
+          "lineno": 247,
           "op": ">-><",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         },
         {
           "excluded": false,
           "index": 1,
           "killed": true,
-          "line": "and entry_model == \"next_bar_open\"",
-          "lineno": 1069,
+          "line": "elif intrabar_model == \"path_open_proximity\":",
+          "lineno": 953,
           "op": "==->!=",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         },
         {
           "excluded": false,
           "index": 2,
           "killed": true,
-          "line": "elif intrabar_model == \"path_open_proximity\":",
-          "lineno": 1127,
+          "line": "and entry_model == \"next_bar_open\"",
+          "lineno": 308,
           "op": "==->!=",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/sim_core.py"
         },
         {
           "excluded": false,
           "index": 3,
           "killed": true,
-          "line": "entry_model == \"next_bar_open\" and b >= entry_bar_index",
-          "lineno": 1155,
+          "line": "can_update_exit_management = (entry_model == \"next_bar_open\" and b >= entry_bar_index) or (",
+          "lineno": 378,
           "op": "==->!=",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/sim_core.py"
         },
         {
           "excluded": false,
           "index": 4,
           "killed": true,
-          "line": "entry_model == \"next_bar_open\" and b >= entry_bar_index",
-          "lineno": 1155,
+          "line": "can_update_exit_management = (entry_model == \"next_bar_open\" and b >= entry_bar_index) or (",
+          "lineno": 378,
           "op": ">=-><=",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/sim_core.py"
         },
         {
           "excluded": false,
           "index": 5,
           "killed": true,
           "line": "float(trades_with_exit_mgmt_count / trade_count) if trade_count > 0 else 0.0",
-          "lineno": 221,
+          "lineno": 283,
           "op": ">-><",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         },
         {
           "excluded": false,
           "index": 6,
           "killed": true,
           "line": "float(stop_adjustment_count / trade_count) if trade_count > 0 else 0.0",
-          "lineno": 227,
+          "lineno": 289,
           "op": ">-><",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         },
         {
           "excluded": false,
           "index": 7,
           "killed": true,
           "line": "pair_keys = {key for key, directions in groups.items() if {\"long\", \"short\"} <= directions}",
-          "lineno": 276,
+          "lineno": 338,
           "op": "<=->>=",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         },
         {
           "excluded": false,
           "index": 8,
           "killed": true,
           "line": "float(accepted_from_pairs / trade_count) if trade_count > 0 else 0.0",
-          "lineno": 300,
+          "lineno": 362,
           "op": ">-><",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         },
         {
           "excluded": false,
           "index": 9,
           "killed": true,
           "line": "if stop_loss_ticks <= 0:",
-          "lineno": 609,
+          "lineno": 562,
           "op": "<=->>=",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         },
         {
           "excluded": false,
           "index": 10,
           "killed": true,
           "line": "if tick_size <= 0:",
-          "lineno": 611,
+          "lineno": 564,
           "op": "<=->>=",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         },
         {
           "excluded": false,
           "index": 11,
           "killed": true,
           "line": "if point_value <= 0:",
-          "lineno": 613,
+          "lineno": 566,
           "op": "<=->>=",
-          "reason": "failed"
+          "reason": "failed",
+          "relpath": "thesistester/engine/backtest.py"
         }
       ],
       "sites_excluded": 0,

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from datetime import time
+
 import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
 from thesistester.engine.intrabar import SubtimeframeContext, resolve_ohlc_bar
-from thesistester.engine.sim_core import BarData, resolve_trade_bar
+from thesistester.engine.sim_core import (
+    BarData,
+    compute_session_close_cap,
+    resolve_trade_bar,
+    walk_trade_exit,
+)
 
 
 def _bars() -> pd.DataFrame:
@@ -96,3 +103,57 @@ def test_conservative_fallback_respects_parent_bar_entry_gating():
     assert resolution.exit_kind is None
     assert resolution.ambiguous is True
     assert resolution.subtimeframe_fallback is True
+
+
+def test_session_close_cap_uses_entry_date_clock():
+    stamps = pd.DatetimeIndex(
+        [
+            "2026-01-05 15:50:00",
+            "2026-01-05 15:51:00",
+            "2026-01-05 16:00:00",
+            "2026-01-06 09:30:00",
+        ]
+    )
+    local = pd.Series(pd.to_datetime(stamps))
+    cap = compute_session_close_cap(
+        local,
+        entry_bar_index=0,
+        entry_local_ts=local.iloc[0],
+        session_close=time(16, 0, 0),
+        n_bars=len(local),
+    )
+    assert cap.empty is False
+    assert cap.session_cap_bar == 2
+    assert cap.data_end_before_session_close is False
+
+
+def test_walk_trade_exit_hits_fixed_stop_on_entry_bar():
+    bars = BarData.from_frame(_bars())
+    walk = walk_trade_exit(
+        bars,
+        direction="long",
+        entry_price=100.0,
+        theoretical_entry_price=100.0,
+        entry_bar_index=0,
+        entry_model="next_bar_open",
+        trigger="touch",
+        sl_pts=1.0,
+        tp_pts=10.0,
+        n_bars=2,
+        allow_same_bar_exit=True,
+        max_holding_bars=None,
+        session_cap_bar=None,
+        exit_management_active=False,
+        tick_size=0.25,
+        breakeven_after_r=None,
+        trailing_after_r=None,
+        trailing_distance_ticks=None,
+        intrabar_model="sl_first",
+        subtimeframe_context=None,
+    )
+    assert walk.bracket_exit is True
+    assert walk.exit_bar_index == 0
+    assert walk.resolution is not None
+    assert walk.resolution.exit_kind == "SL"
+    assert walk.stop_price == 99.0
+    assert walk.target_price == 110.0

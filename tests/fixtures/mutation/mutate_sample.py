@@ -56,12 +56,22 @@ TARGETS: dict[str, dict[str, Any]] = {
             "path_open_proximity",
             'entry_model == "next_bar_open"',
         ),
+        # C-19 moved P7/P4/P6 comparison sites out of simulate_trades.
+        # Keep helpers in the named surface so the 12-site sample still
+        # covers path-proximity, next_bar_open BE, and P0 validation (B-4).
         "function_names": (
             "_intrabar_diagnostic",
             "_exit_management_diagnostic",
             "_direction_collision_diagnostic",
+            "_validate_simulate_trades",
+            "_admit_entry_candidates",
+            "_exposure_skip_for_candidate",
+            "_finalize_exit_walk",
+            "walk_trade_exit",
             "simulate_trades",
         ),
+        # walk_trade_exit lives on the R22 boundary (sim_core), not backtest.py.
+        "source_modules": ("thesistester/engine/sim_core.py",),
     },
     "thesistester/analytics/walk_forward.py": {
         "tests": [
@@ -100,6 +110,7 @@ class ComparisonSite:
     replacement: str
     line: str
     on_raise_line: bool
+    relpath: str = ""
 
 
 def _function_line_ranges(source: str, names: tuple[str, ...]) -> list[tuple[int, int]]:
@@ -121,6 +132,8 @@ def _collect_sites(
     *,
     priority_needles: tuple[str, ...] = (),
     function_names: tuple[str, ...] = (),
+    site_limit: int | None = SITE_LIMIT,
+    relpath: str = "",
 ) -> list[ComparisonSite]:
     readline = BytesIO(source.encode("utf-8")).readline
     tokens = list(tokenize.tokenize(readline))
@@ -143,11 +156,69 @@ def _collect_sites(
                 replacement=_OP_SWAPS[token.string],
                 line=line.strip(),
                 on_raise_line="raise " in line,
+                relpath=relpath,
             )
         )
     if function_names:
         ranges = _function_line_ranges(source, function_names)
         found = [site for site in found if _in_ranges(site.lineno, ranges)]
+    priority: list[ComparisonSite] = []
+    rest: list[ComparisonSite] = []
+    for site in found:
+        if any(needle in site.line for needle in priority_needles):
+            priority.append(site)
+        else:
+            rest.append(site)
+    selected = priority + rest
+    if site_limit is not None:
+        selected = selected[:site_limit]
+    return [
+        ComparisonSite(
+            index=index,
+            lineno=site.lineno,
+            column=site.column,
+            op=site.op,
+            replacement=site.replacement,
+            line=site.line,
+            on_raise_line=site.on_raise_line,
+            relpath=site.relpath,
+        )
+        for index, site in enumerate(selected)
+    ]
+
+
+def _target_source_modules(relpath: str, spec: dict[str, Any]) -> tuple[str, ...]:
+    modules: list[str] = []
+    for path in (relpath, *tuple(spec.get("source_modules", ()))):
+        if path not in modules:
+            modules.append(path)
+    return tuple(modules)
+
+
+def collect_target_sites(relpath: str, spec: dict[str, Any]) -> list[ComparisonSite]:
+    """Named-surface sites for one TARGETS entry (may span companion modules)."""
+    needles = tuple(spec.get("priority_needles", ()))
+    names = tuple(spec.get("function_names", ()))
+    found: list[ComparisonSite] = []
+    for path in _target_source_modules(relpath, spec):
+        source = (REPO_ROOT / path).read_text(encoding="utf-8")
+        found.extend(
+            _collect_sites(
+                source,
+                priority_needles=(),
+                function_names=names,
+                site_limit=None,
+                relpath=path,
+            )
+        )
+    return _collect_sites_from_found(found, priority_needles=needles)
+
+
+def _collect_sites_from_found(
+    found: list[ComparisonSite],
+    *,
+    priority_needles: tuple[str, ...],
+) -> list[ComparisonSite]:
     priority: list[ComparisonSite] = []
     rest: list[ComparisonSite] = []
     for site in found:
@@ -165,6 +236,7 @@ def _collect_sites(
             replacement=site.replacement,
             line=site.line,
             on_raise_line=site.on_raise_line,
+            relpath=site.relpath,
         )
         for index, site in enumerate(selected)
     ]
@@ -219,17 +291,14 @@ def _run_suite(
 
 
 def _evaluate_module(relpath: str, tests: list[str], scratch: Path) -> dict[str, Any]:
-    source_path = REPO_ROOT / relpath
-    source = source_path.read_text(encoding="utf-8")
     spec = TARGETS[relpath]
-    sites = _collect_sites(
-        source,
-        priority_needles=tuple(spec.get("priority_needles", ())),
-        function_names=tuple(spec.get("function_names", ())),
-    )
+    sites = collect_target_sites(relpath, spec)
+    sources = {
+        path: (REPO_ROOT / path).read_text(encoding="utf-8")
+        for path in _target_source_modules(relpath, spec)
+    }
     pkg_root = scratch / "pkg"
     shutil.copytree(PACKAGE_DIR, pkg_root / "thesistester", dirs_exist_ok=True)
-    mutant_file = pkg_root / relpath
     cwd = scratch / "cwd"
     cwd.mkdir(parents=True, exist_ok=True)
 
@@ -238,31 +307,28 @@ def _evaluate_module(relpath: str, tests: list[str], scratch: Path) -> dict[str,
     excluded = 0
     scored = 0
     for site in sites:
+        site_path = site.relpath or relpath
+        record = {
+            "index": site.index,
+            "lineno": site.lineno,
+            "op": f"{site.op}->{site.replacement}",
+            "line": site.line,
+            "relpath": site_path,
+        }
         if site.on_raise_line:
             excluded += 1
-            records.append(
-                {
-                    "index": site.index,
-                    "lineno": site.lineno,
-                    "op": f"{site.op}->{site.replacement}",
-                    "line": site.line,
-                    "excluded": True,
-                    "reason": "raise_line",
-                }
-            )
+            records.append({**record, "excluded": True, "reason": "raise_line"})
             continue
         scored += 1
-        mutant_file.write_text(_apply_site(source, site), encoding="utf-8")
+        mutant_file = pkg_root / site_path
+        mutant_file.write_text(_apply_site(sources[site_path], site), encoding="utf-8")
         result = _run_suite(mutant_pkg=pkg_root, tests=tests, cwd=cwd)
-        mutant_file.write_text(source, encoding="utf-8")
+        mutant_file.write_text(sources[site_path], encoding="utf-8")
         if result["killed"]:
             killed += 1
         records.append(
             {
-                "index": site.index,
-                "lineno": site.lineno,
-                "op": f"{site.op}->{site.replacement}",
-                "line": site.line,
+                **record,
                 "excluded": False,
                 "killed": result["killed"],
                 "reason": result["reason"],
