@@ -1,7 +1,8 @@
-"""B-12 / QI-11-03: AppTest files stay proto-free and never disable-set_value.
+"""B-12 / B-13 AppTest harness gates (QI-11-03 / QI-10-05).
 
-Gate is fail-closed: AST-bound proto / ``set_value`` / ``serial`` / helper
-import, plus discovery of every test module that imports ``AppTest``.
+Fail-closed: AST-bound proto / ``set_value`` / ``serial`` / helper import /
+``list(session_state)``, plus discovery of every test module that imports
+``AppTest``. Shared isolate fixture lives in ``tests/conftest.py``.
 """
 
 from __future__ import annotations
@@ -14,7 +15,9 @@ HELPER = ROOT / "tests" / "apptest_helpers.py"
 REQUIRED_APPTEST_FILES = (
     ROOT / "tests" / "test_assistant_page_render.py",
     ROOT / "tests" / "study" / "test_study_observatory.py",
+    ROOT / "tests" / "test_classic_pages_apptest.py",
 )
+CONFTEST = ROOT / "tests" / "conftest.py"
 OBSERVATORY_SERIAL_TESTS = (
     "test_observatory_page_renders_studies_pane",
     "test_observatory_empty_facets_do_not_claim_shared_cohort",
@@ -126,7 +129,7 @@ def _function_has_serial(tree: ast.Module, name: str) -> bool:
     return False
 
 
-def test_discovered_apptest_files_include_page14_and_page16() -> None:
+def test_discovered_apptest_files_include_page14_page16_and_classic_smoke() -> None:
     discovered = _discover_apptest_files()
     missing = [path for path in REQUIRED_APPTEST_FILES if path not in discovered]
     assert missing == [], f"AppTest discovery missed {[p.name for p in missing]}"
@@ -272,3 +275,52 @@ def test_proto_gate_rejects_getattr_proto() -> None:
 def test_set_value_gate_rejects_bound_method() -> None:
     tree = ast.parse("fn = widget.set_value\n")
     assert _set_value_attr_lines(tree) == [1]
+
+
+def _lists_session_state(tree: ast.AST) -> list[int]:
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Name) and func.id == "list"):
+            continue
+        if not node.args:
+            continue
+        arg = node.args[0]
+        if isinstance(arg, ast.Attribute) and arg.attr == "session_state":
+            lines.append(node.lineno)
+        if isinstance(arg, ast.Name) and arg.id == "session_state":
+            lines.append(node.lineno)
+    return lines
+
+
+def test_apptest_files_never_list_session_state() -> None:
+    """QI-10-05 / B-13: Streamlit 1.63 ``list(session_state)`` raises KeyError 0."""
+    for path in _discover_apptest_files():
+        tree = ast.parse(_source(path))
+        hits = _lists_session_state(tree)
+        assert hits == [], f"{path.name} list(session_state) at lines {hits}"
+        assert "list(session_state)" not in _source(path), path.name
+        assert "list(app.session_state)" not in _source(path), path.name
+
+
+def test_isolate_apptest_globals_lives_in_conftest() -> None:
+    text = CONFTEST.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    names = {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "isolate_apptest_globals"
+    }
+    assert names == {"isolate_apptest_globals"}
+    assert "autouse=True" in text
+    assistant = _source(REQUIRED_APPTEST_FILES[0])
+    observatory = _source(REQUIRED_APPTEST_FILES[1])
+    assert "def isolate_apptest_globals" not in assistant
+    assert "def isolate_observatory_apptest_globals" not in observatory
+
+
+def test_classic_smoke_module_is_serial() -> None:
+    tree = ast.parse(_source(REQUIRED_APPTEST_FILES[2]))
+    assert _module_pytestmark_is_serial(tree)

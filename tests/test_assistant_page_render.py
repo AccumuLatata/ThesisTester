@@ -62,30 +62,6 @@ ORPHAN_RUN_ID = "run_ruxbaseline0000000000000000000"
 pytestmark = pytest.mark.serial
 
 
-@pytest.fixture(autouse=True)
-def isolate_apptest_globals():
-    """Undo the process-global state a rendered Streamlit script leaves behind.
-
-    Streamlit's script runner installs the page as ``sys.modules["__main__"]`` and
-    puts the page directory on ``sys.path``. Left in place, any later test that
-    starts a ``spawn``-context process pool (``thesistester.cli.run_batch``) has
-    its children re-import the Research Assistant page as their main module,
-    which fails and breaks the pool. Restoring both keeps this module order-safe
-    against the rest of the suite. Any future ``AppTest`` module must do the same
-    (promote this to ``tests/conftest.py`` when a second one appears).
-    """
-    main_module = sys.modules.get("__main__")
-    path_snapshot = list(sys.path)
-    try:
-        yield
-    finally:
-        if main_module is None:
-            sys.modules.pop("__main__", None)
-        else:
-            sys.modules["__main__"] = main_module
-        sys.path[:] = path_snapshot
-
-
 @pytest.fixture()
 def workspace(tmp_path, monkeypatch):
     """Isolated assistant store with one thesis; returns (orchestrator, thesis)."""
@@ -166,7 +142,8 @@ def _seed_messages(orchestrator: Any, thesis_id: str, messages: tuple[dict[str, 
 def _run_app(app: AppTest) -> AppTest:
     """Run the script, then undo the process-global state the run installed.
 
-    Restoring here (not only at fixture teardown) keeps every helper leak-free by
+    Restoring here (not only at the shared ``isolate_apptest_globals``
+    fixture in ``tests/conftest.py``) keeps every helper leak-free by
     construction, so a spawn-context process pool started later in the same test
     still works.
     """
