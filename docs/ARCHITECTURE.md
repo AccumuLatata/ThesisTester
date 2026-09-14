@@ -49,7 +49,7 @@ gate (warn-first):
 | C3 | `study/observatory.py` ↛ `cli_study` / `execute` / Streamlit / Plotly | Direct and chain |
 | C4 | `study/launch.py` ↛ `viewer` / `execute` | Direct and other chains. Same `expand → cli` ignore as C1 |
 | C5 | `study/admit_followup.py` ↛ execute / launch / viewer / cli / Streamlit | Direct and chain |
-| C7 | `journal` ↛ `engine.backtest` / `levels.all` / `engine.sim_core` | **Not** `engine.signals` (JS2). Warn-first broken via `journal.levels → study.schema → tick_vap → execution_artifacts → api`. C-9 slims package-init runtime load; it does not keep this contract |
+| C7 | `journal` ↛ `engine.backtest` / `levels.all` / `engine.sim_core` | **Not** `engine.signals` (JS2). Warn-first broken via `journal.levels → study.schema → tick_vap → execution_artifacts → api`. C-9 landed (package-init no longer loads `engine.backtest`); the contract stays warn-first-broken via the levels chain |
 | C8 | `thesistester` ↛ `streamlit` except the allow-list above | New Streamlit importers fail this contract |
 | C9 | `engine.sim_core` ↛ `entry_window_policy` / `analytics.*` | R22: no admission / P&L in `sim_core` |
 | C10 | Studies page ↛ `FORMAT_PROFILE_LABELS` from `study.builder` | `pages/` is not a package; gated by `tests/test_import_linter_contracts.py` |
@@ -1176,8 +1176,11 @@ claims about capital, margin, liquidity, or fill interactions.
 research bundles. Import-linter **C7** forbids `engine.backtest` /
 `levels.all` / `engine.sim_core` (not `engine.signals` — JS2). The contract
 is warn-first-broken today via the
-`journal.levels → study.schema → api` layering chain (QI-12 §2.6). C-9 slims
-package init so `import thesistester.journal` does not bind `simulate_trades`.
+`journal.levels → study.schema → api` layering chain (QI-12 §2.6). C-9
+landed: barrel init lazy-exports JS/TJ helpers so
+`import thesistester.journal` does not load `engine.backtest` or bind
+`simulate_trades`. Submodule attribute access (`journal.triggers`) stays
+lazy via PEP 562. C7 stays warn-first-broken via the levels chain.
 
 **TJ1 landed.** `load_tradesviz_executions(path, *, profile=)` is the only
 public loader. `profile` is keyword-only and must be

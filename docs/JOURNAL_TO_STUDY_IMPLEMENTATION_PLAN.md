@@ -465,7 +465,16 @@ inclusion against any family that already serializes a full signal row
 **Journal side** (`thesistester/journal/triggers.py`). For each trade
 with a non-null `zone_id`, evaluate on the previous completed 1m bar
 (engine-equivalent) and on the previous completed 15s bar
-(`15s_proxy`). Additive columns:
+(`15s_proxy`). C-9 (QI-08-02): the helper lazy-imports
+`_classify_zone_triggers_detail` (public `classify_zone_triggers` is
+labels-only; inference still needs implied fade/continuation sides).
+`journal/__init__.py` lazy-exports trigger/zone/level symbols so
+`import thesistester.journal` does not load `engine.backtest` or bind
+`simulate_trades`. Submodule attribute access (`journal.triggers`) stays
+lazy via PEP 562. Call-ban unchanged (`simulate_trades` /
+`generate_signals` / `_check_confirm_3bar`). Import-linter C7 stays
+warn-first-broken via `journal.levels → study.schema → api`. Additive
+columns:
 
 | Column | Definition |
 |---|---|

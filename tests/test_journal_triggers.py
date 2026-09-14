@@ -8,6 +8,7 @@ import inspect
 import json
 import os
 import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -735,8 +736,116 @@ def test_cli_writes_artifacts_and_refuses_studies_dir(tmp_path: Path) -> None:
     assert not (forbidden / "triggers.json").exists()
 
 
+def _run_fresh_python(script: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.strip() == "ok"
+
+
+def _top_level_imported_modules(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            found.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            found.add(node.module)
+    return found
+
+
+def test_journal_package_import_leaves_simulate_trades_unbound() -> None:
+    """QI-08-02: ``import thesistester.journal`` must not load ``engine.backtest``."""
+    _run_fresh_python(
+        "import sys\n"
+        "import thesistester.journal as journal\n"
+        "assert hasattr(journal, 'simulate_trades') is False\n"
+        "assert 'triggers' not in journal.__dict__\n"
+        "assert 'thesistester.engine' not in sys.modules\n"
+        "assert 'thesistester.engine.backtest' not in sys.modules\n"
+        "assert 'thesistester.engine.signals' not in sys.modules\n"
+        "assert 'thesistester.engine.confluence' not in sys.modules\n"
+        "assert 'thesistester.journal.triggers' not in sys.modules\n"
+        "assert 'thesistester.journal.zones' not in sys.modules\n"
+        "assert 'thesistester.journal.levels' not in sys.modules\n"
+        "print('ok')\n"
+    )
+
+
+def test_journal_schema_import_leaves_engine_unbound() -> None:
+    """QI-08-02 reproduction: schema import used to load engine via barrel init."""
+    _run_fresh_python(
+        "import sys\n"
+        "import thesistester.journal.schema as schema\n"
+        "assert schema.JOURNAL_STORE_SCHEMA == 'journal/v1'\n"
+        "assert 'thesistester.engine' not in sys.modules\n"
+        "assert 'thesistester.engine.backtest' not in sys.modules\n"
+        "assert 'thesistester.engine.signals' not in sys.modules\n"
+        "assert 'thesistester.journal.triggers' not in sys.modules\n"
+        "assert 'thesistester.journal.zones' not in sys.modules\n"
+        "assert 'thesistester.journal.levels' not in sys.modules\n"
+        "print('ok')\n"
+    )
+
+
+def test_journal_submodule_attribute_access_is_lazy() -> None:
+    """PEP 562 must still resolve ``journal.triggers`` without eager package-init load."""
+    _run_fresh_python(
+        "import sys\n"
+        "import thesistester.journal as journal\n"
+        "assert 'thesistester.journal.triggers' not in sys.modules\n"
+        "mod = journal.triggers\n"
+        "assert mod.__name__ == 'thesistester.journal.triggers'\n"
+        "assert journal.triggers is mod\n"
+        "print('ok')\n"
+    )
+
+
+def test_journal_getattr_rejects_parent_package_walk() -> None:
+    _run_fresh_python(
+        "import sys\n"
+        "import thesistester.journal as journal\n"
+        "raised = False\n"
+        "try:\n"
+        "    getattr(journal, '..engine')\n"
+        "except AttributeError:\n"
+        "    raised = True\n"
+        "assert raised\n"
+        "assert 'thesistester.engine' not in sys.modules\n"
+        "print('ok')\n"
+    )
+
+
+def test_journal_init_does_not_eager_import_engine_loaders() -> None:
+    imported = _top_level_imported_modules(Path("thesistester/journal/__init__.py"))
+    assert "thesistester.journal.triggers" not in imported
+    assert "thesistester.journal.zones" not in imported
+    assert "thesistester.journal.levels" not in imported
+    assert all(not name.startswith("thesistester.engine") for name in imported)
+
+
 def test_triggers_module_does_not_call_engine_mutators() -> None:
-    source = Path("thesistester/journal/triggers.py").read_text(encoding="utf-8")
+    path = Path("thesistester/journal/triggers.py")
+    source = path.read_text(encoding="utf-8")
+    imported = _top_level_imported_modules(path)
+    assert all(not name.startswith("thesistester.engine") for name in imported)
+    tree = ast.parse(source)
+    wrapper = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_classify_zone_triggers_detail"
+    )
+    wrapper_imports = {
+        node.module
+        for node in ast.walk(wrapper)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "thesistester.engine.signals" in wrapper_imports
     assert "classify_zone_triggers" in source
     assert 'trigger_timeframe="base"' in source or "trigger_timeframe='base'" in source
     assert 'trigger_timeframe="1min"' not in source
