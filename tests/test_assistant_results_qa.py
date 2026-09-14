@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +16,7 @@ from thesistester.assistant import (
 )
 from thesistester.assistant.explainer import EvidencePacket
 from thesistester.assistant.llm_explainer import LLMEvidenceError
+from thesistester.assistant import results_overview as _c21_overview_mod
 from thesistester.assistant.results_projections import build_ephemeral_results_context
 from thesistester.assistant.results_qa import (
     RESULTS_QA_CHANNEL,
@@ -802,3 +805,181 @@ def test_results_history_trim_uses_channel_run_filter(tmp_path, monkeypatch):
     assert "prior-0" not in captured["user"]
     assert "other-run-noise" not in captured["user"]
     assert "latest question" in captured["user"]
+
+
+_C21_OVERVIEW_SOURCE = Path(_c21_overview_mod.__file__).read_text(encoding="utf-8")
+_C21_SPECIALIST_INTENT_NAMES = frozenset(
+    {
+        "INTENT_GRID_RANKING",
+        "INTENT_TIME_RANKING",
+        "INTENT_VALIDATION_WFA",
+        "INTENT_ROBUSTNESS_TIER2",
+        "INTENT_ASSUMPTIONS_COSTS",
+        "INTENT_DEEP_TRADE",
+        "INTENT_CONFLUENCE_COMBO",
+        "INTENT_SINGLE_METRIC",
+    }
+)
+
+
+def _c21_module_function(name: str) -> ast.FunctionDef:
+    tree = ast.parse(_C21_OVERVIEW_SOURCE)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"missing module-level def {name}")
+
+
+def _c21_name_ids(fn: ast.FunctionDef) -> set[str]:
+    return {node.id for node in ast.walk(fn) if isinstance(node, ast.Name)}
+
+
+def test_c21_claim_format_table_first_match_order():
+    """QI-09-01: first-match table keeps longer overlapping suffixes first.
+
+    Source-substring / ``callable(...)`` needles can false-green (B-16). Bind
+    the walkers in AST and lock overlapping claim strings on the live table.
+    """
+    from thesistester.assistant.results_overview import (
+        INTENT_SINGLE_METRIC,
+        OVERVIEW_INTENT_KPI,
+        REASON_MIXED_COMPOSE,
+        _CLAIM_FORMAT_RULES,
+        _COMPOSE_INTENT_SPECS,
+        _COMPOSE_PRIORITY,
+        _format_scalar_for_claim,
+        compose_deterministic_replies,
+    )
+
+    numbered = [
+        (index, rule.path_pattern)
+        for index, rule in enumerate(_CLAIM_FORMAT_RULES)
+        if rule.match == "endswith" and rule.value_type == "number"
+    ]
+    for index, suffix in numbered:
+        for other_index, other in numbered:
+            if suffix != other and suffix.endswith(other):
+                assert index < other_index, f"{suffix!r} must precede shorter suffix {other!r}"
+
+    strings = [
+        (index, rule.path_pattern)
+        for index, rule in enumerate(_CLAIM_FORMAT_RULES)
+        if rule.match == "endswith" and rule.value_type == "str"
+    ]
+    for index, suffix in strings:
+        for other_index, other in strings:
+            if suffix != other and suffix.endswith(other):
+                assert index < other_index, f"{suffix!r} must precede shorter suffix {other!r}"
+
+    endswith_by_type = [
+        (index, rule) for index, rule in enumerate(_CLAIM_FORMAT_RULES) if rule.match == "endswith"
+    ]
+    for index, rule in enumerate(_CLAIM_FORMAT_RULES):
+        if rule.match != "both":
+            continue
+        for other_index, other in endswith_by_type:
+            if rule.value_type != other.value_type:
+                continue
+            if rule.suffix == other.path_pattern or rule.suffix.endswith(other.path_pattern):
+                assert index < other_index, (
+                    f"both {rule.suffix!r} must precede endswith {other.path_pattern!r}"
+                )
+
+    # Auditor-safe identity strings for the overlaps a reorder would mis-label.
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.valid_fold_count", 3)
+        == "Valid walk-forward fold count is 3."
+    )
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.fold_count", 4)
+        == "Walk-forward fold count is 4."
+    )
+    assert (
+        _format_scalar_for_claim(
+            "results.projections.confluence_combo.nonempty_combo_trade_count", 10
+        )
+        == "Nonempty combo trade count is 10."
+    )
+    assert _format_scalar_for_claim("results.trade_summary.trade_count", 12) == "Trade count is 12."
+    assert (
+        _format_scalar_for_claim("results.monte_carlo_summary.trade_count", 12)
+        == "Monte Carlo trade count is 12."
+    )
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.stitched_oos_total_r", 1.5)
+        == "Stitched OOS total R is 1.5."
+    )
+    assert (
+        _format_scalar_for_claim("results.portfolio_summary.portfolio_metrics.total_r", 1.5)
+        == "Portfolio total R is 1.5."
+    )
+    assert _format_scalar_for_claim("results.trade_summary.total_r", 1.5) == "Total R is 1.5."
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.median_test_expectancy_r", 0.12)
+        == "Median OOS test expectancy R is 0.12."
+    )
+    assert (
+        _format_scalar_for_claim("results.otf_validation_summary.selected_oos_expectancy_r", 0.12)
+        == "Selected OTF OOS expectancy R is 0.12."
+    )
+    assert (
+        _format_scalar_for_claim("results.trade_summary.expectancy_r", 0.12)
+        == "Expectancy R is 0.12."
+    )
+    assert (
+        _format_scalar_for_claim("assumptions.costs_exposure.stop_loss_ticks", 8)
+        == "Configured stop-loss ticks is 8."
+    )
+    assert (
+        _format_scalar_for_claim("results.best_grid_result.stop_loss_ticks", 8)
+        == "Best stop-loss ticks is 8."
+    )
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.stitched_oos_status", "ok")
+        == "OOS status is ok."
+    )
+    assert (
+        _format_scalar_for_claim("results.projections.grid_rankings.oos_status", "ok")
+        == "OOS status is ok."
+    )
+    assert (
+        _format_scalar_for_claim("assumptions.grid.ranking_metric", "expectancy_r")
+        == "Ranking metric is expectancy_r."
+    )
+    assert (
+        _format_scalar_for_claim("results.projections.grid_rankings.metric", "expectancy_r")
+        == "Ranking metric is expectancy_r."
+    )
+
+    spec_intents = tuple(spec.intent for spec in _COMPOSE_INTENT_SPECS)
+    assert spec_intents == _COMPOSE_PRIORITY
+
+    format_fn = _c21_module_function("_format_scalar_for_claim")
+    format_names = _c21_name_ids(format_fn)
+    assert "_CLAIM_FORMAT_RULES" in format_names
+    assert "_claim_path_matches" in format_names
+    assert "_claim_value_matches" in format_names
+    format_attrs = {node.attr for node in ast.walk(format_fn) if isinstance(node, ast.Attribute)}
+    assert "endswith" not in format_attrs
+    assert "startswith" not in format_attrs
+
+    compose_fn = _c21_module_function("compose_deterministic_replies")
+    compose_names = _c21_name_ids(compose_fn)
+    assert "_COMPOSE_INTENT_BY_ID" in compose_names
+    assert "_try_compose_intent" in compose_names
+    leftover = compose_names & _C21_SPECIALIST_INTENT_NAMES
+    assert leftover == set(), leftover
+
+    packet = _packet()
+    reply = compose_deterministic_replies(
+        packet,
+        packet.to_dict(),
+        user_message="what is the expectancy and key metrics",
+        intents=(INTENT_SINGLE_METRIC, OVERVIEW_INTENT_KPI),
+    )
+    assert reply.recovery_reason == REASON_MIXED_COMPOSE
+    expectancy_claims = [
+        claim for claim in reply.claims if claim.path == "results.trade_summary.expectancy_r"
+    ]
+    assert len(expectancy_claims) == 1
+    assert _format_scalar_for_claim("results.trade_summary.win_rate", 0.52) == "Win rate is 52%."

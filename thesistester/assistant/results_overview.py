@@ -8,10 +8,12 @@ catalogs, builds auditor-safe replies when the LLM path fails, attaches
 DI-3/RI-7 digit-free meaning overlays after mandatory caveats, and exposes
 ``build_deterministic_discuss_reply`` for RI-10 duplex envelope projection.
 PR 5d adds cite-bound ``confluence_combo`` projections (trades recompute).
+C-21 tables claim-format + intent→builder; auditor-safe strings unchanged.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from typing import Any, Mapping, Sequence
 
@@ -2619,244 +2621,570 @@ def _robustness_available_label(path: str) -> str:
     return "Available"
 
 
+@dataclass(frozen=True)
+class _ClaimFormatRule:
+    """One first-match claim-format row (QI-09-01 / QR-C C-21)."""
+
+    path_pattern: str
+    match: str
+    value_type: str
+    template: str | None = None
+    reject: str | None = None
+    render: str = "template"
+    prefix: str = ""
+    suffix: str = ""
+
+
+_CLAIM_CONTINUE = object()
+
+_CONFLUENCE_WARNING_FLAG_LABELS: dict[str, str] = {
+    "membership_double_count": "Membership double-count warning",
+    "pairwise_double_count": "Pairwise double-count warning",
+    "trigger_3c_level_names": "Trigger three-c level-names warning",
+}
+
+
+def _claim_rule(
+    path_pattern: str,
+    match: str,
+    value_type: str,
+    template: str | None = None,
+    *,
+    reject: str | None = None,
+    render: str = "template",
+    prefix: str = "",
+    suffix: str = "",
+) -> _ClaimFormatRule:
+    return _ClaimFormatRule(
+        path_pattern,
+        match,
+        value_type,
+        template,
+        reject=reject,
+        render=render,
+        prefix=prefix,
+        suffix=suffix,
+    )
+
+
+# Boolean honesty first; longer overlapping suffixes before shorter
+# (valid_fold_count / nonempty_combo_trade_count / configured SL-TP).
+# First match wins. Templates are auditor-safe identity strings.
+_CLAIM_FORMAT_RULES: tuple[_ClaimFormatRule, ...] = (
+    _claim_rule("sample_warning", "endswith", "bool", render="bool_sample_warning"),
+    _claim_rule(
+        "results.projections.confluence_combo.warning_flags.",
+        "startswith",
+        "bool",
+        render="bool_warning_flags",
+    ),
+    _claim_rule("available", "endswith", "bool", reject="wrong_type", render="bool_available"),
+    _claim_rule(
+        "entry_window.focus.enabled",
+        "endswith",
+        "bool",
+        render="bool_focus_enabled",
+    ),
+    _claim_rule("*", "any", "none_or_bool", reject="always"),
+    _claim_rule(
+        "win_rate",
+        "endswith",
+        "number",
+        reject="wrong_type",
+        render="win_rate_percent",
+    ),
+    _claim_rule(
+        "results.projections.exit_reason_counts.",
+        "both",
+        "number",
+        "Exit-reason total trades is {display}.",
+        prefix="results.projections.exit_reason_counts.",
+        suffix="total_trades",
+    ),
+    _claim_rule(
+        "results.projections.exit_reason_counts.",
+        "both",
+        "number",
+        "Unique exit-reason count is {display}.",
+        prefix="results.projections.exit_reason_counts.",
+        suffix="unique_reason_count",
+    ),
+    _claim_rule(
+        "results.projections.exit_reason_counts.",
+        "both",
+        "number",
+        "Other exit-reason count is {display}.",
+        prefix="results.projections.exit_reason_counts.",
+        suffix="other_count",
+    ),
+    _claim_rule(
+        "results.projections.exit_reason_counts.",
+        "both",
+        "number",
+        "Other unique exit-reason count is {display}.",
+        prefix="results.projections.exit_reason_counts.",
+        suffix="other_unique_count",
+    ),
+    _claim_rule(
+        "results.projections.exit_reason_counts.",
+        "both",
+        "number",
+        "Exit reason count is {display}.",
+        prefix="results.projections.exit_reason_counts.",
+        suffix=".count",
+    ),
+    _claim_rule(
+        "results.projections.extreme_trades.",
+        "both",
+        "number",
+        render="extreme_r_multiple",
+        prefix="results.projections.extreme_trades.",
+        suffix=".r_multiple",
+    ),
+    _claim_rule("max_consecutive_wins", "endswith", "number", "Max consecutive wins is {display}."),
+    _claim_rule(
+        "max_consecutive_losses",
+        "endswith",
+        "number",
+        "Max consecutive losses is {display}.",
+    ),
+    _claim_rule(
+        "assumptions.costs_exposure.",
+        "both",
+        "number",
+        "Configured stop-loss ticks is {display}.",
+        prefix="assumptions.costs_exposure.",
+        suffix="stop_loss_ticks",
+    ),
+    _claim_rule(
+        "assumptions.costs_exposure.",
+        "both",
+        "number",
+        "Configured take-profit ticks is {display}.",
+        prefix="assumptions.costs_exposure.",
+        suffix="take_profit_ticks",
+    ),
+    _claim_rule("stop_loss_ticks", "endswith", "number", "Best stop-loss ticks is {display}."),
+    _claim_rule("take_profit_ticks", "endswith", "number", "Best take-profit ticks is {display}."),
+    _claim_rule("commission_per_side", "endswith", "number", "Commission per side is {display}."),
+    _claim_rule("slippage_ticks", "endswith", "number", "Slippage ticks is {display}."),
+    _claim_rule("metric_value", "endswith", "number", "Ranked metric value is {display}."),
+    _claim_rule("min_trades", "endswith", "number", "Minimum trades floor is {display}."),
+    _claim_rule(
+        "median_test_expectancy_r",
+        "endswith",
+        "number",
+        "Median OOS test expectancy R is {display}.",
+    ),
+    _claim_rule("stitched_oos_total_r", "endswith", "number", "Stitched OOS total R is {display}."),
+    _claim_rule(
+        "valid_fold_count",
+        "endswith",
+        "number",
+        "Valid walk-forward fold count is {display}.",
+    ),
+    _claim_rule("fold_count", "endswith", "number", "Walk-forward fold count is {display}."),
+    _claim_rule("ci_lower", "endswith", "number", "Bootstrap CI lower is {display}."),
+    _claim_rule("ci_upper", "endswith", "number", "Bootstrap CI upper is {display}."),
+    _claim_rule(
+        "probability_positive",
+        "endswith",
+        "number",
+        "Bootstrap probability mean R is positive is {display}.",
+    ),
+    _claim_rule(
+        "selected_oos_expectancy_r",
+        "endswith",
+        "number",
+        "Selected OTF OOS expectancy R is {display}.",
+    ),
+    _claim_rule(
+        "monte_carlo_summary.trade_count",
+        "endswith",
+        "number",
+        "Monte Carlo trade count is {display}.",
+    ),
+    _claim_rule("pbo.pbo", "endswith", "number", "PBO is {display}."),
+    _claim_rule("deflated_sharpe.dsr", "endswith", "number", "Deflated Sharpe ratio is {display}."),
+    _claim_rule(
+        "fragile_parameter_count",
+        "endswith",
+        "number",
+        "Fragile parameter count is {display}.",
+    ),
+    _claim_rule(
+        "replicas.n_completed",
+        "endswith",
+        "number",
+        "Noise replica completed count is {display}.",
+    ),
+    _claim_rule(
+        "admission.admitted_trade_count",
+        "endswith",
+        "number",
+        "Portfolio admitted trade count is {display}.",
+    ),
+    _claim_rule(
+        "portfolio_metrics.total_r",
+        "endswith",
+        "number",
+        "Portfolio total R is {display}.",
+    ),
+    _claim_rule("train_fraction", "endswith", "number", "OTF train fraction is {display}."),
+    _claim_rule("oos_fraction", "endswith", "number", "OTF OOS fraction is {display}."),
+    _claim_rule(
+        "nonempty_combo_trade_count",
+        "endswith",
+        "number",
+        "Nonempty combo trade count is {display}.",
+    ),
+    _claim_rule("trade_count", "endswith", "number", "Trade count is {display}."),
+    _claim_rule("expectancy_r", "endswith", "number", "Expectancy R is {display}."),
+    _claim_rule("profit_factor", "endswith", "number", "Profit factor is {display}."),
+    _claim_rule("max_drawdown_r", "endswith", "number", "Max drawdown R is {display}."),
+    _claim_rule("total_r", "endswith", "number", "Total R is {display}."),
+    _claim_rule("avg_r", "endswith", "number", "Average R is {display}."),
+    _claim_rule("median_r", "endswith", "number", "Median R is {display}."),
+    _claim_rule("sharpe_like_r", "endswith", "number", "Sharpe-like R is {display}."),
+    _claim_rule("sortino_like_r", "endswith", "number", "Sortino-like R is {display}."),
+    _claim_rule("ulcer_index_r", "endswith", "number", "Ulcer index R is {display}."),
+    _claim_rule("recovery_factor", "endswith", "number", "Recovery factor is {display}."),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "number",
+        "Level count bucket is {display}.",
+        prefix="results.projections.confluence_combo.",
+        suffix="level_count_bucket",
+    ),
+    _claim_rule("best.bucket", "endswith", "number", render="time_bucket_best"),
+    _claim_rule("*", "any", "number", render="numeric_leaf_fallback"),
+    _claim_rule(
+        "results.projections.",
+        "both",
+        "str",
+        render="projection_exit_reason",
+        prefix="results.projections.",
+        suffix=".exit_reason",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "str",
+        render="level_count_bucket_str",
+        prefix="results.projections.confluence_combo.",
+        suffix="level_count_bucket",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "startswith",
+        "str",
+        render="ungrounded_or_continue",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "str",
+        "Exact combo is {text}.",
+        prefix="results.projections.confluence_combo.",
+        suffix="display_combo",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "str",
+        "Exact combo is {text}.",
+        prefix="results.projections.confluence_combo.",
+        suffix="exact_combo_key",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "str",
+        "Top pair key is {text}.",
+        prefix="results.projections.confluence_combo.",
+        suffix="pair_key",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "str",
+        "Pair mode is {text}.",
+        prefix="results.projections.confluence_combo.",
+        suffix="pair_mode",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "str",
+        "Confluence mode is {text}.",
+        prefix="results.projections.confluence_combo.",
+        suffix="confluence_mode",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "str",
+        "Anchor level is {text}.",
+        prefix="results.projections.confluence_combo.",
+        suffix="anchor_level",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "both",
+        "str",
+        "Selection scope is {text}.",
+        prefix="results.projections.confluence_combo.",
+        suffix="selection_scope",
+    ),
+    _claim_rule(
+        "results.projections.confluence_combo.",
+        "startswith",
+        "str",
+        reject="always",
+    ),
+    _claim_rule("selection_scope", "endswith", "str", "Selection scope is {text}."),
+    # Longer aliases before shorter suffixes (``stitched_oos_status`` /
+    # ``ranking_metric`` were explicit OR-clauses before the C-21 table).
+    _claim_rule("stitched_oos_status", "endswith", "str", "OOS status is {text}."),
+    _claim_rule("oos_status", "endswith", "str", "OOS status is {text}."),
+    _claim_rule("ranking_metric", "endswith", "str", "Ranking metric is {text}."),
+    _claim_rule("metric", "endswith", "str", "Ranking metric is {text}."),
+    _claim_rule("metric_source_path", "endswith", "str", "Ranking metric source path is {text}."),
+    _claim_rule("risk_level", "endswith", "str", "Grid overfit risk level is {text}."),
+    _claim_rule(
+        "walk_forward_summary.status",
+        "endswith",
+        "str",
+        "Walk-forward status is {text}.",
+    ),
+    _claim_rule(
+        "otf_validation_summary.status",
+        "endswith",
+        "str",
+        "OTF validation status is {text}.",
+    ),
+    _claim_rule("exposure_policy", "endswith", "str", "Exposure policy is {text}."),
+    _claim_rule("intrabar_model", "endswith", "str", "Intrabar model is {text}."),
+    _claim_rule("assumptions.instrument", "endswith", "str", "Instrument is {text}."),
+    _claim_rule(
+        "dataset.dataset_fingerprint",
+        "endswith",
+        "str",
+        "Dataset fingerprint is {text}.",
+    ),
+    _claim_rule("bucket_col", "endswith", "str", "Time bucket column is {text}."),
+    _claim_rule("best.bucket", "endswith", "str", "Best time bucket is {text}."),
+    _claim_rule(
+        "assumptions.instrument",
+        "endswith",
+        "mapping",
+        render="instrument_mapping",
+    ),
+)
+
+
+def _numeric_claim_display(value: Any) -> Any | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def _claim_path_matches(path: str, rule: _ClaimFormatRule) -> bool:
+    kind = rule.match
+    if kind == "any":
+        return True
+    if kind == "endswith":
+        return path.endswith(rule.path_pattern)
+    if kind == "startswith":
+        return path.startswith(rule.path_pattern)
+    if kind == "exact":
+        return path == rule.path_pattern
+    if kind == "both":
+        return path.startswith(rule.prefix) and path.endswith(rule.suffix)
+    return False
+
+
+def _claim_value_matches(value: Any, rule: _ClaimFormatRule) -> bool:
+    kind = rule.value_type
+    if kind == "any":
+        return True
+    if kind == "bool":
+        return isinstance(value, bool)
+    if kind == "none_or_bool":
+        return value is None or isinstance(value, bool)
+    if kind == "str":
+        return isinstance(value, str) and bool(value.strip())
+    if kind == "mapping":
+        return isinstance(value, Mapping)
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return False
+
+
+def _extreme_side_label(path: str) -> str:
+    if ".best." in path:
+        return "Best"
+    if ".worst." in path:
+        return "Worst"
+    return "Extreme"
+
+
+def _confluence_warning_flag_label(path: str) -> str:
+    leaf = path.rsplit(".", 1)[-1]
+    return _CONFLUENCE_WARNING_FLAG_LABELS.get(leaf, leaf.replace("_", " "))
+
+
+def _render_bool_sample_warning(_path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    if value:
+        return "Sample warning is true (thin bucket sample)."
+    return "Sample warning is false."
+
+
+def _render_bool_warning_flags(path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    label = _confluence_warning_flag_label(path)
+    return f"{label} is {'true' if value else 'false'}."
+
+
+def _render_bool_available(path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    label = _robustness_available_label(path)
+    return f"{label} is {'true' if value else 'false'}."
+
+
+def _render_bool_focus_enabled(_path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    if value:
+        return "Entry-window focus enabled is true."
+    return "Entry-window focus enabled is false."
+
+
+def _render_win_rate_percent(_path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    percent = float(value) * 100.0
+    if percent.is_integer():
+        percent_text = str(int(percent))
+    else:
+        percent_text = format(percent, ".12g")
+    return f"Win rate is {percent_text}%."
+
+
+def _render_extreme_r_multiple(path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    display = _numeric_claim_display(value)
+    if display is None:
+        return None
+    return f"{_extreme_side_label(path)} trade R-multiple is {display}."
+
+
+def _render_time_bucket_best(_path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    label = _time_bucket_display_label(value)
+    if label:
+        return f"Best time bucket is {label}."
+    return None
+
+
+def _render_numeric_leaf_fallback(path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    display = _numeric_claim_display(value)
+    if display is None:
+        return None
+    return f"{path.rsplit('.', 1)[-1]} is {display}."
+
+
+def _render_projection_exit_reason(path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    text = str(value).strip()
+    if _ungrounded_number_tokens(text, allowed=set()):
+        return None
+    if path.startswith("results.projections.exit_reason_counts."):
+        return f"Exit reason is {text}."
+    if path.startswith("results.projections.extreme_trades."):
+        return f"{_extreme_side_label(path)} trade exit reason is {text}."
+    return None
+
+
+def _render_level_count_bucket_str(_path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    text = str(value).strip()
+    if text == "(unknown)":
+        return "Level count bucket is (unknown)."
+    if text.isdigit():
+        return f"Level count bucket is {int(text)}."
+    if _ungrounded_number_tokens(text, allowed=set()):
+        return None
+    return f"Level count bucket is {text}."
+
+
+def _render_ungrounded_or_continue(_path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    text = str(value).strip()
+    if _ungrounded_number_tokens(text, allowed=set()):
+        return None
+    return _CLAIM_CONTINUE
+
+
+def _render_instrument_mapping(_path: str, value: Any, _rule: _ClaimFormatRule) -> object:
+    if not isinstance(value, Mapping):
+        return None
+    for key in ("symbol", "name", "id", "instrument"):
+        item = value.get(key)
+        if isinstance(item, str) and item.strip():
+            return f"Instrument is {item.strip()}."
+    return None
+
+
+def _render_template(path: str, value: Any, rule: _ClaimFormatRule) -> object:
+    if rule.template is None:
+        return None
+    if rule.value_type == "number":
+        display = _numeric_claim_display(value)
+        if display is None:
+            return None
+        return rule.template.format(display=display)
+    if rule.value_type == "str":
+        text = str(value).strip()
+        return rule.template.format(value=text, text=text)
+    return None
+
+
+_CLAIM_RENDERERS = {
+    "template": _render_template,
+    "bool_sample_warning": _render_bool_sample_warning,
+    "bool_warning_flags": _render_bool_warning_flags,
+    "bool_available": _render_bool_available,
+    "bool_focus_enabled": _render_bool_focus_enabled,
+    "win_rate_percent": _render_win_rate_percent,
+    "extreme_r_multiple": _render_extreme_r_multiple,
+    "time_bucket_best": _render_time_bucket_best,
+    "numeric_leaf_fallback": _render_numeric_leaf_fallback,
+    "projection_exit_reason": _render_projection_exit_reason,
+    "level_count_bucket_str": _render_level_count_bucket_str,
+    "ungrounded_or_continue": _render_ungrounded_or_continue,
+    "instrument_mapping": _render_instrument_mapping,
+}
+
+
+def _render_claim_rule(path: str, value: Any, rule: _ClaimFormatRule) -> object:
+    renderer = _CLAIM_RENDERERS.get(rule.render, _render_template)
+    return renderer(path, value, rule)
+
+
 def _format_scalar_for_claim(path: str, value: Any) -> str | None:
-    """Return claim text for an allowlisted scalar, or None when not narratable."""
-    # RI-2: sample_warning is an explicit allowlisted boolean honesty claim.
-    if path.endswith("sample_warning") and isinstance(value, bool):
-        return (
-            "Sample warning is true (thin bucket sample)." if value else "Sample warning is false."
-        )
-    # PR5d: cite-bound warning_flags booleans (membership / pairwise / 3c).
-    if path.startswith("results.projections.confluence_combo.warning_flags.") and isinstance(
-        value, bool
-    ):
-        leaf = path.rsplit(".", 1)[-1]
-        labels = {
-            "membership_double_count": "Membership double-count warning",
-            "pairwise_double_count": "Pairwise double-count warning",
-            # Digit-free label: ``3c`` would launder an ungrounded ``3`` token.
-            "trigger_3c_level_names": "Trigger three-c level-names warning",
-        }
-        label = labels.get(leaf, leaf.replace("_", " "))
-        return f"{label} is {'true' if value else 'false'}."
-    # RI-5: battery ``.available`` presence flags are allowlisted booleans only
-    # (reject int 0/1 / strings that would otherwise narrate as ``available is 1.``).
-    if path.endswith("available"):
-        if not isinstance(value, bool):
-            return None
-        label = _robustness_available_label(path)
-        return f"{label} is {'true' if value else 'false'}."
-    # RI-6: focus enabled is an allowlisted boolean assumption flag.
-    if path.endswith("entry_window.focus.enabled") and isinstance(value, bool):
-        return (
-            "Entry-window focus enabled is true."
-            if value
-            else "Entry-window focus enabled is false."
-        )
-    if value is None or isinstance(value, bool):
-        return None
-    if path.endswith("win_rate"):
-        if not isinstance(value, (int, float)):
-            return None
-        percent = float(value) * 100.0
-        if percent.is_integer():
-            percent_text = str(int(percent))
-        else:
-            percent_text = format(percent, ".12g")
-        return f"Win rate is {percent_text}%."
-    if isinstance(value, (int, float)):
-        if isinstance(value, float) and value.is_integer():
-            display: Any = int(value)
-        else:
-            display = value
-        leaf = path.rsplit(".", 1)[-1]
-        # RI-9 deep-trade projection scalars (before generic trade_count fallthrough).
-        if path.startswith("results.projections.exit_reason_counts."):
-            if path.endswith("total_trades"):
-                return f"Exit-reason total trades is {display}."
-            if path.endswith("unique_reason_count"):
-                return f"Unique exit-reason count is {display}."
-            if path.endswith("other_count"):
-                return f"Other exit-reason count is {display}."
-            if path.endswith("other_unique_count"):
-                return f"Other unique exit-reason count is {display}."
-            if path.endswith(".count"):
-                return f"Exit reason count is {display}."
-        if path.startswith("results.projections.extreme_trades."):
-            side = "Best" if ".best." in path else "Worst" if ".worst." in path else "Extreme"
-            if path.endswith(".r_multiple"):
-                return f"{side} trade R-multiple is {display}."
-        if path.endswith("max_consecutive_wins"):
-            return f"Max consecutive wins is {display}."
-        if path.endswith("max_consecutive_losses"):
-            return f"Max consecutive losses is {display}."
-        # Configured assumption SL/TP (not grid best ranks).
-        if path.startswith("assumptions.costs_exposure.") and path.endswith("stop_loss_ticks"):
-            return f"Configured stop-loss ticks is {display}."
-        if path.startswith("assumptions.costs_exposure.") and path.endswith("take_profit_ticks"):
-            return f"Configured take-profit ticks is {display}."
-        if path.endswith("stop_loss_ticks"):
-            return f"Best stop-loss ticks is {display}."
-        if path.endswith("take_profit_ticks"):
-            return f"Best take-profit ticks is {display}."
-        if path.endswith("commission_per_side"):
-            return f"Commission per side is {display}."
-        if path.endswith("slippage_ticks"):
-            return f"Slippage ticks is {display}."
-        if path.endswith("metric_value"):
-            return f"Ranked metric value is {display}."
-        if path.endswith("min_trades"):
-            return f"Minimum trades floor is {display}."
-        if path.endswith("median_test_expectancy_r"):
-            return f"Median OOS test expectancy R is {display}."
-        if path.endswith("stitched_oos_total_r"):
-            return f"Stitched OOS total R is {display}."
-        # ``valid_fold_count`` also endswith ``fold_count`` — check the longer suffix first.
-        if path.endswith("valid_fold_count"):
-            return f"Valid walk-forward fold count is {display}."
-        if path.endswith("fold_count"):
-            return f"Walk-forward fold count is {display}."
-        if path.endswith("ci_lower"):
-            return f"Bootstrap CI lower is {display}."
-        if path.endswith("ci_upper"):
-            return f"Bootstrap CI upper is {display}."
-        if path.endswith("probability_positive"):
-            return f"Bootstrap probability mean R is positive is {display}."
-        if path.endswith("selected_oos_expectancy_r"):
-            return f"Selected OTF OOS expectancy R is {display}."
-        if path.endswith("monte_carlo_summary.trade_count"):
-            return f"Monte Carlo trade count is {display}."
-        if path.endswith("pbo.pbo"):
-            return f"PBO is {display}."
-        if path.endswith("deflated_sharpe.dsr"):
-            return f"Deflated Sharpe ratio is {display}."
-        if path.endswith("fragile_parameter_count"):
-            return f"Fragile parameter count is {display}."
-        if path.endswith("replicas.n_completed"):
-            return f"Noise replica completed count is {display}."
-        if path.endswith("admission.admitted_trade_count"):
-            return f"Portfolio admitted trade count is {display}."
-        if path.endswith("portfolio_metrics.total_r"):
-            return f"Portfolio total R is {display}."
-        if path.endswith("train_fraction"):
-            return f"OTF train fraction is {display}."
-        if path.endswith("oos_fraction"):
-            return f"OTF OOS fraction is {display}."
-        # PR5d: longer combo count suffix before generic trade_count.
-        if path.endswith("nonempty_combo_trade_count"):
-            return f"Nonempty combo trade count is {display}."
-        if path.endswith("trade_count"):
-            return f"Trade count is {display}."
-        if path.endswith("expectancy_r"):
-            return f"Expectancy R is {display}."
-        if path.endswith("profit_factor"):
-            return f"Profit factor is {display}."
-        if path.endswith("max_drawdown_r"):
-            return f"Max drawdown R is {display}."
-        if path.endswith("total_r"):
-            return f"Total R is {display}."
-        if path.endswith("avg_r"):
-            return f"Average R is {display}."
-        if path.endswith("median_r"):
-            return f"Median R is {display}."
-        if path.endswith("sharpe_like_r"):
-            return f"Sharpe-like R is {display}."
-        if path.endswith("sortino_like_r"):
-            return f"Sortino-like R is {display}."
-        if path.endswith("ulcer_index_r"):
-            return f"Ulcer index R is {display}."
-        if path.endswith("recovery_factor"):
-            return f"Recovery factor is {display}."
-        if path.startswith("results.projections.confluence_combo.") and path.endswith(
-            "level_count_bucket"
-        ):
-            return f"Level count bucket is {display}."
-        # Integer hour buckets must not fall through to generic "bucket is N."
-        if path.endswith("best.bucket"):
-            label = _time_bucket_display_label(value)
-            if label:
-                return f"Best time bucket is {label}."
-            return None
-        return f"{leaf} is {display}."
-    if isinstance(value, str) and value.strip():
-        text = value.strip()
-        # RI-9 deep-trade string leaves. Digit-bearing labels are not narratable:
-        # mixed strings do not contribute digits to the auditor allowlist, so
-        # ``SL-12`` / ``TP 2R`` would crash grounding if claimed.
-        if path.startswith("results.projections.") and path.endswith(".exit_reason"):
-            if _ungrounded_number_tokens(text, allowed=set()):
+    """Return claim text for an allowlisted scalar, or None when not narratable.
+
+    First-match walker over ``_CLAIM_FORMAT_RULES`` (QI-09-01 / QR-C C-21).
+    """
+    for rule in _CLAIM_FORMAT_RULES:
+        if not _claim_path_matches(path, rule):
+            continue
+        if not _claim_value_matches(value, rule):
+            if rule.reject == "wrong_type":
                 return None
-            if path.startswith("results.projections.exit_reason_counts."):
-                return f"Exit reason is {text}."
-            if path.startswith("results.projections.extreme_trades."):
-                side = "Best" if ".best." in path else "Worst" if ".worst." in path else "Extreme"
-                return f"{side} trade exit reason is {text}."
+            continue
+        if rule.reject == "always":
             return None
-        # PR5d: confluence combo string leaves (reject digit-bearing labels).
-        if path.startswith("results.projections.confluence_combo."):
-            # View-C buckets may arrive as string numerals after parquet/JSON
-            # round-trips; coerce pure digits so allowlisted paths stay narratable.
-            if path.endswith("level_count_bucket"):
-                if text == "(unknown)":
-                    return "Level count bucket is (unknown)."
-                if text.isdigit():
-                    return f"Level count bucket is {int(text)}."
-                if _ungrounded_number_tokens(text, allowed=set()):
-                    return None
-                return f"Level count bucket is {text}."
-            if _ungrounded_number_tokens(text, allowed=set()):
-                return None
-            if path.endswith("display_combo") or path.endswith("exact_combo_key"):
-                return f"Exact combo is {text}."
-            if path.endswith("pair_key"):
-                return f"Top pair key is {text}."
-            if path.endswith("pair_mode"):
-                return f"Pair mode is {text}."
-            if path.endswith("confluence_mode"):
-                return f"Confluence mode is {text}."
-            if path.endswith("anchor_level"):
-                return f"Anchor level is {text}."
-            if path.endswith("selection_scope"):
-                return f"Selection scope is {text}."
-            return None
-        # Grid / validation / time honesty labels are narratable strings.
-        if path.endswith("selection_scope"):
-            return f"Selection scope is {text}."
-        if path.endswith("oos_status") or path.endswith("stitched_oos_status"):
-            return f"OOS status is {text}."
-        if path.endswith("metric") or path.endswith("ranking_metric"):
-            return f"Ranking metric is {text}."
-        if path.endswith("metric_source_path"):
-            return f"Ranking metric source path is {text}."
-        if path.endswith("risk_level"):
-            return f"Grid overfit risk level is {text}."
-        if path.endswith("walk_forward_summary.status"):
-            return f"Walk-forward status is {text}."
-        if path.endswith("otf_validation_summary.status"):
-            return f"OTF validation status is {text}."
-        if path.endswith("exposure_policy"):
-            return f"Exposure policy is {text}."
-        if path.endswith("intrabar_model"):
-            return f"Intrabar model is {text}."
-        if path == "assumptions.instrument" or path.endswith("assumptions.instrument"):
-            return f"Instrument is {text}."
-        if path.endswith("dataset.dataset_fingerprint"):
-            return f"Dataset fingerprint is {text}."
-        if path.endswith("bucket_col"):
-            return f"Time bucket column is {text}."
-        if path.endswith("best.bucket"):
-            return f"Best time bucket is {text}."
-        # KPI allowlist is numeric; skip other non-numeric strings.
-        return None
-    # Instrument may be a mapping with symbol/name in real packets.
-    if isinstance(value, Mapping) and (
-        path == "assumptions.instrument" or path.endswith("assumptions.instrument")
-    ):
-        for key in ("symbol", "name", "id", "instrument"):
-            item = value.get(key)
-            if isinstance(item, str) and item.strip():
-                return f"Instrument is {item.strip()}."
-        return None
+        rendered = _render_claim_rule(path, value, rule)
+        if rendered is _CLAIM_CONTINUE:
+            continue
+        if isinstance(rendered, str) or rendered is None:
+            return rendered
     return None
 
 
@@ -3080,6 +3408,259 @@ def _compose_followups_for_intents(
     return tuple(suggestions[:3])
 
 
+@dataclass(frozen=True)
+class _ComposeIntentSpec:
+    """Intent → evidence-gate → builder row (QI-09-01 / QR-C C-21)."""
+
+    intent: str
+    evidence: str | None
+    builder: str
+    overlap: str | None = None
+
+
+# Same order as ``_COMPOSE_PRIORITY``; compose still iterates *matched* order.
+_COMPOSE_INTENT_SPECS: tuple[_ComposeIntentSpec, ...] = (
+    _ComposeIntentSpec(INTENT_GRID_RANKING, "grid", "grid", "grid_assumptions"),
+    _ComposeIntentSpec(INTENT_TIME_RANKING, "time", "time"),
+    _ComposeIntentSpec(INTENT_VALIDATION_WFA, "validation", "validation"),
+    _ComposeIntentSpec(INTENT_ROBUSTNESS_TIER2, "robustness", "robustness"),
+    _ComposeIntentSpec(
+        INTENT_ASSUMPTIONS_COSTS, "assumptions", "assumptions", "assumptions_covered"
+    ),
+    _ComposeIntentSpec(INTENT_DEEP_TRADE, "deep_trade", "deep_trade"),
+    _ComposeIntentSpec(INTENT_CONFLUENCE_COMBO, "confluence", "confluence"),
+    _ComposeIntentSpec(INTENT_SINGLE_METRIC, None, "metric", "kpi_metric"),
+    _ComposeIntentSpec(OVERVIEW_INTENT_KPI, None, "overview"),
+    _ComposeIntentSpec(OVERVIEW_INTENT_RUN, None, "overview"),
+)
+_COMPOSE_INTENT_BY_ID: dict[str, _ComposeIntentSpec] = {
+    spec.intent: spec for spec in _COMPOSE_INTENT_SPECS
+}
+
+
+class _ComposeAccum:
+    """Mutable RI-8 compose state (path-deduped claims + merged caveats)."""
+
+    def __init__(self) -> None:
+        self.summary_parts: list[str] = []
+        self.claims: list[Any] = []
+        self.caveat_lines: list[str] = []
+        self.seen_caveats: set[str] = set()
+        self.seen_claim_paths: set[str] = set()
+        self.answered: list[str] = []
+
+
+def _absorb_composed_reply(accum: _ComposeAccum, reply: Any) -> bool:
+    if reply is None or not getattr(reply, "claims", ()):
+        return False
+    new_claims = [claim for claim in reply.claims if claim.path not in accum.seen_claim_paths]
+    if not new_claims:
+        return False
+    # Full-slice summary when nothing overlapped; otherwise narrate only new
+    # claims so shared grid×assumptions cost leaves are not restated.
+    if len(new_claims) == len(reply.claims):
+        text = str(getattr(reply, "summary", "") or "").strip()
+    else:
+        text = "; ".join(claim.text.rstrip(".") for claim in new_claims) + "."
+    if text:
+        accum.summary_parts.append(text)
+    for claim in new_claims:
+        accum.seen_claim_paths.add(claim.path)
+        accum.claims.append(claim)
+    for line in getattr(reply, "caveats", ()) or ():
+        if not isinstance(line, str):
+            continue
+        key = line.strip()
+        if not key or key in accum.seen_caveats:
+            continue
+        accum.seen_caveats.add(key)
+        accum.caveat_lines.append(key)
+    return True
+
+
+def _mark_composed_intent(accum: _ComposeAccum, intent_id: str) -> None:
+    if intent_id not in accum.answered:
+        accum.answered.append(intent_id)
+
+
+def _resolve_compose_intents(
+    raw_matched: tuple[str, ...], user_message: str
+) -> tuple[bool, tuple[str, ...], list[str]]:
+    """Return ``(remediate, matched, metric_paths)`` after cap / collapse."""
+    if len(raw_matched) > MIXED_COMPOSE_CAP:
+        return True, (), []
+    matched = _collapse_compose_intents(raw_matched)
+    metric_paths = list_matched_metric_paths(user_message)
+    multi_metric_alone = (
+        len(matched) == 1 and matched[0] == INTENT_SINGLE_METRIC and len(metric_paths) >= 2
+    )
+    if multi_metric_alone and len(metric_paths) > MIXED_COMPOSE_CAP:
+        return True, matched, metric_paths
+    dual_overview_collapsed = (
+        len(matched) == 1
+        and matched[0] in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}
+        and OVERVIEW_INTENT_KPI in raw_matched
+        and OVERVIEW_INTENT_RUN in raw_matched
+    )
+    if len(matched) < 2 and not multi_metric_alone and not dual_overview_collapsed:
+        return True, matched, metric_paths
+    return False, matched, metric_paths
+
+
+def _prepare_compose_working_context(
+    matched: Sequence[str], evidence_context: Mapping[str, Any]
+) -> dict[str, Any]:
+    working = dict(evidence_context) if isinstance(evidence_context, Mapping) else {}
+    if INTENT_GRID_RANKING in matched:
+        working = dict(_ensure_grid_rankings_context(working))
+    if INTENT_TIME_RANKING in matched:
+        working = dict(_ensure_time_rankings_context(working))
+    if INTENT_CONFLUENCE_COMBO in matched:
+        working = dict(_ensure_confluence_combo_context(working))
+    return working
+
+
+def _compose_evidence_present(
+    spec: _ComposeIntentSpec, working: Mapping[str, Any], user_message: str
+) -> bool:
+    ev = spec.evidence
+    if ev is None:
+        return True
+    if ev == "grid":
+        return has_grid_ranking_evidence(working)
+    if ev == "time":
+        return has_time_ranking_evidence(working)
+    if ev == "validation":
+        return has_validation_wfa_evidence(working)
+    if ev == "robustness":
+        return has_robustness_tier2_evidence(working)
+    if ev == "assumptions":
+        return has_assumptions_costs_evidence(working)
+    if ev == "deep_trade":
+        return has_deep_trade_evidence(working, user_message=user_message)
+    if ev == "confluence":
+        return has_confluence_combo_evidence(working)
+    return True
+
+
+def _build_compose_slice(
+    spec: _ComposeIntentSpec,
+    packet: EvidencePacket,
+    working: Mapping[str, Any],
+    user_message: str,
+    intent: str,
+) -> Any:
+    builder = spec.builder
+    if builder == "grid":
+        return build_deterministic_grid_ranking_reply(packet, working, apply_overlay=False)
+    if builder == "time":
+        return build_deterministic_time_ranking_reply(packet, working, apply_overlay=False)
+    if builder == "validation":
+        return build_deterministic_validation_wfa_reply(packet, working, apply_overlay=False)
+    if builder == "robustness":
+        return build_deterministic_robustness_reply(packet, working, apply_overlay=False)
+    if builder == "assumptions":
+        return build_deterministic_assumptions_reply(packet, working, apply_overlay=False)
+    if builder == "deep_trade":
+        return build_deterministic_deep_trade_reply(
+            packet, working, apply_overlay=False, user_message=user_message
+        )
+    if builder == "confluence":
+        return build_deterministic_confluence_combo_reply(packet, working, apply_overlay=False)
+    if builder == "overview":
+        return build_deterministic_kpi_reply(packet, working, intent=intent, apply_overlay=False)
+    return None
+
+
+def _strip_grid_assumption_overlap(reply: Any, matched: Sequence[str]) -> Any:
+    if reply is None or INTENT_ASSUMPTIONS_COSTS not in matched:
+        return reply
+    claims = getattr(reply, "claims", ())
+    if not claims:
+        return reply
+    assumptions_path_set = set(ASSUMPTIONS_CLAIM_PATHS)
+    kept = tuple(claim for claim in claims if claim.path not in assumptions_path_set)
+    if kept and len(kept) != len(claims):
+        return _reply_without_overlay(
+            summary=(
+                "Best SL/TP grid ranking: "
+                + "; ".join(claim.text.rstrip(".") for claim in kept)
+                + "."
+            ),
+            caveats=tuple(getattr(reply, "caveats", ()) or ()),
+            claims=kept,
+            followups=tuple(getattr(reply, "followups", ()) or ()),
+            recovery_reason=getattr(reply, "recovery_reason", None),
+        )
+    return reply
+
+
+def _assumptions_already_covered(working: Mapping[str, Any], seen_claim_paths: set[str]) -> bool:
+    present_assumption_paths = present_assumptions_allowlist(working)
+    return bool(present_assumption_paths) and all(
+        path in seen_claim_paths for path in present_assumption_paths
+    )
+
+
+def _compose_single_metric_intent(
+    spec: _ComposeIntentSpec,
+    packet: EvidencePacket,
+    working: Mapping[str, Any],
+    metric_paths: Sequence[str],
+    overview_in_matched: bool,
+    accum: _ComposeAccum,
+) -> None:
+    paths = tuple(metric_paths or ())
+    if overview_in_matched:
+        kpi_path_set = set(KPI_CLAIM_PATHS)
+        paths = tuple(path for path in paths if path not in kpi_path_set)
+        if not paths:
+            _mark_composed_intent(accum, spec.intent)
+            return
+    if not paths:
+        return
+    for path in paths:
+        if not has_single_metric_evidence(working, path):
+            continue
+        if _absorb_composed_reply(
+            accum,
+            build_deterministic_single_metric_reply(
+                packet, working, path=path, apply_overlay=False
+            ),
+        ):
+            _mark_composed_intent(accum, spec.intent)
+
+
+def _try_compose_intent(
+    spec: _ComposeIntentSpec,
+    packet: EvidencePacket,
+    working: Mapping[str, Any],
+    user_message: str,
+    matched: Sequence[str],
+    metric_paths: Sequence[str],
+    overview_in_matched: bool,
+    accum: _ComposeAccum,
+) -> None:
+    if spec.overlap == "kpi_metric":
+        _compose_single_metric_intent(
+            spec, packet, working, metric_paths, overview_in_matched, accum
+        )
+        return
+    if spec.overlap == "assumptions_covered":
+        if not _compose_evidence_present(spec, working, user_message):
+            return
+        if _assumptions_already_covered(working, accum.seen_claim_paths):
+            _mark_composed_intent(accum, spec.intent)
+            return
+    elif spec.evidence and not _compose_evidence_present(spec, working, user_message):
+        return
+    reply = _build_compose_slice(spec, packet, working, user_message, spec.intent)
+    if spec.overlap == "grid_assumptions":
+        reply = _strip_grid_assumption_overlap(reply, matched)
+    if _absorb_composed_reply(accum, reply):
+        _mark_composed_intent(accum, spec.intent)
+
+
 def compose_deterministic_replies(
     packet: EvidencePacket,
     evidence_context: Mapping[str, Any],
@@ -3097,217 +3678,52 @@ def compose_deterministic_replies(
     produce claims (no partial topic-swap). Metric×KPI overlap drops the
     redundant single-metric slice. Multi-metric alone with more than three
     matched leaves → narrow remediation.
+
+    Intent→builder dispatch is ``_COMPOSE_INTENT_SPECS`` (QI-09-01 / C-21).
     """
     raw_matched = tuple(
         intents if intents is not None else list_matched_discuss_intents(user_message)
     )
-    # Cap before dual-overview collapse so four cues cannot sneak through.
-    if len(raw_matched) > MIXED_COMPOSE_CAP:
-        return build_mixed_ask_remediation_reply(
-            packet,
-            recovery_reason=recovery_reason or REASON_MIXED_ASK,
-            evidence_context=evidence_context,
-        )
-    matched = _collapse_compose_intents(raw_matched)
-    metric_paths = list_matched_metric_paths(user_message)
-    multi_metric_alone = (
-        len(matched) == 1 and matched[0] == INTENT_SINGLE_METRIC and len(metric_paths) >= 2
-    )
-    if multi_metric_alone and len(metric_paths) > MIXED_COMPOSE_CAP:
-        return build_mixed_ask_remediation_reply(
-            packet,
-            recovery_reason=recovery_reason or REASON_MIXED_ASK,
-            evidence_context=evidence_context,
-        )
-    # Dual overview collapses to one slice; still a valid composed answer.
-    dual_overview_collapsed = (
-        len(matched) == 1
-        and matched[0] in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}
-        and OVERVIEW_INTENT_KPI in raw_matched
-        and OVERVIEW_INTENT_RUN in raw_matched
-    )
-    if len(matched) < 2 and not multi_metric_alone and not dual_overview_collapsed:
+    remediate, matched, metric_paths = _resolve_compose_intents(raw_matched, user_message)
+    if remediate:
         return build_mixed_ask_remediation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MIXED_ASK,
             evidence_context=evidence_context,
         )
 
-    working = dict(evidence_context) if isinstance(evidence_context, Mapping) else {}
-    if INTENT_GRID_RANKING in matched:
-        working = dict(_ensure_grid_rankings_context(working))
-    if INTENT_TIME_RANKING in matched:
-        working = dict(_ensure_time_rankings_context(working))
-    if INTENT_CONFLUENCE_COMBO in matched:
-        working = dict(_ensure_confluence_combo_context(working))
-
-    # KPI allowlist covers overlapping §4.5 leaves — still build metric paths
-    # outside the KPI table (e.g. sharpe_like_r) when overview also matched.
+    working = _prepare_compose_working_context(matched, evidence_context)
     overview_in_matched = any(
         intent in matched for intent in (OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN)
     )
-    kpi_path_set = set(KPI_CLAIM_PATHS)
-
-    summary_parts: list[str] = []
-    claims: list[EvidenceClaim] = []
-    caveat_lines: list[str] = []
-    seen_caveats: set[str] = set()
-    seen_claim_paths: set[str] = set()
-    answered: list[str] = []
-
-    assumptions_path_set = set(ASSUMPTIONS_CLAIM_PATHS)
-
-    def _absorb(reply) -> bool:
-        if reply is None or not getattr(reply, "claims", ()):
-            return False
-        new_claims = [claim for claim in reply.claims if claim.path not in seen_claim_paths]
-        if not new_claims:
-            return False
-        # Full-slice summary when nothing overlapped; otherwise narrate only new
-        # claims so shared grid×assumptions cost leaves are not restated.
-        if len(new_claims) == len(reply.claims):
-            text = str(getattr(reply, "summary", "") or "").strip()
-        else:
-            text = "; ".join(claim.text.rstrip(".") for claim in new_claims) + "."
-        if text:
-            summary_parts.append(text)
-        for claim in new_claims:
-            seen_claim_paths.add(claim.path)
-            claims.append(claim)
-        for line in getattr(reply, "caveats", ()) or ():
-            if not isinstance(line, str):
-                continue
-            key = line.strip()
-            if not key or key in seen_caveats:
-                continue
-            seen_caveats.add(key)
-            caveat_lines.append(key)
-        return True
-
-    def _mark(intent_id: str) -> None:
-        if intent_id not in answered:
-            answered.append(intent_id)
-
+    accum = _ComposeAccum()
     for intent in matched:
-        if intent == INTENT_GRID_RANKING:
-            if not has_grid_ranking_evidence(working):
-                continue
-            grid_reply = build_deterministic_grid_ranking_reply(
-                packet, working, apply_overlay=False
-            )
-            # When costs are also asked, let assumptions own shared cost leaves.
-            if (
-                grid_reply is not None
-                and INTENT_ASSUMPTIONS_COSTS in matched
-                and getattr(grid_reply, "claims", ())
-            ):
-                kept = tuple(
-                    claim for claim in grid_reply.claims if claim.path not in assumptions_path_set
-                )
-                if kept and len(kept) != len(grid_reply.claims):
-                    grid_reply = _reply_without_overlay(
-                        summary=(
-                            "Best SL/TP grid ranking: "
-                            + "; ".join(claim.text.rstrip(".") for claim in kept)
-                            + "."
-                        ),
-                        caveats=tuple(getattr(grid_reply, "caveats", ()) or ()),
-                        claims=kept,
-                        followups=tuple(getattr(grid_reply, "followups", ()) or ()),
-                        recovery_reason=getattr(grid_reply, "recovery_reason", None),
-                    )
-            if _absorb(grid_reply):
-                _mark(intent)
-        elif intent == INTENT_TIME_RANKING:
-            if not has_time_ranking_evidence(working):
-                continue
-            if _absorb(
-                build_deterministic_time_ranking_reply(packet, working, apply_overlay=False)
-            ):
-                _mark(intent)
-        elif intent == INTENT_VALIDATION_WFA:
-            if not has_validation_wfa_evidence(working):
-                continue
-            if _absorb(
-                build_deterministic_validation_wfa_reply(packet, working, apply_overlay=False)
-            ):
-                _mark(intent)
-        elif intent == INTENT_ROBUSTNESS_TIER2:
-            if not has_robustness_tier2_evidence(working):
-                continue
-            if _absorb(build_deterministic_robustness_reply(packet, working, apply_overlay=False)):
-                _mark(intent)
-        elif intent == INTENT_ASSUMPTIONS_COSTS:
-            if not has_assumptions_costs_evidence(working):
-                continue
-            present_assumption_paths = present_assumptions_allowlist(working)
-            if present_assumption_paths and all(
-                path in seen_claim_paths for path in present_assumption_paths
-            ):
-                # Fully covered by earlier grid cost honesty leaves.
-                _mark(intent)
-                continue
-            if _absorb(build_deterministic_assumptions_reply(packet, working, apply_overlay=False)):
-                _mark(intent)
-        elif intent == INTENT_DEEP_TRADE:
-            if not has_deep_trade_evidence(working, user_message=user_message):
-                continue
-            if _absorb(
-                build_deterministic_deep_trade_reply(
-                    packet, working, apply_overlay=False, user_message=user_message
-                )
-            ):
-                _mark(intent)
-        elif intent == INTENT_CONFLUENCE_COMBO:
-            if not has_confluence_combo_evidence(working):
-                continue
-            if _absorb(
-                build_deterministic_confluence_combo_reply(packet, working, apply_overlay=False)
-            ):
-                _mark(intent)
-        elif intent == INTENT_SINGLE_METRIC:
-            paths = tuple(metric_paths or ())
-            if overview_in_matched:
-                paths = tuple(path for path in paths if path not in kpi_path_set)
-                if not paths:
-                    # Fully covered by KPI allowlist; count as answered.
-                    _mark(intent)
-                    continue
-            if not paths:
-                continue
-            for path in paths:
-                if not has_single_metric_evidence(working, path):
-                    continue
-                if _absorb(
-                    build_deterministic_single_metric_reply(
-                        packet, working, path=path, apply_overlay=False
-                    )
-                ):
-                    _mark(intent)
-        elif intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
-            if _absorb(
-                build_deterministic_kpi_reply(
-                    packet,
-                    working,
-                    intent=intent,
-                    apply_overlay=False,
-                )
-            ):
-                _mark(intent)
+        spec = _COMPOSE_INTENT_BY_ID.get(intent)
+        if spec is None:
+            continue
+        _try_compose_intent(
+            spec,
+            packet,
+            working,
+            user_message,
+            matched,
+            metric_paths,
+            overview_in_matched,
+            accum,
+        )
 
     # No partial topic-swap: every matched intent must contribute claims
     # (single_metric may be KPI-covered; assumptions may be grid-cost-covered).
-    required = list(matched)
-    if not claims or any(intent not in answered for intent in required):
+    if not accum.claims or any(intent not in accum.answered for intent in matched):
         return build_mixed_ask_remediation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MIXED_ASK,
             evidence_context=working,
         )
 
-    summary = " ".join(summary_parts)
+    summary = " ".join(accum.summary_parts)
     followups = _compose_followups_for_intents(
-        answered,
+        accum.answered,
         packet=packet,
         evidence_context=working,
     )
@@ -3315,8 +3731,8 @@ def compose_deterministic_replies(
     return apply_expert_overlay(
         packet,
         summary=summary,
-        caveats=tuple(caveat_lines),
-        claims=tuple(claims),
+        caveats=tuple(accum.caveat_lines),
+        claims=tuple(accum.claims),
         followups=followups,
         recovery_reason=recovery_reason or REASON_MIXED_COMPOSE,
         discuss_intent=INTENT_MIXED_ASK,

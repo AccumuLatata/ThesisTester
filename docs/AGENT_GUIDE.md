@@ -96,7 +96,9 @@ helpers. Public signature unchanged. `sim_core` still holds no
 admission / P&L. AH §2.1 defaults, C1/AH1 flatten clock, and 3c-void
 silent `continue` stay untouched. C-20 (QI-14-09) stores `BarData` OHLC
 as write-protected `float64` arrays; `resolve_ohlc_bar` math is
-unchanged. Next: C-21.
+unchanged. C-21 (QI-09-01) tables claim-format + intent→builder in
+`results_overview.py`; auditor-safe strings and DI/RI/DX contracts
+unchanged. Next: C-22.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -290,7 +292,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    (`walk_trade_exit` / flatten cap in `sim_core`); P4/P6 admission
    helpers stay in `backtest.py`. No public signature change.
    C-20 (QI-14-09) stores `BarData` as `float64` arrays; `at()` still
-   returns Python floats. Next: C-21.
+   returns Python floats. C-21 (QI-09-01) tables claim-format +
+   intent→builder in `results_overview.py`; auditor-safe strings
+   unchanged. Next: C-22.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
