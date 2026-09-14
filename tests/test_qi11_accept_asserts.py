@@ -130,8 +130,7 @@ def _is_tautological_assert(node: ast.Assert) -> bool:
 
 def _has_meaningful_assert(fn: ast.AST) -> bool:
     return any(
-        isinstance(node, ast.Assert) and not _is_tautological_assert(node)
-        for node in ast.walk(fn)
+        isinstance(node, ast.Assert) and not _is_tautological_assert(node) for node in ast.walk(fn)
     )
 
 
