@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER = ROOT / ".devcontainer" / "devcontainer.json"
@@ -13,7 +19,7 @@ STREAMLIT_CONFIG = ROOT / ".streamlit" / "config.toml"
 CI_PYTHON_IMAGE = "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm"
 IMAGE_PYTHON = "/usr/local/bin/python"
 INSTALL_PREFIX = f"{IMAGE_PYTHON} -m pip install --user -e '.[dev]' -c constraints.txt"
-POST_ATTACH = {"server": "streamlit run app.py"}
+POST_ATTACH = {"server": f"{IMAGE_PYTHON} -m streamlit run app.py"}
 
 COMMAND_KEYS = (
     "initializeCommand",
@@ -132,6 +138,7 @@ def test_devcontainer_uses_one_ci_python_312() -> None:
     assert not any("python" in str(key).lower() for key in features)
     settings = data["customizations"]["vscode"]["settings"]
     assert settings["python.defaultInterpreterPath"] == IMAGE_PYTHON
+    assert data.get("remoteUser") == "vscode"
 
 
 def test_devcontainer_installs_editable_dev_extra_against_lock() -> None:
@@ -146,6 +153,13 @@ def test_devcontainer_installs_editable_dev_extra_against_lock() -> None:
     assert "requirements.txt" not in joined
     assert "packages.txt" not in joined
     assert not PIP_STREAMLIT_RE.search(joined)
+    assert not PIP_STREAMLIT_RE.search(POST_ATTACH["server"])
+
+
+def test_packages_txt_stays_absent() -> None:
+    """QI-12-08: referenced-but-absent packages.txt must not return."""
+    assert not (ROOT / "packages.txt").exists()
+    assert not (ROOT / ".devcontainer" / "packages.txt").exists()
 
 
 def test_pip_streamlit_lock_catches_python_module_install() -> None:
@@ -175,8 +189,12 @@ def test_streamlit_product_config_untouched() -> None:
     """QI-10: G-5 must not rewrite transport caps."""
     text = STREAMLIT_CONFIG.read_text(encoding="utf-8")
     assert text.splitlines()[0] == "[server]"
-    assert "maxUploadSize = 350" in text
-    assert "maxMessageSize = 400" in text
+    server = tomllib.loads(text).get("server")
+    assert isinstance(server, dict)
+    assert server.get("maxUploadSize") == 350
+    assert server.get("maxMessageSize") == 400
+    assert "enableCORS" not in server
+    assert "enableXsrfProtection" not in server
     assert XSRF_CORS_RE.search(text) is None
     assert "enableCORS" not in text
     assert "enableXsrfProtection" not in text

@@ -68,8 +68,9 @@ the CI lock (G-2). App install is `pip install -e .`; tooling (`pytest`,
 - Install: `/usr/local/bin/python -m pip install --user -e '.[dev]'
   -c constraints.txt` (no extra `streamlit` install; no `requirements.txt`;
   no `packages.txt`)
-- Attach: `streamlit run app.py` on port 8501. XSRF and CORS stay at Streamlit
-  defaults (on). Do **not** pass `--server.enableCORS false` or
+- Attach: `/usr/local/bin/python -m streamlit run app.py` on port 8501 (same
+  interpreter as the install; not a PATH `streamlit`). XSRF and CORS stay at
+  Streamlit defaults (on). Do **not** pass `--server.enableCORS false` or
   `--server.enableXsrfProtection false`.
 - `.streamlit/config.toml` is unchanged (upload / websocket size only).
 

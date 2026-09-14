@@ -22,8 +22,9 @@ Regression-safe onboarding guide for contributors/agents working in ThesisTester
    (CI lint / scanners / `pytest (py3.12)`). Bind the editor and install to
    `/usr/local/bin/python` (not Debian bookworm 3.11). `updateContentCommand`
    is `/usr/local/bin/python -m pip install --user -e '.[dev]'
-   -c constraints.txt`. `postAttachCommand` is `streamlit run app.py` — do
-   not disable XSRF/CORS (including `STREAMLIT_SERVER_ENABLE_*`). Do not add
+   -c constraints.txt`. `postAttachCommand` is
+   `/usr/local/bin/python -m streamlit run app.py` — do not disable
+   XSRF/CORS (including `STREAMLIT_SERVER_ENABLE_*`). Do not add
    a second Streamlit install. Do not edit `.streamlit/config.toml` from the
    container spec (QI-10). Fail-closed lock: `tests/test_g5_devcontainer.py`.
 
@@ -577,8 +578,9 @@ Every request must first parse as an `AssistantRequest`, then pass
   `.devcontainer/devcontainer.json` uses Python **3.12**
   (`/usr/local/bin/python`) and
   `/usr/local/bin/python -m pip install --user -e '.[dev]' -c constraints.txt`.
-  No extra `streamlit` install. `streamlit run app.py` keeps XSRF/CORS on
-  (CLI flags and `STREAMLIT_SERVER_ENABLE_*` env aliases).
+  No extra `streamlit` install. Attach is
+  `/usr/local/bin/python -m streamlit run app.py` (XSRF/CORS stay on;
+  CLI flags and `STREAMLIT_SERVER_ENABLE_*` env aliases).
   `.streamlit/config.toml` is product transport caps only — do not rewrite
   it here. Lock: `tests/test_g5_devcontainer.py`. A full image-build
   workflow is optional and is **not** a G-1 required check.

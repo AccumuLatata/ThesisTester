@@ -5,7 +5,9 @@
   // bound to the image interpreter (not Debian bookworm 3.11).
   // Do not disable Streamlit XSRF/CORS. Do not add a second streamlit install.
   // .streamlit/config.toml is product transport caps only (QI-10) — do not edit it here.
+  // Attach uses the same interpreter (`python -m streamlit`), not PATH streamlit.
   "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
+  "remoteUser": "vscode",
   "customizations": {
     "codespaces": {
       "openFiles": [
@@ -25,7 +27,7 @@
   },
   "updateContentCommand": "/usr/local/bin/python -m pip install --user -e '.[dev]' -c constraints.txt && echo '✅ CI envelope installed (editable + dev extra + constraints)'",
   "postAttachCommand": {
-    "server": "streamlit run app.py"
+    "server": "/usr/local/bin/python -m streamlit run app.py"
   },
   "portsAttributes": {
     "8501": {
