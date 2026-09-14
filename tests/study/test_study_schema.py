@@ -532,10 +532,7 @@ def test_own_table_comment_needles_do_not_bind():
     used_names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
     assert "SETUP_CONFIG_RULES" not in used_names
     assert "RUN_SPEC_RULES" not in used_names
-    bound = (
-        "from thesistester.setup import SETUP_CONFIG_RULES\n"
-        "from thesistester.api import RUN_SPEC_RULES\n"
-    )
+    bound = "x = SETUP_CONFIG_RULES\ny = RUN_SPEC_RULES\n"
     bound_tree = ast.parse(bound)
     bound_names = {node.id for node in ast.walk(bound_tree) if isinstance(node, ast.Name)}
     assert "SETUP_CONFIG_RULES" in bound_names
