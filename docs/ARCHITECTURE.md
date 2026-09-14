@@ -968,9 +968,11 @@ fixture is gated by `tests/test_assistant_execution_parity.py`.
 
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding
-`manifest.created_at`) and parquet members through the repository DataFrame
-hash before computing the final digest. This implements the golden-master
-projection contract without changing bundle schema version 1.
+`manifest.created_at`) and parquet members through public
+`thesistester.persistence.local_store.hash_dataframe` (C-6 / QI-06-11)
+before computing the final digest. This implements the golden-master
+projection contract without changing bundle schema version 1. The private
+`_hash_dataframe` alias is the same function.
 
 R18 adds no `st.session_state` keys and does not route existing pages through
 the facade. The session-state contract below is therefore unchanged.
@@ -1277,7 +1279,7 @@ keys without auto-running simulation. `entry_window_armed` distinguishes pending
 Promote from an applied constrained re-sim; Focus overlays remain separate.
 
 SW5 passes the same fixed Admit window through `run_sl_tp_grid`, walk-forward /
-WFA matrix, and overfitting/sensitivity via `_SIMULATION_KWARGS`. The window is
+WFA matrix, and overfitting/sensitivity via `SIMULATION_KWARGS`. The window is
 never a swept axis and is never reselected per fold. Validation inheritance uses
 `pick_inherited_entry_window_source` so a disabled Backtest window cannot shadow
 an enabled `grid_entry_window`.
@@ -1464,7 +1466,7 @@ Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by d
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side
 metrics with per-side minimum trade-count gates.  Each grid row includes `long_*`,
 `short_*`, and `min_direction_*` columns computed by
-`thesistester.analytics.grid._directional_grid_metrics`.
+`thesistester.analytics.grid.directional_grid_metrics`.
 
 ## `st.session_state` contract (current)
 

@@ -10,7 +10,6 @@ import streamlit as st
 
 from thesistester.config import TIMEZONE_OPTIONS
 from thesistester.reporting import (
-    _dash_if_none,
     build_entry_window_metadata,
     build_execution_cost_assumptions,
     build_exposure_policy_assumptions,
@@ -18,6 +17,7 @@ from thesistester.reporting import (
     build_otf_filter_metadata,
     build_research_artifact,
     build_session_exit_policy_assumptions,
+    dash_if_none,
     dataframe_to_csv_bytes,
     execution_cost_assumptions_markdown,
     exposure_policy_assumptions_markdown,
@@ -169,11 +169,11 @@ if _entry_meta.get("available"):
     if _focus.get("enabled"):
         st.caption(
             "Focus is a post-hoc subset — not re-simulated and not proof of deployable edge. "
-            f"Window: {_dash_if_none(_focus.get('label'))}."
+            f"Window: {dash_if_none(_focus.get('label'))}."
         )
     if _admit.get("enabled"):
         armed = "armed (pending re-sim)" if _admit.get("armed") else "constrained re-sim applied"
-        st.caption(f"Admit {armed}. Window: {_dash_if_none(_admit.get('label'))}.")
+        st.caption(f"Admit {armed}. Window: {dash_if_none(_admit.get('label'))}.")
     elif not _focus.get("enabled"):
         st.caption("Entry window: disabled — legacy all-day admission.")
 
@@ -189,9 +189,9 @@ if _otf_meta.get("available"):
     _otf_enabled = bool(_otf_meta.get("enabled", False))
     if _otf_enabled:
         st.caption(
-            f"OTF filter enabled — {_dash_if_none(_otf_meta.get('accepted_signal_count'))} accepted, "
-            f"{_dash_if_none(_otf_meta.get('rejected_signal_count'))} rejected out of "
-            f"{_dash_if_none(_otf_meta.get('candidate_signal_count'))} candidates. "
+            f"OTF filter enabled — {dash_if_none(_otf_meta.get('accepted_signal_count'))} accepted, "
+            f"{dash_if_none(_otf_meta.get('rejected_signal_count'))} rejected out of "
+            f"{dash_if_none(_otf_meta.get('candidate_signal_count'))} candidates. "
             f"Applied to: {', '.join(_otf_meta.get('applied_scopes', [])) or '—'}."
         )
     else:
@@ -217,8 +217,8 @@ if isinstance(_cca_block, dict) and _cca_block.get("available"):
     )
     st.caption(
         "Optional diagnostic — recomputed on export from session trades "
-        f"(analyzable: {_dash_if_none(_cca_block.get('trade_count'))}; "
-        f"non-empty combos: {_dash_if_none(_cca_block.get('nonempty_combo_trade_count'))}). "
+        f"(analyzable: {dash_if_none(_cca_block.get('trade_count'))}; "
+        f"non-empty combos: {dash_if_none(_cca_block.get('nonempty_combo_trade_count'))}). "
         "Observed combinations only; not proof of edge."
     )
 

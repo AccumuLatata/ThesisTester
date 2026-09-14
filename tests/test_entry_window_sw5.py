@@ -10,7 +10,7 @@ from thesistester.analytics.entry_window import (
     resolve_inherited_entry_window,
 )
 from thesistester.analytics.grid import run_sl_tp_grid
-from thesistester.analytics.overfitting import _SIMULATION_KWARGS, grid_trade_sequences
+from thesistester.analytics.overfitting import SIMULATION_KWARGS, grid_trade_sequences
 from thesistester.analytics.sensitivity import sensitivity_summary
 from thesistester.api import run_grid
 from thesistester.entry_window_policy import normalize_entry_window
@@ -65,8 +65,8 @@ def _frame_and_signals():
 
 
 def test_simulation_kwargs_includes_entry_window():
-    assert "entry_window" in _SIMULATION_KWARGS
-    assert "entry_window_exchange_tz" in _SIMULATION_KWARGS
+    assert "entry_window" in SIMULATION_KWARGS
+    assert "entry_window_exchange_tz" in SIMULATION_KWARGS
 
 
 def test_resolve_inherited_entry_window_default_off():

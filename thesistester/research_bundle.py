@@ -13,7 +13,7 @@ from typing import Any, Mapping
 import pandas as pd
 
 from thesistester import __version__
-from thesistester.persistence.local_store import _hash_dataframe
+from thesistester.persistence.local_store import hash_dataframe
 from thesistester.reporting import build_confluence_combo_bundle_artifacts
 from thesistester.research_identity import (
     DataIdentity,
@@ -437,7 +437,7 @@ def canonical_bundle_hash(bundle_bytes: bytes) -> str:
             payload = archive.read(name)
             if name.endswith(".parquet"):
                 frame = pd.read_parquet(io.BytesIO(payload))
-                digest = _hash_dataframe(frame)
+                digest = hash_dataframe(frame)
             elif name.endswith(".json"):
                 value = json.loads(payload.decode("utf-8"))
                 if name == MANIFEST_FILENAME and isinstance(value, dict):

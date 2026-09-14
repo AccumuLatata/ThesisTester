@@ -336,7 +336,8 @@ def _canonicalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-def _hash_dataframe(df: pd.DataFrame) -> str:
+def hash_dataframe(df: pd.DataFrame) -> str:
+    """Stable SHA-256 of a canonicalized DataFrame (bundle / golden projection)."""
     canonical = _canonicalize_dataframe(df)
     row_hashes = pd.util.hash_pandas_object(canonical, index=False).to_numpy(dtype="uint64")
     hasher = hashlib.sha256()
@@ -346,6 +347,9 @@ def _hash_dataframe(df: pd.DataFrame) -> str:
     )
     hasher.update(row_hashes.tobytes())
     return hasher.hexdigest()
+
+
+_hash_dataframe = hash_dataframe
 
 
 def _timestamp_to_string(value: Any) -> str | None:

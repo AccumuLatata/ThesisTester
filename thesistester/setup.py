@@ -81,7 +81,8 @@ DEFAULT_OTF_FILTER_CONFIG: dict[str, Any] = {
 }
 
 
-def _default_otf_filter_config() -> dict[str, Any]:
+def default_otf_filter_config() -> dict[str, Any]:
+    """Canonical disabled OTF filter config (omit-means-off)."""
     return {
         "enabled": False,
         "timeframes": [],
@@ -91,6 +92,9 @@ def _default_otf_filter_config() -> dict[str, Any]:
         "use_completed_bars_only": True,
         "session_reset": "session",
     }
+
+
+_default_otf_filter_config = default_otf_filter_config
 
 
 def _normalize_otf_timeframes(value: Any) -> tuple[list[str], list[str]]:
