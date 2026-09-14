@@ -470,7 +470,8 @@ with a non-null `zone_id`, evaluate on the previous completed 1m bar
 labels-only; inference still needs implied fade/continuation sides).
 `journal/__init__.py` lazy-exports trigger/zone/level symbols so
 `import thesistester.journal` does not load `engine.backtest` or bind
-`simulate_trades`. Call-ban unchanged (`simulate_trades` /
+`simulate_trades`. Submodule attribute access (`journal.triggers`) stays
+lazy via PEP 562. Call-ban unchanged (`simulate_trades` /
 `generate_signals` / `_check_confirm_3bar`). Import-linter C7 stays
 warn-first-broken via `journal.levels → study.schema → api`. Additive
 columns:

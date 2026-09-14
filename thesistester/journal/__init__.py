@@ -13,12 +13,14 @@ JS2 infers engine trigger labels on that 1m bar and a 15s_proxy.
 
 C-9 (QI-08-02): schema is eager; JS/TJ helpers lazy-export so
 ``import thesistester.journal`` does not load ``engine.backtest`` or bind
-``simulate_trades``. Call-ban unchanged.
+``simulate_trades``. Submodule attribute access stays lazy. Call-ban
+unchanged.
 """
 
 from __future__ import annotations
 
 from importlib import import_module
+from importlib.util import find_spec
 from typing import Any
 
 from thesistester.journal.schema import (
@@ -198,11 +200,19 @@ _LAZY_ATTR_TO_MODULE: dict[str, str] = {
 
 def __getattr__(name: str) -> Any:
     module_name = _LAZY_ATTR_TO_MODULE.get(name)
-    if module_name is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(module_name, __name__), name)
-    globals()[name] = value
-    return value
+    if module_name is not None:
+        value = getattr(import_module(module_name, __name__), name)
+        globals()[name] = value
+        return value
+    # PEP 562: fall back to real submodules so ``journal.triggers`` stays
+    # valid. Guard the name so getattr(journal, "..engine") cannot walk up.
+    if name.isidentifier():
+        spec = find_spec(f"{__name__}.{name}")
+        if spec is not None:
+            value = import_module(f"{__name__}.{name}")
+            globals()[name] = value
+            return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:

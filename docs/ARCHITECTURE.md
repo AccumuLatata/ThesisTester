@@ -1179,7 +1179,8 @@ is warn-first-broken today via the
 `journal.levels → study.schema → api` layering chain (QI-12 §2.6). C-9
 landed: barrel init lazy-exports JS/TJ helpers so
 `import thesistester.journal` does not load `engine.backtest` or bind
-`simulate_trades`. C7 stays warn-first-broken via the levels chain.
+`simulate_trades`. Submodule attribute access (`journal.triggers`) stays
+lazy via PEP 562. C7 stays warn-first-broken via the levels chain.
 
 **TJ1 landed.** `load_tradesviz_executions(path, *, profile=)` is the only
 public loader. `profile` is keyword-only and must be
