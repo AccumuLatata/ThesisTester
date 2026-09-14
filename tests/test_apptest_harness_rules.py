@@ -1,7 +1,8 @@
-"""B-12 / QI-11-03: AppTest files stay proto-free and never disable-set_value.
+"""B-12 / B-13 AppTest harness gates (QI-11-03 / QI-10-05).
 
-Gate is fail-closed: AST-bound proto / ``set_value`` / ``serial`` / helper
-import, plus discovery of every test module that imports ``AppTest``.
+Fail-closed: AST-bound proto / ``set_value`` / ``serial`` / helper import /
+``list(session_state)``, plus discovery of every test module that imports
+``AppTest``. Shared isolate fixture lives in ``tests/conftest.py``.
 """
 
 from __future__ import annotations
@@ -14,7 +15,9 @@ HELPER = ROOT / "tests" / "apptest_helpers.py"
 REQUIRED_APPTEST_FILES = (
     ROOT / "tests" / "test_assistant_page_render.py",
     ROOT / "tests" / "study" / "test_study_observatory.py",
+    ROOT / "tests" / "test_classic_pages_apptest.py",
 )
+CONFTEST = ROOT / "tests" / "conftest.py"
 OBSERVATORY_SERIAL_TESTS = (
     "test_observatory_page_renders_studies_pane",
     "test_observatory_empty_facets_do_not_claim_shared_cohort",
@@ -126,7 +129,7 @@ def _function_has_serial(tree: ast.Module, name: str) -> bool:
     return False
 
 
-def test_discovered_apptest_files_include_page14_and_page16() -> None:
+def test_discovered_apptest_files_include_page14_page16_and_classic_smoke() -> None:
     discovered = _discover_apptest_files()
     missing = [path for path in REQUIRED_APPTEST_FILES if path not in discovered]
     assert missing == [], f"AppTest discovery missed {[p.name for p in missing]}"
@@ -272,3 +275,191 @@ def test_proto_gate_rejects_getattr_proto() -> None:
 def test_set_value_gate_rejects_bound_method() -> None:
     tree = ast.parse("fn = widget.set_value\n")
     assert _set_value_attr_lines(tree) == [1]
+
+
+def _is_session_state_expr(node: ast.AST) -> bool:
+    if isinstance(node, ast.Attribute) and node.attr == "session_state":
+        return True
+    return isinstance(node, ast.Name) and node.id == "session_state"
+
+
+def _lists_session_state(tree: ast.AST) -> list[int]:
+    """Lines that iterate a session_state mapping (Streamlit 1.63 KeyError 0)."""
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.For) and _is_session_state_expr(node.iter):
+            lines.append(node.lineno)
+        if isinstance(node, ast.Starred) and _is_session_state_expr(node.value):
+            lines.append(node.lineno)
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Name) and func.id in {"list", "tuple", "set", "dict"}):
+            continue
+        if not node.args:
+            continue
+        if _is_session_state_expr(node.args[0]):
+            lines.append(node.lineno)
+    return lines
+
+
+def test_apptest_files_never_list_session_state() -> None:
+    """QI-10-05 / B-13: Streamlit 1.63 ``list(session_state)`` raises KeyError 0."""
+    for path in _discover_apptest_files():
+        tree = ast.parse(_source(path))
+        hits = _lists_session_state(tree)
+        assert hits == [], f"{path.name} list(session_state) at lines {hits}"
+        assert "list(session_state)" not in _source(path), path.name
+        assert "list(app.session_state)" not in _source(path), path.name
+
+
+def _fixture_autouse_true(decorator: ast.AST) -> bool:
+    if not isinstance(decorator, ast.Call):
+        return False
+    func = decorator.func
+    is_fixture = (isinstance(func, ast.Attribute) and func.attr == "fixture") or (
+        isinstance(func, ast.Name) and func.id == "fixture"
+    )
+    if not is_fixture:
+        return False
+    return any(
+        isinstance(kw, ast.keyword)
+        and kw.arg == "autouse"
+        and isinstance(kw.value, ast.Constant)
+        and kw.value.value is True
+        for kw in decorator.keywords
+    )
+
+
+def _assigns_modules_streamlit(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Assign) or not node.targets:
+        return False
+    target = node.targets[0]
+    if not isinstance(target, ast.Subscript):
+        return False
+    slc = target.slice
+    if not (isinstance(slc, ast.Constant) and slc.value == "streamlit"):
+        return False
+    value = target.value
+    return (
+        isinstance(value, ast.Attribute)
+        and value.attr == "modules"
+        and isinstance(value.value, ast.Name)
+        and value.value.id == "sys"
+    )
+
+
+def _call_restores_real_streamlit(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_restore_real_streamlit"
+    )
+
+
+def _restore_helper_assigns_streamlit(tree: ast.Module) -> bool:
+    for node in tree.body:
+        if not (isinstance(node, ast.FunctionDef) and node.name == "_restore_real_streamlit"):
+            continue
+        return any(_assigns_modules_streamlit(stmt) for stmt in ast.walk(node))
+    return False
+
+
+def _isolate_restores_streamlit_before_and_after(tree: ast.Module) -> bool:
+    if not _restore_helper_assigns_streamlit(tree):
+        return False
+    for node in tree.body:
+        if not (isinstance(node, ast.FunctionDef) and node.name == "isolate_apptest_globals"):
+            continue
+        if not any(_fixture_autouse_true(dec) for dec in node.decorator_list):
+            return False
+        before_yield = False
+        for stmt in node.body:
+            if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Yield):
+                return False
+            if not isinstance(stmt, ast.Try):
+                if _call_restores_real_streamlit(stmt) or _assigns_modules_streamlit(stmt):
+                    before_yield = True
+                continue
+            if not any(
+                isinstance(item, ast.Expr) and isinstance(item.value, ast.Yield)
+                for item in stmt.body
+            ):
+                continue
+            after_yield = any(
+                _call_restores_real_streamlit(item) or _assigns_modules_streamlit(item)
+                for item in stmt.finalbody
+            )
+            return before_yield and after_yield
+    return False
+
+
+def _function_uses_apptest(fn: ast.FunctionDef) -> bool:
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Name) and node.id == "AppTest":
+            return True
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.module != "streamlit.testing.v1":
+            continue
+        if any(alias.name == "AppTest" for alias in node.names):
+            return True
+    return False
+
+
+def test_isolate_apptest_globals_lives_in_conftest() -> None:
+    tree = ast.parse(_source(CONFTEST))
+    names = {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "isolate_apptest_globals"
+    }
+    assert names == {"isolate_apptest_globals"}
+    assert _isolate_restores_streamlit_before_and_after(tree)
+    assistant = _source(REQUIRED_APPTEST_FILES[0])
+    observatory = _source(REQUIRED_APPTEST_FILES[1])
+    assert "def isolate_apptest_globals" not in assistant
+    assert "def isolate_observatory_apptest_globals" not in observatory
+
+
+def test_isolate_gate_rejects_teardown_only_streamlit_restore() -> None:
+    tree = ast.parse(
+        "import pytest\n"
+        "import sys\n"
+        "def _restore_real_streamlit():\n"
+        "    sys.modules['streamlit'] = object()\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def isolate_apptest_globals():\n"
+        "    try:\n"
+        "        yield\n"
+        "    finally:\n"
+        "        _restore_real_streamlit()\n"
+    )
+    assert _isolate_restores_streamlit_before_and_after(tree) is False
+
+
+def test_classic_smoke_module_is_serial() -> None:
+    tree = ast.parse(_source(REQUIRED_APPTEST_FILES[2]))
+    assert _module_pytestmark_is_serial(tree)
+
+
+def test_every_discovered_apptest_file_is_serial() -> None:
+    """AGENT_GUIDE: discover every AppTest import and AST-bind serial."""
+    for path in _discover_apptest_files():
+        tree = ast.parse(_source(path))
+        if _module_pytestmark_is_serial(tree):
+            continue
+        unmarked = [
+            node.name
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and _function_uses_apptest(node)
+            and not any(_is_serial_mark(dec) for dec in node.decorator_list)
+        ]
+        assert unmarked == [], f"{path.name} AppTest functions missing serial: {unmarked}"
+
+
+def test_list_session_state_gate_rejects_tuple_and_for() -> None:
+    tree = ast.parse("keys = tuple(app.session_state)\nfor key in st.session_state:\n    pass\n")
+    assert sorted(_lists_session_state(tree)) == [1, 2]

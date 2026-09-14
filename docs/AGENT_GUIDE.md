@@ -624,19 +624,27 @@ Every request must first parse as an `AssistantRequest`, then pass
   a G-1 required check. Count is monotonically decreasing per release —
   do not raise the committed total. A later PR flips the same scope to
   blocking. Do not invoke mypy from required pytest cells.
-- **AppTest harness (B-12 / QI-11-03 / MG-26).** Assert widget `.disabled`,
+- **AppTest harness (B-12 / B-13 / MG-26).** Assert widget `.disabled`,
   named session keys, and rendered labels. `set_value` only on enabled
   widgets via `tests.apptest_helpers.set_enabled_value`. Missing
   `.disabled` fails closed (do not treat it as enabled). Never read
   `proto.*` — Streamlit 1.63 (#478 / plan §4.3) raises `AppTestError` on
-  disabled `chat_input.set_value`. Mark AppTest modules (or AppTest
-  functions in a mixed file) `serial`; B-15 adds the rest of the marker
-  set. `tests/test_apptest_harness_rules.py` is fail-closed: discovers
-  every `AppTest` import, AST-binds `serial` (not merely `pytestmark`),
-  and rejects `getattr(..., "proto")` / bound `.set_value`. RUX: rewrite
-  assertions, never delete. Isolation fixtures stay per-module until
-  B-13 promotes `isolate_apptest_globals` to `tests/conftest.py`. Do not
-  `list(session_state)` (B-13).
+  disabled `chat_input.set_value`. Never `list(session_state)` (QI-10-05:
+  Streamlit 1.63 raises `KeyError` key `"0"`). Mark AppTest modules (or
+  AppTest functions in a mixed file) `serial`; B-15 adds the rest of the
+  marker set.   Shared isolate fixture: `isolate_apptest_globals` in
+  `tests/conftest.py` (autouse; restores the real
+  `sys.modules["streamlit"]` before *and* after each test so helper
+  stubs cannot brick `AppTest.run`; snapshots `__main__` / `sys.path`
+  at setup and restores them after). Classic
+  smoke: `tests/test_classic_pages_apptest.py` (`app.py` empty info; Data
+  Sample auto-load; Backtest warning without `signals`; seed
+  `signals`/`levels` before Backtest widgets). Per-page first render < 1 s.
+  `tests/test_apptest_harness_rules.py` is fail-closed: discovers every
+  `AppTest` import, AST-binds `serial`, rejects `proto` / bound
+  `.set_value` / `list(session_state)`. RUX: rewrite assertions, never
+  delete. Do not add classic click-through of Run (QI-10 §3.6: not
+  feasible on an empty page).
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:

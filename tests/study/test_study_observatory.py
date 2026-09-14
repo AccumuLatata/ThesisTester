@@ -6,7 +6,6 @@ import ast
 import csv
 import io
 import json
-import sys
 from pathlib import Path
 
 import pandas as pd
@@ -1917,29 +1916,10 @@ def test_saved_desk_rejects_invalid_id_and_does_not_write_none_json(tmp_path: Pa
     assert not desks_dir.exists()
 
 
-@pytest.fixture()
-def isolate_observatory_apptest_globals():
-    """Undo Streamlit ``__main__`` / ``sys.path`` mutation (same honesty as
-    ``tests/test_assistant_page_render.py``). Required before a second AppTest
-    module can coexist with spawn-context CLI tests.
-    """
-    main_module = sys.modules.get("__main__")
-    path_snapshot = list(sys.path)
-    try:
-        yield
-    finally:
-        if main_module is None:
-            sys.modules.pop("__main__", None)
-        else:
-            sys.modules["__main__"] = main_module
-        sys.path[:] = path_snapshot
-
-
 @pytest.mark.serial
 def test_observatory_page_renders_studies_pane(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    isolate_observatory_apptest_globals: None,
 ) -> None:
     """SO7 AppTest: ledger strip + studies table; no invented ledger-only cells."""
     from streamlit.testing.v1 import AppTest
@@ -2001,7 +1981,6 @@ def test_observatory_page_renders_studies_pane(
 def test_observatory_empty_facets_do_not_claim_shared_cohort(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    isolate_observatory_apptest_globals: None,
 ) -> None:
     """Conflicting facets empty the cell frame — do not claim one shared lock."""
     from streamlit.testing.v1 import AppTest
@@ -2049,7 +2028,6 @@ def test_observatory_empty_facets_do_not_claim_shared_cohort(
 def test_observatory_page_lens_facets_and_heatmap_cell(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    isolate_observatory_apptest_globals: None,
 ) -> None:
     """SO9 AppTest: lens-on facets + Heatmap cell; generic hides them."""
     from streamlit.testing.v1 import AppTest
