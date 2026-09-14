@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import math
 
 import numpy as np
@@ -918,6 +920,547 @@ def _check_confirm_3bar(
 
 
 # ---------------------------------------------------------------------------
+# generate_signals phases (QI-03-01 / C-14)
+# ---------------------------------------------------------------------------
+
+
+def _prepare_generate_trigger_frame(
+    df: pd.DataFrame, trigger_timeframe: str
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[int, pd.Series]]:
+    """Reset the canonical frame and index trigger bars by base-end index."""
+    df_reset = df.reset_index(drop=True)
+    trigger_df = _prepare_trigger_dataframe(df_reset, trigger_timeframe)
+    trigger_rows_by_base_end: dict[int, pd.Series] = {
+        int(row["base_end_bar_index"]): row for _, row in trigger_df.iterrows()
+    }
+    return df_reset, trigger_df, trigger_rows_by_base_end
+
+
+def _admit_zones_for_signals(
+    zones: pd.DataFrame,
+    df_reset: pd.DataFrame,
+    trigger: str,
+    trigger_rows_by_base_end: dict[int, pd.Series],
+    *,
+    naked_only: bool,
+    naked_flags: pd.DataFrame | None,
+    naked_req: str,
+) -> list[tuple[pd.Series, int]]:
+    """Admit zones that have a trigger bar and satisfy the naked filter."""
+    filtered_zones: list[tuple[pd.Series, int]] = []
+
+    for _, zone in zones.iterrows():
+        bar_idx = int(zone["bar_index"])
+        if bar_idx >= len(df_reset):
+            continue
+        if trigger != "3c" and bar_idx not in trigger_rows_by_base_end:
+            continue
+
+        # Naked filter
+        if naked_only:
+            ncount = _naked_count(str(zone["level_names"]), bar_idx, naked_flags)
+            n_levels = int(zone["level_count"])
+            if naked_req == "all" and ncount < n_levels:
+                continue
+            if naked_req == "any" and ncount == 0:
+                continue
+        else:
+            ncount = (
+                _naked_count(str(zone["level_names"]), bar_idx, naked_flags)
+                if naked_flags is not None
+                else 0
+            )
+        filtered_zones.append((zone, ncount))
+
+    return filtered_zones
+
+
+def _generate_3c_signals(
+    *,
+    df_reset: pd.DataFrame,
+    filtered_zones: list[tuple[pd.Series, int]],
+    direction: str,
+    tick_size: float,
+    params: dict,
+    effective_trigger_timeframe: str,
+    naked_flags: pd.DataFrame | None,
+    naked_req: str,
+) -> list[dict]:
+    """Map 3c detector rows onto signal dicts (base and HTF paths)."""
+    signals: list[dict] = []
+    signal_id = 0
+    zones_for_candidates = pd.DataFrame([zone for zone, _ in filtered_zones])
+    source_mode = str(params.get("_source_mode", "global_cluster"))
+
+    if effective_trigger_timeframe == "base":
+        # ── Existing base 3c path (unchanged) ────────────────────────────
+        if source_mode == "anchor_rules":
+            candidates = from_anchor_zones(zones_for_candidates, direction)
+        else:
+            candidates = from_global_cluster_zones(zones_for_candidates, direction)
+
+        if naked_flags is not None:
+            enriched: list[CandidateLevel] = []
+            for candidate in candidates:
+                state = None
+                is_naked = None
+                if candidate.level_id:
+                    naked_col = candidate.level_id + "_naked"
+                    if naked_col in naked_flags.columns and 0 <= int(candidate.bar_index) < len(
+                        naked_flags
+                    ):
+                        is_naked = bool(naked_flags[naked_col].iloc[int(candidate.bar_index)])
+                        state = "naked" if is_naked else "tested"
+                enriched.append(
+                    with_metadata(
+                        candidate,
+                        was_naked_before_arrival=is_naked,
+                        level_test_state_at_arrival=state,
+                    )
+                )
+            candidates = enriched
+
+        setup_rows = detect_3c_setups(
+            df=df_reset,
+            candidates=candidates,
+            tick_size=tick_size,
+            trigger_params=params,
+        )
+        zone_by_id = {candidate.zone_id: candidate for candidate in candidates if candidate.zone_id}
+        for setup in setup_rows:
+            zone = None
+            zone_id = setup.get("zone_id")
+            arrival_naked_idx = (
+                _safe_signal_index(setup.get("arrival_bar_index"), len(naked_flags))
+                if naked_flags is not None
+                else None
+            )
+            if zone_id in zone_by_id:
+                candidate = zone_by_id[zone_id]
+                zone = pd.Series(
+                    {
+                        "zone_low": candidate.zone_low,
+                        "zone_high": candidate.zone_high,
+                        "zone_mid": (
+                            (candidate.zone_low + candidate.zone_high) / 2.0
+                            if candidate.zone_low is not None and candidate.zone_high is not None
+                            else None
+                        ),
+                        "level_count": candidate.metadata.get("level_count", 1),
+                        "level_names": "|".join(setup.get("level_ids", []))
+                        if setup.get("level_ids")
+                        else (candidate.level_id or candidate.source_label or ""),
+                    }
+                )
+                ncount = (
+                    _naked_count(str(zone["level_names"]), arrival_naked_idx, naked_flags)
+                    if naked_flags is not None and arrival_naked_idx is not None
+                    else 0
+                )
+            else:
+                zone = pd.Series(
+                    {
+                        "zone_low": np.nan,
+                        "zone_high": np.nan,
+                        "zone_mid": np.nan,
+                        "level_count": 0,
+                        "level_names": "",
+                    }
+                )
+                ncount = 0
+
+            filled = str(setup["status"]) == "filled"
+            is_sfp = bool(setup["is_sfp"])
+            source_labels = (
+                "|".join(setup.get("source_labels", [])) if setup.get("source_labels") else None
+            )
+            zone_ids = "|".join(setup.get("zone_ids", [])) if setup.get("zone_ids") else None
+            level_ids = "|".join(setup.get("level_ids", [])) if setup.get("level_ids") else None
+            tested_level_name = setup.get("level_id") or setup.get("level_source_label")
+            tested_level_price = setup.get("arrival_level_price")
+            entry_trigger_raw = setup.get("entry_trigger_price", setup.get("retrace_entry_price"))
+            if entry_trigger_raw is None:
+                entry_trigger_raw = setup.get("arrival_level_price")
+            entry_trigger_price = _safe_signal_float(entry_trigger_raw)
+            if entry_trigger_price is None:
+                continue
+            retrace_entry_price = entry_trigger_price if filled else None
+            entry_bar_index = setup.get("entry_bar_index")
+            bar_index_base = _safe_signal_index(setup.get("bar_index"), len(df_reset))
+            arrival_idx_base = _safe_signal_index(setup.get("arrival_bar_index"), len(df_reset))
+            reversal_idx_base = _safe_signal_index(setup.get("reversal_bar_index"), len(df_reset))
+            entry_idx_base = (
+                _safe_signal_index(entry_bar_index, len(df_reset))
+                if entry_bar_index is not None
+                else None
+            )
+            arrival_level_price = _safe_signal_float(setup.get("arrival_level_price"))
+            if (
+                bar_index_base is None
+                or arrival_idx_base is None
+                or reversal_idx_base is None
+                or (entry_bar_index is not None and entry_idx_base is None)
+                or arrival_level_price is None
+            ):
+                continue
+            signals.append(
+                _make_signal(
+                    signal_id=signal_id,
+                    ts=setup["timestamp"],
+                    bar_idx=bar_index_base,
+                    trigger_bar_index=reversal_idx_base,
+                    trigger_timeframe=effective_trigger_timeframe,
+                    trigger_timestamp=df_reset["timestamp"].iloc[reversal_idx_base],
+                    trigger="3c",
+                    direction=str(setup["direction"]),
+                    zone=zone,
+                    entry_ref=entry_trigger_price,
+                    entry_model="3c_retrace_market" if filled else "3c_retrace_void",
+                    status=str(setup["status"]),
+                    naked_count=ncount,
+                    naked_req=naked_req,
+                    tested_level_name=tested_level_name,
+                    tested_level_price=tested_level_price,
+                    arrival_bar_index=arrival_idx_base,
+                    reversal_bar_index=reversal_idx_base,
+                    confirmation_bar_index=entry_idx_base,
+                    reversal_type="sfp_reversal" if is_sfp else "standard_reversal",
+                    is_sfp_reversal=is_sfp,
+                    activation_price=entry_trigger_price if filled else None,
+                    entry_price=entry_trigger_price if filled else None,
+                    activation_retrace_ticks=float(setup["entry_retrace_ticks"]),
+                    trigger_variant=str(setup["trigger_variant"]),
+                    is_muted=bool(setup["is_muted"]),
+                    is_sfp=is_sfp,
+                    inside_candle_count=int(setup["inside_candle_count"]),
+                    level_source_mode=str(setup["level_source_mode"]),
+                    level_source_label=setup.get("level_source_label"),
+                    zone_id=setup.get("zone_id"),
+                    level_id=setup.get("level_id"),
+                    arrival_level_price=arrival_level_price,
+                    entry_bar_index=entry_idx_base,
+                    entry_trigger_price=entry_trigger_price,
+                    retrace_entry_price=retrace_entry_price,
+                    retrace_ticks_required=float(setup["entry_retrace_ticks"]),
+                    source_labels=source_labels,
+                    source_count=int(setup.get("source_count", 1)),
+                    zone_ids=zone_ids,
+                    level_ids=level_ids,
+                    level_test_state_at_arrival=setup.get("level_test_state_at_arrival"),
+                    was_naked_before_arrival=setup.get("was_naked_before_arrival"),
+                    # Base 3c: trigger indices match base indices
+                    trigger_arrival_bar_index=arrival_idx_base,
+                    trigger_reversal_bar_index=reversal_idx_base,
+                )
+            )
+            signal_id += 1
+
+    else:
+        # ── New non-base 3c path ──────────────────────────────────────────
+        trigger_df_3c = _prepare_trigger_dataframe(df_reset, effective_trigger_timeframe)
+        projected_zones = _project_zones_to_trigger_df(zones_for_candidates, trigger_df_3c)
+        trigger_timeframe_delta = pd.to_timedelta(effective_trigger_timeframe)
+
+        if source_mode == "anchor_rules":
+            candidates = from_anchor_zones(projected_zones, direction)
+        else:
+            candidates = from_global_cluster_zones(projected_zones, direction)
+
+        # For non-base 3c, naked metadata must use the base arrival index
+        # (base_end_bar_index of the trigger arrival bar), not the trigger index.
+        # We store base_end_bar_index from the projected zone in candidate metadata
+        # so that detect_3c_setups_with_trigger_timeframe can use it.
+        if naked_flags is not None:
+            # Build a lookup: trigger_bar_index -> base_end_bar_index
+            trigger_base_end_map: dict[int, int] = {
+                int(row["trigger_bar_index"]): int(row["base_end_bar_index"])
+                for _, row in trigger_df_3c.iterrows()
+            }
+            enriched_nb: list[CandidateLevel] = []
+            for candidate in candidates:
+                state = None
+                is_naked = None
+                if candidate.level_id:
+                    naked_col = candidate.level_id + "_naked"
+                    # Use base arrival index for naked lookup
+                    base_arr_idx = trigger_base_end_map.get(int(candidate.bar_index))
+                    if (
+                        base_arr_idx is not None
+                        and naked_col in naked_flags.columns
+                        and 0 <= base_arr_idx < len(naked_flags)
+                    ):
+                        is_naked = bool(naked_flags[naked_col].iloc[base_arr_idx])
+                        state = "naked" if is_naked else "tested"
+                enriched_nb.append(
+                    with_metadata(
+                        candidate,
+                        was_naked_before_arrival=is_naked,
+                        level_test_state_at_arrival=state,
+                    )
+                )
+            candidates = enriched_nb
+
+        setup_rows = detect_3c_setups_with_trigger_timeframe(
+            trigger_df=trigger_df_3c,
+            base_df=df_reset,
+            candidates=candidates,
+            tick_size=tick_size,
+            trigger_params=params,
+            trigger_timeframe_delta=trigger_timeframe_delta,
+        )
+
+        # Build zone lookup from candidates
+        zone_by_id_nb = {
+            candidate.zone_id: candidate for candidate in candidates if candidate.zone_id
+        }
+        for setup in setup_rows:
+            zone_id = setup.get("zone_id")
+            arrival_naked_idx = (
+                _safe_signal_index(setup.get("arrival_bar_index"), len(naked_flags))
+                if naked_flags is not None
+                else None
+            )
+            if zone_id in zone_by_id_nb:
+                candidate = zone_by_id_nb[zone_id]
+                zone = pd.Series(
+                    {
+                        "zone_low": candidate.zone_low,
+                        "zone_high": candidate.zone_high,
+                        "zone_mid": (
+                            (candidate.zone_low + candidate.zone_high) / 2.0
+                            if candidate.zone_low is not None and candidate.zone_high is not None
+                            else None
+                        ),
+                        "level_count": candidate.metadata.get("level_count", 1),
+                        "level_names": "|".join(setup.get("level_ids", []))
+                        if setup.get("level_ids")
+                        else (candidate.level_id or candidate.source_label or ""),
+                    }
+                )
+                # Naked count uses base arrival index
+                ncount = (
+                    _naked_count(str(zone["level_names"]), arrival_naked_idx, naked_flags)
+                    if naked_flags is not None and arrival_naked_idx is not None
+                    else 0
+                )
+            else:
+                zone = pd.Series(
+                    {
+                        "zone_low": np.nan,
+                        "zone_high": np.nan,
+                        "zone_mid": np.nan,
+                        "level_count": 0,
+                        "level_names": "",
+                    }
+                )
+                ncount = 0
+
+            filled = str(setup["status"]) == "filled"
+            is_sfp = bool(setup["is_sfp"])
+            source_labels = (
+                "|".join(setup.get("source_labels", [])) if setup.get("source_labels") else None
+            )
+            zone_ids = "|".join(setup.get("zone_ids", [])) if setup.get("zone_ids") else None
+            level_ids = "|".join(setup.get("level_ids", [])) if setup.get("level_ids") else None
+            tested_level_name = setup.get("level_id") or setup.get("level_source_label")
+            tested_level_price = setup.get("arrival_level_price")
+            entry_trigger_raw = setup.get("entry_trigger_price", setup.get("retrace_entry_price"))
+            if entry_trigger_raw is None:
+                entry_trigger_raw = setup.get("arrival_level_price")
+            entry_trigger_price = _safe_signal_float(entry_trigger_raw)
+            if entry_trigger_price is None:
+                continue
+            retrace_entry_price = entry_trigger_price if filled else None
+            entry_bar_index = setup.get("entry_bar_index")
+            trigger_reversal_bar_index = setup.get("trigger_reversal_bar_index")
+            trigger_arrival_bar_index = setup.get("trigger_arrival_bar_index")
+            # trigger_bar_index equals trigger_reversal_bar_index for 3c
+            trigger_bar_index_3c = _safe_signal_index(
+                trigger_reversal_bar_index, len(trigger_df_3c)
+            )
+            bar_index_base = _safe_signal_index(setup.get("bar_index"), len(df_reset))
+            arrival_idx_base = _safe_signal_index(setup.get("arrival_bar_index"), len(df_reset))
+            reversal_idx_base = _safe_signal_index(setup.get("reversal_bar_index"), len(df_reset))
+            entry_idx_base = (
+                _safe_signal_index(entry_bar_index, len(df_reset))
+                if entry_bar_index is not None
+                else None
+            )
+            trigger_arrival_idx = (
+                _safe_signal_index(trigger_arrival_bar_index, len(trigger_df_3c))
+                if trigger_arrival_bar_index is not None
+                else None
+            )
+            arrival_level_price = _safe_signal_float(setup.get("arrival_level_price"))
+            if (
+                trigger_bar_index_3c is None
+                or bar_index_base is None
+                or arrival_idx_base is None
+                or reversal_idx_base is None
+                or (entry_bar_index is not None and entry_idx_base is None)
+                or arrival_level_price is None
+            ):
+                continue
+            signals.append(
+                _make_signal(
+                    signal_id=signal_id,
+                    ts=setup["timestamp"],
+                    bar_idx=bar_index_base,
+                    trigger_bar_index=trigger_bar_index_3c,
+                    trigger_timeframe=effective_trigger_timeframe,
+                    trigger_timestamp=setup.get("trigger_timestamp"),
+                    trigger="3c",
+                    direction=str(setup["direction"]),
+                    zone=zone,
+                    entry_ref=entry_trigger_price,
+                    entry_model="3c_retrace_market" if filled else "3c_retrace_void",
+                    status=str(setup["status"]),
+                    naked_count=ncount,
+                    naked_req=naked_req,
+                    tested_level_name=tested_level_name,
+                    tested_level_price=tested_level_price,
+                    arrival_bar_index=arrival_idx_base,
+                    reversal_bar_index=reversal_idx_base,
+                    confirmation_bar_index=entry_idx_base,
+                    reversal_type="sfp_reversal" if is_sfp else "standard_reversal",
+                    is_sfp_reversal=is_sfp,
+                    activation_price=entry_trigger_price if filled else None,
+                    entry_price=entry_trigger_price if filled else None,
+                    activation_retrace_ticks=float(setup["entry_retrace_ticks"]),
+                    trigger_variant=str(setup["trigger_variant"]),
+                    is_muted=bool(setup["is_muted"]),
+                    is_sfp=is_sfp,
+                    inside_candle_count=int(setup["inside_candle_count"]),
+                    level_source_mode=str(setup["level_source_mode"]),
+                    level_source_label=setup.get("level_source_label"),
+                    zone_id=setup.get("zone_id"),
+                    level_id=setup.get("level_id"),
+                    arrival_level_price=arrival_level_price,
+                    entry_bar_index=entry_idx_base,
+                    entry_trigger_price=entry_trigger_price,
+                    retrace_entry_price=retrace_entry_price,
+                    retrace_ticks_required=float(setup["entry_retrace_ticks"]),
+                    source_labels=source_labels,
+                    source_count=int(setup.get("source_count", 1)),
+                    zone_ids=zone_ids,
+                    level_ids=level_ids,
+                    level_test_state_at_arrival=setup.get("level_test_state_at_arrival"),
+                    was_naked_before_arrival=setup.get("was_naked_before_arrival"),
+                    trigger_arrival_bar_index=trigger_arrival_idx,
+                    trigger_reversal_bar_index=trigger_bar_index_3c,
+                )
+            )
+            signal_id += 1
+    return signals
+
+
+_SimpleTriggerChecker = Callable[
+    [pd.DataFrame, pd.Series, int, int, str, str, int, int, str],
+    dict | None,
+]
+_ApproachSideChecker = Callable[..., dict | None]
+
+_SIMPLE_TRIGGER_CHECKERS: dict[str, _SimpleTriggerChecker] = {
+    "touch": _check_touch,
+    "reject": _check_reject,
+    "break": _check_break,
+    "reclaim": _check_reclaim,
+}
+
+_APPROACH_SIDE_CHECKERS: dict[str, _ApproachSideChecker] = {
+    "fade": _check_fade,
+    "continuation": _check_continuation,
+}
+
+
+def _dispatch_approach_side_triggers(
+    trigger: str,
+    filtered_zones: list[tuple[pd.Series, int]],
+    trigger_df: pd.DataFrame,
+    trigger_rows_by_base_end: dict[int, pd.Series],
+    *,
+    direction: str,
+    effective_trigger_timeframe: str,
+    params: dict,
+    naked_req: str,
+) -> list[dict]:
+    """Dispatch fade / continuation through the approach-side table."""
+    signals: list[dict] = []
+    signal_id = 0
+    require_close = bool(params.get("require_close_confirmation", False))
+    checker = _APPROACH_SIDE_CHECKERS[trigger]
+    for zone, ncount in filtered_zones:
+        bar_idx = int(zone["bar_index"])
+        trigger_row = trigger_rows_by_base_end.get(bar_idx)
+        if trigger_row is None:
+            continue
+        trigger_bar_idx = int(trigger_row["trigger_bar_index"])
+        base_bar_idx = int(trigger_row["base_end_bar_index"])
+        sig = checker(
+            trigger_df,
+            zone,
+            trigger_bar_idx,
+            base_bar_idx,
+            effective_trigger_timeframe,
+            signal_id,
+            ncount,
+            naked_req,
+            require_close_confirmation=require_close,
+        )
+        if sig is None:
+            continue
+        if direction != "both" and str(sig["direction"]) != direction:
+            continue
+        signals.append(sig)
+        signal_id += 1
+    return signals
+
+
+def _dispatch_simple_triggers(
+    trigger: str,
+    filtered_zones: list[tuple[pd.Series, int]],
+    trigger_df: pd.DataFrame,
+    trigger_rows_by_base_end: dict[int, pd.Series],
+    *,
+    direction: str,
+    effective_trigger_timeframe: str,
+    naked_req: str,
+) -> list[dict]:
+    """Dispatch touch / reject / break / reclaim through the simple table."""
+    signals: list[dict] = []
+    signal_id = 0
+    directions = ["long", "short"] if direction == "both" else [direction]
+    checker = _SIMPLE_TRIGGER_CHECKERS.get(trigger)
+    for zone, ncount in filtered_zones:
+        bar_idx = int(zone["bar_index"])
+        trigger_row = trigger_rows_by_base_end.get(bar_idx)
+        if trigger_row is None:
+            continue
+        trigger_bar_idx = int(trigger_row["trigger_bar_index"])
+        base_bar_idx = int(trigger_row["base_end_bar_index"])
+        for d in directions:
+            sig = (
+                checker(
+                    trigger_df,
+                    zone,
+                    trigger_bar_idx,
+                    base_bar_idx,
+                    effective_trigger_timeframe,
+                    d,
+                    signal_id,
+                    ncount,
+                    naked_req,
+                )
+                if checker is not None
+                else None
+            )
+            if sig is not None:
+                signals.append(sig)
+                signal_id += 1
+    return signals
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -1008,504 +1551,51 @@ def generate_signals(
     if naked_req not in {"any", "all"}:
         naked_req = "any"
 
-    df_reset = df.reset_index(drop=True)
-    trigger_df = _prepare_trigger_dataframe(df_reset, effective_trigger_timeframe)
-    trigger_rows_by_base_end: dict[int, pd.Series] = {
-        int(row["base_end_bar_index"]): row for _, row in trigger_df.iterrows()
-    }
-    signals: list[dict] = []
-    signal_id = 0
-    filtered_zones: list[tuple[pd.Series, int]] = []
-
-    for _, zone in zones.iterrows():
-        bar_idx = int(zone["bar_index"])
-        if bar_idx >= len(df_reset):
-            continue
-        if trigger != "3c" and bar_idx not in trigger_rows_by_base_end:
-            continue
-
-        # Naked filter
-        if naked_only:
-            ncount = _naked_count(str(zone["level_names"]), bar_idx, naked_flags)
-            n_levels = int(zone["level_count"])
-            if naked_req == "all" and ncount < n_levels:
-                continue
-            if naked_req == "any" and ncount == 0:
-                continue
-        else:
-            ncount = (
-                _naked_count(str(zone["level_names"]), bar_idx, naked_flags)
-                if naked_flags is not None
-                else 0
-            )
-        filtered_zones.append((zone, ncount))
+    df_reset, trigger_df, trigger_rows_by_base_end = _prepare_generate_trigger_frame(
+        df, effective_trigger_timeframe
+    )
+    filtered_zones = _admit_zones_for_signals(
+        zones,
+        df_reset,
+        trigger,
+        trigger_rows_by_base_end,
+        naked_only=naked_only,
+        naked_flags=naked_flags,
+        naked_req=naked_req,
+    )
 
     if trigger == "3c":
-        zones_for_candidates = pd.DataFrame([zone for zone, _ in filtered_zones])
-        source_mode = str(params.get("_source_mode", "global_cluster"))
-
-        if effective_trigger_timeframe == "base":
-            # ── Existing base 3c path (unchanged) ────────────────────────────
-            if source_mode == "anchor_rules":
-                candidates = from_anchor_zones(zones_for_candidates, direction)
-            else:
-                candidates = from_global_cluster_zones(zones_for_candidates, direction)
-
-            if naked_flags is not None:
-                enriched: list[CandidateLevel] = []
-                for candidate in candidates:
-                    state = None
-                    is_naked = None
-                    if candidate.level_id:
-                        naked_col = candidate.level_id + "_naked"
-                        if naked_col in naked_flags.columns and 0 <= int(candidate.bar_index) < len(
-                            naked_flags
-                        ):
-                            is_naked = bool(naked_flags[naked_col].iloc[int(candidate.bar_index)])
-                            state = "naked" if is_naked else "tested"
-                    enriched.append(
-                        with_metadata(
-                            candidate,
-                            was_naked_before_arrival=is_naked,
-                            level_test_state_at_arrival=state,
-                        )
-                    )
-                candidates = enriched
-
-            setup_rows = detect_3c_setups(
-                df=df_reset,
-                candidates=candidates,
-                tick_size=tick_size,
-                trigger_params=params,
-            )
-            zone_by_id = {
-                candidate.zone_id: candidate for candidate in candidates if candidate.zone_id
-            }
-            for setup in setup_rows:
-                zone = None
-                zone_id = setup.get("zone_id")
-                arrival_naked_idx = (
-                    _safe_signal_index(setup.get("arrival_bar_index"), len(naked_flags))
-                    if naked_flags is not None
-                    else None
-                )
-                if zone_id in zone_by_id:
-                    candidate = zone_by_id[zone_id]
-                    zone = pd.Series(
-                        {
-                            "zone_low": candidate.zone_low,
-                            "zone_high": candidate.zone_high,
-                            "zone_mid": (
-                                (candidate.zone_low + candidate.zone_high) / 2.0
-                                if candidate.zone_low is not None
-                                and candidate.zone_high is not None
-                                else None
-                            ),
-                            "level_count": candidate.metadata.get("level_count", 1),
-                            "level_names": "|".join(setup.get("level_ids", []))
-                            if setup.get("level_ids")
-                            else (candidate.level_id or candidate.source_label or ""),
-                        }
-                    )
-                    ncount = (
-                        _naked_count(str(zone["level_names"]), arrival_naked_idx, naked_flags)
-                        if naked_flags is not None and arrival_naked_idx is not None
-                        else 0
-                    )
-                else:
-                    zone = pd.Series(
-                        {
-                            "zone_low": np.nan,
-                            "zone_high": np.nan,
-                            "zone_mid": np.nan,
-                            "level_count": 0,
-                            "level_names": "",
-                        }
-                    )
-                    ncount = 0
-
-                filled = str(setup["status"]) == "filled"
-                is_sfp = bool(setup["is_sfp"])
-                source_labels = (
-                    "|".join(setup.get("source_labels", [])) if setup.get("source_labels") else None
-                )
-                zone_ids = "|".join(setup.get("zone_ids", [])) if setup.get("zone_ids") else None
-                level_ids = "|".join(setup.get("level_ids", [])) if setup.get("level_ids") else None
-                tested_level_name = setup.get("level_id") or setup.get("level_source_label")
-                tested_level_price = setup.get("arrival_level_price")
-                entry_trigger_raw = setup.get(
-                    "entry_trigger_price", setup.get("retrace_entry_price")
-                )
-                if entry_trigger_raw is None:
-                    entry_trigger_raw = setup.get("arrival_level_price")
-                entry_trigger_price = _safe_signal_float(entry_trigger_raw)
-                if entry_trigger_price is None:
-                    continue
-                retrace_entry_price = entry_trigger_price if filled else None
-                entry_bar_index = setup.get("entry_bar_index")
-                bar_index_base = _safe_signal_index(setup.get("bar_index"), len(df_reset))
-                arrival_idx_base = _safe_signal_index(setup.get("arrival_bar_index"), len(df_reset))
-                reversal_idx_base = _safe_signal_index(
-                    setup.get("reversal_bar_index"), len(df_reset)
-                )
-                entry_idx_base = (
-                    _safe_signal_index(entry_bar_index, len(df_reset))
-                    if entry_bar_index is not None
-                    else None
-                )
-                arrival_level_price = _safe_signal_float(setup.get("arrival_level_price"))
-                if (
-                    bar_index_base is None
-                    or arrival_idx_base is None
-                    or reversal_idx_base is None
-                    or (entry_bar_index is not None and entry_idx_base is None)
-                    or arrival_level_price is None
-                ):
-                    continue
-                signals.append(
-                    _make_signal(
-                        signal_id=signal_id,
-                        ts=setup["timestamp"],
-                        bar_idx=bar_index_base,
-                        trigger_bar_index=reversal_idx_base,
-                        trigger_timeframe=effective_trigger_timeframe,
-                        trigger_timestamp=df_reset["timestamp"].iloc[reversal_idx_base],
-                        trigger="3c",
-                        direction=str(setup["direction"]),
-                        zone=zone,
-                        entry_ref=entry_trigger_price,
-                        entry_model="3c_retrace_market" if filled else "3c_retrace_void",
-                        status=str(setup["status"]),
-                        naked_count=ncount,
-                        naked_req=naked_req,
-                        tested_level_name=tested_level_name,
-                        tested_level_price=tested_level_price,
-                        arrival_bar_index=arrival_idx_base,
-                        reversal_bar_index=reversal_idx_base,
-                        confirmation_bar_index=entry_idx_base,
-                        reversal_type="sfp_reversal" if is_sfp else "standard_reversal",
-                        is_sfp_reversal=is_sfp,
-                        activation_price=entry_trigger_price if filled else None,
-                        entry_price=entry_trigger_price if filled else None,
-                        activation_retrace_ticks=float(setup["entry_retrace_ticks"]),
-                        trigger_variant=str(setup["trigger_variant"]),
-                        is_muted=bool(setup["is_muted"]),
-                        is_sfp=is_sfp,
-                        inside_candle_count=int(setup["inside_candle_count"]),
-                        level_source_mode=str(setup["level_source_mode"]),
-                        level_source_label=setup.get("level_source_label"),
-                        zone_id=setup.get("zone_id"),
-                        level_id=setup.get("level_id"),
-                        arrival_level_price=arrival_level_price,
-                        entry_bar_index=entry_idx_base,
-                        entry_trigger_price=entry_trigger_price,
-                        retrace_entry_price=retrace_entry_price,
-                        retrace_ticks_required=float(setup["entry_retrace_ticks"]),
-                        source_labels=source_labels,
-                        source_count=int(setup.get("source_count", 1)),
-                        zone_ids=zone_ids,
-                        level_ids=level_ids,
-                        level_test_state_at_arrival=setup.get("level_test_state_at_arrival"),
-                        was_naked_before_arrival=setup.get("was_naked_before_arrival"),
-                        # Base 3c: trigger indices match base indices
-                        trigger_arrival_bar_index=arrival_idx_base,
-                        trigger_reversal_bar_index=reversal_idx_base,
-                    )
-                )
-                signal_id += 1
-
-        else:
-            # ── New non-base 3c path ──────────────────────────────────────────
-            trigger_df_3c = _prepare_trigger_dataframe(df_reset, effective_trigger_timeframe)
-            projected_zones = _project_zones_to_trigger_df(zones_for_candidates, trigger_df_3c)
-            trigger_timeframe_delta = pd.to_timedelta(effective_trigger_timeframe)
-
-            if source_mode == "anchor_rules":
-                candidates = from_anchor_zones(projected_zones, direction)
-            else:
-                candidates = from_global_cluster_zones(projected_zones, direction)
-
-            # For non-base 3c, naked metadata must use the base arrival index
-            # (base_end_bar_index of the trigger arrival bar), not the trigger index.
-            # We store base_end_bar_index from the projected zone in candidate metadata
-            # so that detect_3c_setups_with_trigger_timeframe can use it.
-            if naked_flags is not None:
-                # Build a lookup: trigger_bar_index -> base_end_bar_index
-                trigger_base_end_map: dict[int, int] = {
-                    int(row["trigger_bar_index"]): int(row["base_end_bar_index"])
-                    for _, row in trigger_df_3c.iterrows()
-                }
-                enriched_nb: list[CandidateLevel] = []
-                for candidate in candidates:
-                    state = None
-                    is_naked = None
-                    if candidate.level_id:
-                        naked_col = candidate.level_id + "_naked"
-                        # Use base arrival index for naked lookup
-                        base_arr_idx = trigger_base_end_map.get(int(candidate.bar_index))
-                        if (
-                            base_arr_idx is not None
-                            and naked_col in naked_flags.columns
-                            and 0 <= base_arr_idx < len(naked_flags)
-                        ):
-                            is_naked = bool(naked_flags[naked_col].iloc[base_arr_idx])
-                            state = "naked" if is_naked else "tested"
-                    enriched_nb.append(
-                        with_metadata(
-                            candidate,
-                            was_naked_before_arrival=is_naked,
-                            level_test_state_at_arrival=state,
-                        )
-                    )
-                candidates = enriched_nb
-
-            setup_rows = detect_3c_setups_with_trigger_timeframe(
-                trigger_df=trigger_df_3c,
-                base_df=df_reset,
-                candidates=candidates,
-                tick_size=tick_size,
-                trigger_params=params,
-                trigger_timeframe_delta=trigger_timeframe_delta,
-            )
-
-            # Build zone lookup from candidates
-            zone_by_id_nb = {
-                candidate.zone_id: candidate for candidate in candidates if candidate.zone_id
-            }
-            for setup in setup_rows:
-                zone_id = setup.get("zone_id")
-                arrival_naked_idx = (
-                    _safe_signal_index(setup.get("arrival_bar_index"), len(naked_flags))
-                    if naked_flags is not None
-                    else None
-                )
-                if zone_id in zone_by_id_nb:
-                    candidate = zone_by_id_nb[zone_id]
-                    zone = pd.Series(
-                        {
-                            "zone_low": candidate.zone_low,
-                            "zone_high": candidate.zone_high,
-                            "zone_mid": (
-                                (candidate.zone_low + candidate.zone_high) / 2.0
-                                if candidate.zone_low is not None
-                                and candidate.zone_high is not None
-                                else None
-                            ),
-                            "level_count": candidate.metadata.get("level_count", 1),
-                            "level_names": "|".join(setup.get("level_ids", []))
-                            if setup.get("level_ids")
-                            else (candidate.level_id or candidate.source_label or ""),
-                        }
-                    )
-                    # Naked count uses base arrival index
-                    ncount = (
-                        _naked_count(str(zone["level_names"]), arrival_naked_idx, naked_flags)
-                        if naked_flags is not None and arrival_naked_idx is not None
-                        else 0
-                    )
-                else:
-                    zone = pd.Series(
-                        {
-                            "zone_low": np.nan,
-                            "zone_high": np.nan,
-                            "zone_mid": np.nan,
-                            "level_count": 0,
-                            "level_names": "",
-                        }
-                    )
-                    ncount = 0
-
-                filled = str(setup["status"]) == "filled"
-                is_sfp = bool(setup["is_sfp"])
-                source_labels = (
-                    "|".join(setup.get("source_labels", [])) if setup.get("source_labels") else None
-                )
-                zone_ids = "|".join(setup.get("zone_ids", [])) if setup.get("zone_ids") else None
-                level_ids = "|".join(setup.get("level_ids", [])) if setup.get("level_ids") else None
-                tested_level_name = setup.get("level_id") or setup.get("level_source_label")
-                tested_level_price = setup.get("arrival_level_price")
-                entry_trigger_raw = setup.get(
-                    "entry_trigger_price", setup.get("retrace_entry_price")
-                )
-                if entry_trigger_raw is None:
-                    entry_trigger_raw = setup.get("arrival_level_price")
-                entry_trigger_price = _safe_signal_float(entry_trigger_raw)
-                if entry_trigger_price is None:
-                    continue
-                retrace_entry_price = entry_trigger_price if filled else None
-                entry_bar_index = setup.get("entry_bar_index")
-                trigger_reversal_bar_index = setup.get("trigger_reversal_bar_index")
-                trigger_arrival_bar_index = setup.get("trigger_arrival_bar_index")
-                # trigger_bar_index equals trigger_reversal_bar_index for 3c
-                trigger_bar_index_3c = _safe_signal_index(
-                    trigger_reversal_bar_index, len(trigger_df_3c)
-                )
-                bar_index_base = _safe_signal_index(setup.get("bar_index"), len(df_reset))
-                arrival_idx_base = _safe_signal_index(setup.get("arrival_bar_index"), len(df_reset))
-                reversal_idx_base = _safe_signal_index(
-                    setup.get("reversal_bar_index"), len(df_reset)
-                )
-                entry_idx_base = (
-                    _safe_signal_index(entry_bar_index, len(df_reset))
-                    if entry_bar_index is not None
-                    else None
-                )
-                trigger_arrival_idx = (
-                    _safe_signal_index(trigger_arrival_bar_index, len(trigger_df_3c))
-                    if trigger_arrival_bar_index is not None
-                    else None
-                )
-                arrival_level_price = _safe_signal_float(setup.get("arrival_level_price"))
-                if (
-                    trigger_bar_index_3c is None
-                    or bar_index_base is None
-                    or arrival_idx_base is None
-                    or reversal_idx_base is None
-                    or (entry_bar_index is not None and entry_idx_base is None)
-                    or arrival_level_price is None
-                ):
-                    continue
-                signals.append(
-                    _make_signal(
-                        signal_id=signal_id,
-                        ts=setup["timestamp"],
-                        bar_idx=bar_index_base,
-                        trigger_bar_index=trigger_bar_index_3c,
-                        trigger_timeframe=effective_trigger_timeframe,
-                        trigger_timestamp=setup.get("trigger_timestamp"),
-                        trigger="3c",
-                        direction=str(setup["direction"]),
-                        zone=zone,
-                        entry_ref=entry_trigger_price,
-                        entry_model="3c_retrace_market" if filled else "3c_retrace_void",
-                        status=str(setup["status"]),
-                        naked_count=ncount,
-                        naked_req=naked_req,
-                        tested_level_name=tested_level_name,
-                        tested_level_price=tested_level_price,
-                        arrival_bar_index=arrival_idx_base,
-                        reversal_bar_index=reversal_idx_base,
-                        confirmation_bar_index=entry_idx_base,
-                        reversal_type="sfp_reversal" if is_sfp else "standard_reversal",
-                        is_sfp_reversal=is_sfp,
-                        activation_price=entry_trigger_price if filled else None,
-                        entry_price=entry_trigger_price if filled else None,
-                        activation_retrace_ticks=float(setup["entry_retrace_ticks"]),
-                        trigger_variant=str(setup["trigger_variant"]),
-                        is_muted=bool(setup["is_muted"]),
-                        is_sfp=is_sfp,
-                        inside_candle_count=int(setup["inside_candle_count"]),
-                        level_source_mode=str(setup["level_source_mode"]),
-                        level_source_label=setup.get("level_source_label"),
-                        zone_id=setup.get("zone_id"),
-                        level_id=setup.get("level_id"),
-                        arrival_level_price=arrival_level_price,
-                        entry_bar_index=entry_idx_base,
-                        entry_trigger_price=entry_trigger_price,
-                        retrace_entry_price=retrace_entry_price,
-                        retrace_ticks_required=float(setup["entry_retrace_ticks"]),
-                        source_labels=source_labels,
-                        source_count=int(setup.get("source_count", 1)),
-                        zone_ids=zone_ids,
-                        level_ids=level_ids,
-                        level_test_state_at_arrival=setup.get("level_test_state_at_arrival"),
-                        was_naked_before_arrival=setup.get("was_naked_before_arrival"),
-                        trigger_arrival_bar_index=trigger_arrival_idx,
-                        trigger_reversal_bar_index=trigger_bar_index_3c,
-                    )
-                )
-                signal_id += 1
+        signals = _generate_3c_signals(
+            df_reset=df_reset,
+            filtered_zones=filtered_zones,
+            direction=direction,
+            tick_size=tick_size,
+            params=params,
+            effective_trigger_timeframe=effective_trigger_timeframe,
+            naked_flags=naked_flags,
+            naked_req=naked_req,
+        )
     elif trigger in _APPROACH_SIDE_TRIGGERS:
-        require_close = bool(params.get("require_close_confirmation", False))
-        checker = _check_fade if trigger == "fade" else _check_continuation
-        for zone, ncount in filtered_zones:
-            bar_idx = int(zone["bar_index"])
-            trigger_row = trigger_rows_by_base_end.get(bar_idx)
-            if trigger_row is None:
-                continue
-            trigger_bar_idx = int(trigger_row["trigger_bar_index"])
-            base_bar_idx = int(trigger_row["base_end_bar_index"])
-            sig = checker(
-                trigger_df,
-                zone,
-                trigger_bar_idx,
-                base_bar_idx,
-                effective_trigger_timeframe,
-                signal_id,
-                ncount,
-                naked_req,
-                require_close_confirmation=require_close,
-            )
-            if sig is None:
-                continue
-            if direction != "both" and str(sig["direction"]) != direction:
-                continue
-            signals.append(sig)
-            signal_id += 1
+        signals = _dispatch_approach_side_triggers(
+            trigger,
+            filtered_zones,
+            trigger_df,
+            trigger_rows_by_base_end,
+            direction=direction,
+            effective_trigger_timeframe=effective_trigger_timeframe,
+            params=params,
+            naked_req=naked_req,
+        )
     else:
-        directions = ["long", "short"] if direction == "both" else [direction]
-        for zone, ncount in filtered_zones:
-            bar_idx = int(zone["bar_index"])
-            trigger_row = trigger_rows_by_base_end.get(bar_idx)
-            if trigger_row is None:
-                continue
-            trigger_bar_idx = int(trigger_row["trigger_bar_index"])
-            base_bar_idx = int(trigger_row["base_end_bar_index"])
-            for d in directions:
-                if trigger == "touch":
-                    sig = _check_touch(
-                        trigger_df,
-                        zone,
-                        trigger_bar_idx,
-                        base_bar_idx,
-                        effective_trigger_timeframe,
-                        d,
-                        signal_id,
-                        ncount,
-                        naked_req,
-                    )
-                elif trigger == "reject":
-                    sig = _check_reject(
-                        trigger_df,
-                        zone,
-                        trigger_bar_idx,
-                        base_bar_idx,
-                        effective_trigger_timeframe,
-                        d,
-                        signal_id,
-                        ncount,
-                        naked_req,
-                    )
-                elif trigger == "break":
-                    sig = _check_break(
-                        trigger_df,
-                        zone,
-                        trigger_bar_idx,
-                        base_bar_idx,
-                        effective_trigger_timeframe,
-                        d,
-                        signal_id,
-                        ncount,
-                        naked_req,
-                    )
-                elif trigger == "reclaim":
-                    sig = _check_reclaim(
-                        trigger_df,
-                        zone,
-                        trigger_bar_idx,
-                        base_bar_idx,
-                        effective_trigger_timeframe,
-                        d,
-                        signal_id,
-                        ncount,
-                        naked_req,
-                    )
-                else:
-                    sig = None
-
-                if sig is not None:
-                    signals.append(sig)
-                    signal_id += 1
+        signals = _dispatch_simple_triggers(
+            trigger,
+            filtered_zones,
+            trigger_df,
+            trigger_rows_by_base_end,
+            direction=direction,
+            effective_trigger_timeframe=effective_trigger_timeframe,
+            naked_req=naked_req,
+        )
 
     if not signals:
         return _empty_signals_df()

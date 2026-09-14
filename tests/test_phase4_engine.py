@@ -9,7 +9,22 @@ import pytest
 
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
-from thesistester.engine.signals import _safe_signal_float, _safe_signal_index, generate_signals
+from thesistester.engine.signals import (
+    VALID_TRIGGERS,
+    _APPROACH_SIDE_CHECKERS,
+    _SIMPLE_TRIGGER_CHECKERS,
+    _admit_zones_for_signals,
+    _check_break,
+    _check_continuation,
+    _check_fade,
+    _check_reclaim,
+    _check_reject,
+    _check_touch,
+    _prepare_generate_trigger_frame,
+    _safe_signal_float,
+    _safe_signal_index,
+    generate_signals,
+)
 
 
 TZ = "America/New_York"
@@ -1156,3 +1171,121 @@ class TestSafeSignalFloat:
 
     def test_valid_string_float_accepted(self):
         assert _safe_signal_float("3.14") == pytest.approx(3.14)
+
+
+# ===========================================================================
+# C-14 generate_signals phases (QI-03-01)
+# ===========================================================================
+
+
+class TestGenerateSignalsPhases:
+    """Per-phase unit tests for the C-14 extract. Checkers and 3c math stay closed."""
+
+    def test_prepare_trigger_frame_indexes_base_end(self):
+        df = _df_bars(
+            [
+                {"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0},
+                {"open": 100.1, "high": 100.6, "low": 99.6, "close": 100.2},
+                {"open": 100.2, "high": 100.7, "low": 99.7, "close": 100.3},
+            ]
+        )
+        df_reset, trigger_df, by_end = _prepare_generate_trigger_frame(df, "base")
+        assert len(df_reset) == 3
+        assert set(by_end) == {0, 1, 2}
+        assert int(by_end[1]["trigger_bar_index"]) == 1
+        assert (trigger_df["base_end_bar_index"] == trigger_df["trigger_bar_index"]).all()
+
+    def test_admit_drops_bar_past_frame(self):
+        df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}])
+        df_reset, _, by_end = _prepare_generate_trigger_frame(df, "base")
+        zones = pd.concat(
+            [_zone_df(0, 100.0, 100.5), _zone_df(9, 100.0, 100.5)],
+            ignore_index=True,
+        )
+        admitted = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "touch",
+            by_end,
+            naked_only=False,
+            naked_flags=None,
+            naked_req="any",
+        )
+        assert [int(zone["bar_index"]) for zone, _ in admitted] == [0]
+
+    def test_admit_simple_requires_trigger_row_3c_does_not(self):
+        df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}])
+        df_reset = df.reset_index(drop=True)
+        zones = _zone_df(0, 100.0, 100.5)
+        empty_map: dict[int, pd.Series] = {}
+        simple = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "touch",
+            empty_map,
+            naked_only=False,
+            naked_flags=None,
+            naked_req="any",
+        )
+        three_c = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "3c",
+            empty_map,
+            naked_only=False,
+            naked_flags=None,
+            naked_req="any",
+        )
+        assert simple == []
+        assert len(three_c) == 1
+        assert int(three_c[0][0]["bar_index"]) == 0
+        assert three_c[0][1] == 0
+
+    def test_admit_naked_any_drops_zero_count(self):
+        ts = pd.date_range("2026-06-02 09:30", periods=3, freq="1min", tz=TZ)
+        df = pd.DataFrame(
+            {
+                "timestamp": ts,
+                "open": [100.0] * 3,
+                "high": [101.0] * 3,
+                "low": [99.0] * 3,
+                "close": [100.0] * 3,
+                "volume": [100.0] * 3,
+                "lA": [100.0, 100.0, 100.0],
+                "lB": [100.25, 100.25, 100.25],
+            }
+        )
+        naked_flags = flag_naked_levels(df, level_columns=["lA", "lB"], tick_size=TICK)
+        df_reset, _, by_end = _prepare_generate_trigger_frame(df, "base")
+        zones = _zone_df(1, low=100.0, high=100.25, level_names="lA|lB")
+        admitted = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "touch",
+            by_end,
+            naked_only=True,
+            naked_flags=naked_flags,
+            naked_req="any",
+        )
+        assert admitted == []
+
+    def test_dispatch_tables_partition_valid_triggers(self):
+        assert set(_SIMPLE_TRIGGER_CHECKERS) == {"touch", "reject", "break", "reclaim"}
+        assert _SIMPLE_TRIGGER_CHECKERS["touch"] is _check_touch
+        assert _SIMPLE_TRIGGER_CHECKERS["reject"] is _check_reject
+        assert _SIMPLE_TRIGGER_CHECKERS["break"] is _check_break
+        assert _SIMPLE_TRIGGER_CHECKERS["reclaim"] is _check_reclaim
+        assert set(_APPROACH_SIDE_CHECKERS) == {"fade", "continuation"}
+        assert _APPROACH_SIDE_CHECKERS["fade"] is _check_fade
+        assert _APPROACH_SIDE_CHECKERS["continuation"] is _check_continuation
+        assert set(_SIMPLE_TRIGGER_CHECKERS) | set(_APPROACH_SIDE_CHECKERS) | {"3c"} == set(
+            VALID_TRIGGERS
+        )
+
+    def test_generate_signals_same_process_identity(self):
+        df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}])
+        zones = _zone_df(0, 100.0, 100.25)
+        first = generate_signals(df, zones, trigger="touch", direction="both", tick_size=TICK)
+        second = generate_signals(df, zones, trigger="touch", direction="both", tick_size=TICK)
+        pd.testing.assert_frame_equal(first, second)
+        assert len(first) == 2
