@@ -27,7 +27,7 @@ mutants are not silently ignored.
 | Module | Tests |
 |---|---|
 | `engine/backtest.py` | `test_phase5_backtest.py`, `test_ah1_session_flatten.py`, `test_golden_master.py` |
-| `analytics/walk_forward.py` | `test_walk_forward.py` **and** `test_otf_integration.py` (`fold_local` already lives there) |
+| `analytics/walk_forward.py` | `test_walk_forward.py` **and** `test_otf_integration.py` (`fold_local` already lives there). Named surface includes C-17 P0/P5 helpers (`_validate_walk_forward_run`, `_stitch_walk_forward_oos`) so overlap-reject and fold-size comparisons stay in the 12-site sample. |
 
 Timeouts count as killed. Comparison sites inside `raise` lines are excluded
 from the adjusted rate (QI-11 equivalent-mutant / ValueError-string sites).

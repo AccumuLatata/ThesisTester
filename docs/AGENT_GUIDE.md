@@ -776,7 +776,10 @@ Every request must first parse as an `AssistantRequest`, then pass
   baseline: `tests/fixtures/mutation/baseline.json`. Isolation: scratch
   package + `--import-mode=importlib` from a neutral cwd. The walk-forward
   sample **keeps** `tests/test_otf_integration.py` (`fold_local` already
-  lives there). Gate for C-14 / C-17 / C-19: ≥ 70 % own-file killed
+  lives there) and the C-17 helpers (`_validate_walk_forward_run`,
+  `_stitch_walk_forward_oos`) so P0 fold-size and overlap-reject
+  comparisons stay inside the 12-site named surface. Gate for C-14 /
+  C-17 / C-19: ≥ 70 % own-file killed
   (target 80 %). B-4 recorded adjusted rates: `backtest.py` 100 % and
   `walk_forward.py` 100 % (12/12). Timeouts count as killed. This is **not** a
   required CI cell. Do not add `[tool.mutmut]` here — QI-12 owns packaging.
@@ -976,7 +979,9 @@ P3 train-grid (`_train_fold_grid`), P5 stitch (`_stitch_walk_forward_oos`),
 and P6 summary (`_assemble_walk_forward_result`) from
 `run_walk_forward_sl_tp`. Fold constructors (`_bar_fold_boundaries`,
 `_session_fold_boundaries`) and `causal_prefix` (`_otf_source_for_fold`,
-`_filter_fold_signals_with_otf`) stay in-place. Identity vs the PR base
+`_filter_fold_signals_with_otf`) stay in-place. The B-4 mutation
+recipe names those P0/P5 helpers so overlap-reject and fold-size
+`==` / `<=` sites stay in the 12-site sample. Identity vs the PR base
 is live `assert_frame_equal` / field equality + `hash_dataframe` on
 folds, OOS trades, and stitched equity (bars, sessions, overlap
 first/last/reject, OTF, entry window, anchored, empty). Do not freeze

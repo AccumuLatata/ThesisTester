@@ -24,8 +24,8 @@
           "excluded": false,
           "index": 1,
           "killed": true,
-          "line": "executable_entry_ownership=fold_mode == \"sessions\",",
-          "lineno": 612,
+          "line": "if overlap_exists and overlap_policy == \"reject\":",
+          "lineno": 632,
           "op": "==->!=",
           "reason": "failed"
         },
@@ -33,8 +33,8 @@
           "excluded": false,
           "index": 2,
           "killed": true,
-          "line": "executable_entry_ownership=fold_mode == \"sessions\",",
-          "lineno": 619,
+          "line": "if not (overlap_exists and overlap_policy == \"reject\"):",
+          "lineno": 666,
           "op": "==->!=",
           "reason": "failed"
         },
@@ -42,8 +42,8 @@
           "excluded": false,
           "index": 3,
           "killed": true,
-          "line": "if fold_mode == \"sessions\":",
-          "lineno": 838,
+          "line": "executable_entry_ownership=fold_mode == \"sessions\",",
+          "lineno": 885,
           "op": "==->!=",
           "reason": "failed"
         },
@@ -51,17 +51,17 @@
           "excluded": false,
           "index": 4,
           "killed": true,
-          "line": "if train_expectancy > 1e-12:",
-          "lineno": 857,
-          "op": ">-><",
+          "line": "executable_entry_ownership=fold_mode == \"sessions\",",
+          "lineno": 892,
+          "op": "==->!=",
           "reason": "failed"
         },
         {
           "excluded": false,
           "index": 5,
           "killed": true,
-          "line": "if overlap_exists and overlap_policy == \"reject\":",
-          "lineno": 886,
+          "line": "if fold_mode == \"sessions\":",
+          "lineno": 1108,
           "op": "==->!=",
           "reason": "failed"
         },
@@ -69,9 +69,9 @@
           "excluded": false,
           "index": 6,
           "killed": true,
-          "line": "if not (overlap_exists and overlap_policy == \"reject\"):",
-          "lineno": 920,
-          "op": "==->!=",
+          "line": "if train_expectancy > 1e-12:",
+          "lineno": 1127,
+          "op": ">-><",
           "reason": "failed"
         },
         {
@@ -88,7 +88,7 @@
           "index": 8,
           "killed": true,
           "line": "if fold_mode == \"bars\":",
-          "lineno": 542,
+          "lineno": 507,
           "op": "==->!=",
           "reason": "failed"
         },
@@ -97,7 +97,7 @@
           "index": 9,
           "killed": true,
           "line": "if train_bars <= 0:",
-          "lineno": 543,
+          "lineno": 508,
           "op": "<=->>=",
           "reason": "failed"
         },
@@ -106,7 +106,7 @@
           "index": 10,
           "killed": true,
           "line": "if test_bars <= 0:",
-          "lineno": 545,
+          "lineno": 510,
           "op": "<=->>=",
           "reason": "failed"
         },
@@ -115,7 +115,7 @@
           "index": 11,
           "killed": true,
           "line": "if step <= 0:",
-          "lineno": 548,
+          "lineno": 513,
           "op": "<=->>=",
           "reason": "failed"
         }
