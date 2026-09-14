@@ -200,7 +200,7 @@ def _compute_single_prints(
 
         # Group by bucket, accumulate bins.
         bucket_bins: Dict[int, Set[int]] = {}
-        for bidx, (_, row) in zip(bucket_idx.values, sess_rth.iterrows(), strict=False):
+        for bidx, (_, row) in zip(bucket_idx.values, sess_rth.iterrows(), strict=True):
             bins = _bins_in_bracket(row["low"], row["high"], tick_size)
             if bidx not in bucket_bins:
                 bucket_bins[bidx] = set()

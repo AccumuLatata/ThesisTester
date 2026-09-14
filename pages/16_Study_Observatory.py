@@ -815,7 +815,7 @@ if keys:
     default_pick = majority if majority in keys else keys[0]
     if st.session_state.get(OBSERVATORY_COHORT_PICK_KEY) not in keys:
         st.session_state[OBSERVATORY_COHORT_PICK_KEY] = default_pick
-    label_by_key = dict(zip(keys, cohort_choice_labels(keys), strict=False))
+    label_by_key = dict(zip(keys, cohort_choice_labels(keys), strict=True))
     active_cohort = st.selectbox(
         "Active cohort",
         options=keys,

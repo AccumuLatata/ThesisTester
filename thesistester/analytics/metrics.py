@@ -310,7 +310,7 @@ def summarize_by_group(trades: pd.DataFrame, group_cols: list[str]) -> pd.DataFr
             if len(available_group_cols) == 1:
                 row[available_group_cols[0]] = keys
             else:
-                for col, val in zip(available_group_cols, keys, strict=False):
+                for col, val in zip(available_group_cols, keys, strict=True):
                     row[col] = val
 
         row["trade_count"] = int(len(group))

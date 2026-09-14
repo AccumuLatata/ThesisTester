@@ -324,7 +324,7 @@ def summarize_by_group(
         if len(group_cols) == 1:
             row[group_cols[0]] = keys if not isinstance(keys, tuple) else keys[0]
         else:
-            for col, val in zip(group_cols, keys, strict=False):
+            for col, val in zip(group_cols, keys, strict=True):
                 row[col] = val
 
         row["trade_count"] = n
