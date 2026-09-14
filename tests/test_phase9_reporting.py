@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,6 +51,36 @@ _SAMPLE_SECTION_HEADINGS = (
     "## OTF Filter",
     "## Caveats",
 )
+
+# Every table row's heading. Isolation checks full lines so ``### Caveats``
+# inside OTF-validation cannot bind as ``## Caveats``.
+_SECTION_HEADINGS: tuple[tuple[str, str], ...] = (
+    ("title", "# ThesisTester Research Report"),
+    ("metadata", "## Metadata"),
+    ("setup", "## Setup Configuration"),
+    ("signals", "## Signal Summary"),
+    ("backtest", "## Backtest Summary"),
+    ("walk_forward", "## Walk-Forward / OOS Diagnostics"),
+    ("overfitting", "## Overfitting-Detection Battery"),
+    ("grid", "## Grid Search Summary"),
+    ("time_analysis", "## Time Analysis Summary"),
+    ("validation", "## Validation Diagnostics"),
+    ("excursion", "## Excursion Analytics"),
+    ("monte_carlo", "## Monte Carlo Path Robustness"),
+    ("noise", "## Price-Series Noise Test"),
+    ("sensitivity", "## Parameter Sensitivity (SPP-lite)"),
+    ("portfolio", "## Multi-Setup Portfolio"),
+    ("futures_roll", "## Futures Roll Assumptions"),
+    ("entry_window", "## Entry Window (Focus / Admit)"),
+    ("otf", "## OTF Filter"),
+    ("otf_validation", "## OTF Validation Matrix"),
+    ("confluence_combo", "## Confluence Combo Attribution"),
+    ("caveats", "## Caveats"),
+)
+_ALL_SECTION_HEADINGS = tuple(heading for _name, heading in _SECTION_HEADINGS)
+_SECTION_HEADING_BY_NAME = dict(_SECTION_HEADINGS)
+
+_REPORTING_PY = Path(__file__).resolve().parents[1] / "thesistester" / "reporting.py"
 
 
 def _pin_generated_at(artifact: dict) -> dict:
@@ -1049,31 +1080,88 @@ def test_confluence_combo_markdown_preserves_top_n_zero():
     assert "Empty level_names (analyzable)" in markdown
 
 
+def _full_report_artifact() -> dict:
+    """Sample batteries plus the four sections the sample fixture omits."""
+    artifact = _pin_generated_at(build_research_artifact(_confluence_trades_session_state()))
+    artifact["configuration"]["roll_policy"] = {
+        "roll_method": "segmented_contracts",
+        "adjustment_method": "unknown",
+        "roll_rule": "calendar",
+    }
+    artifact["data_quality"] = {
+        "roll_validation": {
+            "contract_count": 2,
+            "warnings": ["test warning"],
+            "roll_gap_count": 1,
+        }
+    }
+    artifact["results"]["portfolio_summary"] = {
+        "available": True,
+        "config": {"setup_ids": ["a", "b"]},
+        "portfolio_metrics": {"total_r": 1.25, "max_drawdown_r": 0.4},
+        "admission": {"admitted_trade_count": 3, "skipped_trade_count": 1},
+    }
+    artifact["otf_validation"] = {
+        "available": True,
+        "summary": {
+            "selected_train_config": "otf_15m",
+            "selected_oos_expectancy_r": 0.12,
+            "selected_by_train_metric": "expectancy_r",
+        },
+        "config": {
+            "train_fraction": 0.7,
+            "oos_fraction": 0.3,
+            "sl_ticks": 8,
+            "tp_ticks": 16,
+            "session_timezone": "America/New_York",
+        },
+    }
+    return artifact
+
+
+def _module_level_function(source: str, name: str) -> ast.FunctionDef:
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"missing module-level def {name}")
+
+
+def _assert_markdown_report_walks_table(source: str) -> None:
+    """``build_markdown_report`` must walk ``MARKDOWN_REPORT_SECTIONS`` only.
+
+    Leftover ``if`` assembly after the loop is C-5 architecture drift
+    (comment / file-level ``MARKDOWN_REPORT_SECTIONS`` needles do not bind).
+    """
+    fn = _module_level_function(source, "build_markdown_report")
+    calls = [
+        node.func.id
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    ]
+    assert "_markdown_report_context" in calls, "walker must build the shared context"
+    fors = [node for node in ast.walk(fn) if isinstance(node, ast.For)]
+    assert len(fors) == 1, f"expected one table walk, got {len(fors)}"
+    loop = fors[0]
+    assert isinstance(loop.iter, ast.Name) and loop.iter.id == "MARKDOWN_REPORT_SECTIONS"
+    collect_calls = [
+        node
+        for node in ast.walk(loop)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "collect"
+    ]
+    assert collect_calls, "table walk must call rule.collect"
+    leftover = [node for node in ast.walk(fn) if isinstance(node, (ast.If, ast.While))]
+    assert leftover == [], "leftover if/while assembly after the table walk"
+
+
 def test_markdown_report_section_table_order():
-    assert MARKDOWN_REPORT_SECTION_NAMES == (
-        "title",
-        "metadata",
-        "setup",
-        "signals",
-        "backtest",
-        "walk_forward",
-        "overfitting",
-        "grid",
-        "time_analysis",
-        "validation",
-        "excursion",
-        "monte_carlo",
-        "noise",
-        "sensitivity",
-        "portfolio",
-        "futures_roll",
-        "entry_window",
-        "otf",
-        "otf_validation",
-        "confluence_combo",
-        "caveats",
-    )
-    assert tuple(rule.name for rule in MARKDOWN_REPORT_SECTIONS) == (MARKDOWN_REPORT_SECTION_NAMES)
+    names = tuple(name for name, _heading in _SECTION_HEADINGS)
+    assert MARKDOWN_REPORT_SECTION_NAMES == names
+    assert tuple(rule.name for rule in MARKDOWN_REPORT_SECTIONS) == names
+    assert len(set(names)) == len(names)
+    assert _ALL_SECTION_HEADINGS == tuple(_SECTION_HEADING_BY_NAME[name] for name in names)
 
     artifact = _pin_generated_at(build_research_artifact(_sample_session_state()))
     markdown = build_markdown_report(artifact)
@@ -1086,6 +1174,68 @@ def test_markdown_report_section_table_order():
         "## Confluence Combo Attribution",
     ):
         assert heading not in markdown
+
+
+def test_markdown_report_collectors_own_headings():
+    """One collector per table heading (C-1 / C-2 isolation class)."""
+    from thesistester.reporting import _markdown_report_context
+
+    ctx = _markdown_report_context(_full_report_artifact())
+    emitted = {rule.name: "\n".join(rule.collect(ctx)) for rule in MARKDOWN_REPORT_SECTIONS}
+    assert tuple(emitted) == MARKDOWN_REPORT_SECTION_NAMES
+    for name, heading in _SECTION_HEADINGS:
+        lines = emitted[name].splitlines()
+        assert heading in lines, name
+        for other, text in emitted.items():
+            if other == name:
+                continue
+            assert heading not in text.splitlines(), (name, other)
+
+
+def test_markdown_report_all_sections_heading_order():
+    markdown = build_markdown_report(_full_report_artifact())
+    lines = markdown.splitlines()
+    positions = [lines.index(heading) for heading in _ALL_SECTION_HEADINGS]
+    assert positions == sorted(positions)
+    for heading in _ALL_SECTION_HEADINGS:
+        assert lines.count(heading) == 1
+
+
+def test_markdown_report_walker_is_table_only():
+    source = _REPORTING_PY.read_text(encoding="utf-8")
+    _assert_markdown_report_walks_table(source)
+
+
+def test_markdown_report_walker_guard_rejects_leftover_if():
+    """File-level table name / comment needles must not satisfy the walker lock."""
+    leftover = (
+        "def build_markdown_report(artifact):\n"
+        "    ctx = _markdown_report_context(artifact)\n"
+        "    lines = []\n"
+        "    for rule in MARKDOWN_REPORT_SECTIONS:\n"
+        "        lines.extend(rule.collect(ctx))\n"
+        "    if artifact.get('extra'):\n"
+        "        lines.append('## Extra')\n"
+        "    return '\\n'.join(lines).strip() + '\\n'\n"
+    )
+    try:
+        _assert_markdown_report_walks_table(leftover)
+    except AssertionError as exc:
+        assert "leftover" in str(exc)
+    else:
+        raise AssertionError("leftover if after the table walk must not pass")
+
+    no_walk = (
+        "def build_markdown_report(artifact):\n"
+        "    ctx = _markdown_report_context(artifact)\n"
+        "    return '# ThesisTester Research Report\\n'\n"
+    )
+    try:
+        _assert_markdown_report_walks_table(no_walk)
+    except AssertionError as exc:
+        assert "walk" in str(exc) or "MARKDOWN_REPORT_SECTIONS" in str(exc)
+    else:
+        raise AssertionError("walker without MARKDOWN_REPORT_SECTIONS must not pass")
 
 
 def test_markdown_report_sample_fixture_byte_identical():

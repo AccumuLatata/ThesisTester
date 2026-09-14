@@ -1827,7 +1827,12 @@ MARKDOWN_REPORT_SECTION_NAMES: tuple[str, ...] = tuple(
 
 
 def build_markdown_report(artifact: dict[str, Any]) -> str:
-    """Build a concise markdown report from a research artifact."""
+    """Build a concise markdown report from a research artifact.
+
+    Walks :data:`MARKDOWN_REPORT_SECTIONS` (C-5 / QI-06-02). Emitted markdown
+    is byte-comparable on the Phase 9 fixtures. A-4 H13 banner stays the first
+    line under ``## Validation Diagnostics``.
+    """
     ctx = _markdown_report_context(artifact)
     lines: list[str] = []
     for rule in MARKDOWN_REPORT_SECTIONS:
