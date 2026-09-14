@@ -142,8 +142,8 @@ informational on this image (CPython 3.12.3, tick-gated realistic,
 
 | Stage | Before (C-14 / `#561`) median ms | After (C-15) median ms |
 |---|---:|---:|
-| `generate_signals` | 331.765 | *(recorded after probe)* |
-| `run_experiment_end_to_end` | 756.672 | *(recorded after probe)* |
+| `generate_signals` | 331.765 | 352.338 |
+| `run_experiment_end_to_end` | 756.672 | 748.973 |
 
 F-10 still re-records the live envelope. Do not treat these rows as a CI gate.
 

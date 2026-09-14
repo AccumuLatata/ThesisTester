@@ -1223,7 +1223,7 @@ class TestGenerateSignalsPhases:
         df_reset, trigger_df, by_end = _prepare_generate_trigger_frame(df, "base")
         assert len(df_reset) == 3
         assert set(by_end) == {0, 1, 2}
-        assert int(by_end[1]["trigger_bar_index"]) == 1
+        assert int(by_end[1].trigger_bar_index) == 1
         assert (trigger_df["base_end_bar_index"] == trigger_df["trigger_bar_index"]).all()
 
     def test_admit_drops_bar_past_frame(self):
@@ -1248,7 +1248,7 @@ class TestGenerateSignalsPhases:
         df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}])
         df_reset = df.reset_index(drop=True)
         zones = _zone_df(0, 100.0, 100.5)
-        empty_map: dict[int, pd.Series] = {}
+        empty_map: dict = {}
         simple = _admit_zones_for_signals(
             zones,
             df_reset,
@@ -1348,7 +1348,7 @@ class TestGenerateSignalsPhases:
         _, trigger_df, by_end = _prepare_generate_trigger_frame(df, "base")
         indexed = _index_trigger_rows_by_base_end(trigger_df)
         assert set(indexed) == set(by_end) == {0, 1}
-        assert int(indexed[1]["trigger_bar_index"]) == int(by_end[1]["trigger_bar_index"]) == 1
+        assert int(indexed[1].trigger_bar_index) == int(by_end[1].trigger_bar_index) == 1
 
     def test_generate_signals_identity_vs_origin_main(self, tmp_path):
         """Live vs origin/main — same-process self-compare is false-green."""
