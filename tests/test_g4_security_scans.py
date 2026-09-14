@@ -116,8 +116,10 @@ def test_g4_jobs_are_warn_first_not_g1() -> None:
     assert "name: pip-audit (warn-first)" in text
     assert "bandit -r thesistester -ll" in text
     assert "pip-audit --progress-spinner off" in text
-    for name in G1_REQUIRED_NAMES:
-        assert name in text
+    assert "name: pytest (py${{ matrix.python-version }})" in text
+    assert "name: ruff (lint + format)" in text
+    assert "name: golden-master regeneration guard" in text
+    assert "name: editable install (no dev extras)" in text
     assert "bandit (warn-first)" not in G1_REQUIRED_NAMES
     assert "pip-audit (warn-first)" not in G1_REQUIRED_NAMES
 
