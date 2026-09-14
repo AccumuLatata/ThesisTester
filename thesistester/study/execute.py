@@ -1088,13 +1088,15 @@ def _finalize_running_cells(
         _write_results_index(output_dir, index_by_name, run_names)
 
 
-_PENDING_CELL: dict[str, Any] = {
-    "status": "pending",
-    "started_at": None,
-    "finished_at": None,
-    "error": None,
-    "bundle_path": None,
-}
+def _pending_cell() -> dict[str, Any]:
+    """Fresh pending cell. A shared module dict would leak mutations across cells."""
+    return {
+        "status": "pending",
+        "started_at": None,
+        "finished_at": None,
+        "error": None,
+        "bundle_path": None,
+    }
 
 
 def _require_study_confirm(expansion: Any, study: Mapping[str, Any], *, confirm: bool) -> None:
@@ -1139,9 +1141,9 @@ def _init_study_ledger(
     prior_cells = dict(ledger.get("cells") or {})
     cells: dict[str, Any] = {}
     for name in run_names:
-        cell = dict(prior_cells.get(name) or dict(_PENDING_CELL))
+        cell = dict(prior_cells.get(name) or _pending_cell())
         if force:
-            cell.update(dict(_PENDING_CELL))
+            cell.update(_pending_cell())
         cells[name] = cell
     ledger["cells"] = cells
     return ledger
