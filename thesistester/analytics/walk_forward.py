@@ -879,7 +879,7 @@ def run_walk_forward_sl_tp(
     if len(boundaries) > 1:
         overlap_exists = any(
             current.test_start < previous.test_end_exclusive
-            for previous, current in zip(boundaries, boundaries[1:])
+            for previous, current in zip(boundaries, boundaries[1:], strict=False)
         )
     stitched_trades = raw_oos.copy()
     stitched_status = "ok"

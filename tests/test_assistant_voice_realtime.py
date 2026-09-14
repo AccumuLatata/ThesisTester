@@ -460,7 +460,7 @@ def test_probe_sidecar_health_rejects_truthy_non_bool_ok(monkeypatch):
         class _Resp:
             status = 200
 
-            def read(self):
+            def read(self, amt=None, payload=payload):
                 return json.dumps(payload).encode("utf-8")
 
             def __enter__(self):

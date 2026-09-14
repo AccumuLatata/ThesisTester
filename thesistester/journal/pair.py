@@ -165,31 +165,31 @@ def _fills_from_frame(frame: pd.DataFrame, *, include_manual: bool) -> list[_Fil
         raise JournalIngestError("fills frame missing columns: " + ", ".join(missing))
     out: list[_Fill] = []
     for row in frame.itertuples(index=False):
-        fill_id = str(getattr(row, "fill_id"))
-        kind = str(getattr(row, "entry_kind"))
+        fill_id = str(row.fill_id)
+        kind = str(row.entry_kind)
         if kind not in _ENTRY_KINDS:
             raise JournalIngestError(
                 f"fill {fill_id!r} entry_kind must be imported or manual (got {kind!r})"
             )
         if kind != ENTRY_KIND_IMPORTED and not include_manual:
             continue
-        qty = getattr(row, "qty")
+        qty = row.qty
         if qty is None or (isinstance(qty, float) and pd.isna(qty)):
             continue
         qty_int = _require_positive_int(qty, fill_id=fill_id, field="qty")
-        instrument = str(getattr(row, "instrument"))
+        instrument = str(row.instrument)
         if instrument not in JOURNAL_POINT_VALUE:
             raise JournalIngestError(f"unknown journal instrument {instrument!r}")
-        side = str(getattr(row, "side"))
+        side = str(row.side)
         if side not in _SIDES:
             raise JournalIngestError(f"fill {fill_id!r} side must be buy or sell (got {side!r})")
-        price = _require_positive_finite(getattr(row, "price"), fill_id=fill_id, field="price")
-        tag_tuple = _coerce_tags(getattr(row, "tags"), fill_id=fill_id)
-        ts = pd.Timestamp(getattr(row, "timestamp"))
+        price = _require_positive_finite(row.price, fill_id=fill_id, field="price")
+        tag_tuple = _coerce_tags(row.tags, fill_id=fill_id)
+        ts = pd.Timestamp(row.timestamp)
         if ts.tzinfo is None:
             raise JournalIngestError(f"fill {fill_id!r} timestamp must be tz-aware")
-        session = _coerce_session_date(getattr(row, "session_date"), fill_id=fill_id)
-        group = getattr(row, "source_group_id")
+        session = _coerce_session_date(row.session_date, fill_id=fill_id)
+        group = row.source_group_id
         if group is None or (isinstance(group, float) and pd.isna(group)) or str(group) == "":
             group = None
         else:
@@ -199,17 +199,17 @@ def _fills_from_frame(frame: pd.DataFrame, *, include_manual: bool) -> list[_Fil
                 fill_id=fill_id,
                 source_group_id=group,
                 instrument=instrument,
-                contract_month=_optional_str(getattr(row, "contract_month")),
-                contract_year=_optional_int(getattr(row, "contract_year")),
+                contract_month=_optional_str(row.contract_month),
+                contract_year=_optional_int(row.contract_year),
                 side=side,
                 qty=qty_int,
                 price=price,
                 timestamp=ts.tz_convert("UTC"),
                 session_date=session,
                 tags=tag_tuple,
-                notes_text=_optional_str(getattr(row, "notes_text")) or "",
-                declared_stop=_optional_float(getattr(row, "declared_stop"), fill_id=fill_id),
-                declared_target=_optional_float(getattr(row, "declared_target"), fill_id=fill_id),
+                notes_text=_optional_str(row.notes_text) or "",
+                declared_stop=_optional_float(row.declared_stop, fill_id=fill_id),
+                declared_target=_optional_float(row.declared_target, fill_id=fill_id),
             )
         )
     return out

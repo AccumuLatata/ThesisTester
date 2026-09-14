@@ -301,7 +301,7 @@ def _parse_zone_levels(zone: pd.Series) -> list[tuple[str, float]]:
     prices = str(prices_raw).split("|") if pd.notna(prices_raw) else []
 
     pairs: list[tuple[str, float]] = []
-    for name, price_raw in zip(names, prices):
+    for name, price_raw in zip(names, prices, strict=False):
         try:
             price = float(price_raw)
         except (TypeError, ValueError):

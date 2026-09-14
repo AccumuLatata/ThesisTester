@@ -152,7 +152,7 @@ def _first_event_on_path(
     )
     if at_start is not None:
         return at_start
-    for start, end in zip(vertices, vertices[1:]):
+    for start, end in zip(vertices, vertices[1:], strict=False):
         candidates: list[tuple[float, int, Literal["SL", "TP"]]] = []
         if _between(stop_price, start, end):
             candidates.append((abs(stop_price - start), 0, "SL"))
@@ -166,7 +166,7 @@ def _first_event_on_path(
 def _path_after_entry(vertices: list[float], entry_price: float | None) -> list[float]:
     if entry_price is None:
         return vertices
-    for index, (start, end) in enumerate(zip(vertices, vertices[1:])):
+    for index, (start, end) in enumerate(zip(vertices, vertices[1:], strict=False)):
         if _between(entry_price, start, end):
             return [entry_price, end, *vertices[index + 2 :]]
     return []

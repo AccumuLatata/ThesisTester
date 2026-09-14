@@ -828,7 +828,7 @@ def _apply_inspect_admit_followup(model: StudyViewerModel) -> None:
     prior_yaml = st.session_state.get(STUDIES_PREVIEW_YAML_KEY)
     try:
         yaml_text = run_inspect_admit_followup(
-            getattr(model, "study_dir"),
+            model.study_dir,
             run_name=run_name,
             ledger_cells=getattr(model, "ledger_cells", None),
             running_ids=running_ids,

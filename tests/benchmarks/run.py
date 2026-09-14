@@ -36,7 +36,7 @@ def run_benchmarks(*, repeats: int = 5) -> list[dict[str, Any]]:
         data = benchmark_ohlcv(bars=bar_count)
         signals = benchmark_signals(bars=bar_count, signal_count=signal_count)
         timing = _timed_ms(
-            lambda: simulate_trades(
+            lambda data=data, signals=signals, max_holding_bars=max_holding_bars: simulate_trades(
                 data,
                 signals,
                 tick_size=0.25,

@@ -589,10 +589,19 @@ Every request must first parse as an `AssistantRequest`, then pass
   builders (`_bar` / `_ohlcv` / `_signal`) stay in the suite that owns
   the contract; do not consolidate them in the same PR as a validator
   or engine change.
-- Lint scope is deliberately narrow (`E4`, `E7`, `E9`, `F`, `W` at line length 100) and applies
-  to Python only — Markdown is excluded so documentation snippets are never rewritten by the
-  formatter. Widening the rule set is a separate, reviewable PR — never a side effect of
-  feature work.
+- Lint scope is `E4`, `E7`, `E9`, `F`, `W`, plus **`B`** (QI-12-09 / B-17;
+  first widening family: `B023` loop-variable = C1 class, `B905`
+  zip-without-strict). Equal-length invariant zips use `strict=True`
+  (groupby keys, TPO bucket↔bar, cohort tokens/labels). Sliding-window
+  `zip(xs, xs[1:])` and ragged `split("|")` name/price pairs keep
+  `strict=False`. Line length 100. Python only — Markdown is excluded
+  so documentation snippets are never rewritten by the formatter. One
+  family per PR; never a side effect of feature work. Never enable `S` on
+  `tests/` (S101 assert flood). Never `PLR2004` as a first wave. Tests
+  ignore noisy `B009`/`B905`/`B017`/`B904`; `B023` stays enforced — a
+  family prefix ignore (`B` / `B0` / `B02`) must not swallow it.
+  Fail-closed lock: `tests/test_ruff_b_family.py`. Next family (UP / I /
+  SIM / …) is its own PR.
 - **E402 / page import path (B-14 / QI-10-08).** Only `pages/1_Data.py` may
   execute code before importing `thesistester` (it inserts `REPO_ROOT` onto
   `sys.path`). The ruff `E402` per-file ignore is that file only — do not

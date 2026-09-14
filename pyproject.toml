@@ -124,14 +124,16 @@ target-version = "py310"
 extend-exclude = [".thesistester_store", "sample_data", "*.md"]
 
 [tool.ruff.lint]
-# Deliberately minimal (R9 is hygiene, not a refactor): pycodestyle errors/warnings and
-# pyflakes correctness rules only. Widening the rule set is a separate, reviewable PR.
-select = ["E4", "E7", "E9", "F", "W"]
+# R9 set plus one widening family per PR (QI-12-09 / B-17). `B` first
+# (B023 loop-variable = C1 class; B905 zip-without-strict). Never `S` on
+# tests/; never `PLR2004` as a first wave. Next family is its own PR.
+select = ["E4", "E7", "E9", "F", "W", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 # QI-10-08 / B-14: only Data executes code before importing `thesistester`
 # (REPO_ROOT onto sys.path). Other pages import at module top and resolve
 # via `pip install -e .` (or AppTest inserting the repo root).
 "pages/1_Data.py" = ["E402"]
-# Test fixtures use `l`/`O` as level/OHLC shorthand in dense hand-built bar tables.
-"tests/**" = ["E741"]
+# Test fixtures use `l`/`O` as level/OHLC shorthand. Noisy bugbear on
+# tests (QI-12-09): keep B023 (C1 loop-variable) enforced.
+"tests/**" = ["E741", "B009", "B905", "B017", "B904"]

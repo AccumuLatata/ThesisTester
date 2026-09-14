@@ -24,6 +24,7 @@ _WALK_FORWARD_COMPUTE = ResourceEnvelope(
     max_simulations=5000,
     max_walk_forward_folds=100,
 )
+_DEFAULT_RESOURCE_ENVELOPE = ResourceEnvelope()
 
 
 def _capability(
@@ -34,7 +35,7 @@ def _capability(
     mode: CapabilityMode,
     confirmation: ConfirmationLevel,
     *,
-    resource_envelope: ResourceEnvelope = ResourceEnvelope(),
+    resource_envelope: ResourceEnvelope = _DEFAULT_RESOURCE_ENVELOPE,
     limitation: str | None = None,
 ) -> Capability:
     return Capability(
