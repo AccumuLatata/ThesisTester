@@ -250,7 +250,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    (`_SIMPLE_TRIGGER_CHECKERS` / `_APPROACH_SIDE_CHECKERS`) plus the
    existing 3c row-mapping body (`_generate_3c_signals`). `_check_touch`,
    the candidate sort key, 3c detectors, and public `VALID_TRIGGERS` are
-   unchanged. Next: C-15.
+   unchanged. Identity vs `origin/main` is live `hash_dataframe` /
+   `assert_frame_equal` (not same-process self-compare; hexes are not
+   frozen). Next: C-15.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers above; C-15 replaces `iterrows` behind them;

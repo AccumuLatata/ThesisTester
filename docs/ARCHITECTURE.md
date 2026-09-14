@@ -1300,7 +1300,9 @@ existing 3c row-mapping body (`_generate_3c_signals`). `_check_*`
 bodies, the `_find_tested_level_for_arrival` sort key, 3c detectors
 (S3 / DA0), and public `VALID_TRIGGERS` are unchanged. C-16 owns
 sharing the two 3c mappers; C-15 owns `iterrows` replacement behind
-these helpers. `classify_zone_triggers` still does not call
+these helpers. Identity vs `origin/main` is live `hash_dataframe` /
+`assert_frame_equal` on CAI + golden fixtures (hexes are not frozen).
+`classify_zone_triggers` still does not call
 `generate_signals`.
 
 ## R22 simulation-core boundary
