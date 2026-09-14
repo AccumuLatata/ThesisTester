@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import shutil
@@ -288,6 +289,24 @@ def _assert_store_roundtrip_hash_identical(
         assert hash_dataframe(restored_sub) == hash_dataframe(subtimeframe)
 
 
+def _dataset_store_snapshot(dataset_id: str) -> dict[str, bytes | None]:
+    """Bytes of persist artifacts; None means the file is absent."""
+    dataset_dir = local_store._dataset_dir(dataset_id)
+    snapshot: dict[str, bytes | None] = {}
+    for name in ("canonical.parquet", "raw.parquet", "subtimeframe.parquet", "meta.json"):
+        path = dataset_dir / name
+        snapshot[name] = path.read_bytes() if path.is_file() else None
+    return snapshot
+
+
+def _module_function(source: str, name: str) -> ast.FunctionDef:
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"missing function {name}")
+
+
 def test_dataset_rejects_conflicting_raw_capture_for_same_canonical_bars():
     df = _base_dataset()
     first_raw = pd.DataFrame(
@@ -545,6 +564,13 @@ def test_dataset_sidecar_policy_one_row_per_conflict(conflict: str, match: str):
         "source_timezone": TZ,
         "exchange_timezone": TZ,
     }
+    dataset_id = compute_dataset_id(
+        df,
+        instrument=common["instrument"],
+        base_interval=common["base_interval"],
+        source_timezone=common["source_timezone"],
+        exchange_timezone=common["exchange_timezone"],
+    )
 
     if conflict.startswith("raw_"):
         first_raw = pd.DataFrame(
@@ -561,6 +587,7 @@ def test_dataset_sidecar_policy_one_row_per_conflict(conflict: str, match: str):
             format_profile="tick_capture",
             **common,
         )
+        before = _dataset_store_snapshot(dataset_id)
         second_raw = first_raw.copy()
         if conflict == "raw_content":
             second_raw.loc[1, "price"] = 100.5
@@ -569,6 +596,7 @@ def test_dataset_sidecar_policy_one_row_per_conflict(conflict: str, match: str):
             second_kwargs = {"raw_data": first_raw, "format_profile": "canonical"}
         with pytest.raises(ValueError, match=match):
             save_dataset(df, name="Conflict raw", **common, **second_kwargs)
+        assert _dataset_store_snapshot(dataset_id) == before
         return
 
     if conflict.startswith("subtf_"):
@@ -583,6 +611,7 @@ def test_dataset_sidecar_policy_one_row_per_conflict(conflict: str, match: str):
             ingestion_provenance=first_provenance,
             **common,
         )
+        before = _dataset_store_snapshot(dataset_id)
         second_sub = first_sub.copy()
         second_kwargs: dict = {
             "subtimeframe_data": first_sub,
@@ -602,6 +631,7 @@ def test_dataset_sidecar_policy_one_row_per_conflict(conflict: str, match: str):
             }
         with pytest.raises(ValueError, match=match):
             save_dataset(df, name="Conflict subtf", **common, **second_kwargs)
+        assert _dataset_store_snapshot(dataset_id) == before
         return
 
     with pytest.raises(ValueError, match=match):
@@ -614,6 +644,73 @@ def test_dataset_sidecar_policy_one_row_per_conflict(conflict: str, match: str):
             },
             **common,
         )
+    dataset_dir = local_store._dataset_dir(dataset_id)
+    assert not dataset_dir.exists()
+    assert _dataset_store_snapshot(dataset_id) == {
+        "canonical.parquet": None,
+        "raw.parquet": None,
+        "subtimeframe.parquet": None,
+        "meta.json": None,
+    }
+
+
+def test_save_dataset_dispatches_sidecar_policy_helpers():
+    """Fail-closed: helpers own S1 needles; save_dataset only dispatches."""
+    source = Path(local_store.__file__).read_text(encoding="utf-8")
+    save_fn = _module_function(source, "save_dataset")
+    raw_fn = _module_function(source, "_apply_raw_sidecar_policy")
+    subtf_fn = _module_function(source, "_apply_subtf_sidecar_policy")
+    called = {
+        node.func.id
+        for node in ast.walk(save_fn)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "_apply_raw_sidecar_policy" in called
+    assert "_apply_subtf_sidecar_policy" in called
+    save_src = ast.get_source_segment(source, save_fn) or ""
+    raw_src = ast.get_source_segment(source, raw_fn) or ""
+    subtf_src = ast.get_source_segment(source, subtf_fn) or ""
+    assert "Refusing to overwrite raw provenance" in raw_src
+    assert "Refusing to overwrite raw provenance" not in save_src
+    assert "Refusing to overwrite subtimeframe provenance" in subtf_src
+    assert "requires a subtimeframe sidecar" in subtf_src
+    assert "Refusing to overwrite subtimeframe provenance" not in save_src
+    assert "requires a subtimeframe sidecar" not in save_src
+
+
+def test_dataset_non_object_meta_does_not_crash_sidecar_policy():
+    """JSON-array meta.json must not AttributeError in sidecar helpers."""
+    df = _base_dataset()
+    raw = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-06-02 09:30:01", periods=2, freq="1s", tz=TZ),
+            "price": [100.0, 100.25],
+            "volume": [1, 2],
+        }
+    )
+    saved = save_dataset(
+        df,
+        name="Tick capture",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+        raw_data=raw,
+        format_profile="tick_capture",
+    )
+    meta_path = Path(saved["path"]) / "meta.json"
+    meta_path.write_text("[]", encoding="utf-8")
+    resaved = save_dataset(
+        df,
+        name="Recovered",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+    assert resaved["dataset_id"] == saved["dataset_id"]
+    pd.testing.assert_frame_equal(load_raw_dataset(resaved["dataset_id"]), raw)
+    _assert_store_roundtrip_hash_identical(resaved["dataset_id"], df, raw=raw)
 
 
 def test_dataset_id_content_sensitivity():

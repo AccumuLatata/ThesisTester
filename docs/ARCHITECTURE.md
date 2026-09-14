@@ -1408,7 +1408,8 @@ Local persistence stores the derived one-minute frame as
 rule change cannot silently fork raw vs subtf vs provenance. Canonical-only
 resave preserves an existing sidecar and its provenance; different sidecar
 content, profile, or subtf provenance raises `ValueError` and does not
-overwrite. Loads fail closed when a declared
+overwrite. Refusal does not write parquet/meta or create a dataset
+directory. Loads fail closed when a declared
 sidecar is missing or unreadable; saves refuse derive-mode provenance
 without a subtimeframe sidecar; restore never latches
 `ingestion_provenance` without usable `subtimeframe_data`. Bootstrap

@@ -14,6 +14,8 @@ from thesistester.data.derive import (
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
 )
 from thesistester.persistence.local_store import (
+    compute_dataset_id,
+    get_store_root,
     hash_dataframe,
     load_dataset,
     load_subtimeframe_dataset,
@@ -334,9 +336,18 @@ def test_15s_primary_local_store_sidecar_conflicts(
                 ingestion_provenance=state["ingestion_provenance"],
                 **common,
             )
+        dataset_id = compute_dataset_id(
+            state["data"],
+            instrument=common["instrument"],
+            base_interval=common["base_interval"],
+            source_timezone=common["source_timezone"],
+            exchange_timezone=common["exchange_timezone"],
+        )
+        dataset_dir = get_store_root() / "datasets" / dataset_id
+        assert not dataset_dir.exists()
         return
 
-    save_dataset(
+    saved = save_dataset(
         state["data"],
         subtimeframe_data=state["subtimeframe_data"],
         subtimeframe_interval=state["subtimeframe_interval"],
@@ -344,6 +355,12 @@ def test_15s_primary_local_store_sidecar_conflicts(
         ingestion_provenance=state["ingestion_provenance"],
         **common,
     )
+    dataset_dir = Path(saved["path"])
+    before = {
+        name: (dataset_dir / name).read_bytes()
+        for name in ("canonical.parquet", "subtimeframe.parquet", "meta.json")
+        if (dataset_dir / name).is_file()
+    }
     conflicting = state["subtimeframe_data"].copy()
     conflicting.iloc[0, conflicting.columns.get_loc("close")] = 999.0
     with pytest.raises(ValueError, match=match):
@@ -355,6 +372,12 @@ def test_15s_primary_local_store_sidecar_conflicts(
             ingestion_provenance=state["ingestion_provenance"],
             **common,
         )
+    after = {
+        name: (dataset_dir / name).read_bytes()
+        for name in ("canonical.parquet", "subtimeframe.parquet", "meta.json")
+        if (dataset_dir / name).is_file()
+    }
+    assert after == before
 
 
 def test_api_15s_primary_ohlc_conflict_source_duplicates_fail_closed(tmp_path: Path):
