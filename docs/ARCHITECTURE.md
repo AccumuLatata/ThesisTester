@@ -1402,7 +1402,13 @@ API/CLI runs that omit `ingestion_mode` remain primary.
 Local persistence stores the derived one-minute frame as
 `canonical.parquet` and the retained 15-second source as
 `subtimeframe.parquet` under dataset schema v2, with
-`ingestion_provenance` in `meta.json`. Loads fail closed when a declared
+`ingestion_provenance` in `meta.json`. **C-12 / QI-01-02:**
+`save_dataset` applies raw and subtf sidecar rules via
+`_apply_raw_sidecar_policy` / `_apply_subtf_sidecar_policy` so a sidecar
+rule change cannot silently fork raw vs subtf vs provenance. Canonical-only
+resave preserves an existing sidecar and its provenance; different sidecar
+content, profile, or subtf provenance raises `ValueError` and does not
+overwrite. Loads fail closed when a declared
 sidecar is missing or unreadable; saves refuse derive-mode provenance
 without a subtimeframe sidecar; restore never latches
 `ingestion_provenance` without usable `subtimeframe_data`. Bootstrap
@@ -1727,7 +1733,11 @@ Signals robustness notes:
 - Datasets: `<store>/datasets/<dataset_id>/`
   (`canonical.parquet`, optional `raw.parquet`, optional
   `subtimeframe.parquet`, `meta.json` with dataset schema v2 fields
-  `has_subtimeframe` / `ingestion_provenance`; schema v1 remains readable)
+  `has_subtimeframe` / `ingestion_provenance`; schema v1 remains readable).
+  C-12 / QI-01-02: sidecar preserve/conflict and derive-without-subtf
+  refusal live in `_apply_raw_sidecar_policy` /
+  `_apply_subtf_sidecar_policy`. Dataset identity stays canonical-hash
+  only (`compute_dataset_id`). Schema v2 write; v1 and v2 read.
 - Levels: `<store>/levels/<dataset_id>/<levels_settings_hash>/`
 - Signal runs: `<store>/signals/<dataset_id>/<levels_settings_hash>/<signal_settings_hash>/`
 - Setups: `<store>/setups/<setup_id>/meta.json`

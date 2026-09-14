@@ -28,6 +28,7 @@ from thesistester.persistence.local_store import (
     list_saved_setups,
     list_saved_levels,
     list_saved_signal_runs,
+    hash_dataframe,
     load_dataset,
     load_raw_dataset,
     load_subtimeframe_dataset,
@@ -224,6 +225,7 @@ def test_dataset_raw_capture_sidecar_roundtrip_does_not_change_canonical_identit
     restored = load_raw_dataset(saved["dataset_id"])
     assert restored is not None
     pd.testing.assert_frame_equal(restored, raw)
+    _assert_store_roundtrip_hash_identical(saved["dataset_id"], df, raw=raw)
     assert saved["format_profile"] == "tick_capture"
     assert saved["raw_rows"] == 2
 
@@ -264,6 +266,26 @@ def test_dataset_resave_preserves_existing_raw_sidecar_metadata():
     assert resaved["raw_interval"] == "0 days 00:00:01"
     assert resaved["raw_rows"] == len(raw)
     pd.testing.assert_frame_equal(load_raw_dataset(resaved["dataset_id"]), raw)
+    _assert_store_roundtrip_hash_identical(resaved["dataset_id"], df, raw=raw)
+
+
+def _assert_store_roundtrip_hash_identical(
+    dataset_id: str,
+    canonical: pd.DataFrame,
+    *,
+    raw: pd.DataFrame | None = None,
+    subtimeframe: pd.DataFrame | None = None,
+) -> None:
+    loaded, _ = load_dataset(dataset_id)
+    assert hash_dataframe(loaded) == hash_dataframe(canonical)
+    if raw is not None:
+        restored_raw = load_raw_dataset(dataset_id)
+        assert restored_raw is not None
+        assert hash_dataframe(restored_raw) == hash_dataframe(raw)
+    if subtimeframe is not None:
+        restored_sub = load_subtimeframe_dataset(dataset_id)
+        assert restored_sub is not None
+        assert hash_dataframe(restored_sub) == hash_dataframe(subtimeframe)
 
 
 def test_dataset_rejects_conflicting_raw_capture_for_same_canonical_bars():
@@ -350,6 +372,7 @@ def test_dataset_subtimeframe_sidecar_roundtrip_schema_v2():
     pd.testing.assert_frame_equal(loaded_df, df.reset_index(drop=True))
     assert restored_sub is not None
     pd.testing.assert_frame_equal(restored_sub, sub)
+    _assert_store_roundtrip_hash_identical(saved["dataset_id"], df, subtimeframe=sub)
     assert loaded_meta["has_subtimeframe"] is True
     assert loaded_meta["ingestion_provenance"] == provenance
 
@@ -384,6 +407,7 @@ def test_dataset_resave_preserves_existing_subtimeframe_sidecar_metadata():
     assert resaved["subtimeframe_interval"] == "15s"
     assert resaved["ingestion_provenance"] == provenance
     pd.testing.assert_frame_equal(load_subtimeframe_dataset(resaved["dataset_id"]), sub)
+    _assert_store_roundtrip_hash_identical(resaved["dataset_id"], df, subtimeframe=sub)
 
 
 def test_dataset_rejects_conflicting_subtimeframe_for_same_canonical_bars():
@@ -498,6 +522,97 @@ def test_dataset_rejects_derive_provenance_without_subtimeframe_sidecar():
                 "ingestion_mode": "15s_primary_derive_1m",
                 "derivation_policy": "complete_aligned_15s_to_1m_v1",
             },
+        )
+
+
+@pytest.mark.parametrize(
+    ("conflict", "match"),
+    [
+        ("raw_content", "Refusing to overwrite raw provenance"),
+        ("raw_profile", "Refusing to overwrite raw provenance"),
+        ("subtf_content", "Refusing to overwrite subtimeframe provenance"),
+        ("subtf_profile", "Refusing to overwrite subtimeframe provenance"),
+        ("subtf_provenance", "Refusing to overwrite subtimeframe provenance"),
+        ("derive_without_subtf", "requires a subtimeframe sidecar"),
+    ],
+)
+def test_dataset_sidecar_policy_one_row_per_conflict(conflict: str, match: str):
+    """C-12 / QI-01-02: one probe row per sidecar conflict (S1 unchanged)."""
+    df = _base_dataset()
+    common = {
+        "instrument": "ES",
+        "base_interval": "1min",
+        "source_timezone": TZ,
+        "exchange_timezone": TZ,
+    }
+
+    if conflict.startswith("raw_"):
+        first_raw = pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2026-06-02 09:30:01", periods=2, freq="1s", tz=TZ),
+                "price": [100.0, 100.25],
+                "volume": [1, 2],
+            }
+        )
+        save_dataset(
+            df,
+            name="Seed raw",
+            raw_data=first_raw,
+            format_profile="tick_capture",
+            **common,
+        )
+        second_raw = first_raw.copy()
+        if conflict == "raw_content":
+            second_raw.loc[1, "price"] = 100.5
+            second_kwargs = {"raw_data": second_raw, "format_profile": "tick_capture"}
+        else:
+            second_kwargs = {"raw_data": first_raw, "format_profile": "canonical"}
+        with pytest.raises(ValueError, match=match):
+            save_dataset(df, name="Conflict raw", **common, **second_kwargs)
+        return
+
+    if conflict.startswith("subtf_"):
+        first_sub = _subtimeframe_dataset()
+        first_provenance = {"ingestion_mode": "15s_primary_derive_1m"}
+        save_dataset(
+            df,
+            name="Seed subtf",
+            subtimeframe_data=first_sub,
+            subtimeframe_interval="15s",
+            subtimeframe_format_profile="quantower_history_exporter",
+            ingestion_provenance=first_provenance,
+            **common,
+        )
+        second_sub = first_sub.copy()
+        second_kwargs: dict = {
+            "subtimeframe_data": first_sub,
+            "subtimeframe_interval": "15s",
+            "subtimeframe_format_profile": "quantower_history_exporter",
+            "ingestion_provenance": first_provenance,
+        }
+        if conflict == "subtf_content":
+            second_sub.loc[1, "close"] = 999.0
+            second_kwargs["subtimeframe_data"] = second_sub
+        elif conflict == "subtf_profile":
+            second_kwargs["subtimeframe_format_profile"] = "canonical"
+        else:
+            second_kwargs["ingestion_provenance"] = {
+                "ingestion_mode": "15s_primary_derive_1m",
+                "dropped_parent_bucket_count": 1,
+            }
+        with pytest.raises(ValueError, match=match):
+            save_dataset(df, name="Conflict subtf", **common, **second_kwargs)
+        return
+
+    with pytest.raises(ValueError, match=match):
+        save_dataset(
+            df,
+            name="Derive without sidecar",
+            ingestion_provenance={
+                "ingestion_mode": "15s_primary_derive_1m",
+                "derivation_policy": "complete_aligned_15s_to_1m_v1",
+            },
+            **common,
         )
 
 

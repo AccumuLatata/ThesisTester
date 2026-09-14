@@ -68,7 +68,9 @@ barrel and lazy-binds classify so `import thesistester.journal` does not
 load `engine.backtest`. C-10 (QI-08-01) is one qty-scaled P&L helper
 (`qty_scaled_journal_pnl`) plus shared `journal_cost_ticks`. C-11 (QI-06-10)
 extracts execution-artifact verify/publish/evict helpers behind containment
-guards. Next: C-12.
+guards. C-12 (QI-01-02) extracts raw/subtf sidecar policy helpers from
+`save_dataset` (preserve/conflict and derive-without-subtf refusal
+unchanged). Next: C-13.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -232,7 +234,9 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    C-10 (QI-08-01) is `qty_scaled_journal_pnl` (pair then `_cost_row`) plus
    shared `journal_cost_ticks`. C-11 (QI-06-10) extracts verify/publish/evict
    helpers from `execution_artifacts.py` (containment guards unchanged).
-   Next: C-12.
+   C-12 (QI-01-02) extracts `_apply_raw_sidecar_policy` /
+   `_apply_subtf_sidecar_policy` from `save_dataset` (S1 preserve/conflict
+   and derive-without-subtf refusal unchanged). Next: C-13.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity.
 5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`
