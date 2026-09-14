@@ -134,8 +134,10 @@ must never auto-delete user snapshots, bundles, or thesis records.
 
 C-15 replaces `iterrows` with column arrays / `iloc` behind the C-14
 `generate_signals` helpers (`_index_trigger_rows_by_base_end`, zone-naked
-admission, 3c HTF `trigger_bar_index → base_end` map, and
-`_project_zones_to_trigger_df`). Nullable dtypes were **not** changed;
+admission, 3c HTF `trigger_bar_index → base_end` map via
+`_index_base_end_by_trigger_bar`, and `_project_zones_to_trigger_df`).
+Empty trigger frames stay an empty map (no column access). Nullable
+dtypes were **not** changed;
 `generate_signals` hashes stay identical to C-14. Timing below is
 informational on this image (CPython 3.12.3, tick-gated realistic,
 `--repeats 5`). It does **not** replace the CAI-0 historical table above.

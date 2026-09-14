@@ -25,6 +25,8 @@ from thesistester.engine.signals import (
     _check_reclaim,
     _check_reject,
     _check_touch,
+    _classify_zone_triggers_detail,
+    _index_base_end_by_trigger_bar,
     _index_trigger_rows_by_base_end,
     _prepare_generate_trigger_frame,
     _safe_signal_float,
@@ -1321,6 +1323,7 @@ class TestGenerateSignalsPhases:
         tree = ast.parse(Path("thesistester/engine/signals.py").read_text())
         helpers = {
             "_index_trigger_rows_by_base_end",
+            "_index_base_end_by_trigger_bar",
             "_prepare_generate_trigger_frame",
             "_admit_zones_for_signals",
             "_generate_3c_signals",
@@ -1349,6 +1352,56 @@ class TestGenerateSignalsPhases:
         indexed = _index_trigger_rows_by_base_end(trigger_df)
         assert set(indexed) == set(by_end) == {0, 1}
         assert int(indexed[1].trigger_bar_index) == int(by_end[1].trigger_bar_index) == 1
+
+    def test_index_base_end_empty_frame_without_trigger_columns(self):
+        """Empty ``_prepare_trigger_dataframe`` return has no trigger columns."""
+        empty = pd.DataFrame({"timestamp": pd.Series(dtype="datetime64[ns, UTC]")})
+        assert _index_base_end_by_trigger_bar(empty) == {}
+        assert _index_trigger_rows_by_base_end(empty) == {}
+
+    def test_admit_past_frame_does_not_require_level_columns(self):
+        """C-14 iterrows only read level_* after the bar-index gate."""
+        df = _df_bars([{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}])
+        df_reset, _, by_end = _prepare_generate_trigger_frame(df, "base")
+        zones = pd.DataFrame({"bar_index": [9], "zone_low": [100.0], "zone_high": [100.5]})
+        admitted = _admit_zones_for_signals(
+            zones,
+            df_reset,
+            "touch",
+            by_end,
+            naked_only=False,
+            naked_flags=None,
+            naked_req="any",
+        )
+        assert admitted == []
+
+    def test_classify_keeps_empty_indexed_timeframe(self, monkeypatch):
+        """``trigger_timeframe or arg`` would replace "" with the argument."""
+        df = _df_bars(
+            [
+                {"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0},
+                {"open": 100.1, "high": 100.6, "low": 99.6, "close": 100.2},
+            ]
+        )
+        from thesistester.engine.signals import _prepare_trigger_dataframe
+
+        prepared = _prepare_trigger_dataframe(df, "base")
+        prepared = prepared.copy()
+        prepared["trigger_timeframe"] = ""
+        monkeypatch.setattr(
+            "thesistester.engine.signals._prepare_trigger_dataframe",
+            lambda *_args, **_kwargs: prepared,
+        )
+        seen: list[str] = []
+
+        def _capture_touch(frame, zone, mapped_idx, base_bar_idx, effective_tf, *args, **kwargs):
+            seen.append(effective_tf)
+            return _check_touch(frame, zone, mapped_idx, base_bar_idx, effective_tf, *args, **kwargs)
+
+        monkeypatch.setattr("thesistester.engine.signals._check_touch", _capture_touch)
+        zone = _zone_df(0, 100.0, 100.25).iloc[0]
+        _classify_zone_triggers_detail(df, zone, 0, "long", trigger_timeframe="base")
+        assert seen == [""]
 
     def test_generate_signals_identity_vs_origin_main(self, tmp_path):
         """Live vs origin/main — same-process self-compare is false-green."""
@@ -1520,6 +1573,24 @@ class TestGenerateSignalsPhases:
             )
         )
 
+        empty_df = _df_bars(
+            [{"open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0}]
+        ).iloc[0:0]
+        cases.append(
+            (
+                "empty df 3c HTF naked_flags",
+                (empty_df, three_c_zones),
+                {
+                    "trigger": "3c",
+                    "direction": "long",
+                    "tick_size": TICK,
+                    "trigger_timeframe": "5min",
+                    "naked_flags": pd.DataFrame({"level_A_naked": pd.Series(dtype=bool)}),
+                    "trigger_params": three_c_params,
+                },
+            )
+        )
+
         for label, args, kwargs in cases:
             current = generate_signals(*args, **kwargs)
             expected = baseline(*args, **kwargs)
@@ -1533,3 +1604,5 @@ class TestGenerateSignalsPhases:
                 assert len(current) == 1
             if label == "CAI small":
                 assert len(current) == 120
+            if label == "empty df 3c HTF naked_flags":
+                assert len(current) == 0

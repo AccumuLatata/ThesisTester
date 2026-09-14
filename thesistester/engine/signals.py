@@ -950,6 +950,23 @@ def _index_trigger_rows_by_base_end(trigger_df: pd.DataFrame) -> dict[int, _Trig
     return indexed
 
 
+def _index_base_end_by_trigger_bar(trigger_df: pd.DataFrame) -> dict[int, int]:
+    """Index ``base_end_bar_index`` by ``trigger_bar_index`` via column arrays.
+
+    Empty frames (including the ``_prepare_trigger_dataframe`` empty-df early
+    return, which has no trigger columns) match ``iterrows``: no column
+    access, empty map.
+    """
+    if trigger_df.empty:
+        return {}
+    trigger_idx = trigger_df["trigger_bar_index"].to_numpy()
+    trigger_base_end = trigger_df["base_end_bar_index"].to_numpy()
+    return {
+        int(trig): int(base)
+        for trig, base in zip(trigger_idx, trigger_base_end, strict=True)
+    }
+
+
 def _prepare_generate_trigger_frame(
     df: pd.DataFrame, trigger_timeframe: str
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[int, _TriggerRowRef]]:
@@ -974,9 +991,9 @@ def _admit_zones_for_signals(
     if zones.empty:
         return filtered_zones
 
+    # bar_index is the only column iterrows always read. level_names /
+    # level_count are read only after the bar-index gates (C-14 access order).
     bar_indices = zones["bar_index"].to_numpy()
-    level_names = zones["level_names"].to_numpy()
-    level_counts = zones["level_count"].to_numpy()
     n_df = len(df_reset)
     is_3c = trigger == "3c"
     for i in range(len(zones)):
@@ -989,15 +1006,15 @@ def _admit_zones_for_signals(
         zone = zones.iloc[i]
         # Naked filter
         if naked_only:
-            ncount = _naked_count(str(level_names[i]), bar_idx, naked_flags)
-            n_levels = int(level_counts[i])
+            ncount = _naked_count(str(zone["level_names"]), bar_idx, naked_flags)
+            n_levels = int(zone["level_count"])
             if naked_req == "all" and ncount < n_levels:
                 continue
             if naked_req == "any" and ncount == 0:
                 continue
         else:
             ncount = (
-                _naked_count(str(level_names[i]), bar_idx, naked_flags)
+                _naked_count(str(zone["level_names"]), bar_idx, naked_flags)
                 if naked_flags is not None
                 else 0
             )
@@ -1202,13 +1219,8 @@ def _generate_3c_signals(
         # We store base_end_bar_index from the projected zone in candidate metadata
         # so that detect_3c_setups_with_trigger_timeframe can use it.
         if naked_flags is not None:
-            # Build a lookup: trigger_bar_index -> base_end_bar_index
-            trigger_idx = trigger_df_3c["trigger_bar_index"].to_numpy()
-            trigger_base_end = trigger_df_3c["base_end_bar_index"].to_numpy()
-            trigger_base_end_map: dict[int, int] = {
-                int(trig): int(base)
-                for trig, base in zip(trigger_idx, trigger_base_end, strict=True)
-            }
+            # trigger_bar_index -> base_end_bar_index (empty-safe; C-15)
+            trigger_base_end_map = _index_base_end_by_trigger_bar(trigger_df_3c)
             enriched_nb: list[CandidateLevel] = []
             for candidate in candidates:
                 state = None
@@ -1695,7 +1707,7 @@ def _classify_zone_triggers_detail(
     dummy_req = "any"
     labels: list[str] = []
     implied: dict[str, str] = {}
-    effective_tf = trigger_row.trigger_timeframe or trigger_timeframe
+    effective_tf = trigger_row.trigger_timeframe
     if (
         _check_touch(
             prepared,

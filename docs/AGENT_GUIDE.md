@@ -77,7 +77,8 @@ phases (TF prep, zone-naked admission, trigger dispatch table).
 `_check_touch`, the candidate sort key, 3c math (S3 / DA0), and public
 `VALID_TRIGGERS` stay untouched. C-15 (QI-14-05) replaces `iterrows`
 with column arrays / `iloc` behind those helpers (nullable dtypes
-unchanged — hashes stay identical). Next: C-16.
+unchanged — hashes stay identical). Empty trigger frames stay an
+empty HTF map. Next: C-16.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -256,8 +257,10 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    `assert_frame_equal` (not same-process self-compare; hexes are not
    frozen). C-15 (QI-14-05) replaces `iterrows` with column arrays /
    `iloc` behind the C-14 helpers (`_index_trigger_rows_by_base_end`
-   as a `_TriggerRowRef` column-array index, admission, 3c HTF lookup,
-   zone projection). Nullable dtypes were not changed. Next: C-16.
+   as a `_TriggerRowRef` column-array index, admission, 3c HTF lookup
+   via `_index_base_end_by_trigger_bar`, zone projection). Empty trigger
+   frames stay an empty map (iterrows-equivalent; no column access).
+   Nullable dtypes were not changed. Next: C-16.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
