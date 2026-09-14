@@ -845,12 +845,7 @@ def _imported_names(source: str, module_name: str) -> tuple[str, ...]:
 
 def _assert_no_banned_imports(source: str, module_name: str, banned: tuple[str, ...]) -> None:
     imported = _imported_names(source, module_name)
-    leaked = [
-        name
-        for name in imported
-        for ban in banned
-        if _hits_ban(name, ban)
-    ]
+    leaked = [name for name in imported for ban in banned if _hits_ban(name, ban)]
     assert leaked == [], f"{module_name}: {leaked}"
 
 
