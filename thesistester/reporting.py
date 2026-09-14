@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from datetime import date, datetime, time, timezone
 from math import isinf, isnan
-from typing import Any, Mapping
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -1359,8 +1360,15 @@ def _otf_validation_markdown_section(otf_val: Mapping[str, Any] | None) -> str:
     return section
 
 
-def build_markdown_report(artifact: dict[str, Any]) -> str:
-    """Build a concise markdown report from a research artifact."""
+class MarkdownReportSection(NamedTuple):
+    """One markdown report section: name plus collector over a shared context."""
+
+    name: str
+    collect: Callable[[dict[str, Any]], list[str]]
+
+
+def _markdown_report_context(artifact: dict[str, Any]) -> dict[str, Any]:
+    """Extract artifact mappings used by markdown section collectors."""
     metadata = artifact.get("metadata", {}) if isinstance(artifact, Mapping) else {}
     config = artifact.get("configuration", {}) if isinstance(artifact, Mapping) else {}
     data_quality = artifact.get("data_quality", {}) if isinstance(artifact, Mapping) else {}
@@ -1410,19 +1418,70 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     roll_validation = (
         data_quality.get("roll_validation") if isinstance(data_quality, Mapping) else {}
     )
+    otf_val = artifact.get("otf_validation") if isinstance(artifact, Mapping) else None
+    confluence_combo = artifact.get("confluence_combo") if isinstance(artifact, Mapping) else None
+    return {
+        "artifact": artifact,
+        "metadata": metadata,
+        "config": config,
+        "results": results,
+        "tables": tables,
+        "otf_meta": otf_meta,
+        "entry_window_meta": entry_window_meta,
+        "setup": setup,
+        "trade_summary": trade_summary,
+        "best_grid": best_grid,
+        "excursion": excursion,
+        "monte_carlo": monte_carlo,
+        "noise": noise,
+        "overfitting": overfitting,
+        "sensitivity": sensitivity,
+        "portfolio": portfolio,
+        "walk_forward": walk_forward,
+        "intrabar_policy": intrabar_policy,
+        "intrabar_diagnostic": intrabar_diagnostic,
+        "exit_mgmt_policy": exit_mgmt_policy,
+        "exit_mgmt_diagnostic": exit_mgmt_diagnostic,
+        "levels_str": levels_str,
+        "grid_metric_name": grid_metric_name,
+        "grid_metric_value": grid_metric_value,
+        "bootstrap": bootstrap,
+        "permutation": permutation,
+        "trade_count_diag": trade_count_diag,
+        "grid_overfit": grid_overfit,
+        "roll_policy": roll_policy,
+        "roll_validation": roll_validation,
+        "otf_val": otf_val,
+        "confluence_combo": confluence_combo,
+    }
 
-    lines = [
+
+def _md_title(_ctx: dict[str, Any]) -> list[str]:
+    return [
         "# ThesisTester Research Report",
         "",
+    ]
+
+
+def _md_metadata(ctx: dict[str, Any]) -> list[str]:
+    metadata = ctx["metadata"]
+    return [
         "## Metadata",
         f"- Generated at: {metadata.get('generated_at', '—')}",
         f"- App: {metadata.get('app', 'ThesisTester')}",
         f"- Schema version: {metadata.get('schema_version', '—')}",
         "",
+    ]
+
+
+def _md_setup(ctx: dict[str, Any]) -> list[str]:
+    config = ctx["config"]
+    setup = ctx["setup"]
+    return [
         "## Setup Configuration",
         f"- Instrument: {config.get('instrument', '—')}",
         f"- Setup name: {setup.get('name', '—') if isinstance(setup, Mapping) else '—'}",
-        f"- Selected levels: {levels_str}",
+        f"- Selected levels: {ctx['levels_str']}",
         f"- Trigger: {setup.get('trigger', '—') if isinstance(setup, Mapping) else '—'}",
         f"- Direction: {setup.get('direction', '—') if isinstance(setup, Mapping) else '—'}",
         f"- Naked only: {setup.get('naked_only', '—') if isinstance(setup, Mapping) else '—'}",
@@ -1434,10 +1493,31 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
             else "- Confluence settings: —"
         ),
         "",
+    ]
+
+
+def _md_signals(ctx: dict[str, Any]) -> list[str]:
+    results = ctx["results"]
+    tables = ctx["tables"]
+    return [
         "## Signal Summary",
         f"- Signal count: {results.get('signal_count', 0)}",
-        f"- Signal table rows exported: {len(tables.get('signals', [])) if isinstance(tables.get('signals', []), list) else 0}",
+        (
+            f"- Signal table rows exported: "
+            f"{len(tables.get('signals', [])) if isinstance(tables.get('signals', []), list) else 0}"
+        ),
         "",
+    ]
+
+
+def _md_backtest(ctx: dict[str, Any]) -> list[str]:
+    results = ctx["results"]
+    trade_summary = ctx["trade_summary"]
+    intrabar_policy = ctx["intrabar_policy"]
+    intrabar_diagnostic = ctx["intrabar_diagnostic"]
+    exit_mgmt_policy = ctx["exit_mgmt_policy"]
+    exit_mgmt_diagnostic = ctx["exit_mgmt_diagnostic"]
+    return [
         "## Backtest Summary",
         f"- Trade count: {results.get('trade_count', 0)}",
         f"- Win rate: {_fmt_pct(trade_summary.get('win_rate') if isinstance(trade_summary, Mapping) else None)}",
@@ -1460,15 +1540,33 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- BE exits: {exit_mgmt_diagnostic.get('be_exit_count', 0) if isinstance(exit_mgmt_diagnostic, Mapping) else 0}",
         f"- TRAIL exits: {exit_mgmt_diagnostic.get('trail_exit_count', 0) if isinstance(exit_mgmt_diagnostic, Mapping) else 0}",
         "",
+    ]
+
+
+def _md_walk_forward(ctx: dict[str, Any]) -> list[str]:
+    config = ctx["config"]
+    walk_forward = ctx["walk_forward"]
+    return [
         "## Walk-Forward / OOS Diagnostics",
-        f"- Fold mode: {(config.get('walk_forward_config') or {}).get('fold_mode', 'bars') if isinstance(config.get('walk_forward_config'), Mapping) else 'bars'}",
-        f"- Window mode: {(config.get('walk_forward_config') or {}).get('window_mode', 'rolling') if isinstance(config.get('walk_forward_config'), Mapping) else 'rolling'}",
+        (
+            f"- Fold mode: {(config.get('walk_forward_config') or {}).get('fold_mode', 'bars') if isinstance(config.get('walk_forward_config'), Mapping) else 'bars'}"
+        ),
+        (
+            f"- Window mode: {(config.get('walk_forward_config') or {}).get('window_mode', 'rolling') if isinstance(config.get('walk_forward_config'), Mapping) else 'rolling'}"
+        ),
         f"- Valid folds: {walk_forward.get('valid_fold_count', 0) if isinstance(walk_forward, Mapping) else 0}",
         f"- Median OOS expectancy R: {_fmt_number(walk_forward.get('median_test_expectancy_r') if isinstance(walk_forward, Mapping) else None)}",
         f"- Median expectancy retention ratio: {_fmt_number(walk_forward.get('median_retention_ratio_expectancy') if isinstance(walk_forward, Mapping) else None)}",
         f"- Stitched OOS total R: {_fmt_number(walk_forward.get('stitched_oos_total_r') if isinstance(walk_forward, Mapping) else None)}",
         f"- Stitched OOS status: {walk_forward.get('stitched_oos_status', 'unavailable') if isinstance(walk_forward, Mapping) else 'unavailable'}",
         "",
+    ]
+
+
+def _md_overfitting(ctx: dict[str, Any]) -> list[str]:
+    overfitting = ctx["overfitting"]
+    trade_summary = ctx["trade_summary"]
+    return [
         "## Overfitting-Detection Battery",
         f"- PBO: {_fmt_pct((overfitting.get('pbo') or {}).get('pbo') if isinstance(overfitting, Mapping) else None)}",
         f"- Deflated Sharpe probability: {_fmt_pct((overfitting.get('deflated_sharpe') or {}).get('dsr') if isinstance(overfitting, Mapping) else None)}",
@@ -1483,15 +1581,43 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Tail ratio: {_fmt_number(trade_summary.get('tail_ratio') if isinstance(trade_summary, Mapping) else None)}",
         f"- Outlier dependency ratio: {_fmt_number(trade_summary.get('outlier_dependency_ratio') if isinstance(trade_summary, Mapping) else None)}",
         "",
+    ]
+
+
+def _md_grid(ctx: dict[str, Any]) -> list[str]:
+    tables = ctx["tables"]
+    best_grid = ctx["best_grid"]
+    return [
         "## Grid Search Summary",
-        f"- Grid rows exported: {len(tables.get('grid_results', [])) if isinstance(tables.get('grid_results', []), list) else 0}",
+        (
+            f"- Grid rows exported: "
+            f"{len(tables.get('grid_results', [])) if isinstance(tables.get('grid_results', []), list) else 0}"
+        ),
         f"- Best SL ticks: {best_grid.get('stop_loss_ticks', '—') if isinstance(best_grid, Mapping) else '—'}",
         f"- Best TP ticks: {best_grid.get('take_profit_ticks', '—') if isinstance(best_grid, Mapping) else '—'}",
-        f"- Best metric: {grid_metric_name or '—'} = {_fmt_number(grid_metric_value)}",
+        f"- Best metric: {ctx['grid_metric_name'] or '—'} = {_fmt_number(ctx['grid_metric_value'])}",
         "",
+    ]
+
+
+def _md_time_analysis(ctx: dict[str, Any]) -> list[str]:
+    tables = ctx["tables"]
+    return [
         "## Time Analysis Summary",
-        f"- Grouped summary rows exported: {len(tables.get('time_grouped_summary', [])) if isinstance(tables.get('time_grouped_summary', []), list) else 0}",
+        (
+            f"- Grouped summary rows exported: "
+            f"{len(tables.get('time_grouped_summary', [])) if isinstance(tables.get('time_grouped_summary', []), list) else 0}"
+        ),
         "",
+    ]
+
+
+def _md_validation(ctx: dict[str, Any]) -> list[str]:
+    bootstrap = ctx["bootstrap"]
+    permutation = ctx["permutation"]
+    trade_count_diag = ctx["trade_count_diag"]
+    grid_overfit = ctx["grid_overfit"]
+    return [
         "## Validation Diagnostics",
         "⚠️ Diagnostic only — not a significance test and not proof of edge.",
         "",
@@ -1503,148 +1629,207 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         "",
     ]
 
-    if isinstance(excursion, Mapping) and excursion.get("available"):
-        edge_ratio = excursion.get("edge_ratio") if isinstance(excursion, Mapping) else {}
-        config_exc = excursion.get("config") if isinstance(excursion, Mapping) else {}
-        lines.extend(
-            [
-                "## Excursion Analytics",
-                "⚠️ Diagnostic only — terminal bar-level MAE/MFE cannot prove intrabar order.",
-                "",
-                f"- Trades with excursions: {excursion.get('trade_count', 0)}",
-                f"- Mean MAE (R): {_fmt_number(edge_ratio.get('mean_mae_r') if isinstance(edge_ratio, Mapping) else None)}",
-                f"- Mean MFE (R): {_fmt_number(edge_ratio.get('mean_mfe_r') if isinstance(edge_ratio, Mapping) else None)}",
-                f"- Mean edge ratio: {_fmt_number(edge_ratio.get('mean_edge_ratio_r') if isinstance(edge_ratio, Mapping) else None)}",
-                f"- Median edge ratio: {_fmt_number(edge_ratio.get('median_edge_ratio_r') if isinstance(edge_ratio, Mapping) else None)}",
-                f"- Calibration both-hit rule: {config_exc.get('both_hit_rule', '—') if isinstance(config_exc, Mapping) else '—'}",
-                f"- Grouped summary rows exported: {len(tables.get('excursion_grouped_summary', [])) if isinstance(tables.get('excursion_grouped_summary', []), list) else 0}",
-                f"- Calibration grid rows exported: {len(tables.get('excursion_calibration_grid', [])) if isinstance(tables.get('excursion_calibration_grid', []), list) else 0}",
-                "",
-            ]
-        )
 
-    if isinstance(monte_carlo, Mapping) and monte_carlo.get("available"):
-        mc_methods = monte_carlo.get("methods") if isinstance(monte_carlo, Mapping) else {}
-        mc_config = monte_carlo.get("config") if isinstance(monte_carlo, Mapping) else {}
-        lines.extend(
-            [
-                "## Monte Carlo Path Robustness",
-                "⚠️ Diagnostic only — resamples the realized trade sequence and does not prove edge.",
-                "",
-                f"- Trades: {monte_carlo.get('trade_count', 0)}",
-                f"- Simulations per method: {mc_config.get('n_simulations', '—') if isinstance(mc_config, Mapping) else '—'}",
-                f"- Methods: {', '.join(mc_methods.keys()) if isinstance(mc_methods, Mapping) else '—'}",
-            ]
-        )
-        if isinstance(mc_methods, Mapping):
-            for method_name, method in mc_methods.items():
-                observed = method.get("observed", {}) if isinstance(method, Mapping) else {}
-                simulated = method.get("simulated", {}) if isinstance(method, Mapping) else {}
-                max_dd = (
-                    simulated.get("max_drawdown_r", {}) if isinstance(simulated, Mapping) else {}
-                )
-                loss_streak = (
-                    simulated.get("max_loss_streak", {}) if isinstance(simulated, Mapping) else {}
-                )
-                lines.extend(
-                    [
-                        f"- {method_name}: observed final R {_fmt_number(observed.get('final_r') if isinstance(observed, Mapping) else None)}, "
-                        f"P95 max DD {_fmt_number(max_dd.get('p95') if isinstance(max_dd, Mapping) else None)}, "
-                        f"P95 loss streak {_fmt_number(loss_streak.get('p95') if isinstance(loss_streak, Mapping) else None, '.0f')}",
-                    ]
-                )
-        lines.append("")
+def _md_excursion(ctx: dict[str, Any]) -> list[str]:
+    excursion = ctx["excursion"]
+    tables = ctx["tables"]
+    if not (isinstance(excursion, Mapping) and excursion.get("available")):
+        return []
+    edge_ratio = excursion.get("edge_ratio") if isinstance(excursion, Mapping) else {}
+    config_exc = excursion.get("config") if isinstance(excursion, Mapping) else {}
+    return [
+        "## Excursion Analytics",
+        "⚠️ Diagnostic only — terminal bar-level MAE/MFE cannot prove intrabar order.",
+        "",
+        f"- Trades with excursions: {excursion.get('trade_count', 0)}",
+        f"- Mean MAE (R): {_fmt_number(edge_ratio.get('mean_mae_r') if isinstance(edge_ratio, Mapping) else None)}",
+        f"- Mean MFE (R): {_fmt_number(edge_ratio.get('mean_mfe_r') if isinstance(edge_ratio, Mapping) else None)}",
+        f"- Mean edge ratio: {_fmt_number(edge_ratio.get('mean_edge_ratio_r') if isinstance(edge_ratio, Mapping) else None)}",
+        f"- Median edge ratio: {_fmt_number(edge_ratio.get('median_edge_ratio_r') if isinstance(edge_ratio, Mapping) else None)}",
+        f"- Calibration both-hit rule: {config_exc.get('both_hit_rule', '—') if isinstance(config_exc, Mapping) else '—'}",
+        (
+            f"- Grouped summary rows exported: "
+            f"{len(tables.get('excursion_grouped_summary', [])) if isinstance(tables.get('excursion_grouped_summary', []), list) else 0}"
+        ),
+        (
+            f"- Calibration grid rows exported: "
+            f"{len(tables.get('excursion_calibration_grid', [])) if isinstance(tables.get('excursion_calibration_grid', []), list) else 0}"
+        ),
+        "",
+    ]
 
-    if isinstance(noise, Mapping) and noise.get("available"):
-        replicas = noise.get("replicas") if isinstance(noise, Mapping) else {}
-        noise_config = noise.get("config") if isinstance(noise, Mapping) else {}
-        expectancy = replicas.get("expectancy_r", {}) if isinstance(replicas, Mapping) else {}
-        persistence = (
-            replicas.get("trade_persistence_rate", {}) if isinstance(replicas, Mapping) else {}
-        )
-        lines.extend(
-            [
-                "## Price-Series Noise Test",
-                "⚠️ Diagnostic only — perturbs OHLC input and reruns the full pipeline; it does not prove edge.",
-                "",
-                f"- Replicas: {replicas.get('n_completed', 0) if isinstance(replicas, Mapping) else 0}",
-                f"- Noise: {noise_config.get('noise_fraction', '—') if isinstance(noise_config, Mapping) else '—'} × {noise_config.get('scale_basis', '—') if isinstance(noise_config, Mapping) else '—'}",
-                f"- P50 expectancy R: {_fmt_number(expectancy.get('p50') if isinstance(expectancy, Mapping) else None)}",
-                f"- P50 trade persistence: {_fmt_pct(persistence.get('p50') if isinstance(persistence, Mapping) else None)}",
-                "",
-            ]
-        )
 
-    if isinstance(sensitivity, Mapping) and sensitivity.get("available"):
-        profiles = sensitivity.get("parameters") if isinstance(sensitivity, Mapping) else []
-        fragile_count = sensitivity.get("fragile_parameter_count", 0)
-        lines.extend(
-            [
-                "## Parameter Sensitivity (SPP-lite)",
-                "⚠️ Diagnostic only — local one-at-a-time execution-parameter changes do not measure interactions or prove edge.",
-                "",
-                f"- Parameters profiled: {len(profiles) if isinstance(profiles, list) else 0}",
-                f"- Fragile parameters: {fragile_count}",
-                f"- Baseline expectancy R: {_fmt_number((sensitivity.get('baseline') or {}).get('expectancy_r') if isinstance(sensitivity.get('baseline'), Mapping) else None)}",
-                "",
-            ]
-        )
-
-    if isinstance(portfolio, Mapping) and portfolio.get("available"):
-        portfolio_metrics = portfolio.get("portfolio_metrics") or {}
-        admission = portfolio.get("admission") or {}
-        lines.extend(
-            [
-                "## Multi-Setup Portfolio",
-                "⚠️ Diagnostic only — post-hoc completed-trade merge, not a capital or fill simulation.",
-                "",
-                f"- Setup count: {len((portfolio.get('config') or {}).get('setup_ids', []))}",
-                f"- Portfolio total R: {_fmt_number(portfolio_metrics.get('total_r') if isinstance(portfolio_metrics, Mapping) else None)}",
-                f"- Portfolio max drawdown R: {_fmt_number(portfolio_metrics.get('max_drawdown_r') if isinstance(portfolio_metrics, Mapping) else None)}",
-                f"- Admitted / skipped trades: {admission.get('admitted_trade_count', 0) if isinstance(admission, Mapping) else 0} / {admission.get('skipped_trade_count', 0) if isinstance(admission, Mapping) else 0}",
-                "",
-            ]
-        )
-
-    if isinstance(roll_policy, Mapping) or isinstance(roll_validation, Mapping):
-        lines.extend(
-            [
-                "## Futures Roll Assumptions",
-                f"- Roll method: {roll_policy.get('roll_method', '—') if isinstance(roll_policy, Mapping) else '—'}",
-                f"- Contract count: {roll_validation.get('contract_count', '—') if isinstance(roll_validation, Mapping) else '—'}",
-                f"- Adjustment method: {roll_policy.get('adjustment_method', '—') if isinstance(roll_policy, Mapping) else '—'}",
-                f"- Roll rule: {roll_policy.get('roll_rule', '—') if isinstance(roll_policy, Mapping) else '—'}",
-                f"- Warning count: {len(roll_validation.get('warnings', [])) if isinstance(roll_validation, Mapping) and isinstance(roll_validation.get('warnings'), list) else 0}",
-                f"- Roll gap count: {roll_validation.get('roll_gap_count', 0) if isinstance(roll_validation, Mapping) else 0}",
-                "",
-            ]
-        )
-
-    # Entry window (Focus / Admit) section
-    lines.append(_entry_window_markdown_section(entry_window_meta).strip())
+def _md_monte_carlo(ctx: dict[str, Any]) -> list[str]:
+    monte_carlo = ctx["monte_carlo"]
+    if not (isinstance(monte_carlo, Mapping) and monte_carlo.get("available")):
+        return []
+    mc_methods = monte_carlo.get("methods") if isinstance(monte_carlo, Mapping) else {}
+    mc_config = monte_carlo.get("config") if isinstance(monte_carlo, Mapping) else {}
+    lines = [
+        "## Monte Carlo Path Robustness",
+        "⚠️ Diagnostic only — resamples the realized trade sequence and does not prove edge.",
+        "",
+        f"- Trades: {monte_carlo.get('trade_count', 0)}",
+        f"- Simulations per method: {mc_config.get('n_simulations', '—') if isinstance(mc_config, Mapping) else '—'}",
+        f"- Methods: {', '.join(mc_methods.keys()) if isinstance(mc_methods, Mapping) else '—'}",
+    ]
+    if isinstance(mc_methods, Mapping):
+        for method_name, method in mc_methods.items():
+            observed = method.get("observed", {}) if isinstance(method, Mapping) else {}
+            simulated = method.get("simulated", {}) if isinstance(method, Mapping) else {}
+            max_dd = simulated.get("max_drawdown_r", {}) if isinstance(simulated, Mapping) else {}
+            loss_streak = (
+                simulated.get("max_loss_streak", {}) if isinstance(simulated, Mapping) else {}
+            )
+            lines.extend(
+                [
+                    f"- {method_name}: observed final R {_fmt_number(observed.get('final_r') if isinstance(observed, Mapping) else None)}, "
+                    f"P95 max DD {_fmt_number(max_dd.get('p95') if isinstance(max_dd, Mapping) else None)}, "
+                    f"P95 loss streak {_fmt_number(loss_streak.get('p95') if isinstance(loss_streak, Mapping) else None, '.0f')}",
+                ]
+            )
     lines.append("")
+    return lines
 
-    # OTF filter section
-    lines.append(_otf_markdown_section(otf_meta).strip())
-    lines.append("")
 
-    # OTF validation section — omit entirely when validation was not run.
-    otf_val = artifact.get("otf_validation") if isinstance(artifact, Mapping) else None
-    otf_val_section = _otf_validation_markdown_section(otf_val).strip()
-    if otf_val_section:
-        lines.append(otf_val_section)
-        lines.append("")
+def _md_noise(ctx: dict[str, Any]) -> list[str]:
+    noise = ctx["noise"]
+    if not (isinstance(noise, Mapping) and noise.get("available")):
+        return []
+    replicas = noise.get("replicas") if isinstance(noise, Mapping) else {}
+    noise_config = noise.get("config") if isinstance(noise, Mapping) else {}
+    expectancy = replicas.get("expectancy_r", {}) if isinstance(replicas, Mapping) else {}
+    persistence = (
+        replicas.get("trade_persistence_rate", {}) if isinstance(replicas, Mapping) else {}
+    )
+    return [
+        "## Price-Series Noise Test",
+        "⚠️ Diagnostic only — perturbs OHLC input and reruns the full pipeline; it does not prove edge.",
+        "",
+        f"- Replicas: {replicas.get('n_completed', 0) if isinstance(replicas, Mapping) else 0}",
+        (
+            f"- Noise: {noise_config.get('noise_fraction', '—') if isinstance(noise_config, Mapping) else '—'} "
+            f"× {noise_config.get('scale_basis', '—') if isinstance(noise_config, Mapping) else '—'}"
+        ),
+        f"- P50 expectancy R: {_fmt_number(expectancy.get('p50') if isinstance(expectancy, Mapping) else None)}",
+        f"- P50 trade persistence: {_fmt_pct(persistence.get('p50') if isinstance(persistence, Mapping) else None)}",
+        "",
+    ]
 
-    # Confluence combo attribution — omit entirely when unavailable.
-    confluence_combo = artifact.get("confluence_combo") if isinstance(artifact, Mapping) else None
-    confluence_section = _confluence_combo_markdown_section(confluence_combo).strip()
-    if confluence_section:
-        lines.append(confluence_section)
-        lines.append("")
 
-    lines.append("## Caveats")
+def _md_sensitivity(ctx: dict[str, Any]) -> list[str]:
+    sensitivity = ctx["sensitivity"]
+    if not (isinstance(sensitivity, Mapping) and sensitivity.get("available")):
+        return []
+    profiles = sensitivity.get("parameters") if isinstance(sensitivity, Mapping) else []
+    fragile_count = sensitivity.get("fragile_parameter_count", 0)
+    return [
+        "## Parameter Sensitivity (SPP-lite)",
+        "⚠️ Diagnostic only — local one-at-a-time execution-parameter changes do not measure interactions or prove edge.",
+        "",
+        f"- Parameters profiled: {len(profiles) if isinstance(profiles, list) else 0}",
+        f"- Fragile parameters: {fragile_count}",
+        f"- Baseline expectancy R: {_fmt_number((sensitivity.get('baseline') or {}).get('expectancy_r') if isinstance(sensitivity.get('baseline'), Mapping) else None)}",
+        "",
+    ]
 
-    for caveat in artifact.get("caveats", []):
+
+def _md_portfolio(ctx: dict[str, Any]) -> list[str]:
+    portfolio = ctx["portfolio"]
+    if not (isinstance(portfolio, Mapping) and portfolio.get("available")):
+        return []
+    portfolio_metrics = portfolio.get("portfolio_metrics") or {}
+    admission = portfolio.get("admission") or {}
+    return [
+        "## Multi-Setup Portfolio",
+        "⚠️ Diagnostic only — post-hoc completed-trade merge, not a capital or fill simulation.",
+        "",
+        f"- Setup count: {len((portfolio.get('config') or {}).get('setup_ids', []))}",
+        f"- Portfolio total R: {_fmt_number(portfolio_metrics.get('total_r') if isinstance(portfolio_metrics, Mapping) else None)}",
+        f"- Portfolio max drawdown R: {_fmt_number(portfolio_metrics.get('max_drawdown_r') if isinstance(portfolio_metrics, Mapping) else None)}",
+        f"- Admitted / skipped trades: {admission.get('admitted_trade_count', 0) if isinstance(admission, Mapping) else 0} / {admission.get('skipped_trade_count', 0) if isinstance(admission, Mapping) else 0}",
+        "",
+    ]
+
+
+def _md_futures_roll(ctx: dict[str, Any]) -> list[str]:
+    roll_policy = ctx["roll_policy"]
+    roll_validation = ctx["roll_validation"]
+    if not (isinstance(roll_policy, Mapping) or isinstance(roll_validation, Mapping)):
+        return []
+    return [
+        "## Futures Roll Assumptions",
+        f"- Roll method: {roll_policy.get('roll_method', '—') if isinstance(roll_policy, Mapping) else '—'}",
+        f"- Contract count: {roll_validation.get('contract_count', '—') if isinstance(roll_validation, Mapping) else '—'}",
+        f"- Adjustment method: {roll_policy.get('adjustment_method', '—') if isinstance(roll_policy, Mapping) else '—'}",
+        f"- Roll rule: {roll_policy.get('roll_rule', '—') if isinstance(roll_policy, Mapping) else '—'}",
+        f"- Warning count: {len(roll_validation.get('warnings', [])) if isinstance(roll_validation, Mapping) and isinstance(roll_validation.get('warnings'), list) else 0}",
+        f"- Roll gap count: {roll_validation.get('roll_gap_count', 0) if isinstance(roll_validation, Mapping) else 0}",
+        "",
+    ]
+
+
+def _md_entry_window(ctx: dict[str, Any]) -> list[str]:
+    return [_entry_window_markdown_section(ctx["entry_window_meta"]).strip(), ""]
+
+
+def _md_otf(ctx: dict[str, Any]) -> list[str]:
+    return [_otf_markdown_section(ctx["otf_meta"]).strip(), ""]
+
+
+def _md_otf_validation(ctx: dict[str, Any]) -> list[str]:
+    otf_val_section = _otf_validation_markdown_section(ctx["otf_val"]).strip()
+    if not otf_val_section:
+        return []
+    return [otf_val_section, ""]
+
+
+def _md_confluence_combo(ctx: dict[str, Any]) -> list[str]:
+    confluence_section = _confluence_combo_markdown_section(ctx["confluence_combo"]).strip()
+    if not confluence_section:
+        return []
+    return [confluence_section, ""]
+
+
+def _md_caveats(ctx: dict[str, Any]) -> list[str]:
+    lines = ["## Caveats"]
+    for caveat in ctx["artifact"].get("caveats", []):
         lines.append(f"- {caveat}")
+    return lines
 
+
+MARKDOWN_REPORT_SECTIONS: tuple[MarkdownReportSection, ...] = (
+    MarkdownReportSection("title", _md_title),
+    MarkdownReportSection("metadata", _md_metadata),
+    MarkdownReportSection("setup", _md_setup),
+    MarkdownReportSection("signals", _md_signals),
+    MarkdownReportSection("backtest", _md_backtest),
+    MarkdownReportSection("walk_forward", _md_walk_forward),
+    MarkdownReportSection("overfitting", _md_overfitting),
+    MarkdownReportSection("grid", _md_grid),
+    MarkdownReportSection("time_analysis", _md_time_analysis),
+    MarkdownReportSection("validation", _md_validation),
+    MarkdownReportSection("excursion", _md_excursion),
+    MarkdownReportSection("monte_carlo", _md_monte_carlo),
+    MarkdownReportSection("noise", _md_noise),
+    MarkdownReportSection("sensitivity", _md_sensitivity),
+    MarkdownReportSection("portfolio", _md_portfolio),
+    MarkdownReportSection("futures_roll", _md_futures_roll),
+    MarkdownReportSection("entry_window", _md_entry_window),
+    MarkdownReportSection("otf", _md_otf),
+    MarkdownReportSection("otf_validation", _md_otf_validation),
+    MarkdownReportSection("confluence_combo", _md_confluence_combo),
+    MarkdownReportSection("caveats", _md_caveats),
+)
+MARKDOWN_REPORT_SECTION_NAMES: tuple[str, ...] = tuple(
+    rule.name for rule in MARKDOWN_REPORT_SECTIONS
+)
+
+
+def build_markdown_report(artifact: dict[str, Any]) -> str:
+    """Build a concise markdown report from a research artifact."""
+    ctx = _markdown_report_context(artifact)
+    lines: list[str] = []
+    for rule in MARKDOWN_REPORT_SECTIONS:
+        lines.extend(rule.collect(ctx))
     return "\n".join(lines).strip() + "\n"

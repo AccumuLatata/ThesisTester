@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from thesistester.data.loader import load_ohlcv
 from thesistester.reporting import (
+    MARKDOWN_REPORT_SECTION_NAMES,
+    MARKDOWN_REPORT_SECTIONS,
     build_markdown_report,
     build_execution_cost_assumptions,
     build_exposure_policy_assumptions,
@@ -23,6 +26,36 @@ from thesistester.reporting import (
     to_jsonable,
 )
 from thesistester.timezone_display import convert_dataframe_timestamps_for_display
+
+_REPORT_FIXTURES = Path(__file__).parent / "fixtures" / "reporting"
+_PINNED_GENERATED_AT = "2026-06-02T00:00:00+00:00"
+
+# Headings that a full sample artifact emits, in MARKDOWN_REPORT_SECTIONS order.
+_SAMPLE_SECTION_HEADINGS = (
+    "# ThesisTester Research Report",
+    "## Metadata",
+    "## Setup Configuration",
+    "## Signal Summary",
+    "## Backtest Summary",
+    "## Walk-Forward / OOS Diagnostics",
+    "## Overfitting-Detection Battery",
+    "## Grid Search Summary",
+    "## Time Analysis Summary",
+    "## Validation Diagnostics",
+    "## Excursion Analytics",
+    "## Monte Carlo Path Robustness",
+    "## Price-Series Noise Test",
+    "## Parameter Sensitivity (SPP-lite)",
+    "## Entry Window (Focus / Admit)",
+    "## OTF Filter",
+    "## Caveats",
+)
+
+
+def _pin_generated_at(artifact: dict) -> dict:
+    metadata = artifact.setdefault("metadata", {})
+    metadata["generated_at"] = _PINNED_GENERATED_AT
+    return artifact
 
 
 def _sample_session_state() -> dict:
@@ -1014,3 +1047,60 @@ def test_confluence_combo_markdown_preserves_top_n_zero():
     assert "top 0 by |total_r|" in markdown
     assert "top 15 by |total_r|" not in markdown
     assert "Empty level_names (analyzable)" in markdown
+
+
+def test_markdown_report_section_table_order():
+    assert MARKDOWN_REPORT_SECTION_NAMES == (
+        "title",
+        "metadata",
+        "setup",
+        "signals",
+        "backtest",
+        "walk_forward",
+        "overfitting",
+        "grid",
+        "time_analysis",
+        "validation",
+        "excursion",
+        "monte_carlo",
+        "noise",
+        "sensitivity",
+        "portfolio",
+        "futures_roll",
+        "entry_window",
+        "otf",
+        "otf_validation",
+        "confluence_combo",
+        "caveats",
+    )
+    assert tuple(rule.name for rule in MARKDOWN_REPORT_SECTIONS) == (MARKDOWN_REPORT_SECTION_NAMES)
+
+    artifact = _pin_generated_at(build_research_artifact(_sample_session_state()))
+    markdown = build_markdown_report(artifact)
+    positions = [markdown.index(heading) for heading in _SAMPLE_SECTION_HEADINGS]
+    assert positions == sorted(positions)
+    for heading in (
+        "## Multi-Setup Portfolio",
+        "## Futures Roll Assumptions",
+        "## OTF Validation Matrix",
+        "## Confluence Combo Attribution",
+    ):
+        assert heading not in markdown
+
+
+def test_markdown_report_sample_fixture_byte_identical():
+    artifact = _pin_generated_at(build_research_artifact(_sample_session_state()))
+    expected = (_REPORT_FIXTURES / "phase9_sample_report.md").read_text()
+    assert build_markdown_report(artifact) == expected
+
+
+def test_markdown_report_minimal_fixture_byte_identical():
+    artifact = {
+        "metadata": {"generated_at": _PINNED_GENERATED_AT},
+        "configuration": {},
+        "results": {},
+        "tables": {},
+        "caveats": [],
+    }
+    expected = (_REPORT_FIXTURES / "phase9_minimal_report.md").read_text()
+    assert build_markdown_report(artifact) == expected
