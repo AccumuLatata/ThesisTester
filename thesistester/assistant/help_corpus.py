@@ -12,6 +12,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Iterable, Mapping, Sequence
 
 PREFACE_SECTION = "__preface__"
@@ -723,6 +724,13 @@ _CORPUS_BOOST_RULES: tuple[_CorpusBoostRule, ...] = (
 )
 
 
+_CORPUS_BOOST_PREDICATES: dict[str, Callable[[set[str]], bool]] = {
+    "exit_mgmt": _is_exit_mgmt_ask,
+    "session_exit": _is_session_exit_ask,
+    "focus_admit": _is_focus_admit_ask,
+}
+
+
 def _lexical_corpus_score(chunk: CorpusChunk, query_tokens: set[str]) -> int:
     haystack = f"{chunk.doc_id} {chunk.section} {chunk.text}".lower()
     score = 0
@@ -737,12 +745,11 @@ def _lexical_corpus_score(chunk: CorpusChunk, query_tokens: set[str]) -> int:
 
 
 def _corpus_query_matches(rule: _CorpusBoostRule, query_tokens: set[str]) -> bool:
-    if rule.predicate == "exit_mgmt":
-        return _is_exit_mgmt_ask(query_tokens)
-    if rule.predicate == "session_exit":
-        return _is_session_exit_ask(query_tokens)
-    if rule.predicate == "focus_admit":
-        return _is_focus_admit_ask(query_tokens)
+    if rule.predicate is not None:
+        matcher = _CORPUS_BOOST_PREDICATES.get(rule.predicate)
+        if matcher is None:
+            raise ValueError(f"unknown corpus boost predicate: {rule.predicate!r}")
+        return matcher(query_tokens)
     if rule.tokens is None:
         return False
     return bool(query_tokens & rule.tokens)

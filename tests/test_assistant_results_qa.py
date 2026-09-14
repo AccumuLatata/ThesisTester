@@ -993,6 +993,7 @@ def test_c22_handle_results_turn_is_phase_facade():
 
     source = inspect.getsource(AssistantOrchestrator.handle_results_turn)
     assert "_require_results_turn_inputs" in source
+    assert "_load_results_turn_evidence" in source
     assert "_load_results_turn_tables" in source
     assert "_resolve_results_turn_time" in source
     assert "_persist_results_turn" in source

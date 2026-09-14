@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
+from collections.abc import Callable
 from typing import Any, Mapping
 
 from thesistester.reporting import build_research_artifact, to_jsonable
@@ -256,7 +257,11 @@ def _append_caveat(
 
 
 class _CaveatContext:
-    """Mutable packet slices for first-match caveat appliers (QI-09-02 / C-22)."""
+    """Mutable packet slices for ordered caveat appliers (QI-09-02 / C-22).
+
+    Every applier runs. This is not a first-match walker — later rows may
+    append additional codes/limitations.
+    """
 
     def __init__(
         self,
@@ -391,11 +396,11 @@ def _robustness_leaf_failed(value: Any) -> bool:
 
 
 def _apply_failed_robustness(ctx: _CaveatContext) -> None:
-    if any(
-        ctx.results.get(key) is not None and _robustness_leaf_failed(ctx.results.get(key))
-        for key in _ROBUSTNESS_RESULT_KEYS
-    ):
-        _append_caveat(ctx.caveats, "failed_robustness", path="results.validation_summary")
+    for key in _ROBUSTNESS_RESULT_KEYS:
+        value = ctx.results.get(key)
+        if value is not None and _robustness_leaf_failed(value):
+            _append_caveat(ctx.caveats, "failed_robustness", path="results.validation_summary")
+            return
 
 
 def _apply_multiple_testing(ctx: _CaveatContext) -> None:
@@ -420,8 +425,8 @@ def _apply_focus_post_hoc(ctx: _CaveatContext) -> None:
         )
 
 
-# Ordered appliers: diagnostic_only first; later rows may append extra codes.
-_CAVEAT_APPLIERS: tuple[Any, ...] = (
+# Ordered appliers: diagnostic_only first; every row runs (not first-match).
+_CAVEAT_APPLIERS: tuple[Callable[[_CaveatContext], None], ...] = (
     _apply_diagnostic_only,
     _apply_sample_caveats,
     _apply_cost_caveats,

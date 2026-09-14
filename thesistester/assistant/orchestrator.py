@@ -571,7 +571,7 @@ class AssistantOrchestrator:
 
     def _load_results_turn_evidence(
         self, *, thesis_id: str, conversation_id: str | None, run_id: str
-    ):
+    ) -> tuple[ResearchRun, OrchestrationResult]:
         run = self.repository.get_run(thesis_id, run_id)
         evidence = self.explain_run(
             thesis_id=thesis_id,
@@ -710,7 +710,7 @@ class AssistantOrchestrator:
         conversation_id: str | None,
         run_id: str,
         max_history_messages: int,
-    ):
+    ) -> tuple[Conversation | None, tuple[dict[str, Any], ...]]:
         if not (isinstance(conversation_id, str) and conversation_id.strip()):
             return None, ()
         conversation = self.repository.get_conversation(thesis_id, conversation_id.strip())

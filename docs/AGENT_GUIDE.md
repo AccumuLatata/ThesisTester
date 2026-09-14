@@ -541,8 +541,9 @@ Every request must first parse as an `AssistantRequest`, then pass
   limitation. “Best”/“better” language must state metric, candidate set, sample,
   costs, and OOS status. C-22 (QI-09-02) walks `_CAVEAT_APPLIERS` in
   `explainer.py` and `_CORPUS_BOOST_RULES` in `help_corpus.py`;
-  `handle_results_turn` is a phase façade (load / tables / time / persist).
-  Caveat codes/paths, Help ranking, and RQ/HC/DI channel contracts stay
+  `handle_results_turn` is a phase façade (validate / evidence / tables /
+  time / persist / complete). `_CAVEAT_APPLIERS` is an all-run walker, not
+  first-match. Caveat codes/paths, Help ranking, and RQ/HC/DI channel contracts stay
   unchanged. Keep `tests/test_assistant_explainer.py` and
   `tests/test_assistant_comparison.py` green when changing explanation or
   comparison contracts.
