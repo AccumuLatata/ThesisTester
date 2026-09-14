@@ -559,10 +559,17 @@ def test_package_init_does_not_import_builder():
     assert "builder" not in source
 
 
+_C24_BUILDER_MODULES = (
+    Path("thesistester/study/builder.py"),
+    Path("thesistester/study/builder_draft.py"),
+    Path("thesistester/study/builder_emit.py"),
+    Path("thesistester/study/builder_hydrate.py"),
+    Path("thesistester/study/builder_widgets.py"),
+)
+
+
 def test_builder_module_import_allow_list():
-    source = Path("thesistester/study/builder.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    banned = {
+    banned = (
         "thesistester.study.execute",
         "thesistester.study.launch",
         "thesistester.study.promote",
@@ -571,25 +578,33 @@ def test_builder_module_import_allow_list():
         "thesistester.study.preview",
         "thesistester.cli",
         "thesistester.assistant",
+    )
+    forbidden_names = {
+        "run_experiment",
+        "run_batch",
+        "promote_study",
+        "run_study",
+        "preview_study_spec",
     }
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            assert node.module not in banned
-            assert not node.module.startswith("thesistester.study.execute")
-            names = {alias.name for alias in node.names}
-            assert "run_experiment" not in names
-            assert "run_batch" not in names
-            assert "promote_study" not in names
-            assert "run_study" not in names
-            assert "preview_study_spec" not in names
-            assert not node.module.startswith("pages")
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert alias.name not in banned
-                assert not alias.name.startswith("pages")
-    assert "run_study" not in source
-    assert "STUDY.run" not in source
-    assert "pages.1_Data" not in source
+    for path in _C24_BUILDER_MODULES:
+        source = path.read_text(encoding="utf-8")
+        module_name = "thesistester.study." + path.stem
+        imported = _imported_module_names(ast.parse(source), module_name)
+        leaked = [name for name in imported for ban in banned if _hits_ban(name, ban)]
+        assert leaked == [], f"{path}: {leaked}"
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                names = {alias.name for alias in node.names}
+                assert names.isdisjoint(forbidden_names), path
+                if node.module:
+                    assert not node.module.startswith("pages"), path
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert not alias.name.startswith("pages"), path
+        assert "run_study" not in source, path
+        assert "STUDY.run" not in source, path
+        assert "pages.1_Data" not in source, path
 
 
 def test_study_draft_type_is_dataclass():

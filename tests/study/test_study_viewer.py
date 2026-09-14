@@ -496,11 +496,22 @@ def test_pages_studies_is_read_only_source():
     assert not (written_keys & CLASSIC_RESEARCH_SESSION_KEYS)
 
 
+_C24_VIEWER_MODULES = (
+    Path("thesistester/study/viewer.py"),
+    Path("thesistester/study/viewer_catalog.py"),
+    Path("thesistester/study/viewer_progress.py"),
+)
+
+
 def test_viewer_module_does_not_touch_classic_keys():
-    source = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")
+    facade = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")
     for key in CLASSIC_RESEARCH_SESSION_KEYS:
-        # Keys appear only in the deny-list constant definition.
-        assert source.count(f'"{key}"') == 1
+        # Keys appear only in the deny-list constant on the façade.
+        assert facade.count(f'"{key}"') == 1
+    for path in _C24_VIEWER_MODULES[1:]:
+        source = path.read_text(encoding="utf-8")
+        for key in CLASSIC_RESEARCH_SESSION_KEYS:
+            assert f'"{key}"' not in source, path
 
 
 def _write_catalog_study(
@@ -775,26 +786,25 @@ def test_cli_study_list_additive_and_refuses_extra_root(tmp_path: Path, monkeypa
 
 
 def test_viewer_module_import_allow_list():
-    source = Path("thesistester/study/viewer.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
-    assert "thesistester.study.execute" not in imported
-    assert "thesistester.study.launch" not in imported
-    assert "thesistester.study.builder" not in imported
-    assert "thesistester.study.promote" not in imported
-    assert "thesistester.study.tools" not in imported
-    assert "thesistester.study.cli_study" not in imported
-    assert "thesistester.cli" not in imported
-    assert "plotly" not in imported
-    assert "streamlit" not in imported
-    assert "thesistester.study.rollup" not in imported
-    assert "thesistester.study.observatory" not in imported
-    assert "rollup_study(" not in source
+    banned = (
+        "thesistester.study.execute",
+        "thesistester.study.launch",
+        "thesistester.study.builder",
+        "thesistester.study.promote",
+        "thesistester.study.tools",
+        "thesistester.study.cli_study",
+        "thesistester.cli",
+        "plotly",
+        "streamlit",
+        "thesistester.study.rollup",
+    )
+    for path in _C24_VIEWER_MODULES:
+        source = path.read_text(encoding="utf-8")
+        imported = _imported_module_names(ast.parse(source), "thesistester.study." + path.stem)
+        leaked = [name for name in imported for ban in banned if _hits_ban(name, ban)]
+        assert leaked == [], f"{path}: {leaked}"
+        assert not any(_hits_observatory_family(name) for name in imported), path
+        assert "rollup_study(" not in source, path
 
 
 _PAGE_LOCAL_VIEWER_KEYS = {

@@ -438,6 +438,8 @@ def test_admit_followup_import_allow_list():
 def test_viewer_and_briefing_do_not_import_admit_followup():
     for path in (
         Path("thesistester/study/viewer.py"),
+        Path("thesistester/study/viewer_catalog.py"),
+        Path("thesistester/study/viewer_progress.py"),
         Path("thesistester/study/briefing.py"),
     ):
         imported = _imported_modules(path)
