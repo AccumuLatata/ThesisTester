@@ -36,7 +36,7 @@ Initial classic-to-thesis attachment uses **manual record-after-run**:
 
 `--fixture both` / `--fixture realistic` run on the tick-gated path. The
 harness calls `compute_levels` only after `disable_unneeded_tick_families`
-(same as `run_experiment` when `tick_paths` is empty). Do not revive
+on named setup tokens (selected / anchor / rules). Do not revive
 typical-price `_rolling_poc`. The recorded tables below are the CAI-0
 typical-price snapshot; **F-10** re-records them on this path (QI-14-01 /
 QI-14-02).
@@ -53,7 +53,7 @@ Commands:
 # Informational baseline (small + realistic)
 python3 -m tests.benchmarks.cai_cold_path --fixture both --repeats 5
 
-# CI smoke only covers the small fixture structure (via pytest)
+# CI smoke: small + realistic harness structure (via pytest)
 python3 -m pytest tests/benchmarks/test_cai_cold_path.py -q
 ```
 

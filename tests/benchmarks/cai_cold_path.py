@@ -21,6 +21,7 @@ from typing import Any, Callable
 
 from tests.fixtures.cai_baseline import CAI_FIXTURE_KIND, cai_run_spec, write_cai_bars
 from thesistester.api import (
+    _named_level_tokens_from_setup,
     build_setup,
     compute_levels,
     generate_signals,
@@ -67,9 +68,14 @@ def measure_cai_cold_path(
     # Direct compute_levels does not apply the run_experiment tick gate.
     # Realistic used to set poc_windows=["30min"] with no tick_paths and
     # raised "rolling POC requires ticks" (QI-14-01). Clear unused families
-    # the same way run_experiment does; do not revive typical-price _rolling_poc.
+    # from named setup tokens (selected / anchor / rules). Passing the setup
+    # mapping itself is wrong: named_*_tokens iterates keys, not level names.
+    # Do not revive typical-price _rolling_poc.
     if not dataset_has_tick_paths(dataset):
-        spec["levels"] = disable_unneeded_tick_families(spec["levels"], spec["setup"])
+        spec["levels"] = disable_unneeded_tick_families(
+            spec["levels"],
+            _named_level_tokens_from_setup(spec["setup"]),
+        )
 
     data = load_dataset(
         bars_path,

@@ -605,8 +605,9 @@ Every request must first parse as an `AssistantRequest`, then pass
 - **CAI cold-path harness (B-18 / QI-14-01).**
   `cai_levels_config(kind="realistic")` is tick-gated (`poc_windows=[]`).
   `measure_cai_cold_path` calls `compute_levels` only after
-  `disable_unneeded_tick_families` (same as `run_experiment` when
-  `tick_paths` is empty). Do not revive typical-price `_rolling_poc`.
+  `disable_unneeded_tick_families` on named setup tokens (`selected_levels`
+  / anchor / rules), not the setup mapping keys. Do not revive
+  typical-price `_rolling_poc`.
   `--fixture both` / `--fixture realistic` emit six stage rows. Timing
   tables stay informational; F-10 re-records them.
 - **E402 / page import path (B-14 / QI-10-08).** Only `pages/1_Data.py` may

@@ -205,7 +205,7 @@ Do not re-audit these unless the owning file or the fixture recipe changes.
 | QI-3 | `generate_signals` is the current realistic hot function (QI-14-05). 6× `iterrows`. |
 | QI-4 | W12 structure unchanged (QI-14-03/09). Do not treat this slice’s battery 339 ms `simulate_trades` as the R22 ruler — that ruler is `tests/benchmarks/run.py`. |
 | QI-5 | WFA 2.6 s and 14× `.copy()` (QI-14-10). Grid 9.87×. |
-| QI-6 | `run_experiment` calls `disable_unneeded_tick_families` (CAI realistic e2e works). Direct `compute_levels(config=spec["levels"])` does not (CAI cold harness dies). Bundle 3.3× (QI-14-07). |
+| QI-6 | `run_experiment` calls `disable_unneeded_tick_families` (CAI realistic e2e works). **B-18:** isolated `compute_levels` uses the same named-token tick gate (`poc_windows=[]`); harness no longer dies. Bundle 3.3× (QI-14-07). |
 | QI-7 | Worker index `cache_outcome` is not part of `bundle_hash`. Observatory discovers only `results/studies/` and `out/` children. |
 | QI-10 | Loaded **1m** AppTest times above. Empty-page times match QI-10’s 0.12–0.17 s band. 15s page rerun was not measured. |
 | QI-11 | Benchmark tests remain informational. Warm harness cannot answer CAI-10’s “warm `generate_signals` share” question (QI-14-08). |
@@ -219,7 +219,7 @@ List only. **Not amended.**
 
 | Doc | Why QR would touch it |
 |---|---|
-| `docs/CAI_BASELINE.md` | Realistic command is broken; stage-share table is stale; note `prev30m` product-default merge; bundle 3.3× on small. |
+| `docs/CAI_BASELINE.md` | **B-18:** realistic command runs tick-gated; stage-share table is still the CAI-0 snapshot (F-10). Note `prev30m` product-default merge; bundle 3.3× on small. |
 | `docs/SIMULATE_PERF.md` | Re-record after any R22/P7 extract (numbers here are within 4% — optional footnote). State that W12 is still serial. |
 | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | W12 / resource envelope (3-month 20 s e2e / 749 MB RSS on this VM; 15s derive slope). |
 | `docs/USER_GUIDE.md` | 15s transport cap is still the vendor-frame story (QI-10). Optional: Studies `--workers` does not change cell `bundle_hash`. |
