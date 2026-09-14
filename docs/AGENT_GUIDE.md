@@ -791,7 +791,12 @@ Every request must first parse as an `AssistantRequest`, then pass
   sample **keeps** `tests/test_otf_integration.py` (`fold_local` already
   lives there) and the C-17 helpers (`_validate_walk_forward_run`,
   `_stitch_walk_forward_oos`) so P0 fold-size and overlap-reject
-  comparisons stay inside the 12-site named surface. Gate for C-14 /
+  comparisons stay inside the 12-site named surface. The backtest sample
+  **keeps** the C-19 helpers (`_validate_simulate_trades`,
+  `_admit_entry_candidates`, `_exposure_skip_for_candidate`,
+  `_finalize_exit_walk`, `walk_trade_exit` on `engine/sim_core.py`) so
+  path-proximity, `next_bar_open`, and P0 validation comparisons stay
+  inside the same 12-site cap. Gate for C-14 /
   C-17 / C-19: ≥ 70 % own-file killed
   (target 80 %). B-4 recorded adjusted rates: `backtest.py` 100 % and
   `walk_forward.py` 100 % (12/12). Timeouts count as killed. This is **not** a
