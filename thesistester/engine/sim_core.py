@@ -36,9 +36,25 @@ class BarValues:
     close: float
 
 
+def _legacy_float64(column: pd.Series) -> np.ndarray:
+    """C-19 fail-closed ``float(value)`` coercion into a new float64 buffer."""
+    return np.fromiter((float(value) for value in column), dtype=np.float64, count=len(column))
+
+
 def _frozen_float64(column: pd.Series) -> np.ndarray:
-    """Copy one OHLC column to a write-protected C-contiguous float64 array."""
-    array = np.ascontiguousarray(column.to_numpy(dtype=np.float64, copy=True))
+    """Copy one OHLC column to a write-protected C-contiguous float64 array.
+
+    Numpy-backed integer/float columns use a vectorized copy. All other
+    dtypes keep C-19 ``float(value)`` coercion so ``pd.NA``, ``None``, and
+    datetime columns still raise instead of becoming NaN or epoch floats.
+    """
+    dtype = column.dtype
+    if isinstance(dtype, np.dtype) and dtype.kind in {"f", "i", "u"}:
+        array = np.ascontiguousarray(column.to_numpy(dtype=np.float64, copy=True))
+    else:
+        array = np.ascontiguousarray(_legacy_float64(column))
+    if not array.flags.owndata:
+        array = np.array(array, dtype=np.float64, copy=True, order="C")
     array.setflags(write=False)
     return array
 
@@ -49,13 +65,29 @@ class BarData:
 
     C-20 (QI-14-09): storage is ``numpy.float64``, not boxed Python tuples.
     ``at()`` still returns Python ``float`` scalars so ``resolve_ohlc_bar``
-    math is unchanged.
+    math is unchanged. Equality is value-based (``np.array_equal``) because
+    the default dataclass tuple compare is ambiguous for ndarrays.
     """
 
     open: np.ndarray
     high: np.ndarray
     low: np.ndarray
     close: np.ndarray
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, BarData):
+            return NotImplemented
+        return (
+            np.array_equal(self.open, other.open)
+            and np.array_equal(self.high, other.high)
+            and np.array_equal(self.low, other.low)
+            and np.array_equal(self.close, other.close)
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (self.open.tobytes(), self.high.tobytes(), self.low.tobytes(), self.close.tobytes())
+        )
 
     @classmethod
     def from_frame(cls, frame: pd.DataFrame) -> "BarData":

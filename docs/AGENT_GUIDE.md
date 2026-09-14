@@ -1176,8 +1176,9 @@ are B-1; H10/H11 lock tests are B-2.
   (window / cutoff / exposure / 3c-void), skip-row schema, costs, P&L,
   trade records, and diagnostics remain orchestrated by `backtest.py`.
   Do not widen `sim_core` into those concerns. C-20 stores `BarData` as
-  write-protected `float64` arrays (`at()` still Python floats). E-10
-  may accelerate only inside this boundary.
+  write-protected `float64` arrays (`at()` still Python floats; non-numpy
+  dtypes keep C-19 ``float()`` fail-closed). E-10 may accelerate only
+  inside this boundary.
 - Run `pytest -q tests/benchmarks/test_simulate_baseline.py tests/test_golden_master.py tests/test_intrabar.py tests/test_exit_management.py tests/test_phase5_backtest.py`
   after R22 changes.
 

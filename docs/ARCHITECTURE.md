@@ -1313,7 +1313,8 @@ HTF trigger frame is missing). C-15 owns `iterrows` replacement behind these hel
 immutable parent-bar OHLC snapshots as write-protected ``float64`` arrays
 (C-20), one-bar intrabar resolution, and the serial C-19 P7 walk
 (`compute_session_close_cap`, `walk_trade_exit`). `BarData.at()` still
-returns Python floats so `resolve_ohlc_bar` math is unchanged.
+returns Python floats so `resolve_ohlc_bar` math is unchanged. Non-numpy
+OHLC dtypes keep C-19 ``float()`` fail-closed (no silent NaN/epoch).
 `simulate_trades` retains public orchestration: signal admission, skip-row
 schema, C-18 exit-reason labels, costs, record construction, and
 diagnostics. `sim_core` still holds no admission or P&L. No accelerated
