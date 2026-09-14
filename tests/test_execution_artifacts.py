@@ -536,11 +536,12 @@ def test_eviction_helpers_select_without_deleting() -> None:
     assert records == snapshot
 
     naive_now = datetime(2026, 6, 1, 12, 0, 0)
+    # 2020-01-01 is ~6y old; 2026-01-01 is ~151d old. 180d keeps only "new".
     aged = select_eviction_victims(
         records,
         max_entries=None,
         max_total_bytes=None,
-        max_age_seconds=86_400,
+        max_age_seconds=180 * 86_400,
         now=naive_now,
     )
     assert [row["artifact_key"] for row in aged] == ["old"]
