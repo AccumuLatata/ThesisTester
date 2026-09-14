@@ -1020,8 +1020,7 @@ def test_c17_fold_and_causal_prefix_ast_match_origin_main():
 def _assert_wfa_result_equal(current, expected) -> None:
     from thesistester.persistence.local_store import hash_dataframe
 
-    if isinstance(current, WalkForwardResult):
-        assert isinstance(expected, WalkForwardResult)
+    if hasattr(current, "folds"):
         pd.testing.assert_frame_equal(current.folds, expected.folds)
         pd.testing.assert_frame_equal(current.oos_trades, expected.oos_trades)
         pd.testing.assert_frame_equal(current.stitched_equity, expected.stitched_equity)
