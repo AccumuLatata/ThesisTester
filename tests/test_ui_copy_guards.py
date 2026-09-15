@@ -393,7 +393,7 @@ def test_sidebar_page_order_files_exist():
 
 
 def test_backtest_help_uses_3c_not_confirm_3bar():
-    text = _read(PAGES / "7_Backtest.py")
+    text = _read(REPO_ROOT / "thesistester" / "backtest_sidebar_page_helpers.py")
     assert "confirm_3bar" not in text
     assert "filled 3c entries" in text
     assert "selected Intrabar resolution model" in text
@@ -1089,7 +1089,9 @@ def test_readme_phase4_trigger_list_covers_valid_triggers():
 
 def test_backtest_policy_help_discloses_allow_all_overlap():
     """QI-04-02 / A-1: Backtest Policy help+caption name H5 overlap + empty skips."""
-    _assert_allow_all_policy_disclosure(_read(PAGES / "7_Backtest.py"))
+    _assert_allow_all_policy_disclosure(
+        _read(REPO_ROOT / "thesistester" / "backtest_sidebar_page_helpers.py")
+    )
 
 
 # QI-04-10 / A-20 (M8): trade-table caption names the pnl_points gross alias.
@@ -1224,7 +1226,9 @@ def _assert_backtest_pnl_points_caption(source: str) -> None:
 
 def test_backtest_trade_table_captions_pnl_points_gross_alias():
     """QI-04-10 / A-20: Trade table caption names gross alias; columns unchanged."""
-    _assert_backtest_pnl_points_caption(_read(PAGES / "7_Backtest.py"))
+    _assert_backtest_pnl_points_caption(
+        _read(REPO_ROOT / "thesistester" / "backtest_display_page_helpers.py")
+    )
 
 
 def test_backtest_pnl_points_caption_guard_requires_st_caption_not_help():
@@ -1676,7 +1680,7 @@ def test_h10_caption_guard_requires_first_after_radio():
 
 def test_backtest_captions_h7_and_h15_locked_forks():
     """QI-04-03 / QI-04-04 / A-22: cutoff + OTF TZ captions in Session exit."""
-    source = _read(PAGES / "7_Backtest.py")
+    source = _read(REPO_ROOT / "thesistester" / "backtest_sidebar_page_helpers.py")
     tree = ast.parse(source)
     session_at = _subheader_lineno(tree, "Session exit policy")
     admit_at = _subheader_lineno(tree, _ADMIT_SUBHEADER)

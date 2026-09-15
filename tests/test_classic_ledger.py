@@ -290,14 +290,18 @@ def test_manual_policy_does_not_require_ledger_helpers():
 def test_pages_wire_ledger_and_context_forbids_ledger_calls():
     root = Path(__file__).resolve().parents[1]
     backtest = (root / "pages" / "7_Backtest.py").read_text(encoding="utf-8")
+    backtest_run = (root / "thesistester" / "backtest_run_page_helpers.py").read_text(
+        encoding="utf-8"
+    )
     assistant = (root / "pages" / "14_Research_Assistant.py").read_text(encoding="utf-8")
-    assert "begin_classic_execution_ledger" in backtest
+    backtest_surface = backtest + backtest_run
+    assert "begin_classic_execution_ledger" in backtest_surface
     assert "render_classic_execution_ledger" in backtest
     assert "ledger_run_label" in assistant
     # Post-begin failures must hit a broad except that calls fail_* (CAI-7).
-    assert "except Exception" in backtest
-    assert "fail_classic_execution_ledger" in backtest
-    assert "_ledger_phase" in backtest
+    assert "except Exception" in backtest_run
+    assert "fail_classic_execution_ledger" in backtest_run
+    assert "_ledger_phase" in backtest_run
     context = (root / "thesistester" / "classic_context.py").read_text(encoding="utf-8")
     assert "begin_classic_execution_ledger" not in context
     assert "complete_classic_execution_ledger" not in context

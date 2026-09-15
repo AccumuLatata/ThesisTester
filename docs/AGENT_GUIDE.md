@@ -112,7 +112,9 @@ unchanged. D-1 (QI-10-03) is the research-key registry
 apply-only members are explicitly sticky). D-2 (QI-03-12) pops session
 `signals` on setup `setup_config` mutation (save / set-active / clear /
 delete-active / copy-to-builder) and surfaces the controls-changed warning
-on Signals view. Next: D-3.
+on Signals view. D-3 (this PR) extracts Backtest sidebar / run-persist /
+display into ``*_page_helpers`` (QI-04-05). Session keys and H7/H15
+call-site Names are unchanged. Next: D-4.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -321,7 +323,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    is the research-key registry (explicit sticky for apply-only keys).
    D-2 (QI-03-12) pops session `signals` on setup `setup_config`
    mutation and surfaces the controls-changed warning on Signals view.
-   Next: D-3.
+   D-3 (this PR) extracts Backtest sidebar / run-persist / display
+   helpers (QI-04-05). Session keys unchanged. Next: D-4.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

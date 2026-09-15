@@ -230,18 +230,21 @@ def test_page_helper_persists_candidate_pairs_after_return_result_run():
 
 def test_backtest_page_asts_persist_after_return_result():
     """QI-04-06 page bind: persist + caption after return_result=True (not a comment)."""
-    tree = ast.parse(Path("pages/7_Backtest.py").read_text(encoding="utf-8"))
+    run_tree = ast.parse(
+        Path("thesistester/backtest_run_page_helpers.py").read_text(encoding="utf-8")
+    )
+    display_tree = ast.parse(
+        Path("thesistester/backtest_display_page_helpers.py").read_text(encoding="utf-8")
+    )
     persist_lines: list[int] = []
     format_lines: list[int] = []
     return_result_lines: list[int] = []
-    for node in ast.walk(tree):
+    for node in ast.walk(run_tree):
         if not isinstance(node, ast.Call):
             continue
         name = node.func.id if isinstance(node.func, ast.Name) else None
         if name == "persist_direction_collision_diagnostic":
             persist_lines.append(node.lineno)
-        elif name == "format_direction_collision_caption":
-            format_lines.append(node.lineno)
         elif name == "simulate_trades":
             for kw in node.keywords:
                 if (
@@ -250,11 +253,21 @@ def test_backtest_page_asts_persist_after_return_result():
                     and kw.value.value is True
                 ):
                     return_result_lines.append(node.lineno)
+    for node in ast.walk(display_tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = node.func.id if isinstance(node.func, ast.Name) else None
+        if name == "format_direction_collision_caption":
+            format_lines.append(node.lineno)
     assert return_result_lines, (
-        "pages/7_Backtest.py must call simulate_trades(..., return_result=True)"
+        "backtest_run_page_helpers must call simulate_trades(..., return_result=True)"
     )
-    assert persist_lines, "pages/7_Backtest.py must call persist_direction_collision_diagnostic"
-    assert format_lines, "pages/7_Backtest.py must call format_direction_collision_caption"
+    assert persist_lines, (
+        "backtest_run_page_helpers must call persist_direction_collision_diagnostic"
+    )
+    assert format_lines, (
+        "backtest_display_page_helpers must call format_direction_collision_caption"
+    )
     assert min(persist_lines) > min(return_result_lines)
 
 

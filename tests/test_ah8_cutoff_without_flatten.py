@@ -19,6 +19,7 @@ from thesistester.engine.backtest import simulate_trades
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PAGES = REPO_ROOT / "pages"
+HELPERS = REPO_ROOT / "thesistester"
 CLASSIC_EXPORT = REPO_ROOT / "thesistester" / "classic_export.py"
 
 _BACKTEST = "7_Backtest.py"
@@ -136,6 +137,24 @@ def assert_effective_cutoff_forces_none_when_flatten_off(source: str) -> None:
         found = True
     if not found:
         raise AssertionError("missing effective_no_new_entries_after assignment")
+
+
+def assert_effective_cutoff_helper_function(source: str) -> None:
+    """D-3: H7 IfExp lives in ``effective_no_new_entries_after`` (not a comment)."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or node.name != "effective_no_new_entries_after":
+            continue
+        returns = [stmt for stmt in node.body if isinstance(stmt, ast.Return)]
+        if not returns:
+            raise AssertionError("effective_no_new_entries_after missing return")
+        if not _is_flatten_gated_none(returns[0].value):
+            raise AssertionError(
+                "effective_no_new_entries_after must return "
+                "(no_new_entries_after.strip() or None) if flat_by_session_close else None"
+            )
+        return
+    raise AssertionError("missing effective_no_new_entries_after helper")
 
 
 def assert_cutoff_widget_disabled_when_flatten_off(source: str, widget_key: str) -> None:
@@ -287,6 +306,15 @@ def _skip_reasons(skipped: pd.DataFrame | None) -> list[str]:
 def test_h7_ui_and_grid_force_cutoff_none_when_flatten_off() -> None:
     """Classic composers gate cutoff on flatten (H7 UI side)."""
     for page, (engine_name, widget_key) in _PAGE_ENGINE.items():
+        if page == _BACKTEST:
+            assert_effective_cutoff_helper_function(_read(HELPERS / "backtest_page_helpers.py"))
+            assert_cutoff_widget_disabled_when_flatten_off(
+                _read(HELPERS / "backtest_sidebar_page_helpers.py"), widget_key
+            )
+            assert_engine_uses_effective_cutoff(
+                _read(HELPERS / "backtest_run_page_helpers.py"), engine_name
+            )
+            continue
         source = _read(PAGES / page)
         assert_effective_cutoff_forces_none_when_flatten_off(source)
         assert_cutoff_widget_disabled_when_flatten_off(source, widget_key)

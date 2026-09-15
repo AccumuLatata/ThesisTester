@@ -20,6 +20,9 @@ from thesistester.engine.otf_integration import apply_configured_otf_filter
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKTEST = (REPO_ROOT / "pages" / "7_Backtest.py").read_text(encoding="utf-8")
+BACKTEST_RUN = (REPO_ROOT / "thesistester" / "backtest_run_page_helpers.py").read_text(
+    encoding="utf-8"
+)
 API = (REPO_ROOT / "thesistester" / "api.py").read_text(encoding="utf-8")
 
 _H15_CALLS = (
@@ -134,9 +137,9 @@ def assert_every_call_kw(tree: ast.AST, func_name: str, kw_name: str, expected: 
         raise AssertionError(f"missing {func_name} call")
 
 
-def assert_h15_ui_wiring(source: str) -> None:
-    assert_exchange_tz_is_data_page_or_instrument(source)
-    tree = ast.parse(source)
+def assert_h15_ui_wiring(page_source: str, run_source: str | None = None) -> None:
+    assert_exchange_tz_is_data_page_or_instrument(page_source)
+    tree = ast.parse(run_source if run_source is not None else page_source)
     for func_name, kw_name in _H15_CALLS:
         assert_every_call_kw(tree, func_name, kw_name, "exchange_tz")
 
@@ -149,7 +152,7 @@ def assert_h15_api_wiring(source: str) -> None:
 
 def test_h15_ui_otf_and_admit_use_session_or_instrument_exchange_tz() -> None:
     """Classic Backtest OTF/Admit clocks use session ``exchange_tz`` (H15 UI)."""
-    assert_h15_ui_wiring(BACKTEST)
+    assert_h15_ui_wiring(BACKTEST, BACKTEST_RUN)
 
 
 def test_h15_api_otf_and_admit_use_instrument_exchange_tz() -> None:
