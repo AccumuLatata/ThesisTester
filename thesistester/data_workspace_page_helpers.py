@@ -3,6 +3,10 @@
 Streamlit-free: callers pass ``st``. H10 admission stays on ``pages/1_Data.py``
 as ``_apply_source_dataset`` (legacy ``tag_session(raw_df)``; 15s parent
 abort-on-fatal). Session keys unchanged.
+
+The former module-level tree is split so ``render_data_workspace`` stays a
+thin orchestrator (saved datasets / source-apply / attach-save). Do not
+re-fuse those panels into one F-grade function.
 """
 
 from __future__ import annotations
@@ -37,12 +41,8 @@ from thesistester.data_page_constants import (
 )
 
 
-def render_data_workspace(st, *, page) -> None:
-    """Saved-dataset / source / apply / session / attach / save tree."""
-    if not page._preserve_dataset_less_bundle():
-        bootstrap_active_saved_dataset()
-    page._consume_data_page_source_invalidation()
-
+def _render_data_flash_messages(st) -> None:
+    """Show one-shot store / bootstrap / raw-capture notices."""
     flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
     if flash_message:
         st.success(flash_message)
@@ -53,6 +53,9 @@ def render_data_workspace(st, *, page) -> None:
     if raw_capture_warning:
         st.warning(raw_capture_warning)
 
+
+def _render_saved_datasets(st, *, page) -> None:
+    """Local saved-dataset load / delete / refresh."""
     st.subheader("Local saved datasets")
     st.caption(f"Local store: `{display_store_path(get_store_root())}`")
     if get_configured_store_dir() is None:
@@ -125,8 +128,9 @@ def render_data_workspace(st, *, page) -> None:
         if st.button("Refresh saved datasets"):
             st.rerun()
 
-    st.divider()
 
+def _bind_source_ingest_controls(st, *, page):
+    """Instrument / source / mode / profile / timezone / file widgets."""
     available_instruments = list(INSTRUMENTS.keys())
     if PENDING_INSTRUMENT_SELECTOR_KEY in st.session_state:
         st.session_state["data_instrument_selector"] = st.session_state.pop(
@@ -237,7 +241,22 @@ def render_data_workspace(st, *, page) -> None:
         file = sample if sample.exists() else None
         if file is None:
             st.error("Sample data not found.")
+    return inst, meta, source, ingestion_mode, source_tz, file, format_profile
 
+
+def _render_source_apply_or_session(
+    st,
+    *,
+    page,
+    source,
+    ingestion_mode,
+    inst,
+    meta,
+    source_tz,
+    file,
+    format_profile,
+) -> None:
+    """Apply Upload/Sample or show the in-session dataset summary."""
     explicit_sample_load = bool(st.session_state.pop(LOAD_SAMPLE_REQUESTED_KEY, False))
     use_source_dataset = page._should_apply_source_dataset(
         file_present=file is not None,
@@ -302,63 +321,94 @@ def render_data_workspace(st, *, page) -> None:
                 # Legacy session shape: diagnostics held only dropped/incomplete rows.
                 page._render_derived_parent_diagnostics(diagnostics)
 
+
+def _render_loaded_dataset_actions(st, *, page, ingestion_mode, inst, meta) -> None:
+    """Lower/tick attach, roll assumptions, and local save for an active frame."""
     current_df = st.session_state.get("data")
-    if current_df is not None:
-        st.divider()
-        if page._hide_legacy_subtimeframe_uploader(ingestion_mode):
-            if page._is_15s_primary_session():
-                interval = st.session_state.get("subtimeframe_interval", "15s")
-                source_rows = st.session_state.get("subtimeframe_data")
-                source_count = len(source_rows) if isinstance(source_rows, pd.DataFrame) else 0
-                st.info(
-                    f"15-second source attached from primary upload: {source_count:,} bars at "
-                    f"{interval}. Separate lower-timeframe upload is hidden in this mode."
-                )
-            else:
-                # Mode selected but no active 15s-primary provenance yet (e.g. stale
-                # one-minute data after a mode switch, before a new 15s CSV upload).
-                st.info(
-                    "Separate lower-timeframe upload is hidden in 15-second primary mode. "
-                    "Upload a 15-second CSV above to derive one-minute bars and attach "
-                    "the 15-second source for R12."
-                )
-        else:
-            page._render_subtimeframe_upload(
-                current_df,
-                instrument=st.session_state.get("instrument", inst),
-                source_timezone=st.session_state.get("source_timezone"),
-                exchange_timezone=st.session_state.get("exchange_timezone", meta.exchange_tz),
+    if current_df is None:
+        return
+    st.divider()
+    if page._hide_legacy_subtimeframe_uploader(ingestion_mode):
+        if page._is_15s_primary_session():
+            interval = st.session_state.get("subtimeframe_interval", "15s")
+            source_rows = st.session_state.get("subtimeframe_data")
+            source_count = len(source_rows) if isinstance(source_rows, pd.DataFrame) else 0
+            st.info(
+                f"15-second source attached from primary upload: {source_count:,} bars at "
+                f"{interval}. Separate lower-timeframe upload is hidden in this mode."
             )
-        page._render_tick_attach(instrument=st.session_state.get("instrument", inst))
-        st.divider()
-        page._render_roll_assumptions(
+        else:
+            # Mode selected but no active 15s-primary provenance yet (e.g. stale
+            # one-minute data after a mode switch, before a new 15s CSV upload).
+            st.info(
+                "Separate lower-timeframe upload is hidden in 15-second primary mode. "
+                "Upload a 15-second CSV above to derive one-minute bars and attach "
+                "the 15-second source for R12."
+            )
+    else:
+        page._render_subtimeframe_upload(
             current_df,
             instrument=st.session_state.get("instrument", inst),
+            source_timezone=st.session_state.get("source_timezone"),
+            exchange_timezone=st.session_state.get("exchange_timezone", meta.exchange_tz),
         )
-        st.divider()
-        current_instrument = st.session_state.get("instrument", inst)
-        default_name = page._default_dataset_name(current_df, current_instrument)
-        dataset_name = st.text_input("Local dataset name", value=default_name)
-        if st.button("Save dataset locally"):
-            saved_meta = save_dataset(
-                current_df,
-                name=dataset_name.strip() or default_name,
-                instrument=current_instrument,
-                base_interval=st.session_state.get("base_interval"),
-                source_timezone=st.session_state.get("source_timezone"),
-                exchange_timezone=st.session_state.get("exchange_timezone"),
-                raw_data=st.session_state.get("raw_data"),
-                format_profile=st.session_state.get("format_profile", "canonical"),
-                raw_interval=st.session_state.get("raw_interval"),
-                subtimeframe_data=st.session_state.get("subtimeframe_data"),
-                subtimeframe_interval=st.session_state.get("subtimeframe_interval"),
-                subtimeframe_format_profile=st.session_state.get("subtimeframe_format_profile"),
-                ingestion_provenance=st.session_state.get("ingestion_provenance"),
-            )
-            st.session_state["dataset_id"] = saved_meta["dataset_id"]
-            set_active_dataset_id(saved_meta["dataset_id"])
-            st.session_state[ACTIVE_SAVED_DATASET_KEY] = saved_meta["dataset_id"]
-            st.session_state[FLASH_MESSAGE_KEY] = (
-                f"Saved dataset '{saved_meta['name']}' locally ({saved_meta['dataset_id'][:12]}...)."
-            )
-            st.rerun()
+    page._render_tick_attach(instrument=st.session_state.get("instrument", inst))
+    st.divider()
+    page._render_roll_assumptions(
+        current_df,
+        instrument=st.session_state.get("instrument", inst),
+    )
+    st.divider()
+    current_instrument = st.session_state.get("instrument", inst)
+    default_name = page._default_dataset_name(current_df, current_instrument)
+    dataset_name = st.text_input("Local dataset name", value=default_name)
+    if st.button("Save dataset locally"):
+        saved_meta = save_dataset(
+            current_df,
+            name=dataset_name.strip() or default_name,
+            instrument=current_instrument,
+            base_interval=st.session_state.get("base_interval"),
+            source_timezone=st.session_state.get("source_timezone"),
+            exchange_timezone=st.session_state.get("exchange_timezone"),
+            raw_data=st.session_state.get("raw_data"),
+            format_profile=st.session_state.get("format_profile", "canonical"),
+            raw_interval=st.session_state.get("raw_interval"),
+            subtimeframe_data=st.session_state.get("subtimeframe_data"),
+            subtimeframe_interval=st.session_state.get("subtimeframe_interval"),
+            subtimeframe_format_profile=st.session_state.get("subtimeframe_format_profile"),
+            ingestion_provenance=st.session_state.get("ingestion_provenance"),
+        )
+        st.session_state["dataset_id"] = saved_meta["dataset_id"]
+        set_active_dataset_id(saved_meta["dataset_id"])
+        st.session_state[ACTIVE_SAVED_DATASET_KEY] = saved_meta["dataset_id"]
+        st.session_state[FLASH_MESSAGE_KEY] = (
+            f"Saved dataset '{saved_meta['name']}' locally ({saved_meta['dataset_id'][:12]}...)."
+        )
+        st.rerun()
+
+
+def render_data_workspace(st, *, page) -> None:
+    """Saved-dataset / source / apply / session / attach / save tree."""
+    if not page._preserve_dataset_less_bundle():
+        bootstrap_active_saved_dataset()
+    page._consume_data_page_source_invalidation()
+    _render_data_flash_messages(st)
+    _render_saved_datasets(st, page=page)
+    st.divider()
+    inst, meta, source, ingestion_mode, source_tz, file, format_profile = (
+        _bind_source_ingest_controls(st, page=page)
+    )
+    _render_source_apply_or_session(
+        st,
+        page=page,
+        source=source,
+        ingestion_mode=ingestion_mode,
+        inst=inst,
+        meta=meta,
+        source_tz=source_tz,
+        file=file,
+        format_profile=format_profile,
+    )
+    _render_loaded_dataset_actions(
+        st, page=page, ingestion_mode=ingestion_mode, inst=inst, meta=meta
+    )

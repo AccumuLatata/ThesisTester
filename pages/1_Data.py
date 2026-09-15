@@ -1,8 +1,9 @@
 """Phase 1 — Data ingest UI.
 
-QR D-5 / QI-01-01: upload/save tree and D-grade attach renderers live in
-``*_page_helpers``. H10 admission (legacy ``tag_session(raw_df)`` vs 15s
-parent abort-on-fatal) stays on this page. Session keys unchanged.
+QR D-5 / QI-01-01: upload/save tree (saved / source-apply / attach-save)
+and D-grade attach renderers live in ``*_page_helpers``. H10 admission
+(legacy ``tag_session(raw_df)`` vs 15s parent abort-on-fatal) stays on
+this page. Session keys unchanged.
 """
 
 from pathlib import Path

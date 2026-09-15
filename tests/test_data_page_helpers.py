@@ -1177,6 +1177,14 @@ def test_data_page_exposes_15s_primary_mode_labels():
         _render_tick_attached_status,
         render_tick_attach,
     )
+    from thesistester.data_workspace_page_helpers import (
+        _bind_source_ingest_controls,
+        _render_data_flash_messages,
+        _render_loaded_dataset_actions,
+        _render_saved_datasets,
+        _render_source_apply_or_session,
+        render_data_workspace,
+    )
 
     assert callable(render_subtimeframe_upload)
     assert callable(_render_subtimeframe_duplicate_report)
@@ -1186,6 +1194,122 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert callable(render_tick_attach)
     assert callable(_handle_tick_attach_submit)
     assert callable(_render_tick_attached_status)
+    assert callable(render_data_workspace)
+    assert callable(_render_data_flash_messages)
+    assert callable(_render_saved_datasets)
+    assert callable(_bind_source_ingest_controls)
+    assert callable(_render_source_apply_or_session)
+    assert callable(_render_loaded_dataset_actions)
+
+
+_WORKSPACE_ORCHESTRATOR_PANELS = frozenset(
+    {
+        "_render_data_flash_messages",
+        "_render_saved_datasets",
+        "_bind_source_ingest_controls",
+        "_render_source_apply_or_session",
+        "_render_loaded_dataset_actions",
+        "_consume_data_page_source_invalidation",
+        "bootstrap_active_saved_dataset",
+    }
+)
+_WORKSPACE_PANEL_LITERALS = (
+    "Local saved datasets",
+    "Save dataset locally",
+    "Ingestion mode",
+)
+
+
+def _call_names(fn: ast.FunctionDef) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name):
+            names.add(func.id)
+        elif isinstance(func, ast.Attribute):
+            names.add(func.attr)
+    return names
+
+
+def assert_workspace_orchestrator_split(source: str) -> None:
+    """Orchestrator must call the panels and must not inline their chrome."""
+    fn = _module_function_def(source, "render_data_workspace")
+    missing = _WORKSPACE_ORCHESTRATOR_PANELS - _call_names(fn)
+    if missing:
+        raise AssertionError(f"workspace orchestrator missing panel calls {missing}")
+    body = ast.get_source_segment(source, fn) or ""
+    leaked = [needle for needle in _WORKSPACE_PANEL_LITERALS if needle in body]
+    if leaked:
+        raise AssertionError(f"render_data_workspace re-fused panel literals {leaked}")
+
+
+def test_data_workspace_orchestrator_stays_split():
+    """QI-01-01: do not re-fuse the upload/save tree into one F-grade function."""
+    helper = pathlib.Path("thesistester/data_workspace_page_helpers.py").read_text(encoding="utf-8")
+    assert_workspace_orchestrator_split(helper)
+
+
+def test_data_workspace_orchestrator_guard_rejects_fused_tree():
+    """Inline saved-dataset chrome must not bind as a split orchestrator."""
+    fused = (
+        "def render_data_workspace(st, *, page):\n"
+        "    page._consume_data_page_source_invalidation()\n"
+        "    bootstrap_active_saved_dataset()\n"
+        "    _render_data_flash_messages(st)\n"
+        "    _render_saved_datasets(st, page=page)\n"
+        "    _bind_source_ingest_controls(st, page=page)\n"
+        "    _render_source_apply_or_session(st, page=page)\n"
+        "    _render_loaded_dataset_actions(st, page=page)\n"
+        '    st.subheader("Local saved datasets")\n'
+    )
+    try:
+        assert_workspace_orchestrator_split(fused)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("fused Local saved datasets must invert the split probe")
+
+
+def test_data_page_constants_match_page_assignments():
+    """Helper keys must stay identical to pages/1_Data.py (session-key fork)."""
+    page_tree = ast.parse(_DATA_PAGE_SOURCE)
+    const_src = pathlib.Path("thesistester/data_page_constants.py").read_text(encoding="utf-8")
+    const_tree = ast.parse(const_src)
+
+    def _literal_assigns(tree: ast.AST) -> dict[str, object]:
+        out: dict[str, object] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if not isinstance(target, ast.Name):
+                continue
+            try:
+                out[target.id] = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                continue
+        return out
+
+    page_vals = _literal_assigns(page_tree)
+    const_vals = _literal_assigns(const_tree)
+    shared = sorted(set(page_vals) & set(const_vals))
+    assert shared, "data_page_constants and 1_Data.py must share key literals"
+    drifted = {
+        name: (page_vals[name], const_vals[name])
+        for name in shared
+        if page_vals[name] != const_vals[name]
+    }
+    assert drifted == {}, f"page vs data_page_constants drift {drifted}"
+    assert "FATAL_OHLCV_CODES" in shared
+
+
+def test_data_workspace_binds_via_globals_proxy():
+    """Helper tests exec the page without sys.modules; a modules lookup KeyErrors."""
+    assert "class _DataPageModule" in _DATA_PAGE_SOURCE
+    assert "page=_DataPageModule()" in _DATA_PAGE_SOURCE
+    assert "sys.modules[__name__]" not in _DATA_PAGE_SOURCE
 
 
 def test_bind_loader_profile_allow_list_falls_back_when_missing_or_mistyped():

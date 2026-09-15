@@ -1525,9 +1525,11 @@ Data UI note: `pages/1_Data.py` keeps title / websocket-cap chrome, H10
 admission (`_apply_source_dataset` legacy `tag_session(raw_df)` vs 15s
 parent abort-on-fatal), dataset-switch (`_clear_dataset_dependent_state` /
 `_set_active_dataset_state`), and 15s prepare/install. D-5 / QI-01-01
-extracts the module-level upload/save tree and splits the D-grade attach
-renderers into `thesistester/data_*_page_helpers.py` /
-`data_page_constants.py`. Session-key names are unchanged
+extracts the module-level upload/save tree into
+`data_workspace_page_helpers` panels (saved datasets / source-apply /
+attach-save) and splits the D-grade attach renderers into
+`thesistester/data_*_page_helpers.py` / `data_page_constants.py`.
+Session-key names are unchanged
 (`data`, `tick_paths`, `subtimeframe_*`, `ingestion_provenance`,
 `derived_parent_diagnostics`, `roll_policy`).
 

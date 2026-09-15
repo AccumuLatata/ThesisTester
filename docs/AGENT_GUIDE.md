@@ -117,7 +117,8 @@ extracts Backtest sidebar / run-persist / display into ``*_page_helpers``
 (QI-04-05). D-4 ([#576](https://github.com/AccumuLatata/ThesisTester/pull/576))
 extracts Validation sidebar / WFA-OTF persist /
 Phase 8 display into ``*_page_helpers`` (QI-05-02). D-5 (this PR) extracts
-the Data-page upload/save tree and splits `_render_subtimeframe_upload` /
+the Data-page upload/save tree into saved / source-apply / attach-save
+panels and splits `_render_subtimeframe_upload` /
 `_render_tick_attach` (QI-01-01). H10 admission is unchanged. Next: D-6.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
@@ -332,7 +333,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    D-4 ([#576](https://github.com/AccumuLatata/ThesisTester/pull/576))
    extracts Validation sidebar / WFA-OTF persist /
    Phase 8 display helpers (QI-05-02). D-5 (this PR) extracts the Data-page
-   upload/save tree and splits the D-grade attach renderers (QI-01-01).
+   upload/save tree into saved / source-apply / attach-save panels and
+   splits the D-grade attach renderers (QI-01-01).
    H10 admission is unchanged. Next: D-6.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
