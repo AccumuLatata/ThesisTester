@@ -20,9 +20,13 @@ from thesistester.setup import (
     OTF_TIMEFRAME_CHOICES,
     DEFAULT_TRIGGER_TIMEFRAME,
     TRIGGER_TIMEFRAME_CHOICES,
+    VALID_CONFLUENCE_MODES,
+    VALID_DIRECTIONS,
     VALID_TRIGGER_TIMEFRAMES,
+    VALID_TRIGGERS,
     available_level_columns,
     build_setup_config,
+    build_setup_kwargs_from_mapping,
     default_selected_levels,
     get_effective_entry_window_config,
     get_effective_otf_filter_config,
@@ -151,18 +155,18 @@ def _safe_selectbox_index_fallback(
     return options.index(fallback), fallback, True
 
 
-def _safe_trigger_fallback(value: object) -> tuple[str, bool]:
-    options = ["touch", "reject", "break", "reclaim", "3c", "fade", "continuation"]
-    if isinstance(value, str) and value in options:
+def _safe_enum_fallback(value: object, *, valid: frozenset[str], default: str) -> tuple[str, bool]:
+    if isinstance(value, str) and value in valid:
         return value, False
-    return "touch", True
+    return default, True
+
+
+def _safe_trigger_fallback(value: object) -> tuple[str, bool]:
+    return _safe_enum_fallback(value, valid=VALID_TRIGGERS, default="touch")
 
 
 def _safe_direction_fallback(value: object) -> tuple[str, bool]:
-    options = ["long", "short", "both"]
-    if isinstance(value, str) and value in options:
-        return value, False
-    return "both", True
+    return _safe_enum_fallback(value, valid=VALID_DIRECTIONS, default="both")
 
 
 def _safe_trigger_timeframe_fallback(value: object) -> tuple[str, bool]:
@@ -173,9 +177,12 @@ def _safe_trigger_timeframe_fallback(value: object) -> tuple[str, bool]:
 
 
 def _safe_confluence_mode_fallback(value: object) -> tuple[str, bool]:
-    if isinstance(value, str) and value in CONFLUENCE_MODE_DISPLAY:
-        return value, False
-    return "global_cluster", True
+    return _safe_enum_fallback(value, valid=VALID_CONFLUENCE_MODES, default="global_cluster")
+
+
+def _append_fallback_warning(warnings: list[str], fallback: bool, message: str) -> None:
+    if fallback:
+        warnings.append(message)
 
 
 def _resolve_otf_for_ui(config: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
@@ -329,31 +336,33 @@ def _default_editor_config(
     defaults: list[str],
     dataset_id: str | None,
 ) -> dict[str, Any]:
-    return {
-        "name": "Untitled setup",
-        "description": "",
-        "instrument": instrument,
-        "selected_levels": list(defaults),
-        "tolerance_ticks": 4.0,
-        "min_confluences": 2,
-        "max_confluences": 5,
-        "naked_only": False,
-        "naked_requirement": "any",
-        "trigger": "touch",
-        "trigger_timeframe": DEFAULT_TRIGGER_TIMEFRAME,
-        "direction": "both",
-        "confluence_mode": "global_cluster",
-        "anchor_level": None,
-        "confluence_rules": [],
-        "min_valid_confluences": 1,
-        "trigger_params": {},
-        "otf_filter": normalize_otf_filter_config(DEFAULT_OTF_FILTER_CONFIG),
-        "otf_algorithm_version": OTF_ALGORITHM_VERSION,
-        "otf_config_hash": compute_otf_config_hash(DEFAULT_OTF_FILTER_CONFIG),
-        "entry_window": get_effective_entry_window_config({"instrument": instrument}),
-        "setup_id": None,
-        "dataset_id": dataset_id,
-    }
+    """Product fallbacks from ``build_setup_config`` (C-1 / C-4)."""
+    built = build_setup_config(
+        name="Untitled setup",
+        description="",
+        instrument=instrument,
+        selected_levels=list(defaults),
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="touch",
+        trigger_timeframe=DEFAULT_TRIGGER_TIMEFRAME,
+        direction="both",
+        confluence_mode="global_cluster",
+        anchor_level=None,
+        confluence_rules=[],
+        min_valid_confluences=1,
+        trigger_params={},
+        otf_filter=DEFAULT_OTF_FILTER_CONFIG,
+        entry_window=None,
+    )
+    built["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
+    built["otf_config_hash"] = compute_otf_config_hash(built["otf_filter"])
+    built["setup_id"] = None
+    built["dataset_id"] = dataset_id
+    return built
 
 
 def _seed_editor_config(
@@ -426,6 +435,12 @@ def _has_unavailable_level_references(unavailable: dict[str, list[str]]) -> bool
     )
 
 
+def _render_editor_sync_warnings(warnings: list[str]) -> None:
+    """Render sync fallbacks. Sync itself never calls Streamlit widgets."""
+    for warning_message in warnings:
+        st.warning(warning_message)
+
+
 def _render_setup_level_warnings(config: dict[str, Any], level_columns: list[str]) -> None:
     unavailable = _unavailable_level_references(config, level_columns)
     if unavailable["anchor_level"]:
@@ -443,152 +458,154 @@ def _render_setup_level_warnings(config: dict[str, Any], level_columns: list[str
         )
 
 
-def _sync_editor_widget_state(
-    config: dict[str, Any], level_columns: list[str], *, overwrite: bool
-) -> list[str]:
-    warnings: list[str] = []
-
-    def _assign(key: str, value: Any) -> None:
-        if overwrite or key not in st.session_state:
-            st.session_state[key] = value
-
+def _hydrate_identity_fields(config: dict[str, Any], warnings: list[str]) -> tuple[str, str]:
     name_value, name_fallback = _safe_string_fallback(config.get("name"), "Untitled setup")
-    if name_fallback:
-        warnings.append("Loaded setup name is invalid; using default name.")
-    _assign(WIDGET_KEY_SETUP_NAME, name_value)
-
+    _append_fallback_warning(
+        warnings, name_fallback, "Loaded setup name is invalid; using default name."
+    )
     description_value, description_fallback = _safe_string_fallback(config.get("description"), "")
-    if description_fallback:
-        warnings.append("Loaded setup description is invalid; using empty description.")
-    _assign(WIDGET_KEY_DESCRIPTION, description_value)
+    _append_fallback_warning(
+        warnings,
+        description_fallback,
+        "Loaded setup description is invalid; using empty description.",
+    )
+    return name_value, description_value
 
-    mode_value, mode_fallback = _safe_confluence_mode_fallback(config.get("confluence_mode"))
-    if mode_fallback:
-        warnings.append("Loaded setup confluence mode is invalid; falling back to global_cluster.")
-    _assign(WIDGET_KEY_CONFLUENCE_MODE, CONFLUENCE_MODE_DISPLAY.get(mode_value, "Global cluster"))
 
+def _hydrate_selected_levels(
+    config: dict[str, Any], level_columns: list[str], warnings: list[str]
+) -> list[str]:
     selected_levels = config.get("selected_levels")
     if isinstance(selected_levels, list):
-        selected_level_seed = [
-            str(level) for level in selected_levels if str(level) in level_columns
-        ]
-    else:
-        selected_level_seed = default_selected_levels(level_columns)
-        warnings.append("Loaded selected levels are invalid; using default level selection.")
-    _assign(WIDGET_KEY_SELECTED_LEVELS, selected_level_seed)
+        return [str(level) for level in selected_levels if str(level) in level_columns]
+    warnings.append("Loaded selected levels are invalid; using default level selection.")
+    return default_selected_levels(level_columns)
 
+
+def _hydrate_global_cluster_fields(
+    config: dict[str, Any], warnings: list[str]
+) -> tuple[float, int, int]:
     tolerance_ticks, tolerance_fallback = _safe_float_fallback(
         config.get("tolerance_ticks"),
         default=4.0,
         min_value=0.0,
     )
-    if tolerance_fallback:
-        warnings.append("Loaded tolerance ticks is invalid; using a safe value.")
-    _assign(WIDGET_KEY_TOLERANCE_TICKS, tolerance_ticks)
-
+    _append_fallback_warning(
+        warnings, tolerance_fallback, "Loaded tolerance ticks is invalid; using a safe value."
+    )
     min_confluences, min_confluences_fallback = _safe_int_fallback(
         config.get("min_confluences"),
         default=2,
         min_value=1,
         max_value=5,
     )
-    if min_confluences_fallback:
-        warnings.append("Loaded minimum confluences is invalid; using a safe value.")
-    _assign(WIDGET_KEY_MIN_CONFLUENCES, min_confluences)
-
+    _append_fallback_warning(
+        warnings,
+        min_confluences_fallback,
+        "Loaded minimum confluences is invalid; using a safe value.",
+    )
     max_confluences, max_confluences_fallback = _safe_int_fallback(
         config.get("max_confluences"),
         default=5,
         min_value=min_confluences,
         max_value=5,
     )
-    if max_confluences_fallback:
-        warnings.append("Loaded maximum confluences is invalid; using a safe value.")
-    _assign(WIDGET_KEY_MAX_CONFLUENCES, max_confluences)
+    _append_fallback_warning(
+        warnings,
+        max_confluences_fallback,
+        "Loaded maximum confluences is invalid; using a safe value.",
+    )
+    return tolerance_ticks, min_confluences, max_confluences
 
+
+def _hydrate_rule_defaults(rules_seed: object, warnings: list[str]) -> dict[str, dict[str, Any]]:
+    rule_defaults: dict[str, dict[str, Any]] = {}
+    if not isinstance(rules_seed, list):
+        return rule_defaults
+    for rule in rules_seed:
+        if not isinstance(rule, dict):
+            continue
+        level = str(rule.get("level", "")).strip()
+        if not level:
+            continue
+        tol_value, tol_fallback = _safe_float_fallback(
+            rule.get("tolerance_ticks"),
+            default=4.0,
+            min_value=0.0,
+        )
+        _append_fallback_warning(
+            warnings,
+            tol_fallback,
+            f"Loaded tolerance for confluence rule '{level}' is invalid; using a safe value.",
+        )
+        rule_defaults[level] = {
+            "tolerance_ticks": tol_value,
+            "required": bool(rule.get("required", False)),
+        }
+    return rule_defaults
+
+
+def _hydrate_anchor_rule_fields(
+    config: dict[str, Any],
+    level_columns: list[str],
+    mode_value: str,
+    warnings: list[str],
+) -> tuple[str | None, dict[str, dict[str, Any]], list[str], int]:
     anchor_seed = config.get("anchor_level")
     anchor_default = (
         str(anchor_seed)
         if isinstance(anchor_seed, str) and anchor_seed in level_columns
         else (level_columns[0] if level_columns else None)
     )
-    _assign(WIDGET_KEY_ANCHOR_LEVEL, anchor_default)
-
-    rules_seed = config.get("confluence_rules", [])
-    rule_defaults = {}
-    if isinstance(rules_seed, list):
-        for rule in rules_seed:
-            if not isinstance(rule, dict):
-                continue
-            level = str(rule.get("level", "")).strip()
-            if not level:
-                continue
-            tol_value, tol_fallback = _safe_float_fallback(
-                rule.get("tolerance_ticks"),
-                default=4.0,
-                min_value=0.0,
-            )
-            required_value = bool(rule.get("required", False))
-            if tol_fallback:
-                warnings.append(
-                    f"Loaded tolerance for confluence rule '{level}' is invalid; using a safe value."
-                )
-            rule_defaults[level] = {
-                "tolerance_ticks": tol_value,
-                "required": required_value,
-            }
+    rule_defaults = _hydrate_rule_defaults(config.get("confluence_rules", []), warnings)
     confluence_options = [level for level in level_columns if level != anchor_default]
     selected_confluence_levels = [level for level in rule_defaults if level in confluence_options]
-    _assign(WIDGET_KEY_CONFLUENCE_LEVELS, selected_confluence_levels)
-    for level in selected_confluence_levels:
-        _assign(_anchor_rule_key("anchor_rule_tol", level), rule_defaults[level]["tolerance_ticks"])
-        _assign(_anchor_rule_key("anchor_rule_required", level), rule_defaults[level]["required"])
-
-    min_valid_raw = config.get("min_valid_confluences")
     min_valid_default = 1
-    min_valid_fallback = False
     if mode_value == "anchor_rules":
         min_valid_default, min_valid_fallback = _safe_int_fallback(
-            min_valid_raw,
+            config.get("min_valid_confluences"),
             default=1,
             min_value=0,
             max_value=max(len(selected_confluence_levels), 0),
         )
-        if min_valid_fallback:
-            warnings.append("Loaded minimum valid confluences is invalid; using a safe value.")
-    _assign(WIDGET_KEY_MIN_VALID_CONFLUENCES, min_valid_default)
+        _append_fallback_warning(
+            warnings,
+            min_valid_fallback,
+            "Loaded minimum valid confluences is invalid; using a safe value.",
+        )
+    return anchor_default, rule_defaults, selected_confluence_levels, min_valid_default
 
-    _assign(WIDGET_KEY_NAKED_ONLY, bool(config.get("naked_only", False)))
 
+def _hydrate_naked_requirement(config: dict[str, Any], warnings: list[str]) -> str:
     naked_requirement = str(config.get("naked_requirement", "any")).lower()
-    if naked_requirement not in ("any", "all"):
-        naked_requirement = "any"
-        warnings.append("Loaded naked requirement is invalid; falling back to 'any'.")
-    _assign(WIDGET_KEY_NAKED_REQUIREMENT, naked_requirement)
+    if naked_requirement in {"any", "all"}:
+        return naked_requirement
+    warnings.append("Loaded naked requirement is invalid; falling back to 'any'.")
+    return "any"
 
+
+def _hydrate_trigger_fields(
+    config: dict[str, Any], warnings: list[str]
+) -> tuple[str, str, str, dict[str, Any], float, int, bool]:
     trigger, trigger_fallback = _safe_trigger_fallback(config.get("trigger"))
-    if trigger_fallback:
-        warnings.append("Loaded trigger is invalid; falling back to touch.")
-    _assign(WIDGET_KEY_TRIGGER, trigger)
-
+    _append_fallback_warning(
+        warnings, trigger_fallback, "Loaded trigger is invalid; falling back to touch."
+    )
     trigger_timeframe, timeframe_fallback = _safe_trigger_timeframe_fallback(
         config.get("trigger_timeframe")
     )
-    if timeframe_fallback:
-        warnings.append("Loaded trigger timeframe is invalid; falling back to base.")
-    _assign(
-        WIDGET_KEY_TRIGGER_TIMEFRAME,
-        TRIGGER_TIMEFRAME_DISPLAY.get(trigger_timeframe, "Base/current timeframe"),
+    _append_fallback_warning(
+        warnings, timeframe_fallback, "Loaded trigger timeframe is invalid; falling back to base."
     )
-
     direction, direction_fallback = _safe_direction_fallback(config.get("direction"))
-    if direction_fallback:
-        warnings.append("Loaded direction is invalid; falling back to both.")
-    _assign(WIDGET_KEY_DIRECTION, direction)
-
+    _append_fallback_warning(
+        warnings, direction_fallback, "Loaded direction is invalid; falling back to both."
+    )
     trigger_params_seed = config.get("trigger_params", {})
     entry_retrace_default = 4.0
     max_wait_default = 5
+    require_close_default = False
+    trigger_params: dict[str, Any] = {}
     if trigger == "3c" and isinstance(trigger_params_seed, dict):
         entry_retrace_default, entry_retrace_fallback = _safe_float_fallback(
             trigger_params_seed.get("entry_retrace_ticks"),
@@ -601,70 +618,247 @@ def _sync_editor_widget_state(
             min_value=0,
             max_value=10_000,
         )
-        if entry_retrace_fallback:
-            warnings.append("Loaded entry retrace ticks is invalid; using a safe value.")
-        if max_wait_fallback:
-            warnings.append("Loaded max entry wait bars is invalid; using a safe value.")
-    _assign(WIDGET_KEY_ENTRY_RETRACE_TICKS, entry_retrace_default)
-    _assign(WIDGET_KEY_MAX_ENTRY_WAIT_BARS, max_wait_default)
-    require_close_default = False
-    if trigger in {"fade", "continuation"} and isinstance(trigger_params_seed, dict):
+        _append_fallback_warning(
+            warnings,
+            entry_retrace_fallback,
+            "Loaded entry retrace ticks is invalid; using a safe value.",
+        )
+        _append_fallback_warning(
+            warnings,
+            max_wait_fallback,
+            "Loaded max entry wait bars is invalid; using a safe value.",
+        )
+        trigger_params = {
+            "entry_retrace_ticks": entry_retrace_default,
+            "max_entry_wait_bars_after_reversal": max_wait_default,
+        }
+    elif trigger in {"fade", "continuation"} and isinstance(trigger_params_seed, dict):
         require_close_default = bool(trigger_params_seed.get("require_close_confirmation", False))
-    _assign(WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION, require_close_default)
+        trigger_params = {"require_close_confirmation": require_close_default}
+    return (
+        trigger,
+        trigger_timeframe,
+        direction,
+        trigger_params,
+        entry_retrace_default,
+        max_wait_default,
+        require_close_default,
+    )
 
+
+def _hydrate_otf_filter(config: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
     try:
-        otf_config = normalize_otf_filter_config(config.get("otf_filter"))
+        return normalize_otf_filter_config(config.get("otf_filter"))
     except ValueError:
-        otf_config = normalize_otf_filter_config(None)
         warnings.append(
             "Loaded OTF filter settings are invalid; falling back to disabled defaults."
         )
-    _assign(WIDGET_KEY_OTF_ENABLED, bool(otf_config.get("enabled", False)))
-    _assign(WIDGET_KEY_OTF_TIMEFRAMES, list(otf_config.get("timeframes", [])))
-    _assign(WIDGET_KEY_OTF_ALIGNMENT_MODE, str(otf_config.get("alignment_mode", "all")))
-    _assign(
-        WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS,
-        int(
-            otf_config.get(
-                "minimum_consecutive_bars", DEFAULT_OTF_FILTER_CONFIG["minimum_consecutive_bars"]
-            )
-        ),
-    )
-    _assign(WIDGET_KEY_OTF_DIRECTIONAL, True)
-    _assign(WIDGET_KEY_OTF_COMPLETED_BARS_ONLY, True)
-    _assign(WIDGET_KEY_OTF_SESSION_RESET, "session")
+        return normalize_otf_filter_config(None)
 
+
+def _hydrate_entry_window(config: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
     try:
-        entry_window_config = get_effective_entry_window_config(config)
+        return get_effective_entry_window_config(config)
     except ValueError:
-        entry_window_config = get_effective_entry_window_config({})
         warnings.append(
             "Loaded entry window settings are invalid; falling back to disabled defaults."
         )
-    _assign(WIDGET_KEY_ENTRY_WINDOW_ENABLED, bool(entry_window_config.get("enabled", False)))
+        return get_effective_entry_window_config({})
+
+
+def _hydrate_editor_widget_payload(
+    config: dict[str, Any], level_columns: list[str], warnings: list[str]
+) -> dict[str, Any]:
+    """Repair a loaded setup for widgets; enums/ranges match ``validate_setup_config``."""
+    name_value, description_value = _hydrate_identity_fields(config, warnings)
+    mode_value, mode_fallback = _safe_confluence_mode_fallback(config.get("confluence_mode"))
+    _append_fallback_warning(
+        warnings,
+        mode_fallback,
+        "Loaded setup confluence mode is invalid; falling back to global_cluster.",
+    )
+    selected_level_seed = _hydrate_selected_levels(config, level_columns, warnings)
+    tolerance_ticks, min_confluences, max_confluences = _hydrate_global_cluster_fields(
+        config, warnings
+    )
+    (
+        anchor_default,
+        rule_defaults,
+        selected_confluence_levels,
+        min_valid_default,
+    ) = _hydrate_anchor_rule_fields(config, level_columns, mode_value, warnings)
+    (
+        trigger,
+        trigger_timeframe,
+        direction,
+        trigger_params,
+        entry_retrace_default,
+        max_wait_default,
+        require_close_default,
+    ) = _hydrate_trigger_fields(config, warnings)
+    return {
+        "name": name_value,
+        "description": description_value,
+        "instrument": str(config.get("instrument") or "ES"),
+        "confluence_mode": mode_value,
+        "selected_levels": selected_level_seed,
+        "tolerance_ticks": tolerance_ticks,
+        "min_confluences": min_confluences,
+        "max_confluences": max_confluences,
+        "anchor_level": anchor_default,
+        "rule_defaults": rule_defaults,
+        "selected_confluence_levels": selected_confluence_levels,
+        "min_valid_confluences": min_valid_default,
+        "naked_only": bool(config.get("naked_only", False)),
+        "naked_requirement": _hydrate_naked_requirement(config, warnings),
+        "trigger": trigger,
+        "trigger_timeframe": trigger_timeframe,
+        "direction": direction,
+        "trigger_params": trigger_params,
+        "entry_retrace": entry_retrace_default,
+        "max_wait": max_wait_default,
+        "require_close": require_close_default,
+        "otf_filter": _hydrate_otf_filter(config, warnings),
+        "entry_window": _hydrate_entry_window(config, warnings),
+    }
+
+
+def _build_synced_setup_config(payload: dict[str, Any]) -> dict[str, Any]:
+    """Canonicalize repaired fields through ``build_setup_config`` (C-4)."""
+    confluence_rules = [
+        {
+            "level": level,
+            "tolerance_ticks": payload["rule_defaults"][level]["tolerance_ticks"],
+            "required": payload["rule_defaults"][level]["required"],
+        }
+        for level in payload["selected_confluence_levels"]
+    ]
+    kwargs = build_setup_kwargs_from_mapping(
+        payload,
+        confluence_rules=confluence_rules,
+    )
+    try:
+        built = build_setup_config(**kwargs)
+    except (TypeError, ValueError):
+        built = build_setup_config(
+            **build_setup_kwargs_from_mapping(
+                _default_editor_config(
+                    instrument=str(payload.get("instrument") or "ES"),
+                    defaults=list(payload.get("selected_levels") or []),
+                    dataset_id=None,
+                )
+            )
+        )
+    validate_setup_config(built)
+    return built
+
+
+def _assign_widget(key: str, value: Any, *, overwrite: bool) -> None:
+    if overwrite or key not in st.session_state:
+        st.session_state[key] = value
+
+
+def _entry_window_widget_values(entry_window_config: dict[str, Any]) -> dict[str, Any]:
     mode = str(entry_window_config.get("mode") or "rth_segments")
     if mode not in ENTRY_WINDOW_MODE_OPTIONS:
         mode = "rth_segments"
-    _assign(WIDGET_KEY_ENTRY_WINDOW_MODE, mode)
     segments = [
         segment
         for segment in list(entry_window_config.get("rth_segments") or [])
         if segment in RTH_SEGMENT_LABELS
     ]
-    _assign(WIDGET_KEY_ENTRY_WINDOW_RTH_SEGMENTS, segments or ["rth_open_30m"])
-    _assign(
-        WIDGET_KEY_ENTRY_WINDOW_START_TIME,
-        str(entry_window_config.get("start_time") or "09:30"),
-    )
-    _assign(
-        WIDGET_KEY_ENTRY_WINDOW_END_TIME,
-        str(entry_window_config.get("end_time") or "10:00"),
-    )
     window_tz = str(entry_window_config.get("timezone") or "America/New_York")
     if window_tz not in TIMEZONE_OPTIONS:
         window_tz = "America/New_York"
-    _assign(WIDGET_KEY_ENTRY_WINDOW_TIMEZONE, window_tz)
+    return {
+        WIDGET_KEY_ENTRY_WINDOW_ENABLED: bool(entry_window_config.get("enabled", False)),
+        WIDGET_KEY_ENTRY_WINDOW_MODE: mode,
+        WIDGET_KEY_ENTRY_WINDOW_RTH_SEGMENTS: segments or ["rth_open_30m"],
+        WIDGET_KEY_ENTRY_WINDOW_START_TIME: str(entry_window_config.get("start_time") or "09:30"),
+        WIDGET_KEY_ENTRY_WINDOW_END_TIME: str(entry_window_config.get("end_time") or "10:00"),
+        WIDGET_KEY_ENTRY_WINDOW_TIMEZONE: window_tz,
+    }
 
+
+def _assign_editor_widget_state(
+    payload: dict[str, Any], built: dict[str, Any], *, overwrite: bool
+) -> None:
+    """Write session keys only. Render reads these keys; it does not sync."""
+    otf_config = built.get("otf_filter") or payload["otf_filter"]
+    assignments: list[tuple[str, Any]] = [
+        (WIDGET_KEY_SETUP_NAME, payload["name"]),
+        (WIDGET_KEY_DESCRIPTION, payload["description"]),
+        (
+            WIDGET_KEY_CONFLUENCE_MODE,
+            CONFLUENCE_MODE_DISPLAY.get(
+                built.get("confluence_mode", payload["confluence_mode"]),
+                "Global cluster",
+            ),
+        ),
+        (WIDGET_KEY_SELECTED_LEVELS, payload["selected_levels"]),
+        (WIDGET_KEY_TOLERANCE_TICKS, payload["tolerance_ticks"]),
+        (WIDGET_KEY_MIN_CONFLUENCES, payload["min_confluences"]),
+        (WIDGET_KEY_MAX_CONFLUENCES, payload["max_confluences"]),
+        (WIDGET_KEY_ANCHOR_LEVEL, payload["anchor_level"]),
+        (WIDGET_KEY_CONFLUENCE_LEVELS, payload["selected_confluence_levels"]),
+        (WIDGET_KEY_MIN_VALID_CONFLUENCES, payload["min_valid_confluences"]),
+        (WIDGET_KEY_NAKED_ONLY, payload["naked_only"]),
+        (WIDGET_KEY_NAKED_REQUIREMENT, payload["naked_requirement"]),
+        (WIDGET_KEY_TRIGGER, built.get("trigger", payload["trigger"])),
+        (
+            WIDGET_KEY_TRIGGER_TIMEFRAME,
+            TRIGGER_TIMEFRAME_DISPLAY.get(
+                built.get("trigger_timeframe", payload["trigger_timeframe"]),
+                "Base/current timeframe",
+            ),
+        ),
+        (WIDGET_KEY_DIRECTION, built.get("direction", payload["direction"])),
+        (WIDGET_KEY_ENTRY_RETRACE_TICKS, payload["entry_retrace"]),
+        (WIDGET_KEY_MAX_ENTRY_WAIT_BARS, payload["max_wait"]),
+        (WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION, payload["require_close"]),
+        (WIDGET_KEY_OTF_ENABLED, bool(otf_config.get("enabled", False))),
+        (WIDGET_KEY_OTF_TIMEFRAMES, list(otf_config.get("timeframes", []))),
+        (WIDGET_KEY_OTF_ALIGNMENT_MODE, str(otf_config.get("alignment_mode", "all"))),
+        (
+            WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS,
+            int(
+                otf_config.get(
+                    "minimum_consecutive_bars",
+                    DEFAULT_OTF_FILTER_CONFIG["minimum_consecutive_bars"],
+                )
+            ),
+        ),
+        (WIDGET_KEY_OTF_DIRECTIONAL, True),
+        (WIDGET_KEY_OTF_COMPLETED_BARS_ONLY, True),
+        (WIDGET_KEY_OTF_SESSION_RESET, "session"),
+    ]
+    assignments.extend(
+        _entry_window_widget_values(built.get("entry_window") or payload["entry_window"]).items()
+    )
+    for key, value in assignments:
+        _assign_widget(key, value, overwrite=overwrite)
+    for level in payload["selected_confluence_levels"]:
+        rule = payload["rule_defaults"][level]
+        _assign_widget(
+            _anchor_rule_key("anchor_rule_tol", level),
+            rule["tolerance_ticks"],
+            overwrite=overwrite,
+        )
+        _assign_widget(
+            _anchor_rule_key("anchor_rule_required", level),
+            rule["required"],
+            overwrite=overwrite,
+        )
+
+
+def _sync_editor_widget_state(
+    config: dict[str, Any], level_columns: list[str], *, overwrite: bool
+) -> list[str]:
+    """Hydrate widgets from ``build_setup_config`` / validator-aligned fallbacks."""
+    warnings: list[str] = []
+    payload = _hydrate_editor_widget_payload(config, level_columns, warnings)
+    built = _build_synced_setup_config(payload)
+    _assign_editor_widget_state(payload, built, overwrite=overwrite)
     return warnings
 
 
@@ -805,8 +999,7 @@ _pending_entry_window_repair_warning = st.session_state.pop(
 )
 if _pending_entry_window_repair_warning:
     st.warning(_pending_entry_window_repair_warning)
-for warning_message in sync_warnings:
-    st.warning(warning_message)
+_render_editor_sync_warnings(sync_warnings)
 
 seed_dataset_id = editor_seed.get("dataset_id")
 if (

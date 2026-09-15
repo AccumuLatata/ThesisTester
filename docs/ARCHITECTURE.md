@@ -1535,6 +1535,14 @@ Session-key names are unchanged
 (`data`, `tick_paths`, `subtimeframe_*`, `ingestion_provenance`,
 `derived_parent_diagnostics`, `roll_policy`).
 
+Setup Builder UI note: `pages/3_Setup_Builder.py` keeps title / chrome / editor
+widgets on the page. D-7 / QI-03-04 splits render vs sync: `_sync_editor_widget_state`
+hydrates `_setup_builder_*` widget keys from `build_setup_config` outputs and
+C-1 `validate_setup_config` enum/range sets (`VALID_TRIGGERS`,
+`VALID_DIRECTIONS`, `VALID_CONFLUENCE_MODES`). Fallbacks stay on the page
+(`_safe_*` for render sanitization; hydrate helpers for sync). Public
+signatures unchanged.
+
 Validation UI note: `pages/10_Validation.py` keeps the title / A-21 caption,
 trades prelude, Admit inherit, and Focus/H12 honesty on the page. D-4 /
 QI-05-02 extracts sidebar, WFA/OTF persist + WFA display, batteries,
@@ -1717,6 +1725,9 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `levels_data_fingerprint` | Levels (`pages/2_Levels.py`) | Levels stale checks (`pages/2_Levels.py`) | `dict` |
 | `setup_config` | Setup Builder (`pages/3_Setup_Builder.py`), Signals saved-run copy action (`pages/6_Signals.py`) | Signals setup-source selection (`pages/6_Signals.py`), Report (`pages/11_Report_Export.py`) | `dict` setup configuration. **QI-03-12 / D-2:** Save, Set active, Clear active, Delete-of-active, and Signals copy-to-builder pop in-session `signals` plus signal-identity keys via `research_keys.pop_setup_mutation_signal_keys` so leftover candidates cannot reach Backtest unflagged. Dataset-clear still pops `signals` independently (A-8). |
 | `setup_configs` | Setup Builder (`pages/3_Setup_Builder.py`) | Setup Builder only | `list[dict]` |
+| `_setup_builder_editor_config` | Setup Builder (`pages/3_Setup_Builder.py`) | Setup Builder editor seed | Working editor mapping. Seeded from `setup_config` / library load. Dataset-clear (D-1). |
+| `_setup_builder_pending_widget_sync` | Setup Builder load/duplicate | Setup Builder sync | One-shot overwrite payload for `_sync_editor_widget_state`. |
+| `_setup_builder_*` widgets | Setup Builder (`pages/3_Setup_Builder.py`) | Setup Builder only | Widget keys (`_setup_builder_setup_name`, `_setup_builder_trigger`, `_setup_builder_otf_*`, `_setup_builder_entry_window_*`, …). D-7 / QI-03-04: `_sync_editor_widget_state` hydrates them from `build_setup_config` / `validate_setup_config`-aligned fallbacks; render reads the keys and does not sync. |
 | `confluence_zones` | Signals (`pages/6_Signals.py`) | Signals display (`pages/6_Signals.py`), Backtest chart overlay (`pages/7_Backtest.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` zone rows |
 | `naked_flags` | Signals (`pages/6_Signals.py`) | Signals logic/save (`pages/6_Signals.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` naked-level flags |
 | `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Validation/Report/Bundles (`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` candidate/fill signal rows. Also popped on setup `setup_config` mutation (QI-03-12 / D-2: Save / Set active / Clear / Delete-active / copy-to-builder) and on dataset switch (A-8). The Signals page surfaces the existing controls-changed warning on **view** (not only Save) when leftover artifacts remain and current controls no longer match `signal_settings_hash`. Missing or unhashable identity is treated as a mismatch. |
