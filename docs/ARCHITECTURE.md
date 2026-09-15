@@ -1708,9 +1708,9 @@ re-arm after a later Backtest/Report: `focused_trades`, `focused_equity_curve`,
 `setup_config`, plus `display_timezone`. A-7 residuals
 (`otf_validation_*` / `skipped_signals` / `direction_collision_diagnostic`)
 stay apply-clear / sticky (not dataset-clear) via `_STICKY_APPLY_SOURCE`.
-Classic chrome (`classic_*`) lives in the **CAI-5** table above (`## Classic
-thesis research context (CAI-5)`), not this research table — F-5 / QI-13-04
-/ QI-10-02. Widget nonce / Admit / roll-selector keys are flagged `widget` on
+Classic chrome (`classic_*`) lives in the **CAI-5** table above
+(`## Classic thesis research context (CAI-5)`), not this research table
+— F-5 / QI-13-04 / QI-10-02. Widget nonce / Admit / roll-selector keys are flagged `widget` on
 `research_keys.RESEARCH_KEY_REGISTRY` and stay out of the consumer-contract
 assertion. `data_identity` / `levels_identity` are also named in CAI-1.
 After a dataset-less import,

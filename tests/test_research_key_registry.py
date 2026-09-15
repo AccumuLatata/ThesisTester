@@ -41,6 +41,35 @@ from thesistester.research_keys import (
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 ARCHITECTURE = REPO_ROOT / "docs" / "ARCHITECTURE.md"
+_SESSION_STATE_CONTRACT_HEADING = "## `st.session_state` contract (current)"
+_RESEARCH_TABLE_HEADER = "| Key | Producing page(s) | Consuming page(s) | Schema (observed) |"
+_VALIDATION_HELPER_PATHS = (
+    "thesistester/validation_wfa_page_helpers.py",
+    "thesistester/validation_batteries_page_helpers.py",
+    "thesistester/validation_otf_page_helpers.py",
+)
+_QI1304_CONSUMER_NEEDLES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "data",
+        (
+            "Validation",
+            "pages/10_Validation.py",
+            "validation_*_page_helpers.py",
+            "Portfolio",
+            "pages/13_Portfolio.py",
+            "parent bar-count",
+        ),
+    ),
+    (
+        "levels",
+        ("Validation", "pages/10_Validation.py", "validation_*_page_helpers.py"),
+    ),
+    (
+        "signals",
+        ("Validation", "pages/10_Validation.py", "validation_*_page_helpers.py"),
+    ),
+    ("trades", ("Portfolio", "pages/13_Portfolio.py")),
+)
 _SESSION_ATTRS = frozenset({"get", "pop", "setdefault"})
 _CHROME_PREFIXES = (
     "assistant_",
@@ -236,11 +265,16 @@ def _measured_session_keys(path: pathlib.Path) -> set[str]:
     return visitor.keys
 
 
-def _architecture_research_table() -> tuple[set[str], dict[str, str]]:
-    text = ARCHITECTURE.read_text(encoding="utf-8")
-    marker = "| Key | Producing page(s) | Consuming page(s) | Schema (observed) |"
-    start = text.index(marker)
-    chunk = text[start:]
+def _architecture_text(text: str | None = None) -> str:
+    return ARCHITECTURE.read_text(encoding="utf-8") if text is None else text
+
+
+def _architecture_research_table(
+    text: str | None = None,
+) -> tuple[set[str], dict[str, str]]:
+    source = _architecture_text(text)
+    start = source.index(_RESEARCH_TABLE_HEADER)
+    chunk = source[start:]
     heading = re.search(r"\n## ", chunk)
     if heading:
         chunk = chunk[: heading.start()]
@@ -257,6 +291,14 @@ def _architecture_research_table() -> tuple[set[str], dict[str, str]]:
             keys.add(key)
             consumers[key] = cols[2]
     return keys, consumers
+
+
+def _session_key_table_preamble(text: str | None = None) -> str:
+    """Contract prose immediately before the research table (not the CAI-5 H2)."""
+    source = _architecture_text(text)
+    contract = source.index(_SESSION_STATE_CONTRACT_HEADING)
+    table = source.index(_RESEARCH_TABLE_HEADER, contract)
+    return source[contract:table]
 
 
 def _is_chrome_key(key: str) -> bool:
@@ -319,54 +361,163 @@ def test_architecture_session_key_table_covers_measured_research_keys():
         f"ARCHITECTURE session-key table missing dataset-clear keys {missing_dataset}"
     )
 
-    _assert_qi1304_named_consumers(by_file, consumers, research)
+    _assert_qi1304_named_consumers(by_file, consumers)
+    _assert_qi1304_cai5_pointer()
+    _assert_qi1304_chrome_out_of_table(table_keys)
+    _assert_qi1304_widgets_out_of_research(research)
 
 
 def test_qi1304_session_key_table_names_validation_and_portfolio_consumers():
     """F-5 / QI-13-04 (+ QI-10-02): Validation + Portfolio consumers; CAI-5 chrome."""
-    _table_keys, consumers = _architecture_research_table()
+    table_keys, consumers = _architecture_research_table()
     paths = {
-        "pages/10_Validation.py": REPO_ROOT / "pages" / "10_Validation.py",
         "pages/13_Portfolio.py": REPO_ROOT / "pages" / "13_Portfolio.py",
-        "thesistester/validation_wfa_page_helpers.py": (
-            REPO_ROOT / "thesistester" / "validation_wfa_page_helpers.py"
-        ),
-        "thesistester/validation_batteries_page_helpers.py": (
-            REPO_ROOT / "thesistester" / "validation_batteries_page_helpers.py"
-        ),
+        **{rel: REPO_ROOT / rel for rel in _VALIDATION_HELPER_PATHS},
     }
     by_file = {rel: _measured_session_keys(path) for rel, path in paths.items()}
-    _assert_qi1304_named_consumers(by_file, consumers, research=set())
-    assert "trades" in by_file["pages/10_Validation.py"]
-    assert "data" in by_file["pages/13_Portfolio.py"]
-    assert "Portfolio" in consumers["data"]
-    assert "validation_*_page_helpers.py" in consumers["data"]
-    assert "validation_*_page_helpers.py" in consumers["levels"]
-    assert "validation_*_page_helpers.py" in consumers["signals"]
-    arch = ARCHITECTURE.read_text(encoding="utf-8")
-    assert "## Classic thesis research context (CAI-5)" in arch
-    assert "F-5 / QI-13-04" in arch
+    _assert_qi1304_named_consumers(by_file, consumers)
+    _assert_qi1304_cai5_pointer()
+    _assert_qi1304_chrome_out_of_table(table_keys)
 
 
 def _assert_qi1304_named_consumers(
     by_file: dict[str, set[str]],
     consumers: dict[str, str],
-    research: set[str],
 ) -> None:
-    for key, label, path in (
-        ("data", "Validation", "thesistester/validation_wfa_page_helpers.py"),
-        ("levels", "Validation", "thesistester/validation_wfa_page_helpers.py"),
-        ("signals", "Validation", "thesistester/validation_wfa_page_helpers.py"),
-        ("trades", "Portfolio", "pages/13_Portfolio.py"),
-    ):
-        assert key in by_file[path], f"{path} must read {key}"
-        assert label in consumers[key], f"{key} consumers must name {label}"
+    for key in ("data", "levels", "signals"):
+        helpers = [path for path in _VALIDATION_HELPER_PATHS if key in by_file.get(path, set())]
+        assert helpers, f"a Validation helper must read {key}"
+    assert "trades" in by_file["pages/13_Portfolio.py"], "Portfolio must read trades"
+    assert "data" in by_file["pages/13_Portfolio.py"], "Portfolio must read data"
 
-    arch = ARCHITECTURE.read_text(encoding="utf-8")
-    assert "CAI-5" in arch
-    assert "classic_*" in arch or "`classic_" in arch
-    if research:
-        assert not (set(WIDGET_KEYS) & research)
+    for key, needles in _QI1304_CONSUMER_NEEDLES:
+        cell = consumers[key]
+        missing = [needle for needle in needles if needle not in cell]
+        assert missing == [], f"{key} consumers missing {missing}: {cell}"
+
+
+def _assert_qi1304_cai5_pointer(text: str | None = None) -> None:
+    """Bind classic_* / CAI-5 / QI-13-04 to the table preamble, not the CAI-5 H2."""
+    source = _architecture_text(text)
+    preamble = _session_key_table_preamble(source)
+    for needle in (
+        "`classic_*`",
+        "## Classic thesis research context (CAI-5)",
+        "QI-13-04",
+    ):
+        assert needle in preamble, f"session-key table preamble missing {needle!r}"
+    heading_at = source.index("## Classic thesis research context (CAI-5)")
+    contract_at = source.index(_SESSION_STATE_CONTRACT_HEADING)
+    assert heading_at < contract_at, "CAI-5 heading must stay above the research table"
+
+
+def _assert_qi1304_chrome_out_of_table(table_keys: set[str]) -> None:
+    leaked = sorted(key for key in table_keys if key.startswith("classic_"))
+    assert leaked == [], f"classic_* chrome leaked into the research table: {leaked}"
+
+
+def _assert_qi1304_widgets_out_of_research(research: set[str]) -> None:
+    """WIDGET_KEYS stay out of table ⊇ research via registry membership, not heuristics."""
+    nonce_widgets = tuple(key for key in WIDGET_KEYS if key.startswith("_"))
+    assert nonce_widgets, "WIDGET_KEYS must include nonce/textarea keys"
+    unflagged = [key for key in nonce_widgets if not _is_widgetish(key)]
+    assert unflagged == [], (
+        f"_is_widgetish must treat registry nonce widgets as widgets: {unflagged}"
+    )
+    leaked = sorted(set(WIDGET_KEYS) & research)
+    assert leaked == [], f"widget keys leaked into the research contract: {leaked}"
+
+
+def test_qi1304_wrapped_cai5_heading_cite_does_not_bind_pointer():
+    """A line-wrapped heading cite in the preamble must not satisfy the pointer."""
+    fake = (
+        "## Classic thesis research context (CAI-5)\n\n"
+        f"{_SESSION_STATE_CONTRACT_HEADING}\n\n"
+        "Classic chrome (`classic_*`) lives in the **CAI-5** table above (`## Classic\n"
+        "thesis research context (CAI-5)`), not this research table — F-5 / QI-13-04.\n\n"
+        f"{_RESEARCH_TABLE_HEADER}\n"
+        "|---|---|---|---|\n"
+        "| `data` | Data | Levels |\n"
+    )
+    try:
+        _assert_qi1304_cai5_pointer(fake)
+    except AssertionError:
+        return
+    raise AssertionError("wrapped CAI-5 heading cite must not bind the pointer")
+
+
+def test_qi1304_file_level_cai5_heading_does_not_bind_pointer():
+    """Whole-file CAI-5 heading / later QI-13-04 must not satisfy the F-5 pointer."""
+    fake = (
+        "## Classic thesis research context (CAI-5)\n\n"
+        "| Key | Role |\n| `classic_active_run_id` | chrome |\n\n"
+        f"{_SESSION_STATE_CONTRACT_HEADING}\n\n"
+        "Uploader nonce ≠ leftover research keys.\n\n"
+        f"{_RESEARCH_TABLE_HEADER}\n"
+        "|---|---|---|---|\n"
+        "| `data` | Data | Levels |\n"
+        "\n## Local persistence topology\n\n"
+        "Later mention: F-5 / QI-13-04 `classic_*` CAI-5.\n"
+    )
+    try:
+        _assert_qi1304_cai5_pointer(fake)
+    except AssertionError:
+        return
+    raise AssertionError("CAI-5 heading / later-section needles must not bind the pointer")
+
+
+def test_qi1304_later_validation_mention_does_not_name_consumers():
+    """A later Validation/Portfolio sentence must not populate consumer cells."""
+    fake = (
+        f"{_RESEARCH_TABLE_HEADER}\n"
+        "|---|---|---|---|\n"
+        "| `data` | Data | Levels (`pages/2_Levels.py`) |\n"
+        "| `levels` | Levels | Setup (`pages/3_Setup_Builder.py`) |\n"
+        "| `signals` | Signals | Backtest (`pages/7_Backtest.py`) |\n"
+        "| `trades` | Backtest | Time (`pages/9_Time_Analysis.py`) |\n"
+        "\n## Local persistence topology\n\n"
+        "Validation (`pages/10_Validation.py` via `validation_*_page_helpers.py`) "
+        "and Portfolio (`pages/13_Portfolio.py`, parent bar-count) consume data.\n"
+    )
+    _table_keys, consumers = _architecture_research_table(fake)
+    try:
+        _assert_qi1304_named_consumers(
+            {
+                "pages/13_Portfolio.py": {"trades", "data"},
+                **{path: {"data", "levels", "signals"} for path in _VALIDATION_HELPER_PATHS},
+            },
+            consumers,
+        )
+    except AssertionError:
+        return
+    raise AssertionError("later-section Validation/Portfolio needles must not name consumers")
+
+
+def test_qi1304_nonce_widgets_require_registry_membership():
+    """Nonce widgets are WIDGET_KEYS-only; suffix/prefix heuristics must not hide a drop."""
+    nonce = "_primary_csv_uploader_nonce"
+    assert nonce in WIDGET_KEYS
+    assert _is_widgetish(nonce)
+    assert not nonce.endswith(("_selector", "_input"))
+    assert not nonce.startswith(("backtest_", "grid_"))
+
+
+def test_qi1304_widget_keys_in_research_set_fail_closed():
+    """A nonce widget inside the measured-research set must fail closed."""
+    try:
+        _assert_qi1304_widgets_out_of_research({"data", "_primary_csv_uploader_nonce"})
+    except AssertionError:
+        return
+    raise AssertionError("nonce widget in research must fail closed")
+
+
+def test_qi1304_classic_key_in_research_table_fail_closed():
+    """classic_* rows in the research table must fail closed."""
+    try:
+        _assert_qi1304_chrome_out_of_table({"data", "classic_active_run_id"})
+    except AssertionError:
+        return
+    raise AssertionError("classic_* table key must fail closed")
 
 
 def test_qi10_stale_state_matrix_d1_rows(monkeypatch):
