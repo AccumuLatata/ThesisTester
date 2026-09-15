@@ -1272,28 +1272,38 @@ def test_data_workspace_orchestrator_guard_rejects_fused_tree():
         raise AssertionError("fused Local saved datasets must invert the split probe")
 
 
+def _literal_assign_value(node: ast.AST):
+    """String/number/set literals, including ``frozenset({...})`` Assign values."""
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, TypeError):
+        pass
+    codes = _literal_str_set(node)
+    if codes is not None:
+        return frozenset(codes)
+    return None
+
+
+def _literal_assigns(tree: ast.AST) -> dict[str, object]:
+    out: dict[str, object] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        value = _literal_assign_value(node.value)
+        if value is not None:
+            out[target.id] = value
+    return out
+
+
 def test_data_page_constants_match_page_assignments():
     """Helper keys must stay identical to pages/1_Data.py (session-key fork)."""
-    page_tree = ast.parse(_DATA_PAGE_SOURCE)
-    const_src = pathlib.Path("thesistester/data_page_constants.py").read_text(encoding="utf-8")
-    const_tree = ast.parse(const_src)
-
-    def _literal_assigns(tree: ast.AST) -> dict[str, object]:
-        out: dict[str, object] = {}
-        for node in tree.body:
-            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-                continue
-            target = node.targets[0]
-            if not isinstance(target, ast.Name):
-                continue
-            try:
-                out[target.id] = ast.literal_eval(node.value)
-            except (ValueError, TypeError):
-                continue
-        return out
-
-    page_vals = _literal_assigns(page_tree)
-    const_vals = _literal_assigns(const_tree)
+    page_vals = _literal_assigns(ast.parse(_DATA_PAGE_SOURCE))
+    const_vals = _literal_assigns(
+        ast.parse(pathlib.Path("thesistester/data_page_constants.py").read_text(encoding="utf-8"))
+    )
     shared = sorted(set(page_vals) & set(const_vals))
     assert shared, "data_page_constants and 1_Data.py must share key literals"
     drifted = {
@@ -1305,11 +1315,76 @@ def test_data_page_constants_match_page_assignments():
     assert "FATAL_OHLCV_CODES" in shared
 
 
+def _workspace_page_call(source: str) -> ast.Call:
+    """The module-level ``render_data_workspace(..., page=...)`` call."""
+    tree = ast.parse(source)
+    matches: list[ast.Call] = []
+    for node in tree.body:
+        if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
+            continue
+        func = node.value.func
+        name = func.id if isinstance(func, ast.Name) else None
+        if name == "render_data_workspace":
+            matches.append(node.value)
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected one module-level render_data_workspace call, found {len(matches)}"
+        )
+    return matches[0]
+
+
 def test_data_workspace_binds_via_globals_proxy():
     """Helper tests exec the page without sys.modules; a modules lookup KeyErrors."""
-    assert "class _DataPageModule" in _DATA_PAGE_SOURCE
-    assert "page=_DataPageModule()" in _DATA_PAGE_SOURCE
-    assert "sys.modules[__name__]" not in _DATA_PAGE_SOURCE
+    tree = ast.parse(_DATA_PAGE_SOURCE)
+    proxy_defs = [
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "_DataPageModule"
+    ]
+    assert proxy_defs == ["_DataPageModule"]
+    call = _workspace_page_call(_DATA_PAGE_SOURCE)
+    page_kw = next((kw.value for kw in call.keywords if kw.arg == "page"), None)
+    if page_kw is None:
+        raise AssertionError("render_data_workspace must pass page=")
+    if not (
+        isinstance(page_kw, ast.Call)
+        and isinstance(page_kw.func, ast.Name)
+        and page_kw.func.id == "_DataPageModule"
+    ):
+        raise AssertionError("render_data_workspace must bind page=_DataPageModule()")
+    for node in ast.walk(call):
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "modules"
+        ):
+            raise AssertionError("workspace page= must not use sys.modules[...]")
+
+
+def test_data_workspace_proxy_guard_rejects_sys_modules_page():
+    """Docstring / comment sys.modules needles must not bind the page= proxy."""
+    fake = (
+        "class _DataPageModule:\n"
+        "    '''Resolve page names without requiring sys.modules[__name__].'''\n"
+        "    def __getattr__(self, name):\n"
+        "        return globals()[name]\n"
+        "render_data_workspace(st, page=sys.modules[__name__])\n"
+    )
+    try:
+        call = _workspace_page_call(fake)
+        page_kw = next((kw.value for kw in call.keywords if kw.arg == "page"), None)
+        if (
+            isinstance(page_kw, ast.Call)
+            and isinstance(page_kw.func, ast.Name)
+            and page_kw.func.id == "_DataPageModule"
+        ):
+            raise AssertionError("unexpected proxy bind")
+        raise AssertionError("render_data_workspace must bind page=_DataPageModule()")
+    except AssertionError as exc:
+        if "page=_DataPageModule()" in str(exc):
+            return
+        raise
+    raise AssertionError("sys.modules page= must invert the globals-proxy probe")
 
 
 def test_bind_loader_profile_allow_list_falls_back_when_missing_or_mistyped():
