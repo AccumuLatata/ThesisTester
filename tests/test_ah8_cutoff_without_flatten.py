@@ -157,6 +157,48 @@ def assert_effective_cutoff_helper_function(source: str) -> None:
     raise AssertionError("missing effective_no_new_entries_after helper")
 
 
+_H7_HELPER_CALL_NAMES = frozenset(
+    {"effective_no_new_entries_after", "compute_effective_no_new_entries_after"}
+)
+
+
+def assert_sidebar_binds_effective_cutoff_via_helper(source: str) -> None:
+    """Bind sidebar ``effective_no_new_entries_after`` to the H7 helper call.
+
+    A passthrough ``= no_new_entries_after`` would invert H7: Streamlit still
+    returns leftover cutoff text from a disabled widget when flatten is off.
+    """
+    tree = ast.parse(source)
+    found = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id != "effective_no_new_entries_after":
+            continue
+        call = node.value
+        if not isinstance(call, ast.Call) or call.keywords:
+            raise AssertionError(
+                "effective_no_new_entries_after must be a positional H7 helper call"
+            )
+        func_name = _call_name(call)
+        if func_name not in _H7_HELPER_CALL_NAMES:
+            raise AssertionError(
+                f"effective_no_new_entries_after must call the H7 helper, got {func_name!r}"
+            )
+        if len(call.args) != 2:
+            raise AssertionError(
+                "H7 helper must be called with (flat_by_session_close, no_new_entries_after)"
+            )
+        if _kw_expr(call.args[0]) != "flat_by_session_close":
+            raise AssertionError("H7 helper arg0 must be flat_by_session_close")
+        if _kw_expr(call.args[1]) != "no_new_entries_after":
+            raise AssertionError("H7 helper arg1 must be no_new_entries_after")
+        found = True
+    if not found:
+        raise AssertionError("missing effective_no_new_entries_after helper-call assignment")
+
+
 def assert_cutoff_widget_disabled_when_flatten_off(source: str, widget_key: str) -> None:
     """Bind ``disabled=not flat_by_session_close`` on the cutoff text_input only."""
     tree = ast.parse(source)
@@ -308,6 +350,9 @@ def test_h7_ui_and_grid_force_cutoff_none_when_flatten_off() -> None:
     for page, (engine_name, widget_key) in _PAGE_ENGINE.items():
         if page == _BACKTEST:
             assert_effective_cutoff_helper_function(_read(HELPERS / "backtest_page_helpers.py"))
+            assert_sidebar_binds_effective_cutoff_via_helper(
+                _read(HELPERS / "backtest_sidebar_page_helpers.py")
+            )
             assert_cutoff_widget_disabled_when_flatten_off(
                 _read(HELPERS / "backtest_sidebar_page_helpers.py"), widget_key
             )
@@ -342,6 +387,16 @@ def test_h7_wiring_guard_rejects_comment_unused_and_other_widget() -> None:
         ")\n"
         "simulate_trades(no_new_entries_after=no_new_entries_after)\n"
     )
+    passthrough_sidebar = (
+        "effective_no_new_entries_after = no_new_entries_after\n"
+        "simulate_trades(no_new_entries_after=effective_no_new_entries_after)\n"
+    )
+    try:
+        assert_sidebar_binds_effective_cutoff_via_helper(passthrough_sidebar)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("passthrough cutoff assignment must not bind the H7 helper call")
     try:
         assert_engine_uses_effective_cutoff(unused_formula, "simulate_trades")
     except AssertionError:

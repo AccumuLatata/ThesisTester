@@ -1,4 +1,4 @@
-"""QR D-3 / QI-04-05: Backtest page-helper unit tests (H7 cutoff + H15 OTF TZ)."""
+"""QR D-3 / QI-04-05: Backtest page-helper unit tests (H7 / H15 / display)."""
 
 from __future__ import annotations
 
@@ -6,11 +6,17 @@ import ast
 from pathlib import Path
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 
 from thesistester.backtest_page_helpers import (
     assemble_otf_filter_clocks,
+    clip_trades_for_chart,
     effective_no_new_entries_after,
+    format_metric,
+    format_metric_int,
+    format_win_rate,
+    signal_setup_context,
 )
 from thesistester.config import INSTRUMENTS
 
@@ -106,3 +112,46 @@ def test_assemble_otf_filter_clocks_es_preset() -> None:
     assert clocks["session_timezone"] == "Europe/Berlin"
     assert clocks["eth_start"] == "18:00"
     assert clocks["session_timezone"] != INSTRUMENTS["ES"].exchange_tz
+
+
+def test_format_metric_nan_and_non_numeric() -> None:
+    assert format_metric(None) == "—"
+    assert format_metric(float("nan")) == "—"
+    assert format_metric("x") == "—"
+    assert format_metric(1.5) == "1.50"
+    assert format_metric_int(None) == 0
+    assert format_metric_int("bad") == 0
+    assert format_metric_int(3.9) == 3
+    assert format_win_rate(None) == "—"
+    assert format_win_rate(0.5) == "50.0%"
+
+
+def test_signal_setup_context_prefers_single_column_name() -> None:
+    signals = pd.DataFrame({"setup_name": ["Open drive", "Open drive"]})
+    assert (
+        signal_setup_context(signals, {"setup_name": "other", "setup_caption": "cap"})
+        == "Backtesting signals from saved setup: Open drive • cap"
+    )
+    multi = pd.DataFrame({"setup_name": ["A", "B"]})
+    assert signal_setup_context(multi, None) == "Backtesting signals from multiple saved setups: A, B"
+    empty = pd.DataFrame({"direction": ["long"]})
+    assert signal_setup_context(empty, {"setup_caption": "only cap"}) == (
+        "Backtesting generated signals • only cap"
+    )
+    assert signal_setup_context(empty, None) is None
+
+
+def test_clip_trades_for_chart_inclusive_overlap() -> None:
+    trades = pd.DataFrame(
+        {
+            "entry_timestamp": pd.to_datetime(["2024-01-02 09:30", "2024-01-02 11:00"]),
+            "exit_timestamp": pd.to_datetime(["2024-01-02 09:45", "2024-01-02 11:15"]),
+        }
+    )
+    clipped = clip_trades_for_chart(
+        trades,
+        start="2024-01-02 09:40",
+        end="2024-01-02 10:00",
+    )
+    assert list(clipped["entry_timestamp"]) == [pd.Timestamp("2024-01-02 09:30")]
+    assert clip_trades_for_chart(None, start=None, end=None) is None

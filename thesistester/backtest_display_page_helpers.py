@@ -5,7 +5,6 @@ Streamlit-free: callers pass ``st``. Session keys and captions unchanged.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import pandas as pd
@@ -59,6 +58,9 @@ from thesistester.backtest_page_helpers import (
     DIRECTION_COLLISION_SESSION_KEY,
     clip_trades_for_chart,
     format_direction_collision_caption,
+    format_metric,
+    format_metric_int,
+    format_win_rate,
 )
 from thesistester.levels.prev30m_vwap import COL_HIT_M1, COL_HIT_M5
 from thesistester.timezone_display import timezone_contract_caption
@@ -287,26 +289,6 @@ def render_backtest_results(
     if not isinstance(_display_summary, dict):
         _display_summary = summary if isinstance(summary, dict) else {}
 
-    def _fmt(v, fmt=".2f", fallback="—"):
-        if v is None:
-            return fallback
-        try:
-            v_float = float(v)
-            if math.isnan(v_float):
-                return fallback
-            return format(v_float, fmt)
-        except (TypeError, ValueError):
-            return fallback
-
-    def _fmt_int(v):
-        try:
-            return int(v or 0)
-        except (TypeError, ValueError):
-            return 0
-
-    def _fmt_win_rate(v):
-        return _fmt(v, ".1%") if v is not None else "—"
-
     if _show_focused:
         st.caption("Showing **Focused** KPIs (post-hoc subset).")
     else:
@@ -314,28 +296,28 @@ def render_backtest_results(
 
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("Trades", _display_summary.get("trade_count", 0))
-    col2.metric("Win rate", _fmt_win_rate(_display_summary.get("win_rate")))
-    col3.metric("Avg R", _fmt(_display_summary.get("avg_r")))
-    col4.metric("Total R", _fmt(_display_summary.get("total_r")))
-    col5.metric("Profit factor", _fmt(_display_summary.get("profit_factor")))
-    col6.metric("Max DD (R)", _fmt(_display_summary.get("max_drawdown_r")))
+    col2.metric("Win rate", format_win_rate(_display_summary.get("win_rate")))
+    col3.metric("Avg R", format_metric(_display_summary.get("avg_r")))
+    col4.metric("Total R", format_metric(_display_summary.get("total_r")))
+    col5.metric("Profit factor", format_metric(_display_summary.get("profit_factor")))
+    col6.metric("Max DD (R)", format_metric(_display_summary.get("max_drawdown_r")))
 
     st.subheader("Advanced risk metrics")
     adv_row_1 = st.columns(5)
-    adv_row_1[0].metric("Median R", _fmt(_display_summary.get("median_r")))
-    adv_row_1[1].metric("Std R", _fmt(_display_summary.get("std_r")))
-    adv_row_1[2].metric("Sharpe-like R", _fmt(_display_summary.get("sharpe_like_r")))
-    adv_row_1[3].metric("Sortino-like R", _fmt(_display_summary.get("sortino_like_r")))
-    adv_row_1[4].metric("Ulcer index R", _fmt(_display_summary.get("ulcer_index_r")))
+    adv_row_1[0].metric("Median R", format_metric(_display_summary.get("median_r")))
+    adv_row_1[1].metric("Std R", format_metric(_display_summary.get("std_r")))
+    adv_row_1[2].metric("Sharpe-like R", format_metric(_display_summary.get("sharpe_like_r")))
+    adv_row_1[3].metric("Sortino-like R", format_metric(_display_summary.get("sortino_like_r")))
+    adv_row_1[4].metric("Ulcer index R", format_metric(_display_summary.get("ulcer_index_r")))
 
     adv_row_2 = st.columns(4)
-    adv_row_2[0].metric("Recovery factor", _fmt(_display_summary.get("recovery_factor")))
-    adv_row_2[1].metric("Tail ratio", _fmt(_display_summary.get("tail_ratio")))
+    adv_row_2[0].metric("Recovery factor", format_metric(_display_summary.get("recovery_factor")))
+    adv_row_2[1].metric("Tail ratio", format_metric(_display_summary.get("tail_ratio")))
     adv_row_2[2].metric(
-        "Outlier dependency", _fmt(_display_summary.get("outlier_dependency_ratio"))
+        "Outlier dependency", format_metric(_display_summary.get("outlier_dependency_ratio"))
     )
     adv_row_2[3].metric(
-        "Max consecutive losses", _fmt_int(_display_summary.get("max_consecutive_losses", 0))
+        "Max consecutive losses", format_metric_int(_display_summary.get("max_consecutive_losses", 0))
     )
 
     direction_summary = summarize_trades_by_direction(_display_trades)
@@ -345,20 +327,20 @@ def render_backtest_results(
     with long_col:
         long_summary = direction_summary.get("long", {})
         st.markdown("**Long trades**")
-        st.metric("Trades", _fmt_int(long_summary.get("trade_count", 0)))
-        st.metric("Win rate", _fmt_win_rate(long_summary.get("win_rate")))
-        st.metric("Average R", _fmt(long_summary.get("avg_r")))
-        st.metric("Total R", _fmt(long_summary.get("total_r")))
-        st.metric("Profit factor", _fmt(long_summary.get("profit_factor")))
+        st.metric("Trades", format_metric_int(long_summary.get("trade_count", 0)))
+        st.metric("Win rate", format_win_rate(long_summary.get("win_rate")))
+        st.metric("Average R", format_metric(long_summary.get("avg_r")))
+        st.metric("Total R", format_metric(long_summary.get("total_r")))
+        st.metric("Profit factor", format_metric(long_summary.get("profit_factor")))
 
     with short_col:
         short_summary = direction_summary.get("short", {})
         st.markdown("**Short trades**")
-        st.metric("Trades", _fmt_int(short_summary.get("trade_count", 0)))
-        st.metric("Win rate", _fmt_win_rate(short_summary.get("win_rate")))
-        st.metric("Average R", _fmt(short_summary.get("avg_r")))
-        st.metric("Total R", _fmt(short_summary.get("total_r")))
-        st.metric("Profit factor", _fmt(short_summary.get("profit_factor")))
+        st.metric("Trades", format_metric_int(short_summary.get("trade_count", 0)))
+        st.metric("Win rate", format_win_rate(short_summary.get("win_rate")))
+        st.metric("Average R", format_metric(short_summary.get("avg_r")))
+        st.metric("Total R", format_metric(short_summary.get("total_r")))
+        st.metric("Profit factor", format_metric(short_summary.get("profit_factor")))
 
     if trades.empty:
         st.info("No trades were generated with the current signals and SL/TP settings.")
