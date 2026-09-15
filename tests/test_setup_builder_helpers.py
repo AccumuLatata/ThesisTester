@@ -176,8 +176,8 @@ def test_sync_editor_widget_state_enum_fallbacks_use_validator_sets():
 
 def test_sync_editor_widget_state_canonicalizes_via_build_setup_config():
     raw = {
-        "name": "Library setup",
-        "description": "from library",
+        "name": "  Library setup  ",
+        "description": "  from library  ",
         "instrument": "ES",
         "confluence_mode": "global_cluster",
         "selected_levels": ["ONH"],
@@ -204,6 +204,11 @@ def test_sync_editor_widget_state_canonicalizes_via_build_setup_config():
     setup_builder.st.session_state = {}
     warnings = setup_builder._sync_editor_widget_state(raw, ["ONH", "ONL"], overwrite=True)
     assert warnings == []
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SETUP_NAME] == built["name"]
+    assert (
+        setup_builder.st.session_state[setup_builder.WIDGET_KEY_DESCRIPTION]
+        == built["description"]
+    )
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER] == built["trigger"]
     assert (
         setup_builder.st.session_state[setup_builder.WIDGET_KEY_NAKED_REQUIREMENT]
@@ -217,6 +222,62 @@ def test_sync_editor_widget_state_canonicalizes_via_build_setup_config():
         setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS]
         == built["otf_filter"]["minimum_consecutive_bars"]
     )
+
+
+def test_sync_editor_widget_state_fade_require_close_follows_builder():
+    raw = {
+        "name": "Fade setup",
+        "description": "",
+        "instrument": "ES",
+        "confluence_mode": "global_cluster",
+        "selected_levels": ["ONH"],
+        "tolerance_ticks": 4.0,
+        "min_confluences": 2,
+        "max_confluences": 5,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "fade",
+        "direction": "both",
+        "trigger_params": {"require_close_confirmation": "false"},
+    }
+    built = build_setup_config(**build_setup_kwargs_from_mapping(raw))
+    assert built["trigger_params"]["require_close_confirmation"] is False
+    setup_builder.st.session_state = {}
+    warnings = setup_builder._sync_editor_widget_state(raw, ["ONH"], overwrite=True)
+    assert warnings == []
+    assert (
+        setup_builder.st.session_state[setup_builder.WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION]
+        is False
+    )
+    raw["trigger_params"] = {"require_close_confirmation": "0"}
+    setup_builder.st.session_state = {}
+    setup_builder._sync_editor_widget_state(raw, ["ONH"], overwrite=True)
+    assert (
+        setup_builder.st.session_state[setup_builder.WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION]
+        is False
+    )
+
+
+def test_sync_editor_widget_state_build_failure_keeps_repaired_values(monkeypatch):
+    def _boom(**kwargs):
+        raise ValueError("canonicalization failed")
+
+    monkeypatch.setattr(setup_builder, "build_setup_config", _boom)
+    setup_builder.st.session_state = {}
+    warnings = setup_builder._sync_editor_widget_state(
+        {
+            "name": "Keep me",
+            "trigger": "reject",
+            "direction": "long",
+            "selected_levels": ["ONH"],
+        },
+        ["ONH"],
+        overwrite=True,
+    )
+    assert any("could not be canonicalized" in message for message in warnings)
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SETUP_NAME] == "Keep me"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER] == "reject"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_DIRECTION] == "long"
 
 
 def test_sync_editor_widget_state_invalid_selected_levels_uses_default_selection():

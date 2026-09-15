@@ -161,6 +161,13 @@ def _safe_enum_fallback(value: object, *, valid: frozenset[str], default: str) -
     return default, True
 
 
+def _safe_require_close_confirmation(value: object) -> bool:
+    """Match C-1 ``_normalize_approach_side_params`` string/flag parsing."""
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return bool(value)
+
+
 def _safe_trigger_fallback(value: object) -> tuple[str, bool]:
     return _safe_enum_fallback(value, valid=VALID_TRIGGERS, default="touch")
 
@@ -633,7 +640,9 @@ def _hydrate_trigger_fields(
             "max_entry_wait_bars_after_reversal": max_wait_default,
         }
     elif trigger in {"fade", "continuation"} and isinstance(trigger_params_seed, dict):
-        require_close_default = bool(trigger_params_seed.get("require_close_confirmation", False))
+        require_close_default = _safe_require_close_confirmation(
+            trigger_params_seed.get("require_close_confirmation", False)
+        )
         trigger_params = {"require_close_confirmation": require_close_default}
     return (
         trigger,
@@ -648,7 +657,7 @@ def _hydrate_trigger_fields(
 
 def _hydrate_otf_filter(config: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
     try:
-        return normalize_otf_filter_config(config.get("otf_filter"))
+        return get_effective_otf_filter_config(config)
     except ValueError:
         warnings.append(
             "Loaded OTF filter settings are invalid; falling back to disabled defaults."
@@ -723,8 +732,15 @@ def _hydrate_editor_widget_payload(
     }
 
 
-def _build_synced_setup_config(payload: dict[str, Any]) -> dict[str, Any]:
-    """Canonicalize repaired fields through ``build_setup_config`` (C-4)."""
+def _build_synced_setup_config(
+    payload: dict[str, Any], warnings: list[str]
+) -> dict[str, Any] | None:
+    """Canonicalize repaired fields through ``build_setup_config`` (C-4).
+
+    On failure, keep the repaired payload (do not mix in product defaults)
+    and record a warning. ``validate_setup_config`` is not a second default
+    table — its enum/range sets already drove hydration.
+    """
     confluence_rules = [
         {
             "level": level,
@@ -738,19 +754,13 @@ def _build_synced_setup_config(payload: dict[str, Any]) -> dict[str, Any]:
         confluence_rules=confluence_rules,
     )
     try:
-        built = build_setup_config(**kwargs)
+        return build_setup_config(**kwargs)
     except (TypeError, ValueError):
-        built = build_setup_config(
-            **build_setup_kwargs_from_mapping(
-                _default_editor_config(
-                    instrument=str(payload.get("instrument") or "ES"),
-                    defaults=list(payload.get("selected_levels") or []),
-                    dataset_id=None,
-                )
-            )
+        warnings.append(
+            "Loaded setup could not be canonicalized through build_setup_config; "
+            "using repaired editor values."
         )
-    validate_setup_config(built)
-    return built
+        return None
 
 
 def _assign_widget(key: str, value: Any, *, overwrite: bool) -> None:
@@ -780,42 +790,72 @@ def _entry_window_widget_values(entry_window_config: dict[str, Any]) -> dict[str
     }
 
 
+def _canonical_trigger_param_widgets(
+    payload: dict[str, Any], built: dict[str, Any] | None
+) -> tuple[float, int, bool]:
+    """Prefer ``build_setup_config`` trigger_params; payload stays widget-safe."""
+    entry_retrace = payload["entry_retrace"]
+    max_wait = payload["max_wait"]
+    require_close = payload["require_close"]
+    if built is None:
+        return entry_retrace, max_wait, require_close
+    params = built.get("trigger_params")
+    if not isinstance(params, dict):
+        return entry_retrace, max_wait, require_close
+    if "entry_retrace_ticks" in params:
+        entry_retrace = params["entry_retrace_ticks"]
+    if "max_entry_wait_bars_after_reversal" in params:
+        max_wait = params["max_entry_wait_bars_after_reversal"]
+    if "require_close_confirmation" in params:
+        require_close = bool(params["require_close_confirmation"])
+    return entry_retrace, max_wait, require_close
+
+
 def _assign_editor_widget_state(
-    payload: dict[str, Any], built: dict[str, Any], *, overwrite: bool
+    payload: dict[str, Any], built: dict[str, Any] | None, *, overwrite: bool
 ) -> None:
-    """Write session keys only. Render reads these keys; it does not sync."""
-    otf_config = built.get("otf_filter") or payload["otf_filter"]
+    """Write session keys only. Render reads these keys; it does not sync.
+
+    Canonical fields come from ``build_setup_config`` when canonicalize
+    succeeded. Level-availability filters stay on the repaired payload.
+    """
+    src = built if built is not None else payload
+    otf_config = src.get("otf_filter") or payload["otf_filter"]
+    entry_retrace, max_wait, require_close = _canonical_trigger_param_widgets(payload, built)
     assignments: list[tuple[str, Any]] = [
-        (WIDGET_KEY_SETUP_NAME, payload["name"]),
-        (WIDGET_KEY_DESCRIPTION, payload["description"]),
+        (WIDGET_KEY_SETUP_NAME, src.get("name", payload["name"])),
+        (WIDGET_KEY_DESCRIPTION, src.get("description", payload["description"])),
         (
             WIDGET_KEY_CONFLUENCE_MODE,
             CONFLUENCE_MODE_DISPLAY.get(
-                built.get("confluence_mode", payload["confluence_mode"]),
+                src.get("confluence_mode", payload["confluence_mode"]),
                 "Global cluster",
             ),
         ),
         (WIDGET_KEY_SELECTED_LEVELS, payload["selected_levels"]),
-        (WIDGET_KEY_TOLERANCE_TICKS, payload["tolerance_ticks"]),
-        (WIDGET_KEY_MIN_CONFLUENCES, payload["min_confluences"]),
-        (WIDGET_KEY_MAX_CONFLUENCES, payload["max_confluences"]),
+        (WIDGET_KEY_TOLERANCE_TICKS, src.get("tolerance_ticks", payload["tolerance_ticks"])),
+        (WIDGET_KEY_MIN_CONFLUENCES, src.get("min_confluences", payload["min_confluences"])),
+        (WIDGET_KEY_MAX_CONFLUENCES, src.get("max_confluences", payload["max_confluences"])),
         (WIDGET_KEY_ANCHOR_LEVEL, payload["anchor_level"]),
         (WIDGET_KEY_CONFLUENCE_LEVELS, payload["selected_confluence_levels"]),
-        (WIDGET_KEY_MIN_VALID_CONFLUENCES, payload["min_valid_confluences"]),
-        (WIDGET_KEY_NAKED_ONLY, payload["naked_only"]),
-        (WIDGET_KEY_NAKED_REQUIREMENT, payload["naked_requirement"]),
-        (WIDGET_KEY_TRIGGER, built.get("trigger", payload["trigger"])),
+        (
+            WIDGET_KEY_MIN_VALID_CONFLUENCES,
+            src.get("min_valid_confluences", payload["min_valid_confluences"]),
+        ),
+        (WIDGET_KEY_NAKED_ONLY, bool(src.get("naked_only", payload["naked_only"]))),
+        (WIDGET_KEY_NAKED_REQUIREMENT, src.get("naked_requirement", payload["naked_requirement"])),
+        (WIDGET_KEY_TRIGGER, src.get("trigger", payload["trigger"])),
         (
             WIDGET_KEY_TRIGGER_TIMEFRAME,
             TRIGGER_TIMEFRAME_DISPLAY.get(
-                built.get("trigger_timeframe", payload["trigger_timeframe"]),
+                src.get("trigger_timeframe", payload["trigger_timeframe"]),
                 "Base/current timeframe",
             ),
         ),
-        (WIDGET_KEY_DIRECTION, built.get("direction", payload["direction"])),
-        (WIDGET_KEY_ENTRY_RETRACE_TICKS, payload["entry_retrace"]),
-        (WIDGET_KEY_MAX_ENTRY_WAIT_BARS, payload["max_wait"]),
-        (WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION, payload["require_close"]),
+        (WIDGET_KEY_DIRECTION, src.get("direction", payload["direction"])),
+        (WIDGET_KEY_ENTRY_RETRACE_TICKS, entry_retrace),
+        (WIDGET_KEY_MAX_ENTRY_WAIT_BARS, max_wait),
+        (WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION, require_close),
         (WIDGET_KEY_OTF_ENABLED, bool(otf_config.get("enabled", False))),
         (WIDGET_KEY_OTF_TIMEFRAMES, list(otf_config.get("timeframes", []))),
         (WIDGET_KEY_OTF_ALIGNMENT_MODE, str(otf_config.get("alignment_mode", "all"))),
@@ -833,7 +873,7 @@ def _assign_editor_widget_state(
         (WIDGET_KEY_OTF_SESSION_RESET, "session"),
     ]
     assignments.extend(
-        _entry_window_widget_values(built.get("entry_window") or payload["entry_window"]).items()
+        _entry_window_widget_values(src.get("entry_window") or payload["entry_window"]).items()
     )
     for key, value in assignments:
         _assign_widget(key, value, overwrite=overwrite)
@@ -857,7 +897,7 @@ def _sync_editor_widget_state(
     """Hydrate widgets from ``build_setup_config`` / validator-aligned fallbacks."""
     warnings: list[str] = []
     payload = _hydrate_editor_widget_payload(config, level_columns, warnings)
-    built = _build_synced_setup_config(payload)
+    built = _build_synced_setup_config(payload, warnings)
     _assign_editor_widget_state(payload, built, overwrite=overwrite)
     return warnings
 
