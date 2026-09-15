@@ -22,7 +22,10 @@ from thesistester.analytics import (
 )
 from thesistester.api import run_noise_test, run_sensitivity_profile
 from thesistester.config import INSTRUMENTS
-from thesistester.validation_page_helpers import fmt_value as _fmt_value
+from thesistester.validation_page_helpers import (
+    fmt_value as _fmt_value,
+    parse_thresholds as _parse_thresholds,
+)
 
 
 def render_validation_batteries(
@@ -732,17 +735,6 @@ def render_validation_batteries(
         value="3,5,10",
         help="Comma-separated max-drawdown thresholds for probability estimates.",
     )
-
-    def _parse_thresholds(text: str) -> list[float]:
-        thresholds: list[float] = []
-        for part in str(text).split(","):
-            try:
-                value = float(part.strip())
-            except ValueError:
-                continue
-            if value > 0:
-                thresholds.append(value)
-        return sorted(dict.fromkeys(thresholds)) or [3.0, 5.0, 10.0]
 
     if st.button("▶ Run Monte Carlo", type="secondary"):
         if not mc_methods:

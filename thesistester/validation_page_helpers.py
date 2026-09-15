@@ -42,6 +42,7 @@ def parse_positive_int_values(raw: str) -> list[int]:
 
 
 def parse_thresholds(text: str) -> list[float]:
+    """Monte Carlo drawdown-threshold parse. Live path is the batteries helper."""
     thresholds: list[float] = []
     for part in str(text).split(","):
         try:

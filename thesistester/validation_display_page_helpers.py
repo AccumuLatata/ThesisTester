@@ -1,7 +1,9 @@
 """Classic Validation Phase 8 display (QR D-4 / QI-05-02).
 
 Streamlit-free: callers pass ``st``. H13 permutation AST (`p_val > 0.05`
-else ``st.info`` + H13 caption) stays in this module.
+else ``st.info`` + H13 caption) stays in this module as string literals
+(copy-guards / A-4). ``assemble_permutation_copy`` is the unit-tested twin;
+``fmt_value`` is the shared formatter.
 """
 
 from __future__ import annotations
@@ -9,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 import plotly.graph_objects as go
+
+from thesistester.validation_page_helpers import fmt_value as _fmt
 
 
 def render_phase8_results(
@@ -43,14 +47,6 @@ def render_phase8_results(
     st.subheader("Bootstrap expectancy CI")
 
     col1, col2, col3, col4, col5 = st.columns(5)
-
-    def _fmt(v, fmt=".4f", fallback="—"):
-        if v is None:
-            return fallback
-        try:
-            return format(float(v), fmt)
-        except (TypeError, ValueError):
-            return fallback
 
     col1.metric("Trades", tc["trade_count"])
     col2.metric("Observed avg R", _fmt(bs.get("observed_avg_r")))
