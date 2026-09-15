@@ -114,9 +114,12 @@ apply-only members are explicitly sticky). D-2 (QI-03-12) pops session
 delete-active / copy-to-builder) and surfaces the controls-changed warning
 on Signals view. D-3 ([#575](https://github.com/AccumuLatata/ThesisTester/pull/575))
 extracts Backtest sidebar / run-persist / display into ``*_page_helpers``
-(QI-04-05). D-4 (this PR) extracts Validation sidebar / WFA-OTF persist /
-Phase 8 display into ``*_page_helpers`` (QI-05-02). Session keys and
-H12/H13/M9/M10 copy are unchanged. Next: D-5.
+(QI-04-05). D-4 ([#576](https://github.com/AccumuLatata/ThesisTester/pull/576))
+extracts Validation sidebar / WFA-OTF persist /
+Phase 8 display into ``*_page_helpers`` (QI-05-02). D-5 (this PR) extracts
+the Data-page upload/save tree into saved / source-apply / attach-save
+panels and splits `_render_subtimeframe_upload` /
+`_render_tick_attach` (QI-01-01). H10 admission is unchanged. Next: D-6.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -327,8 +330,12 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    mutation and surfaces the controls-changed warning on Signals view.
    D-3 ([#575](https://github.com/AccumuLatata/ThesisTester/pull/575))
    extracts Backtest sidebar / run-persist / display helpers (QI-04-05).
-   D-4 (this PR) extracts Validation sidebar / WFA-OTF persist /
-   Phase 8 display helpers (QI-05-02). Session keys unchanged. Next: D-5.
+   D-4 ([#576](https://github.com/AccumuLatata/ThesisTester/pull/576))
+   extracts Validation sidebar / WFA-OTF persist /
+   Phase 8 display helpers (QI-05-02). D-5 (this PR) extracts the Data-page
+   upload/save tree into saved / source-apply / attach-save panels and
+   splits the D-grade attach renderers (QI-01-01).
+   H10 admission is unchanged. Next: D-6.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

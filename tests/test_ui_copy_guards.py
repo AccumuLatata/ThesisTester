@@ -1699,10 +1699,12 @@ def test_data_page_captions_h10_legacy_primary_fork():
     """QI-01-03 / A-22: first caption after Ingestion mode names the fatal fork.
 
     Not title-chrome: A-21 binds chrome captions to ``st.title``. H10 sits
-    next to the legacy-primary radio (plan: legacy-primary caption). A later
-    matching caption must not false-green this bind.
+    next to the legacy-primary radio (plan: legacy-primary caption). D-5
+    moved the radio into ``data_workspace_page_helpers``; admission stays
+    on ``pages/1_Data.py``. A later matching caption must not false-green
+    this bind.
     """
-    source = _read(PAGES / "1_Data.py")
+    source = _read(REPO_ROOT / "thesistester" / "data_workspace_page_helpers.py")
     radio_line = _ingestion_mode_radio_lineno(source)
     tree = ast.parse(source)
     after = [

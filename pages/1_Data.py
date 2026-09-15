@@ -1,6 +1,13 @@
+"""Phase 1 — Data ingest UI.
+
+QR D-5 / QI-01-01: upload/save tree (saved / source-apply / attach-save)
+and D-grade attach renderers live in ``*_page_helpers``. H10 admission
+(legacy ``tag_session(raw_df)`` vs 15s parent abort-on-fatal) stays on
+this page. Session keys unchanged.
+"""
+
 from pathlib import Path
 import sys
-import hashlib
 from dataclasses import dataclass
 
 import pandas as pd
@@ -11,7 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from thesistester.classic_nav import render_classic_nav_prefill_caption
-from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.config import INSTRUMENTS
 from thesistester.data.derive import (
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
     build_derivation_provenance,
@@ -23,33 +30,16 @@ from thesistester.data.loader import (
     DataValidationError,
     FORMAT_PROFILE_LABELS,
     ValidationReport,
-    duplicate_timestamp_report,
     format_interval,
     infer_base_interval,
     load_ohlcv,
     prepare_15s_source_for_derivation,
-    primary_duplicate_volume_comparison,
-    resolve_ohlc_identical_duplicates,
     validate_ohlcv,
-)
-from thesistester.data.quantower_ticks import TickIngestError, iter_tick_files
-from thesistester.data.rolls import (
-    ROLL_METHODS,
-    detect_contract_column,
-    validate_roll_metadata,
 )
 from thesistester.data.resample import SUPPORTED_TIMEFRAMES, resample_ohlcv
 from thesistester.data.sessions import tag_session
-from thesistester.engine.intrabar import (
-    inspect_subtimeframe_compatibility,
-    prepare_subtimeframe_conservative_context,
-)
-from thesistester.app_state import (
-    ACTIVE_SAVED_DATASET_KEY,
-    BOOTSTRAP_MESSAGE_KEY,
-    bootstrap_active_saved_dataset,
-)
-from thesistester.persistence.saved_dataset_state import restore_saved_dataset_provenance
+from thesistester.engine.intrabar import prepare_subtimeframe_conservative_context
+from thesistester.app_state import ACTIVE_SAVED_DATASET_KEY
 from thesistester.research_bundle import (
     BUNDLE_IMPORT_OMITTED_DATA_KEY,
     DATA_PAGE_INVALIDATE_SOURCE_KEY,
@@ -59,19 +49,34 @@ from thesistester.research_keys import DATASET_CLEAR_KEYS
 from thesistester.persistence import (
     clear_active_dataset_id,
     compute_dataset_id,
-    delete_dataset,
-    display_store_path,
-    get_store_root,
-    list_datasets,
-    load_dataset,
-    save_dataset,
     set_active_dataset_id,
 )
-from thesistester.persistence.local_store import get_configured_store_dir
 from thesistester.timezone_display import (
     ensure_display_timezone,
     reset_display_timezone,
-    timezone_contract_caption,
+)
+from thesistester.data_page_constants import (
+    SubtimeframeCompatibilityError,
+    SubtimeframeDuplicateTimestampError,
+)
+from thesistester.data_display_page_helpers import (
+    render_15s_source_duplicate_caption,
+    render_dataset_summary,
+    render_derived_parent_diagnostics,
+    render_roll_assumptions,
+)
+from thesistester import data_display_page_helpers as display_helpers
+from thesistester import data_subtimeframe_page_helpers as subtf_helpers
+from thesistester import data_tick_page_helpers as tick_helpers
+from thesistester.data_subtimeframe_page_helpers import render_subtimeframe_upload
+from thesistester.data_tick_page_helpers import render_tick_attach
+from thesistester.data_workspace_page_helpers import render_data_workspace
+
+# Re-export typed errors so `_import_data_page_module` tests keep page names.
+_PAGE_TYPED_ERRORS = (
+    DataValidationError,
+    SubtimeframeCompatibilityError,
+    SubtimeframeDuplicateTimestampError,
 )
 
 FLASH_MESSAGE_KEY = "_data_local_store_message"
@@ -160,23 +165,6 @@ class Prepared15sPrimaryDataset:
     dropped_buckets: pd.DataFrame
     sparse_buckets: pd.DataFrame
     upload_signature: str
-
-
-class SubtimeframeCompatibilityError(ValueError):
-    """Lower CSV cannot be replayed; retain its read-only diagnostic report."""
-
-    def __init__(self, message: str, report: pd.DataFrame) -> None:
-        super().__init__(message)
-        self.report = report
-
-
-class SubtimeframeDuplicateTimestampError(ValueError):
-    """Lower CSV contains duplicate bar-open timestamps."""
-
-    def __init__(self, message: str, report: pd.DataFrame, source: pd.DataFrame) -> None:
-        super().__init__(message)
-        self.report = report
-        self.source = source
 
 
 def _default_source_timezone(format_profile: str, exchange_timezone: str) -> str:
@@ -515,66 +503,6 @@ def _install_15s_primary_dataset(
     _sync_upload_ingestion_mode_selector(INGESTION_MODE_15S_PRIMARY_DERIVE_1M, explicit=True)
 
 
-def _render_derived_parent_diagnostics(
-    dropped_buckets: pd.DataFrame,
-    sparse_buckets: pd.DataFrame | None = None,
-) -> None:
-    """Show sparse/dropped minute diagnostics for 15-second-primary uploads."""
-    dropped_count = 0 if dropped_buckets is None else int(len(dropped_buckets))
-    sparse_count = 0 if sparse_buckets is None else int(len(sparse_buckets))
-    if sparse_count == 0 and dropped_count == 0:
-        st.info(
-            "All source minutes had complete aligned 15-second coverage; "
-            "no sparse or misaligned parent minutes were reported."
-        )
-        return
-    if sparse_count > 0:
-        st.info(
-            f"Retained {sparse_count:,} sparse source minute(s) with fewer than four "
-            "on-grid 15-second prints (normal for Quantower/Rithmic trade-only exports "
-            "without Build empty bars). Those minutes remain in canonical one-minute "
-            "data; use R12 model `subtimeframe_conservative` for observed replay plus "
-            "SL-first fallback on sparse minutes. Strict `subtimeframe` requires complete "
-            "coverage (enable Build empty bars in Quantower if you need that)."
-        )
-        st.dataframe(sparse_buckets, width="stretch")
-        st.download_button(
-            "Download sparse-minute diagnostics CSV",
-            data=sparse_buckets.to_csv(index=False).encode("utf-8"),
-            file_name="derived_1m_sparse_minutes.csv",
-            mime="text/csv",
-            key="download_sparse_minute_diagnostics",
-        )
-    if dropped_count > 0:
-        st.warning(
-            f"Dropped {dropped_count:,} misaligned source minute(s). "
-            "Those minutes are absent from the derived one-minute canonical data."
-        )
-        st.dataframe(dropped_buckets, width="stretch")
-        st.download_button(
-            "Download dropped-minute diagnostics CSV",
-            data=dropped_buckets.to_csv(index=False).encode("utf-8"),
-            file_name="derived_1m_dropped_minutes.csv",
-            mime="text/csv",
-            key="download_dropped_minute_diagnostics",
-        )
-
-
-def _render_15s_source_duplicate_caption(provenance) -> None:
-    """Show resolved 15s source-duplicate audit when provenance recorded one."""
-    if not isinstance(provenance, dict):
-        return
-    groups = provenance.get("source_duplicate_groups_resolved")
-    if not groups:
-        return
-    discarded = int(provenance.get("source_duplicate_rows_discarded") or 0)
-    st.caption(
-        f"Resolved {int(groups):,} OHLC-identical 15-second duplicate group(s) "
-        f"({discarded:,} extra row(s) dropped; lowest volume kept). "
-        "Native one-minute primary bars are never auto-deduplicated."
-    )
-
-
 @st.cache_data(show_spinner=False)
 def cached_resample_and_tag(raw_df, instrument: str, timeframe: str):
     """Cache and return session-tagged resampled OHLCV data for preview."""
@@ -609,652 +537,6 @@ def _clear_dataset_dependent_state() -> None:
     """
     for key in DATASET_CLEAR_KEYS:
         st.session_state.pop(key, None)
-
-
-def _normalize_tick_path_list(raw) -> list[str]:
-    """Coerce widget / leftover extra tick paths to a de-duplicated string list."""
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        tokens: list[str] = []
-        for line in raw.replace(",", "\n").splitlines():
-            token = line.strip()
-            if token:
-                tokens.append(token)
-        return list(dict.fromkeys(tokens))
-    if isinstance(raw, (list, tuple)):
-        tokens = []
-        for item in raw:
-            token = str(item).strip()
-            if token:
-                tokens.append(token)
-        return list(dict.fromkeys(tokens))
-    token = str(raw).strip()
-    return [token] if token else []
-
-
-def _tick_upload_dir() -> Path:
-    dest = get_store_root() / "tick_uploads"
-    dest.mkdir(parents=True, exist_ok=True)
-    return dest
-
-
-def _sha256_file(path: Path) -> str:
-    """Hash file bytes in 1 MiB blocks. Do not load the whole file."""
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            hasher.update(block)
-    return hasher.hexdigest()
-
-
-def _tick_trusted_roots() -> tuple[Path, ...]:
-    """Same trusted roots as Studies launch (cwd + local store)."""
-    return (Path.cwd().resolve(), get_store_root().resolve())
-
-
-def _is_within_tick_trusted_roots(path: Path) -> bool:
-    """True when ``path`` sits under cwd or the local store after resolve."""
-    resolved = path.expanduser().resolve()
-    return any(resolved.is_relative_to(root) for root in _tick_trusted_roots())
-
-
-def _classify_typed_tick_path(raw: str) -> tuple[str, Path | None]:
-    """Classify a typed tick path as ``ok``, ``missing``, or ``outside``.
-
-    Search order matches launch: cwd file first, then store-relative. Files
-    that exist but sit outside cwd/store are ``outside`` so attach cannot
-    cite a path Studies launch will refuse.
-    """
-    token = str(raw).strip()
-    if not token:
-        return "missing", None
-    path = Path(token).expanduser()
-    if path.is_file():
-        resolved = path.resolve()
-        if _is_within_tick_trusted_roots(resolved):
-            return "ok", resolved
-        return "outside", None
-    if path.is_absolute():
-        return "missing", None
-    store_candidate = (get_store_root() / path).resolve()
-    if store_candidate.is_file():
-        if _is_within_tick_trusted_roots(store_candidate):
-            return "ok", store_candidate
-        return "outside", None
-    return "missing", None
-
-
-def _resolve_existing_tick_path(raw: str) -> Path | None:
-    """Resolve a typed tick path against cwd first, then the local store root.
-
-    Launch pin searches viewer roots the same way; Data-page attach must not
-    refuse a store-relative path that Studies would later find. Absolute or
-    ``..`` paths outside cwd/store are rejected so attach cannot cite a file
-    launch will refuse.
-    """
-    status, found = _classify_typed_tick_path(raw)
-    return found if status == "ok" else None
-
-
-def _dedupe_attached_tick_paths(paths: list[str]) -> tuple[list[str], list[str]]:
-    """Drop duplicate resolved paths and exact-duplicate file content.
-
-    Upload + typed path of the same bytes would otherwise fail TV1
-    ``_reject_duplicate_files``. Keep the first path; warn on content dupes.
-    """
-    unique: list[str] = []
-    seen_resolved: set[Path] = set()
-    seen_hash: dict[str, str] = {}
-    warnings: list[str] = []
-    for raw in paths:
-        full = Path(raw).expanduser().resolve()
-        if full in seen_resolved:
-            continue
-        digest = _sha256_file(full)
-        prior = seen_hash.get(digest)
-        if prior is not None:
-            warnings.append(f"Ignored exact-duplicate tick file {full} (same bytes as {prior}).")
-            continue
-        seen_resolved.add(full)
-        seen_hash[digest] = str(full)
-        unique.append(str(full))
-    return unique, warnings
-
-
-def _persist_tick_uploads(files, dest_dir: Path) -> list[str]:
-    """Write Streamlit uploads to disk so Studies Build can cite durable paths.
-
-    Dest names are ``{sha256[:12]}_{basename}`` so two uploads that share a
-    basename do not overwrite each other.
-    """
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    paths: list[str] = []
-    for uploaded in files or []:
-        payload = uploaded.getvalue()
-        name = Path(str(getattr(uploaded, "name", "ticks.csv") or "ticks.csv")).name
-        if not name or name in {".", ".."}:
-            name = "ticks.csv"
-        digest = hashlib.sha256(payload).hexdigest()[:12]
-        dest = dest_dir / f"{digest}_{name}"
-        dest.write_bytes(payload)
-        paths.append(str(dest.resolve()))
-    return list(dict.fromkeys(paths))
-
-
-def _validate_attached_tick_paths(
-    paths: list[str],
-    *,
-    instrument: str,
-    source_tz: str = "UTC",
-) -> tuple[int, int, list[str]]:
-    """Parse attached Tick–Tick–Last files via the TV1 session iterator.
-
-    Does not call ``load_ohlcv`` and does not concatenate sessions into one
-    frame. Returns ``(session_count, row_count, warnings)``.
-    """
-    sessions = 0
-    rows = 0
-    warnings: list[str] = []
-    for chunk in iter_tick_files(paths, instrument=instrument, source_tz=source_tz):
-        sessions += 1
-        rows += len(chunk.ticks)
-        if chunk.filename_window_mismatch:
-            warnings.append(
-                "Filename window does not cover row timestamps: " + ", ".join(chunk.source_paths)
-            )
-        warnings.extend(chunk.warnings)
-    return sessions, rows, list(dict.fromkeys(warnings))
-
-
-def _install_tick_paths(
-    session_state,
-    paths: list[str],
-    *,
-    row_count: int | None = None,
-    session_count: int | None = None,
-    signature: str | None = None,
-    warnings: list[str] | None = None,
-) -> None:
-    """Record validated tick paths. Does not mutate primary ``data``."""
-    session_state[TICK_PATHS_KEY] = list(paths)
-    if row_count is not None:
-        session_state[TICK_ROW_COUNT_KEY] = int(row_count)
-    if session_count is not None:
-        session_state[TICK_SESSION_COUNT_KEY] = int(session_count)
-    if signature is not None:
-        session_state[TICK_UPLOAD_SIGNATURE_KEY] = signature
-    if warnings is not None:
-        session_state[TICK_WARNINGS_KEY] = list(warnings)
-    else:
-        session_state.pop(TICK_WARNINGS_KEY, None)
-
-
-def _clear_tick_session_state(session_state=None) -> None:
-    """Drop installed tick attach keys. Does not mutate widget-bound text."""
-    state = st.session_state if session_state is None else session_state
-    for key in (
-        TICK_PATHS_KEY,
-        TICK_UPLOAD_SIGNATURE_KEY,
-        TICK_ROW_COUNT_KEY,
-        TICK_SESSION_COUNT_KEY,
-        TICK_WARNINGS_KEY,
-    ):
-        state.pop(key, None)
-
-
-def _render_tick_attach(*, instrument: str) -> None:
-    """Optional Quantower Tick–Tick–Last attach beside the 15s bar clock."""
-    with st.expander("Quantower tick-last (optional; VA / APOC / rolling POC)", expanded=False):
-        st.caption(
-            "Attach one or many Quantower Tick–Tick–Last CSVs for prior VA, "
-            "APOC, and rolling POC. This does not replace the 15-second "
-            "(or one-minute) OHLCV file and is not an ingestion mode. "
-            "Named VA / APOC / rolling POC refuse without ticks "
-            "(`requires ticks`). Production math is tick Last×Volume only "
-            "(never typical). Unsound prints still emit `NaN`. Studies keep "
-            "walking 1m."
-        )
-        uploader_nonce = int(st.session_state.get(TICK_UPLOADER_NONCE_KEY, 0))
-        uploaded_files = st.file_uploader(
-            "Tick–Tick–Last CSV (one or many)",
-            type=["csv", "txt"],
-            accept_multiple_files=True,
-            key=f"tick_csv_upload_{uploader_nonce}",
-        )
-        st.text_area(
-            "Tick file paths (one per line, optional)",
-            key=TICK_PATHS_TEXT_KEY,
-            placeholder="data/es_ticks.csv",
-            help=(
-                "Local Quantower Tick–Tick–Last paths already on disk. "
-                "Must sit under cwd or the local store — Launch and Studies "
-                "Build pin these the same way as dataset.path."
-            ),
-        )
-        if st.button("Attach tick files"):
-            typed = _normalize_tick_path_list(st.session_state.get(TICK_PATHS_TEXT_KEY))
-            persisted: list[str] = []
-            if uploaded_files:
-                persisted = _persist_tick_uploads(uploaded_files, _tick_upload_dir())
-            resolved: list[str] = list(persisted)
-            missing: list[str] = []
-            outside: list[str] = []
-            for token in typed:
-                status, found = _classify_typed_tick_path(token)
-                if status == "ok" and found is not None:
-                    resolved.append(str(found))
-                elif status == "outside":
-                    outside.append(token)
-                else:
-                    missing.append(token)
-            if missing:
-                st.error("Tick file is not an existing file: " + ", ".join(missing))
-            if outside:
-                st.error(
-                    "Tick file is outside the trusted local roots (cwd and store): "
-                    + ", ".join(outside)
-                )
-            if not missing and not outside:
-                combined, dedupe_warnings = _dedupe_attached_tick_paths(resolved)
-                if not combined:
-                    st.error("Choose at least one Tick–Tick–Last file or path.")
-                else:
-                    try:
-                        sessions, rows, warnings = _validate_attached_tick_paths(
-                            combined,
-                            instrument=instrument,
-                        )
-                    except (TickIngestError, DataValidationError, OSError, ValueError) as exc:
-                        st.error(str(exc))
-                    else:
-                        _install_tick_paths(
-                            st.session_state,
-                            combined,
-                            row_count=rows,
-                            session_count=sessions,
-                            signature="|".join(combined),
-                            warnings=[*dedupe_warnings, *warnings],
-                        )
-                        st.rerun()
-        installed = st.session_state.get(TICK_PATHS_KEY)
-        if isinstance(installed, list) and installed:
-            sessions = st.session_state.get(TICK_SESSION_COUNT_KEY)
-            rows = st.session_state.get(TICK_ROW_COUNT_KEY)
-            detail = ""
-            if isinstance(sessions, int) and isinstance(rows, int):
-                detail = f" ({sessions:,} session(s), {rows:,} prints)"
-            st.info(
-                f"Tick-last attached: {len(installed)} file(s){detail}. "
-                "Paste these paths into Studies Build when factors name VA "
-                "tokens. Data-page attach does not feed classic Calculate "
-                "levels. Paths must sit under cwd or the local store. "
-                "15s remains the bar clock."
-            )
-            for path in installed:
-                st.write(f"- `{path}`")
-            stored_warnings = st.session_state.get(TICK_WARNINGS_KEY)
-            if isinstance(stored_warnings, list):
-                for warning in stored_warnings:
-                    st.warning(warning)
-            if st.button("Clear tick attach"):
-                _clear_tick_session_state()
-                st.session_state[TICK_UPLOADER_NONCE_KEY] = (
-                    int(st.session_state.get(TICK_UPLOADER_NONCE_KEY, 0)) + 1
-                )
-                st.rerun()
-
-
-def _clear_execution_dependent_state() -> None:
-    """Clear outputs whose results depend on the selected intrabar data."""
-    for key in [
-        "trades",
-        "trade_summary",
-        "equity_curve",
-        "backtest_intrabar_policy",
-        "backtest_intrabar_diagnostic",
-        "backtest_exit_management_policy",
-        "backtest_exit_management_diagnostic",
-        "grid_results",
-        "best_grid_result",
-        "grid_intrabar_policy",
-        "grid_exit_management_policy",
-        "time_bucketed_trades",
-        "time_grouped_summary",
-        "validation_summary",
-        "walk_forward_results",
-        "walk_forward_summary",
-        "walk_forward_config",
-        "walk_forward_otf_filter",
-        "walk_forward_oos_trades",
-        "walk_forward_stitched_equity",
-        "walk_forward_warnings",
-        "wfa_matrix",
-        "wfa_matrix_config",
-        "excursion_summary",
-        "excursion_config",
-        "excursion_grouped_summary",
-        "excursion_calibration_grid",
-        "excursion_quadrant_summary",
-        "monte_carlo_summary",
-        "monte_carlo_config",
-        "noise_summary",
-        "noise_config",
-        "overfitting_summary",
-        "overfitting_config",
-        "sensitivity_summary",
-        "sensitivity_config",
-        "trade_review_trade_id",
-        "trade_review_buffer_rows",
-        "trade_review_export_zip",
-        "trade_review_export_signature",
-        "portfolio_setup_inputs",
-        "portfolio_config",
-        "portfolio_summary",
-        "portfolio_trades",
-        "portfolio_skipped_trades",
-        "portfolio_equity_curve",
-        "portfolio_correlation",
-        "portfolio_drawdown_correlation",
-        "portfolio_marginal_contribution",
-    ]:
-        st.session_state.pop(key, None)
-
-
-def _load_subtimeframe_upload(
-    uploaded_file,
-    *,
-    parent_df: pd.DataFrame,
-    instrument: str,
-    source_timezone: str | None,
-    exchange_timezone: str,
-    format_profile: str,
-) -> tuple[pd.DataFrame, str, list[dict[str, object]]]:
-    """Load canonical lower bars for strict or conservative R12 replay."""
-    raw_df = load_ohlcv(
-        uploaded_file,
-        source_tz=source_timezone,
-        target_tz=exchange_timezone,
-        format_profile=format_profile,
-    )
-    report = validate_ohlcv(raw_df)
-    fatal_messages = [issue.message for issue in report.issues if issue.code in FATAL_OHLCV_CODES]
-    if fatal_messages:
-        if any(issue.code == "duplicate_timestamps" for issue in report.issues):
-            raise SubtimeframeDuplicateTimestampError(
-                "Lower-timeframe validation failed: " + "; ".join(fatal_messages),
-                duplicate_timestamp_report(raw_df),
-                raw_df,
-            )
-        raise ValueError("Lower-timeframe validation failed: " + "; ".join(fatal_messages))
-
-    subtimeframe_df = tag_session(raw_df, instrument)
-    try:
-        context = prepare_subtimeframe_conservative_context(
-            parent_df,
-            subtimeframe_df,
-            tick_size=INSTRUMENTS[instrument].tick_size,
-        )
-    except ValueError as exc:
-        compatibility = inspect_subtimeframe_compatibility(
-            parent_df,
-            subtimeframe_df,
-            tick_size=INSTRUMENTS[instrument].tick_size,
-        )
-        raise SubtimeframeCompatibilityError(str(exc), compatibility.to_frame()) from exc
-    return (
-        subtimeframe_df,
-        format_interval(context.sub_interval),
-        context.fallback_diagnostics(parent_df),
-    )
-
-
-def _set_subtimeframe_state(
-    subtimeframe_df: pd.DataFrame,
-    *,
-    interval: str,
-    upload_signature: str,
-    fallback_bars: list[dict[str, object]],
-) -> None:
-    """Store validated R12 data and invalidate dependent execution outputs."""
-    st.session_state["subtimeframe_data"] = subtimeframe_df
-    st.session_state["subtimeframe_interval"] = interval
-    st.session_state[SUBTIMEFRAME_FALLBACK_BARS_KEY] = fallback_bars
-    st.session_state[SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = upload_signature
-    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_REPORT_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY, None)
-    _clear_execution_dependent_state()
-
-
-def _clear_subtimeframe_state() -> None:
-    """Remove R12 data and reset its uploader while retaining primary data."""
-    st.session_state.pop("subtimeframe_data", None)
-    st.session_state.pop("subtimeframe_interval", None)
-    st.session_state.pop(SUBTIMEFRAME_FALLBACK_BARS_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_REPORT_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY, None)
-    st.session_state.pop(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
-    st.session_state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = (
-        int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
-    )
-    _clear_execution_dependent_state()
-
-
-def _clear_loaded_subtimeframe_after_failed_upload() -> None:
-    """Fail closed when a replacement lower upload cannot be parsed safely."""
-    for key in (
-        "subtimeframe_data",
-        "subtimeframe_interval",
-        SUBTIMEFRAME_FALLBACK_BARS_KEY,
-        SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
-        SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY,
-    ):
-        st.session_state.pop(key, None)
-    _clear_execution_dependent_state()
-
-
-def _upload_signature(uploaded_file, *, format_profile: str) -> str:
-    """Return a stable signature for file content and its explicit parser profile."""
-    content_hash = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
-    return f"{format_profile}:{content_hash}"
-
-
-def _render_subtimeframe_upload(
-    parent_df: pd.DataFrame,
-    *,
-    instrument: str,
-    source_timezone: str | None,
-    exchange_timezone: str,
-) -> None:
-    """Render the optional interactive R12 lower-timeframe import."""
-    with st.expander(LEGACY_SUBTIMEFRAME_EXPANDER_TITLE, expanded=False):
-        st.caption(
-            "Legacy path: upload separately exported lower OHLCV bars for R12 "
-            "replay. They must cover and reconcile exactly to every main-chart "
-            "bar. For Quantower 15-second exports, prefer Recommended "
-            "15-second primary ingestion instead."
-        )
-        subtimeframe_format_profile = st.selectbox(
-            "Lower CSV format profile",
-            options=SUBTIMEFRAME_FORMAT_PROFILES,
-            format_func=profile_options.get,
-            key="subtimeframe_format_profile",
-            help="Explicit selection only; the lower file never inherits the main CSV profile.",
-        )
-        uploader_nonce = int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0))
-        uploaded_file = st.file_uploader(
-            "Lower-timeframe CSV (canonical OHLCV)",
-            type=["csv", "txt"],
-            key=f"subtimeframe_csv_upload_{uploader_nonce}",
-        )
-        upload_signature = (
-            _upload_signature(uploaded_file, format_profile=subtimeframe_format_profile)
-            if uploaded_file is not None
-            else None
-        )
-        duplicate_report = st.session_state.get(SUBTIMEFRAME_DUPLICATE_REPORT_KEY)
-        if isinstance(duplicate_report, pd.DataFrame) and upload_signature == st.session_state.get(
-            SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY
-        ):
-            if "subtimeframe_data" in st.session_state:
-                _clear_loaded_subtimeframe_after_failed_upload()
-            exact_count = int(duplicate_report["exact_duplicate_group"].sum())
-            group_count = int(duplicate_report["timestamp"].nunique())
-            st.warning(
-                f"Lower duplicate report: {group_count:,} duplicate timestamp groups. "
-                f"{exact_count:,} duplicate rows belong to exact-duplicate groups; "
-                "conflicting groups remain fail-closed."
-            )
-            st.dataframe(duplicate_report, width="stretch")
-            st.download_button(
-                "Download lower duplicate report CSV",
-                data=duplicate_report.to_csv(index=False).encode("utf-8"),
-                file_name="r12_lower_duplicate_report.csv",
-                mime="text/csv",
-            )
-            if bool(duplicate_report["ohlc_identical_group"].all()):
-                st.info(
-                    "All duplicate groups share identical OHLC. Lower-timeframe replay does not use "
-                    "lower-bar volume for event ordering; one lowest-volume row per "
-                    "timestamp can be retained with a recorded audit trail."
-                )
-                if st.button("Use OHLC-identical duplicates for lower-timeframe replay only"):
-                    source = st.session_state.get(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY)
-                    if not isinstance(source, pd.DataFrame):
-                        st.error("Duplicate source data is unavailable; re-upload the lower CSV.")
-                    else:
-                        try:
-                            resolved, audit = resolve_ohlc_identical_duplicates(source)
-                            subtimeframe_df = tag_session(resolved, instrument)
-                            context = prepare_subtimeframe_conservative_context(
-                                parent_df,
-                                subtimeframe_df,
-                                tick_size=INSTRUMENTS[instrument].tick_size,
-                            )
-                            _set_subtimeframe_state(
-                                subtimeframe_df,
-                                interval=format_interval(context.sub_interval),
-                                upload_signature=upload_signature,
-                                fallback_bars=context.fallback_diagnostics(parent_df),
-                            )
-                            st.session_state[SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY] = {
-                                "policy": "ohlc_identical_keep_lowest_volume",
-                                "groups_resolved": len(audit),
-                                "groups": audit,
-                            }
-                            st.success(
-                                f"Resolved {len(audit):,} OHLC-identical duplicate groups "
-                                "for lower-timeframe replay only."
-                            )
-                            st.rerun()
-                        except (DataValidationError, ValueError) as exc:
-                            primary_report = validate_ohlcv(parent_df)
-                            if "parent data contains duplicate timestamps" in str(exc) and any(
-                                issue.code == "duplicate_timestamps"
-                                for issue in primary_report.issues
-                            ):
-                                st.session_state[SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY] = subtimeframe_df
-                                st.session_state[SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY] = {
-                                    "policy": "ohlc_identical_keep_lowest_volume",
-                                    "groups_resolved": len(audit),
-                                    "groups": audit,
-                                }
-                                st.warning(
-                                    "Resolved lower data is retained for primary-volume "
-                                    "diagnostics only. Lower-timeframe replay remains unavailable until "
-                                    "primary duplicate timestamps are resolved."
-                                )
-                                st.rerun()
-                            else:
-                                st.error(str(exc))
-        compatibility_report = st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY)
-        if isinstance(
-            compatibility_report, pd.DataFrame
-        ) and upload_signature == st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY):
-            st.warning(
-                f"Lower-timeframe compatibility report: {len(compatibility_report):,} parent bars "
-                "cannot be replayed from this lower CSV."
-            )
-            st.dataframe(compatibility_report, width="stretch")
-            st.download_button(
-                "Download lower-timeframe compatibility report CSV",
-                data=compatibility_report.to_csv(index=False).encode("utf-8"),
-                file_name="r12_compatibility_report.csv",
-                mime="text/csv",
-            )
-        if (
-            uploaded_file is not None
-            and upload_signature != st.session_state.get(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY)
-            and upload_signature != st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY)
-            and upload_signature != st.session_state.get(SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY)
-        ):
-            try:
-                subtimeframe_df, interval, fallback_bars = _load_subtimeframe_upload(
-                    uploaded_file,
-                    parent_df=parent_df,
-                    instrument=instrument,
-                    source_timezone=source_timezone,
-                    exchange_timezone=exchange_timezone,
-                    format_profile=subtimeframe_format_profile,
-                )
-                _set_subtimeframe_state(
-                    subtimeframe_df,
-                    interval=interval,
-                    upload_signature=upload_signature,
-                    fallback_bars=fallback_bars,
-                )
-                if fallback_bars:
-                    st.warning(
-                        f"{len(fallback_bars):,} parent bars lack replayable lower data. "
-                        "Strict observed replay will reject this file; "
-                        "select the explicit conservative model to use SL-first "
-                        "fallback only on those bars."
-                    )
-                else:
-                    st.success(
-                        f"Lower-timeframe data ready: {len(subtimeframe_df):,} {interval} bars "
-                        f"reconcile to the main chart."
-                    )
-            except SubtimeframeDuplicateTimestampError as exc:
-                _clear_loaded_subtimeframe_after_failed_upload()
-                st.session_state[SUBTIMEFRAME_DUPLICATE_REPORT_KEY] = exc.report
-                st.session_state[SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY] = upload_signature
-                st.session_state[SUBTIMEFRAME_DUPLICATE_SOURCE_KEY] = exc.source
-                st.error(str(exc))
-                st.rerun()
-            except SubtimeframeCompatibilityError as exc:
-                _clear_loaded_subtimeframe_after_failed_upload()
-                st.session_state[SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY] = exc.report
-                st.session_state[SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY] = upload_signature
-                st.error(str(exc))
-                st.rerun()
-            except (DataValidationError, ValueError) as exc:
-                _clear_loaded_subtimeframe_after_failed_upload()
-                st.error(str(exc))
-
-        subtimeframe_df = st.session_state.get("subtimeframe_data")
-        if isinstance(subtimeframe_df, pd.DataFrame):
-            interval = st.session_state.get("subtimeframe_interval", "unknown interval")
-            st.info(f"Lower-timeframe data loaded: {len(subtimeframe_df):,} bars at {interval}.")
-            fallback_bars = st.session_state.get(SUBTIMEFRAME_FALLBACK_BARS_KEY, [])
-            if fallback_bars:
-                st.caption(
-                    f"Conservative lower-timeframe fallback is required for {len(fallback_bars):,} "
-                    "parent bars; the strict model remains unavailable."
-                )
-            if st.button("Remove lower-timeframe data"):
-                _clear_subtimeframe_state()
-                st.rerun()
 
 
 def _set_active_dataset_state(
@@ -1316,6 +598,157 @@ def _set_active_dataset_state(
         st.session_state[ACTIVE_SAVED_DATASET_KEY] = saved_dataset_id
 
 
+def _render_derived_parent_diagnostics(
+    dropped_buckets: pd.DataFrame,
+    sparse_buckets: pd.DataFrame | None = None,
+) -> None:
+    """Show sparse/dropped minute diagnostics for 15-second-primary uploads."""
+    render_derived_parent_diagnostics(st, dropped_buckets, sparse_buckets)
+
+
+def _render_15s_source_duplicate_caption(provenance) -> None:
+    """Show resolved 15s source-duplicate audit when provenance recorded one."""
+    render_15s_source_duplicate_caption(st, provenance)
+
+
+def _normalize_tick_path_list(raw) -> list[str]:
+    return tick_helpers._normalize_tick_path_list(raw)
+
+
+def _tick_upload_dir():
+    return tick_helpers._tick_upload_dir()
+
+
+def _sha256_file(path):
+    return tick_helpers._sha256_file(path)
+
+
+def _tick_trusted_roots():
+    return tick_helpers._tick_trusted_roots()
+
+
+def _is_within_tick_trusted_roots(path):
+    return tick_helpers._is_within_tick_trusted_roots(path)
+
+
+def _classify_typed_tick_path(raw: str):
+    return tick_helpers._classify_typed_tick_path(raw)
+
+
+def _resolve_existing_tick_path(raw: str):
+    return tick_helpers._resolve_existing_tick_path(raw)
+
+
+def _dedupe_attached_tick_paths(paths: list[str]):
+    return tick_helpers._dedupe_attached_tick_paths(paths)
+
+
+def _persist_tick_uploads(files, dest_dir):
+    return tick_helpers._persist_tick_uploads(files, dest_dir)
+
+
+def _validate_attached_tick_paths(paths, *, instrument: str, source_tz: str = "UTC"):
+    return tick_helpers._validate_attached_tick_paths(
+        paths, instrument=instrument, source_tz=source_tz
+    )
+
+
+def _install_tick_paths(
+    session_state,
+    paths,
+    *,
+    row_count=None,
+    session_count=None,
+    signature=None,
+    warnings=None,
+):
+    return tick_helpers._install_tick_paths(
+        session_state,
+        paths,
+        row_count=row_count,
+        session_count=session_count,
+        signature=signature,
+        warnings=warnings,
+    )
+
+
+def _clear_tick_session_state(session_state=None) -> None:
+    tick_helpers._clear_tick_session_state(st, session_state)
+
+
+def _render_tick_attach(*, instrument: str) -> None:
+    render_tick_attach(st, instrument=instrument)
+
+
+def _clear_execution_dependent_state() -> None:
+    subtf_helpers._clear_execution_dependent_state(st)
+
+
+def _load_subtimeframe_upload(
+    uploaded_file,
+    *,
+    parent_df: pd.DataFrame,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str,
+    format_profile: str,
+):
+    return subtf_helpers._load_subtimeframe_upload(
+        uploaded_file,
+        parent_df=parent_df,
+        instrument=instrument,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        format_profile=format_profile,
+    )
+
+
+def _set_subtimeframe_state(
+    subtimeframe_df: pd.DataFrame,
+    *,
+    interval: str,
+    upload_signature: str,
+    fallback_bars: list[dict[str, object]],
+) -> None:
+    subtf_helpers._set_subtimeframe_state(
+        st,
+        subtimeframe_df,
+        interval=interval,
+        upload_signature=upload_signature,
+        fallback_bars=fallback_bars,
+    )
+
+
+def _clear_subtimeframe_state() -> None:
+    subtf_helpers._clear_subtimeframe_state(st)
+
+
+def _clear_loaded_subtimeframe_after_failed_upload() -> None:
+    subtf_helpers._clear_loaded_subtimeframe_after_failed_upload(st)
+
+
+def _upload_signature(uploaded_file, *, format_profile: str) -> str:
+    return subtf_helpers._upload_signature(uploaded_file, format_profile=format_profile)
+
+
+def _render_subtimeframe_upload(
+    parent_df: pd.DataFrame,
+    *,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str,
+) -> None:
+    render_subtimeframe_upload(
+        st,
+        parent_df,
+        instrument=instrument,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        profile_options=dict(FORMAT_PROFILE_LABELS),
+        format_profiles=SUBTIMEFRAME_FORMAT_PROFILES,
+    )
+
+
 def _render_dataset_summary(
     df,
     *,
@@ -1327,194 +760,133 @@ def _render_dataset_summary(
     resampled_data: dict | None = None,
     saved_dataset_loaded: bool = False,
 ):
-    st.success(f"Loaded {len(df):,} bars.")
-    st.caption(f"{df['timestamp'].min()} → {df['timestamp'].max()}")
-    st.caption(timezone_contract_caption(st.session_state))
-
-    summary_cols = st.columns(4)
-    summary_cols[0].metric("Rows", f"{len(df):,}")
-    summary_cols[1].metric("Inferred base interval", base_interval or "unknown")
-    summary_cols[2].metric("RTH bars", int((df["session"] == "RTH").sum()))
-    summary_cols[3].metric("ETH bars", int((df["session"] == "ETH").sum()))
-
-    if report is not None:
-        detail_cols = st.columns(2)
-        detail_cols[0].metric("Validation issues", len(report.issues))
-        detail_cols[1].metric("Instrument", instrument)
-        if report.is_clean:
-            st.info("Validation passed ✓")
-        else:
-            st.warning("Validation issues detected:")
-            for issue in report.messages():
-                st.write(f"- {issue}")
-            primary_duplicate_report = _primary_duplicate_report(df, report)
-            if primary_duplicate_report is not None:
-                group_count = int(primary_duplicate_report["timestamp"].nunique())
-                st.warning(
-                    f"Primary duplicate report: {group_count:,} duplicate timestamp groups. "
-                    "Primary bars are never deduplicated automatically because their "
-                    "volume can affect VWAP and profile calculations."
-                )
-                st.dataframe(primary_duplicate_report, width="stretch")
-                st.download_button(
-                    "Download primary duplicate report CSV",
-                    data=primary_duplicate_report.to_csv(index=False).encode("utf-8"),
-                    file_name="primary_duplicate_report.csv",
-                    mime="text/csv",
-                )
-                lower_data = st.session_state.get("subtimeframe_data")
-                diagnostic_only = False
-                if not isinstance(lower_data, pd.DataFrame):
-                    lower_data = st.session_state.get(SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY)
-                    diagnostic_only = isinstance(lower_data, pd.DataFrame)
-                if isinstance(lower_data, pd.DataFrame):
-                    volume_comparison = primary_duplicate_volume_comparison(df, lower_data)
-                    matched_count = int(
-                        volume_comparison["comparison_status"].eq("matched_one").sum()
-                    )
-                    st.info(
-                        f"Primary/lower volume comparison: {matched_count:,} of "
-                        f"{len(volume_comparison):,} duplicate groups have exactly one "
-                        "primary volume matching the lower-bar aggregate. This is "
-                        "diagnostic only; primary data remains unchanged."
-                    )
-                    if diagnostic_only:
-                        st.caption(
-                            "Lower data is retained for this comparison only and is not active "
-                            "for lower-timeframe execution."
-                        )
-                    st.dataframe(volume_comparison, width="stretch")
-                    st.download_button(
-                        "Download primary/lower volume comparison CSV",
-                        data=volume_comparison.to_csv(index=False).encode("utf-8"),
-                        file_name="primary_lower_volume_comparison.csv",
-                        mime="text/csv",
-                    )
-    elif saved_dataset_loaded:
-        st.info("Loaded canonical dataset from local store.")
-    else:
-        st.info("Using dataset from current session.")
-
-    for timeframe, out in (resampled_data or {}).items():
-        with st.expander(f"{timeframe} preview ({len(out):,} rows)"):
-            st.dataframe(out.head(50), width="stretch")
-
-    st.subheader("Base timeframe preview")
-    st.dataframe(df.head(50), width="stretch")
+    render_dataset_summary(
+        st,
+        df,
+        instrument=instrument,
+        base_interval=base_interval,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        report=report,
+        resampled_data=resampled_data,
+        saved_dataset_loaded=saved_dataset_loaded,
+    )
 
 
-def _primary_duplicate_report(df: pd.DataFrame, report) -> pd.DataFrame | None:
-    """Return a duplicate diagnostic only when primary validation found duplicates."""
-    if report is None or not any(issue.code == "duplicate_timestamps" for issue in report.issues):
-        return None
-    return duplicate_timestamp_report(df)
+def _primary_duplicate_report(df: pd.DataFrame, report):
+    return display_helpers._primary_duplicate_report(df, report)
 
 
 def _render_roll_assumptions(df, *, instrument: str) -> None:
-    st.subheader("Futures roll assumptions")
-    existing_policy = st.session_state.get("roll_policy")
-    if not isinstance(existing_policy, dict):
-        existing_policy = {}
+    render_roll_assumptions(st, df, instrument=instrument)
 
-    detected_contract_column = detect_contract_column(df)
-    roll_method_options = [
-        "single_contract",
-        "external_continuous",
-        "segmented_contracts",
-    ]
-    default_roll_method = existing_policy.get("roll_method", "single_contract")
-    if default_roll_method not in ROLL_METHODS:
-        default_roll_method = "single_contract"
-    roll_method = st.selectbox(
-        "Roll method",
-        options=roll_method_options,
-        index=roll_method_options.index(default_roll_method),
-        key="roll_method_selector",
+
+def _apply_source_dataset(
+    file,
+    *,
+    ingestion_mode: str,
+    inst: str,
+    source_tz: str | None,
+    exchange_timezone: str,
+    format_profile: str,
+) -> None:
+    """Install Upload-CSV / Sample into session. H10 admission is the else fork."""
+    selected_timeframes = st.multiselect(
+        "Preview resampled timeframes",
+        options=list(SUPPORTED_TIMEFRAMES),
+        default=["5min", "15min"],
     )
-
-    contract_column = (
-        st.text_input(
-            "Contract column",
-            value=(
-                existing_policy.get("contract_column") or detected_contract_column or "contract"
-            ),
-            key="roll_contract_column_input",
-        ).strip()
-        or "contract"
-    )
-
-    adjustment_options = [
-        "unknown",
-        "back_adjusted",
-        "ratio_adjusted",
-        "panama",
-        "none",
-    ]
-    roll_rule_options = [
-        "unknown",
-        "volume",
-        "open_interest",
-        "calendar",
-        "first_notice",
-        "last_trade",
-    ]
-
-    default_adjustment = existing_policy.get("adjustment_method", "unknown")
-    if default_adjustment not in adjustment_options:
-        default_adjustment = "unknown"
-    default_roll_rule = existing_policy.get("roll_rule", "unknown")
-    if default_roll_rule not in roll_rule_options:
-        default_roll_rule = "unknown"
-
-    if roll_method == "external_continuous":
-        adjustment_method = st.selectbox(
-            "Adjustment method",
-            options=adjustment_options,
-            index=adjustment_options.index(default_adjustment),
-            key="roll_adjustment_method_selector",
+    if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+        prepared = _prepare_15s_primary_dataset(
+            file,
+            instrument=inst,
+            source_timezone=source_tz,
+            exchange_timezone=exchange_timezone,
+            format_profile=format_profile,
         )
-        roll_rule = st.selectbox(
-            "Roll rule",
-            options=roll_rule_options,
-            index=roll_rule_options.index(default_roll_rule),
-            key="roll_rule_selector",
+        resampled_data = {}
+        for timeframe in selected_timeframes:
+            out = cached_resample_and_tag(prepared.parent_df, inst, timeframe)
+            resampled_data[timeframe] = out
+        _install_15s_primary_dataset(
+            prepared,
+            instrument=inst,
+            source_timezone=source_tz,
+            exchange_timezone=exchange_timezone,
+            resampled_data=resampled_data,
+        )
+        st.success(
+            f"Derived {len(prepared.parent_df):,} one-minute bars from "
+            f"{len(prepared.source_df):,} 15-second source bars."
+        )
+        st.caption(
+            "Canonical research data is the derived one-minute frame. "
+            "The retained 15-second bars are attached for R12 replay."
+        )
+        _render_15s_source_duplicate_caption(prepared.provenance)
+        _render_derived_parent_diagnostics(
+            prepared.dropped_buckets,
+            prepared.sparse_buckets,
+        )
+        _render_dataset_summary(
+            prepared.parent_df,
+            instrument=inst,
+            base_interval=prepared.base_interval,
+            source_timezone=source_tz,
+            exchange_timezone=exchange_timezone,
+            report=prepared.parent_report,
+            resampled_data=resampled_data,
         )
     else:
-        adjustment_method = "unknown"
-        roll_rule = "unknown"
-
-    st.session_state["roll_policy"] = {
-        "roll_method": roll_method,
-        "contract_column": contract_column,
-        "adjustment_method": adjustment_method,
-        "roll_rule": roll_rule,
-    }
-
-    tick_size = INSTRUMENTS[instrument].tick_size if instrument in INSTRUMENTS else None
-    if st.button("Validate roll metadata"):
-        st.session_state["roll_validation"] = validate_roll_metadata(
-            df,
-            roll_method=roll_method,
-            contract_column=contract_column,
-            adjustment_method=adjustment_method,
-            roll_rule=roll_rule,
-            tick_size=tick_size,
+        # Leaving 15s-primary must drop provenance/subtimeframe even when
+        # the new primary shares the prior derived parent dataset_id.
+        _leave_15s_primary_session_if_active()
+        raw_df, captured_raw = load_ohlcv(
+            file,
+            source_tz=source_tz,
+            target_tz=exchange_timezone,
+            format_profile=format_profile,
+            return_raw=True,
         )
+        report = validate_ohlcv(raw_df)
+        base_interval = format_interval(report.inferred_interval)
+        df = tag_session(raw_df, inst)
 
-    validation = st.session_state.get("roll_validation")
-    if not isinstance(validation, dict):
-        return
-
-    st.metric("Roll metadata valid", "✅" if validation.get("valid") else "❌")
-    st.write(f"Contract count: {validation.get('contract_count', '—')}")
-    warnings = validation.get("warnings")
-    if isinstance(warnings, list) and warnings:
-        st.warning("Warnings:")
-        for warning in warnings:
-            st.write(f"- {warning}")
-    roll_gaps = validation.get("roll_gaps")
-    if isinstance(roll_gaps, list) and roll_gaps:
-        st.dataframe(pd.DataFrame(roll_gaps), width="stretch")
+        resampled_data = {}
+        for timeframe in selected_timeframes:
+            out = cached_resample_and_tag(raw_df, inst, timeframe)
+            resampled_data[timeframe] = out
+        _set_active_dataset_state(
+            df,
+            instrument=inst,
+            base_interval=base_interval,
+            source_timezone=source_tz,
+            exchange_timezone=exchange_timezone,
+            resampled_data=resampled_data,
+            saved_dataset_id=None,
+        )
+        st.session_state["format_profile"] = format_profile
+        _sync_upload_ingestion_mode_selector(INGESTION_MODE_PRIMARY, explicit=False)
+        if format_profile in RAW_CAPTURE_PROFILES:
+            st.session_state["raw_data"] = captured_raw
+            st.session_state["raw_interval"] = format_interval(
+                infer_base_interval(captured_raw["timestamp"])
+            )
+            st.caption(
+                f"Captured {len(captured_raw):,} raw rows; the engine uses the resampled 1-minute bars."
+            )
+        else:
+            st.session_state.pop("raw_data", None)
+            st.session_state.pop("raw_interval", None)
+        _render_dataset_summary(
+            df,
+            instrument=inst,
+            base_interval=base_interval,
+            source_timezone=source_tz,
+            exchange_timezone=exchange_timezone,
+            report=report,
+            resampled_data=resampled_data,
+        )
 
 
 st.title("\U0001f4e5 Data")
@@ -1533,410 +905,19 @@ st.caption(
 )
 render_classic_nav_prefill_caption(target_page="pages/1_Data.py")
 
-if not _preserve_dataset_less_bundle():
-    bootstrap_active_saved_dataset()
-_consume_data_page_source_invalidation()
 
-flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
-if flash_message:
-    st.success(flash_message)
-bootstrap_message = st.session_state.pop(BOOTSTRAP_MESSAGE_KEY, None)
-if bootstrap_message:
-    st.success(bootstrap_message)
-raw_capture_warning = st.session_state.pop("raw_capture_warning", None)
-if raw_capture_warning:
-    st.warning(raw_capture_warning)
+class _DataPageModule:
+    """Resolve page names without requiring ``sys.modules[__name__]``.
 
-st.subheader("Local saved datasets")
-st.caption(f"Local store: `{display_store_path(get_store_root())}`")
-if get_configured_store_dir() is None:
-    st.warning(
-        "THESISTESTER_STORE_DIR is not set. Saved datasets are stored in a local repo folder "
-        "and may not persist across environments. Set it via a repo-root `.env` "
-        "(see `.env.example`) or `scripts/set_store_dir.ps1` on Windows."
-    )
-saved_datasets = list_datasets()
-saved_dataset_options = {item["dataset_id"]: item for item in saved_datasets}
+    Helper tests ``exec_module`` the page without inserting it into
+    ``sys.modules``; a globals proxy still sees monkeypatched names.
+    """
 
-if saved_datasets:
-    selected_saved_dataset_id = st.selectbox(
-        "Saved datasets",
-        options=list(saved_dataset_options),
-        format_func=lambda dataset_id: _saved_dataset_label(saved_dataset_options[dataset_id]),
-    )
-    selected_saved_dataset = saved_dataset_options[selected_saved_dataset_id]
+    def __getattr__(self, name):
+        try:
+            return globals()[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
 
-    action_cols = st.columns(3)
-    if action_cols[0].button("Load saved dataset", width="stretch"):
-        loaded_df, loaded_meta = load_dataset(selected_saved_dataset_id)
-        _set_active_dataset_state(
-            loaded_df,
-            instrument=loaded_meta["instrument"],
-            base_interval=loaded_meta.get("base_interval"),
-            source_timezone=loaded_meta.get("source_timezone"),
-            exchange_timezone=loaded_meta.get("exchange_timezone"),
-            resampled_data={},
-            saved_dataset_id=loaded_meta["dataset_id"],
-        )
-        restore_saved_dataset_provenance(
-            st.session_state,
-            loaded_meta["dataset_id"],
-            loaded_meta,
-        )
-        # Align Upload-CSV radio with restored provenance so dual-upload /
-        # 15s-primary hide rules match the loaded session.
-        if _is_15s_primary_session():
-            _sync_upload_ingestion_mode_selector(
-                INGESTION_MODE_15S_PRIMARY_DERIVE_1M, explicit=True
-            )
-        else:
-            _sync_upload_ingestion_mode_selector(INGESTION_MODE_PRIMARY, explicit=False)
-        st.session_state[FLASH_MESSAGE_KEY] = (
-            f"Loaded saved dataset '{loaded_meta['name']}' ({loaded_meta['dataset_id'][:12]}...)."
-        )
-        st.session_state[PENDING_INSTRUMENT_SELECTOR_KEY] = loaded_meta["instrument"]
-        if loaded_meta.get("source_timezone") is not None:
-            st.session_state[PENDING_SOURCE_TZ_SELECTOR_KEY] = loaded_meta["source_timezone"]
-        st.rerun()
 
-    if action_cols[1].button("Delete saved dataset", width="stretch"):
-        delete_dataset(selected_saved_dataset_id)
-        if st.session_state.get(ACTIVE_SAVED_DATASET_KEY) == selected_saved_dataset_id:
-            st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
-        st.session_state[FLASH_MESSAGE_KEY] = (
-            f"Deleted saved dataset '{selected_saved_dataset.get('name', selected_saved_dataset_id)}'."
-        )
-        st.rerun()
-
-    if action_cols[2].button("Refresh saved datasets", width="stretch"):
-        st.rerun()
-else:
-    st.caption(f"No saved datasets found in `{display_store_path(get_store_root())}`.")
-    if st.button("Refresh saved datasets"):
-        st.rerun()
-
-st.divider()
-
-available_instruments = list(INSTRUMENTS.keys())
-if PENDING_INSTRUMENT_SELECTOR_KEY in st.session_state:
-    st.session_state["data_instrument_selector"] = st.session_state.pop(
-        PENDING_INSTRUMENT_SELECTOR_KEY
-    )
-if "data_instrument_selector" not in st.session_state:
-    st.session_state["data_instrument_selector"] = st.session_state.get(
-        "instrument",
-        available_instruments[0],
-    )
-inst = st.selectbox("Instrument", available_instruments, key="data_instrument_selector")
-meta = INSTRUMENTS[inst]
-st.caption(
-    f"{meta.name} \u00b7 tick size {meta.tick_size} \u00b7 point value ${meta.point_value:,.0f} "
-    f"\u00b7 session tz {meta.exchange_tz} ({meta.rth_start}\u2013{meta.rth_end} RTH)"
-)
-
-source = st.radio(
-    "Source",
-    ["Sample data", "Upload CSV"],
-    horizontal=True,
-    key="data_source_selector",
-    on_change=_reset_source_timezone_for_import,
-)
-if source == "Upload CSV":
-    # Realign only on the Upload-CSV path (never from Sample reruns).
-    _align_upload_ingestion_mode_with_session()
-    ingestion_mode = st.radio(
-        "Ingestion mode",
-        options=list(INGESTION_MODE_LABELS),
-        format_func=INGESTION_MODE_LABELS.get,
-        horizontal=True,
-        key="data_ingestion_mode_selector",
-        help=(
-            "Recommended for Quantower 15-second exports: derive complete "
-            "one-minute bars and retain the 15-second source for R12. "
-            "Legacy one-minute primary keeps dual-upload available."
-        ),
-        on_change=_on_ingestion_mode_change,
-    )
-    st.caption(
-        "Locked composer fork: legacy one-minute primary still installs the "
-        "frame when validation reports fatal OHLCV codes (Loaded, then warning). "
-        "`api.load_dataset` rejects those same codes. 15s-primary parent stays "
-        "fail-closed."
-    )
-else:
-    # Sample data remains the legacy one-minute fixture path.
-    # Do not write data_ingestion_mode_selector here — Source defaults to
-    # Sample and would clobber the Upload-CSV recommended default.
-    ingestion_mode = INGESTION_MODE_PRIMARY
-
-all_profile_options = dict(FORMAT_PROFILE_LABELS)
-if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
-    profile_options = {
-        key: label
-        for key, label in all_profile_options.items()
-        if key in DERIVE_15S_SUPPORTED_PROFILES
-    }
-    if st.session_state.get("data_format_profile_selector") not in profile_options:
-        st.session_state["data_format_profile_selector"] = next(iter(profile_options))
-else:
-    profile_options = all_profile_options
-format_profile = (
-    st.selectbox(
-        "CSV format profile",
-        options=list(profile_options),
-        format_func=profile_options.get,
-        help="Explicit selection only; ThesisTester never auto-detects vendor formats.",
-        key="data_format_profile_selector",
-        on_change=_reset_source_timezone_for_import,
-    )
-    if source == "Upload CSV"
-    else "canonical"
-)
-default_source_tz = (
-    "America/New_York"
-    if source == "Sample data"
-    else _default_source_timezone(format_profile, meta.exchange_tz)
-)
-if PENDING_SOURCE_TZ_SELECTOR_KEY in st.session_state:
-    st.session_state["data_source_timezone_selector"] = st.session_state.pop(
-        PENDING_SOURCE_TZ_SELECTOR_KEY
-    )
-if "data_source_timezone_selector" not in st.session_state:
-    st.session_state["data_source_timezone_selector"] = default_source_tz
-source_tz = st.selectbox(
-    "Source timestamp timezone",
-    TIMEZONE_OPTIONS,
-    index=TIMEZONE_OPTIONS.index(st.session_state["data_source_timezone_selector"]),
-    key="data_source_timezone_selector",
-    help=(
-        "Use this for timezone-naive CSV timestamps. Timezone-aware timestamps are "
-        "converted from their embedded timezone automatically."
-    ),
-)
-
-file = None
-if source == "Upload CSV":
-    primary_uploader_nonce = int(st.session_state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0))
-    file = st.file_uploader(
-        "CSV file for the selected explicit profile",
-        type=["csv", "txt"],
-        key=f"primary_csv_upload_{primary_uploader_nonce}",
-    )
-else:
-    sample = REPO_ROOT / "sample_data" / "ES_sample_1m.csv"
-    file = sample if sample.exists() else None
-    if file is None:
-        st.error("Sample data not found.")
-
-explicit_sample_load = bool(st.session_state.pop(LOAD_SAMPLE_REQUESTED_KEY, False))
-use_source_dataset = _should_apply_source_dataset(
-    file_present=file is not None,
-    source=source,
-    has_session_data=_session_has_primary_data() or _preserve_dataset_less_bundle(),
-    explicit_sample_load=explicit_sample_load,
-)
-
-if use_source_dataset:
-    try:
-        selected_timeframes = st.multiselect(
-            "Preview resampled timeframes",
-            options=list(SUPPORTED_TIMEFRAMES),
-            default=["5min", "15min"],
-        )
-        if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
-            prepared = _prepare_15s_primary_dataset(
-                file,
-                instrument=inst,
-                source_timezone=source_tz,
-                exchange_timezone=meta.exchange_tz,
-                format_profile=format_profile,
-            )
-            resampled_data = {}
-            for timeframe in selected_timeframes:
-                out = cached_resample_and_tag(prepared.parent_df, inst, timeframe)
-                resampled_data[timeframe] = out
-            _install_15s_primary_dataset(
-                prepared,
-                instrument=inst,
-                source_timezone=source_tz,
-                exchange_timezone=meta.exchange_tz,
-                resampled_data=resampled_data,
-            )
-            st.success(
-                f"Derived {len(prepared.parent_df):,} one-minute bars from "
-                f"{len(prepared.source_df):,} 15-second source bars."
-            )
-            st.caption(
-                "Canonical research data is the derived one-minute frame. "
-                "The retained 15-second bars are attached for R12 replay."
-            )
-            _render_15s_source_duplicate_caption(prepared.provenance)
-            _render_derived_parent_diagnostics(
-                prepared.dropped_buckets,
-                prepared.sparse_buckets,
-            )
-            _render_dataset_summary(
-                prepared.parent_df,
-                instrument=inst,
-                base_interval=prepared.base_interval,
-                source_timezone=source_tz,
-                exchange_timezone=meta.exchange_tz,
-                report=prepared.parent_report,
-                resampled_data=resampled_data,
-            )
-        else:
-            # Leaving 15s-primary must drop provenance/subtimeframe even when
-            # the new primary shares the prior derived parent dataset_id.
-            _leave_15s_primary_session_if_active()
-            raw_df, captured_raw = load_ohlcv(
-                file,
-                source_tz=source_tz,
-                target_tz=meta.exchange_tz,
-                format_profile=format_profile,
-                return_raw=True,
-            )
-            report = validate_ohlcv(raw_df)
-            base_interval = format_interval(report.inferred_interval)
-            df = tag_session(raw_df, inst)
-
-            resampled_data = {}
-            for timeframe in selected_timeframes:
-                out = cached_resample_and_tag(raw_df, inst, timeframe)
-                resampled_data[timeframe] = out
-            _set_active_dataset_state(
-                df,
-                instrument=inst,
-                base_interval=base_interval,
-                source_timezone=source_tz,
-                exchange_timezone=meta.exchange_tz,
-                resampled_data=resampled_data,
-                saved_dataset_id=None,
-            )
-            st.session_state["format_profile"] = format_profile
-            _sync_upload_ingestion_mode_selector(INGESTION_MODE_PRIMARY, explicit=False)
-            if format_profile in RAW_CAPTURE_PROFILES:
-                st.session_state["raw_data"] = captured_raw
-                st.session_state["raw_interval"] = format_interval(
-                    infer_base_interval(captured_raw["timestamp"])
-                )
-                st.caption(
-                    f"Captured {len(captured_raw):,} raw rows; the engine uses the resampled 1-minute bars."
-                )
-            else:
-                st.session_state.pop("raw_data", None)
-                st.session_state.pop("raw_interval", None)
-            _render_dataset_summary(
-                df,
-                instrument=inst,
-                base_interval=base_interval,
-                source_timezone=source_tz,
-                exchange_timezone=meta.exchange_tz,
-                report=report,
-                resampled_data=resampled_data,
-            )
-    except (DataValidationError, ValueError) as exc:
-        st.error(str(exc))
-elif _preserve_dataset_less_bundle():
-    st.info(
-        "Imported research bundle omitted dataset bars. Sample data and the "
-        "active saved dataset are not applied automatically. Load a saved "
-        "dataset or upload a CSV if you want bars beside the imported trades."
-    )
-    if source == "Sample data" and st.button("Load sample data"):
-        st.session_state[LOAD_SAMPLE_REQUESTED_KEY] = True
-        st.rerun()
-elif _session_has_primary_data():
-    if source == "Sample data":
-        st.info(
-            "Session already has data. The sample file is not applied automatically "
-            "when you open this page. Load sample data only if you want to replace "
-            "the current dataset (this resets levels and downstream results when "
-            "the dataset identity changes)."
-        )
-        if st.button("Load sample data"):
-            st.session_state[LOAD_SAMPLE_REQUESTED_KEY] = True
-            st.rerun()
-    _render_dataset_summary(
-        st.session_state["data"],
-        instrument=st.session_state.get("instrument", inst),
-        base_interval=st.session_state.get("base_interval"),
-        source_timezone=st.session_state.get("source_timezone"),
-        exchange_timezone=st.session_state.get("exchange_timezone"),
-        resampled_data=st.session_state.get("resampled_data"),
-        saved_dataset_loaded=ACTIVE_SAVED_DATASET_KEY in st.session_state,
-    )
-    if _is_15s_primary_session():
-        _render_15s_source_duplicate_caption(st.session_state.get("ingestion_provenance"))
-        diagnostics = st.session_state.get(DERIVED_PARENT_DIAGNOSTICS_KEY)
-        if isinstance(diagnostics, dict):
-            dropped = diagnostics.get("dropped_buckets")
-            sparse = diagnostics.get("sparse_buckets")
-            if isinstance(dropped, pd.DataFrame) or isinstance(sparse, pd.DataFrame):
-                _render_derived_parent_diagnostics(
-                    dropped if isinstance(dropped, pd.DataFrame) else pd.DataFrame(),
-                    sparse if isinstance(sparse, pd.DataFrame) else pd.DataFrame(),
-                )
-        elif isinstance(diagnostics, pd.DataFrame):
-            # Legacy session shape: diagnostics held only dropped/incomplete rows.
-            _render_derived_parent_diagnostics(diagnostics)
-
-current_df = st.session_state.get("data")
-if current_df is not None:
-    st.divider()
-    if _hide_legacy_subtimeframe_uploader(ingestion_mode):
-        if _is_15s_primary_session():
-            interval = st.session_state.get("subtimeframe_interval", "15s")
-            source_rows = st.session_state.get("subtimeframe_data")
-            source_count = len(source_rows) if isinstance(source_rows, pd.DataFrame) else 0
-            st.info(
-                f"15-second source attached from primary upload: {source_count:,} bars at "
-                f"{interval}. Separate lower-timeframe upload is hidden in this mode."
-            )
-        else:
-            # Mode selected but no active 15s-primary provenance yet (e.g. stale
-            # one-minute data after a mode switch, before a new 15s CSV upload).
-            st.info(
-                "Separate lower-timeframe upload is hidden in 15-second primary mode. "
-                "Upload a 15-second CSV above to derive one-minute bars and attach "
-                "the 15-second source for R12."
-            )
-    else:
-        _render_subtimeframe_upload(
-            current_df,
-            instrument=st.session_state.get("instrument", inst),
-            source_timezone=st.session_state.get("source_timezone"),
-            exchange_timezone=st.session_state.get("exchange_timezone", meta.exchange_tz),
-        )
-    _render_tick_attach(instrument=st.session_state.get("instrument", inst))
-    st.divider()
-    _render_roll_assumptions(
-        current_df,
-        instrument=st.session_state.get("instrument", inst),
-    )
-    st.divider()
-    current_instrument = st.session_state.get("instrument", inst)
-    default_name = _default_dataset_name(current_df, current_instrument)
-    dataset_name = st.text_input("Local dataset name", value=default_name)
-    if st.button("Save dataset locally"):
-        saved_meta = save_dataset(
-            current_df,
-            name=dataset_name.strip() or default_name,
-            instrument=current_instrument,
-            base_interval=st.session_state.get("base_interval"),
-            source_timezone=st.session_state.get("source_timezone"),
-            exchange_timezone=st.session_state.get("exchange_timezone"),
-            raw_data=st.session_state.get("raw_data"),
-            format_profile=st.session_state.get("format_profile", "canonical"),
-            raw_interval=st.session_state.get("raw_interval"),
-            subtimeframe_data=st.session_state.get("subtimeframe_data"),
-            subtimeframe_interval=st.session_state.get("subtimeframe_interval"),
-            subtimeframe_format_profile=st.session_state.get("subtimeframe_format_profile"),
-            ingestion_provenance=st.session_state.get("ingestion_provenance"),
-        )
-        st.session_state["dataset_id"] = saved_meta["dataset_id"]
-        set_active_dataset_id(saved_meta["dataset_id"])
-        st.session_state[ACTIVE_SAVED_DATASET_KEY] = saved_meta["dataset_id"]
-        st.session_state[FLASH_MESSAGE_KEY] = (
-            f"Saved dataset '{saved_meta['name']}' locally ({saved_meta['dataset_id'][:12]}...)."
-        )
-        st.rerun()
+render_data_workspace(st, page=_DataPageModule())

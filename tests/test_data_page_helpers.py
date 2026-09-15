@@ -613,6 +613,17 @@ _QI1001_A7_APPLY_ONLY_KEYS = (
     "direction_collision_diagnostic",
 )
 _DATA_PAGE_SOURCE = pathlib.Path("pages/1_Data.py").read_text(encoding="utf-8")
+_DATA_PAGE_HELPER_SOURCES = "\n".join(
+    pathlib.Path(path).read_text(encoding="utf-8")
+    for path in (
+        "pages/1_Data.py",
+        "thesistester/data_workspace_page_helpers.py",
+        "thesistester/data_tick_page_helpers.py",
+        "thesistester/data_subtimeframe_page_helpers.py",
+        "thesistester/data_display_page_helpers.py",
+        "thesistester/data_page_constants.py",
+    )
+)
 
 
 def _qi1001_leftover_session(*, data, dataset_id: str) -> dict:
@@ -939,7 +950,9 @@ def test_resolve_existing_tick_path_checks_store_root(tmp_path, monkeypatch):
     dest = tmp_path / "nested" / "ticks.csv"
     dest.parent.mkdir()
     dest.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
-    monkeypatch.setattr(data_page, "get_store_root", lambda: tmp_path)
+    import thesistester.data_tick_page_helpers as tick_helpers
+
+    monkeypatch.setattr(tick_helpers, "get_store_root", lambda: tmp_path)
     assert data_page._resolve_existing_tick_path("nested/ticks.csv") == dest.resolve()
     assert data_page._resolve_existing_tick_path("missing/ticks.csv") is None
 
@@ -950,7 +963,9 @@ def test_classify_typed_tick_path_rejects_outside_trusted_roots(tmp_path, monkey
     store.mkdir()
     outside = tmp_path / "outside.csv"
     outside.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
-    monkeypatch.setattr(data_page, "get_store_root", lambda: store)
+    import thesistester.data_tick_page_helpers as tick_helpers
+
+    monkeypatch.setattr(tick_helpers, "get_store_root", lambda: store)
     status, found = data_page._classify_typed_tick_path(str(outside))
     assert status == "outside"
     assert found is None
@@ -1123,33 +1138,253 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert data_page.LEGACY_SUBTIMEFRAME_EXPANDER_TITLE == "Legacy dual-upload (optional)"
     assert "DEFAULT_UPLOAD_INGESTION_MODE" in page_text
     assert "Legacy dual-upload (optional)" in page_text
-    assert "Sample data remains the legacy one-minute fixture path." in page_text
+    helper_text = _DATA_PAGE_HELPER_SOURCES
+    assert "Sample data remains the legacy one-minute fixture path." in helper_text
     assert "quantower_history_exporter" in data_page.DERIVE_15S_SUPPORTED_PROFILES
     from thesistester.data import loader as loader_mod
 
     assert data_page.DERIVE_15S_SUPPORTED_PROFILES is loader_mod.DERIVE_15S_SUPPORTED_PROFILES
     assert data_page.SUBTIMEFRAME_FORMAT_PROFILES is loader_mod.SUBTIMEFRAME_FORMAT_PROFILES
     assert data_page.INGESTION_MODE_PRIMARY == "primary"
-    assert "on_change=_on_ingestion_mode_change" in page_text
+    assert "on_change=page._on_ingestion_mode_change" in helper_text
     assert "_leave_15s_primary_session_if_active()" in page_text
     assert "_invalidate_primary_csv_uploader()" in page_text
-    assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in page_text
-    assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
-    page_body = page_text.split("st.title(")[-1]
-    assert "_render_tick_attach(" in page_body
-    assert page_body.index("_render_tick_attach(") > page_body.index(
-        "_hide_legacy_subtimeframe_uploader(ingestion_mode)"
+    assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in helper_text
+    assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in helper_text
+    assert "_render_tick_attach(" in helper_text
+    assert helper_text.index("page._render_tick_attach(") > helper_text.index(
+        "page._hide_legacy_subtimeframe_uploader(ingestion_mode)"
     )
-    assert "Quantower tick-last (optional; VA / APOC / rolling POC)" in page_text
-    assert "Named VA / APOC / rolling POC refuse without ticks" in page_text
-    assert "APOC remains" not in page_text
-    assert "all-NaN without" not in page_text
-    assert "rolling POC remain 1m typical" not in page_text
-    assert "{digest}_{name}" in page_text or 'f"{digest}_{name}"' in page_text
+    assert "Quantower tick-last (optional; VA / APOC / rolling POC)" in helper_text
+    assert "Named VA / APOC / rolling POC refuse without ticks" in helper_text
+    assert "APOC remains" not in helper_text
+    assert "all-NaN without" not in helper_text
+    assert "rolling POC remain 1m typical" not in helper_text
+    assert "{digest}_{name}" in helper_text or 'f"{digest}_{name}"' in helper_text
     assert "TICK_WARNINGS_KEY" in page_text
-    assert "Data-page attach does not feed classic Calculate" in page_text
-    assert "_classify_typed_tick_path(" in page_text
-    assert "outside the trusted local roots (cwd and store)" in page_text
+    assert "Data-page attach does not feed classic Calculate" in helper_text
+    assert "_classify_typed_tick_path(" in helper_text
+    assert "outside the trusted local roots (cwd and store)" in helper_text
+    from thesistester.data_subtimeframe_page_helpers import (
+        _apply_new_subtimeframe_upload,
+        _render_subtimeframe_compatibility_report,
+        _render_subtimeframe_duplicate_report,
+        _render_subtimeframe_loaded_state,
+        render_subtimeframe_upload,
+    )
+    from thesistester.data_tick_page_helpers import (
+        _handle_tick_attach_submit,
+        _render_tick_attached_status,
+        render_tick_attach,
+    )
+    from thesistester.data_workspace_page_helpers import (
+        _bind_source_ingest_controls,
+        _render_data_flash_messages,
+        _render_loaded_dataset_actions,
+        _render_saved_datasets,
+        _render_source_apply_or_session,
+        render_data_workspace,
+    )
+
+    assert callable(render_subtimeframe_upload)
+    assert callable(_render_subtimeframe_duplicate_report)
+    assert callable(_render_subtimeframe_compatibility_report)
+    assert callable(_apply_new_subtimeframe_upload)
+    assert callable(_render_subtimeframe_loaded_state)
+    assert callable(render_tick_attach)
+    assert callable(_handle_tick_attach_submit)
+    assert callable(_render_tick_attached_status)
+    assert callable(render_data_workspace)
+    assert callable(_render_data_flash_messages)
+    assert callable(_render_saved_datasets)
+    assert callable(_bind_source_ingest_controls)
+    assert callable(_render_source_apply_or_session)
+    assert callable(_render_loaded_dataset_actions)
+
+
+_WORKSPACE_ORCHESTRATOR_PANELS = frozenset(
+    {
+        "_render_data_flash_messages",
+        "_render_saved_datasets",
+        "_bind_source_ingest_controls",
+        "_render_source_apply_or_session",
+        "_render_loaded_dataset_actions",
+        "_consume_data_page_source_invalidation",
+        "bootstrap_active_saved_dataset",
+    }
+)
+_WORKSPACE_PANEL_LITERALS = (
+    "Local saved datasets",
+    "Save dataset locally",
+    "Ingestion mode",
+)
+
+
+def _call_names(fn: ast.FunctionDef) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name):
+            names.add(func.id)
+        elif isinstance(func, ast.Attribute):
+            names.add(func.attr)
+    return names
+
+
+def assert_workspace_orchestrator_split(source: str) -> None:
+    """Orchestrator must call the panels and must not inline their chrome."""
+    fn = _module_function_def(source, "render_data_workspace")
+    missing = _WORKSPACE_ORCHESTRATOR_PANELS - _call_names(fn)
+    if missing:
+        raise AssertionError(f"workspace orchestrator missing panel calls {missing}")
+    body = ast.get_source_segment(source, fn) or ""
+    leaked = [needle for needle in _WORKSPACE_PANEL_LITERALS if needle in body]
+    if leaked:
+        raise AssertionError(f"render_data_workspace re-fused panel literals {leaked}")
+
+
+def test_data_workspace_orchestrator_stays_split():
+    """QI-01-01: do not re-fuse the upload/save tree into one F-grade function."""
+    helper = pathlib.Path("thesistester/data_workspace_page_helpers.py").read_text(encoding="utf-8")
+    assert_workspace_orchestrator_split(helper)
+
+
+def test_data_workspace_orchestrator_guard_rejects_fused_tree():
+    """Inline saved-dataset chrome must not bind as a split orchestrator."""
+    fused = (
+        "def render_data_workspace(st, *, page):\n"
+        "    page._consume_data_page_source_invalidation()\n"
+        "    bootstrap_active_saved_dataset()\n"
+        "    _render_data_flash_messages(st)\n"
+        "    _render_saved_datasets(st, page=page)\n"
+        "    _bind_source_ingest_controls(st, page=page)\n"
+        "    _render_source_apply_or_session(st, page=page)\n"
+        "    _render_loaded_dataset_actions(st, page=page)\n"
+        '    st.subheader("Local saved datasets")\n'
+    )
+    try:
+        assert_workspace_orchestrator_split(fused)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("fused Local saved datasets must invert the split probe")
+
+
+def _literal_assign_value(node: ast.AST):
+    """String/number/set literals, including ``frozenset({...})`` Assign values."""
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, TypeError):
+        pass
+    codes = _literal_str_set(node)
+    if codes is not None:
+        return frozenset(codes)
+    return None
+
+
+def _literal_assigns(tree: ast.AST) -> dict[str, object]:
+    out: dict[str, object] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        value = _literal_assign_value(node.value)
+        if value is not None:
+            out[target.id] = value
+    return out
+
+
+def test_data_page_constants_match_page_assignments():
+    """Helper keys must stay identical to pages/1_Data.py (session-key fork)."""
+    page_vals = _literal_assigns(ast.parse(_DATA_PAGE_SOURCE))
+    const_vals = _literal_assigns(
+        ast.parse(pathlib.Path("thesistester/data_page_constants.py").read_text(encoding="utf-8"))
+    )
+    shared = sorted(set(page_vals) & set(const_vals))
+    assert shared, "data_page_constants and 1_Data.py must share key literals"
+    drifted = {
+        name: (page_vals[name], const_vals[name])
+        for name in shared
+        if page_vals[name] != const_vals[name]
+    }
+    assert drifted == {}, f"page vs data_page_constants drift {drifted}"
+    assert "FATAL_OHLCV_CODES" in shared
+
+
+def _workspace_page_call(source: str) -> ast.Call:
+    """The module-level ``render_data_workspace(..., page=...)`` call."""
+    tree = ast.parse(source)
+    matches: list[ast.Call] = []
+    for node in tree.body:
+        if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
+            continue
+        func = node.value.func
+        name = func.id if isinstance(func, ast.Name) else None
+        if name == "render_data_workspace":
+            matches.append(node.value)
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected one module-level render_data_workspace call, found {len(matches)}"
+        )
+    return matches[0]
+
+
+def test_data_workspace_binds_via_globals_proxy():
+    """Helper tests exec the page without sys.modules; a modules lookup KeyErrors."""
+    tree = ast.parse(_DATA_PAGE_SOURCE)
+    proxy_defs = [
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "_DataPageModule"
+    ]
+    assert proxy_defs == ["_DataPageModule"]
+    call = _workspace_page_call(_DATA_PAGE_SOURCE)
+    page_kw = next((kw.value for kw in call.keywords if kw.arg == "page"), None)
+    if page_kw is None:
+        raise AssertionError("render_data_workspace must pass page=")
+    if not (
+        isinstance(page_kw, ast.Call)
+        and isinstance(page_kw.func, ast.Name)
+        and page_kw.func.id == "_DataPageModule"
+    ):
+        raise AssertionError("render_data_workspace must bind page=_DataPageModule()")
+    for node in ast.walk(call):
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "modules"
+        ):
+            raise AssertionError("workspace page= must not use sys.modules[...]")
+
+
+def test_data_workspace_proxy_guard_rejects_sys_modules_page():
+    """Docstring / comment sys.modules needles must not bind the page= proxy."""
+    fake = (
+        "class _DataPageModule:\n"
+        "    '''Resolve page names without requiring sys.modules[__name__].'''\n"
+        "    def __getattr__(self, name):\n"
+        "        return globals()[name]\n"
+        "render_data_workspace(st, page=sys.modules[__name__])\n"
+    )
+    try:
+        call = _workspace_page_call(fake)
+        page_kw = next((kw.value for kw in call.keywords if kw.arg == "page"), None)
+        if (
+            isinstance(page_kw, ast.Call)
+            and isinstance(page_kw.func, ast.Name)
+            and page_kw.func.id == "_DataPageModule"
+        ):
+            raise AssertionError("unexpected proxy bind")
+        raise AssertionError("render_data_workspace must bind page=_DataPageModule()")
+    except AssertionError as exc:
+        if "page=_DataPageModule()" in str(exc):
+            return
+        raise
+    raise AssertionError("sys.modules page= must invert the globals-proxy probe")
 
 
 def test_bind_loader_profile_allow_list_falls_back_when_missing_or_mistyped():
@@ -1220,8 +1455,7 @@ def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch)
     )
 
     # Sample render must not write the Upload selector (Source defaults to Sample).
-    page_text = pathlib.Path(data_page.__file__).read_text(encoding="utf-8")
-    assert "Do not write data_ingestion_mode_selector here" in page_text
+    assert "Do not write data_ingestion_mode_selector here" in _DATA_PAGE_HELPER_SOURCES
     with pytest.raises(ValueError, match="Unsupported ingestion mode"):
         data_page._sync_upload_ingestion_mode_selector("bogus", session_state={})
 

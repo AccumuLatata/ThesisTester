@@ -116,8 +116,10 @@ def test_only_data_page_bootstraps_sys_path_before_imports() -> None:
     # restore_saved_dataset_provenance` (store restore; not an app_state alias).
     # D-1 adds `from thesistester.research_keys import DATASET_CLEAR_KEYS`
     # so `_clear_dataset_dependent_state` iterates the registry, not a
-    # hardcoded leftover list.
-    assert len(late_by_page[E402_IGNORE_KEY]) == 17
+    # hardcoded leftover list. D-5 adds Data-page helper imports
+    # (`data_*_page_helpers` / `data_page_constants`) for the upload/save
+    # extract; H10 admission stays on the page.
+    assert len(late_by_page[E402_IGNORE_KEY]) == 21
 
     data_src = DATA_PAGE.read_text(encoding="utf-8")
     assert "REPO_ROOT = Path(__file__).resolve().parents[1]" in data_src
