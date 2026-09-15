@@ -99,12 +99,17 @@ def settings_require_rolling_poc_ticks(
 
 def product_tick_family_message(*, apoc: bool, rolling: bool) -> str:
     """Reason text for product/library compute paths (no named-token list)."""
-    families = [name for flag, name in ((apoc, "APOC"), (rolling, "rolling POC")) if flag]
+    families = [
+        name
+        for flag, name in (
+            (apoc, APOC_REQUIRES_TICKS),
+            (rolling, ROLLING_POC_REQUIRES_TICKS),
+        )
+        if flag
+    ]
     if not families:
         return ""
-    if len(families) == 1:
-        return f"{families[0]} requires ticks: tick_paths is missing or empty"
-    return "APOC requires ticks and rolling POC requires ticks: tick_paths is missing or empty"
+    return f"{' and '.join(families)}: tick_paths is missing or empty"
 
 
 def product_tick_family_preflight(
