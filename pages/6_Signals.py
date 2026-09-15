@@ -175,7 +175,11 @@ def _parse_anchor_rule_results(zones: pd.DataFrame) -> pd.DataFrame:
 
 def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
     """Render anchor-zone summary metrics and per-rule audit table."""
-    required_cols = {"anchor_level", "anchor_price", "valid_confluence_count", "rule_results"}
+    required_cols = {
+        col
+        for col in ANCHOR_DIAGNOSTIC_COLUMNS
+        if col in {"anchor_level", "anchor_price", "valid_confluence_count", "rule_results"}
+    }
     if zones.empty or not required_cols.issubset(zones.columns):
         return
 
@@ -194,16 +198,11 @@ def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
 
     # ── Zone summary table ────────────────────────────────────────────────────
     summary_cols = [
-        "timestamp",
-        "bar_index",
-        "anchor_level",
-        "anchor_price",
-        "valid_confluence_count",
+        *[col for col in ANCHOR_DIAGNOSTIC_COLUMNS if col != "rule_results"],
         "level_count",
         "zone_low",
         "zone_high",
         "zone_mid",
-        "level_names",
     ]
     st.subheader("Anchor zone summary")
     st.dataframe(
@@ -695,12 +694,18 @@ def _controls_changed_warning_for_view(
     """
     if session_state.get("signals") is None:
         return None
+    stored_settings, helper_hash = _get_stored_signal_settings(session_state)
     stored_hash = session_state.get("signal_settings_hash")
     if (
         not isinstance(current_settings, dict)
         or not isinstance(stored_hash, str)
         or not stored_hash
     ):
+        return _SIGNAL_CONTROLS_CHANGED_WARNING
+    # Helper returns (None, None) when stored settings are missing or
+    # unnormalizable. Compare the recomputed helper hash to the session hash
+    # so a tampered/stale stored hash cannot stay unflagged.
+    if stored_settings is None or helper_hash != stored_hash:
         return _SIGNAL_CONTROLS_CHANGED_WARNING
     normalized_current, _err = _try_normalize_signal_settings_for_hash(current_settings)
     if normalized_current is None:
@@ -793,8 +798,17 @@ def _get_current_signal_artifacts() -> tuple[object, object, object]:
     )
 
 
-def _get_stored_signal_settings() -> tuple[dict | None, str | None]:
-    settings = st.session_state.get("signal_settings")
+def _get_stored_signal_settings(
+    session_state: dict | None = None,
+) -> tuple[dict | None, str | None]:
+    """Return normalized stored settings and their recomputed hash, or ``(None, None)``.
+
+    The hash is always recomputed from the normalized payload so callers can
+    compare it to ``signal_settings_hash``. A present-but-stale session hash
+    must not be echoed back as if it were trusted.
+    """
+    state = st.session_state if session_state is None else session_state
+    settings = state.get("signal_settings")
     if not isinstance(settings, dict):
         return None, None
 
@@ -802,10 +816,10 @@ def _get_stored_signal_settings() -> tuple[dict | None, str | None]:
     if normalized_settings is None:
         return None, None  # malformed stored OTF state — unavailable
 
-    settings_hash = st.session_state.get("signal_settings_hash")
-    if not isinstance(settings_hash, str) or not settings_hash:
-        settings_hash = compute_signal_settings_hash(normalized_settings)
-    return normalized_settings, settings_hash
+    try:
+        return normalized_settings, compute_signal_settings_hash(normalized_settings)
+    except ValueError:
+        return None, None
 
 
 _SAVED_SETUPS_CACHE_KEY = "_signals_saved_setups_cache"
@@ -872,6 +886,194 @@ def _mark_saved_signal_runs_dirty(dataset_id: object, levels_settings_hash: obje
         dirty_tokens = set()
     dirty_tokens.add(_saved_signal_runs_cache_token(dataset_id, levels_settings_hash))
     st.session_state[_SAVED_SIGNAL_RUNS_DIRTY_KEY] = dirty_tokens
+
+
+def _typed_signals_error_message(exc: BaseException, *, surface: str) -> str:
+    """Map a typed engine/validate error to a Signals-page ``st.error`` line.
+
+    QI-03-05 / D-8: generate and chart refusals stay ``ValueError`` → message,
+    never a Streamlit exception traceback.
+    """
+    detail = str(exc).strip() or type(exc).__name__
+    if surface == "chart":
+        return f"Signal chart rendering failed: {detail}. Signal tables above remain available."
+    return f"Signal generation failed: {detail}. Adjust the setup or dataset."
+
+
+def _signal_generation_admission_error(
+    *,
+    confluence_mode: str,
+    selected_levels: list[str],
+    anchor_level: str | None,
+    confluence_rules: list[dict],
+    min_valid_confluences: int,
+    levels_df: pd.DataFrame,
+) -> str | None:
+    """Return a typed generate-path refusal, or ``None`` when admission passes."""
+    if confluence_mode == "anchor_rules":
+        if not anchor_level:
+            return "Anchor mode requires an anchor level."
+        if not confluence_rules and min_valid_confluences >= 1:
+            return "Anchor mode requires at least one confluence rule."
+        missing_columns = _missing_anchor_columns(levels_df, anchor_level, confluence_rules)
+        if missing_columns:
+            return (
+                "Anchor mode references level columns that are not available in the "
+                "current levels DataFrame: " + ", ".join(missing_columns)
+            )
+        return None
+    if not selected_levels:
+        return "Please select at least one level column."
+    return None
+
+
+def _run_signal_generation(
+    *,
+    levels_df: pd.DataFrame,
+    tick_size: float,
+    confluence_mode: str,
+    selected_levels: list[str],
+    anchor_level: str | None,
+    confluence_rules: list[dict],
+    min_valid_confluences: int,
+    tolerance_ticks: float,
+    min_confluences: int,
+    max_confluences: int,
+    naked_only: bool,
+    naked_requirement: str,
+    trigger: str,
+    trigger_timeframe: str,
+    direction: str,
+    trigger_params: dict,
+    use_saved_setup: bool,
+    saved_setup: dict | None,
+    signal_settings: dict | None,
+    session_state: dict | None = None,
+) -> None:
+    """Engine generate + session writes (sync). Caller renders typed errors.
+
+    Session keys are committed only after every engine step succeeds so a
+    typed ``ValueError`` cannot leave new zones/flags beside stale signals.
+    """
+    state = st.session_state if session_state is None else session_state
+    admission = _signal_generation_admission_error(
+        confluence_mode=confluence_mode,
+        selected_levels=selected_levels,
+        anchor_level=anchor_level,
+        confluence_rules=confluence_rules,
+        min_valid_confluences=min_valid_confluences,
+        levels_df=levels_df,
+    )
+    if admission:
+        raise ValueError(admission)
+
+    settings_hash: str | None = None
+    if signal_settings is not None:
+        settings_hash = compute_signal_settings_hash(signal_settings)
+
+    levels_for_naked_flags = selected_levels
+    if confluence_mode == "anchor_rules":
+        levels_for_naked_flags = _selected_anchor_levels(
+            anchor_level, confluence_rules, list(levels_df.columns)
+        )
+
+    with st.spinner("Detecting confluence zones…"):
+        if confluence_mode == "global_cluster":
+            zones = detect_confluence_zones(
+                levels_df,
+                level_columns=selected_levels,
+                tick_size=tick_size,
+                tolerance_ticks=tolerance_ticks,
+                min_confluences=min_confluences,
+                max_confluences=max_confluences,
+            )
+        elif confluence_mode == "anchor_rules":
+            zones = detect_anchor_confluence_zones(
+                levels_df,
+                anchor_level=anchor_level,
+                confluence_rules=confluence_rules,
+                tick_size=tick_size,
+                min_valid_confluences=min_valid_confluences,
+            )
+        else:
+            raise ValueError(f"Unsupported confluence mode: {confluence_mode}")
+
+    with st.spinner("Flagging naked levels…"):
+        naked_flags = flag_naked_levels(
+            levels_df,
+            level_columns=levels_for_naked_flags,
+            tick_size=tick_size,
+            touch_tolerance_ticks=0,
+        )
+
+    with st.spinner("Generating signals…"):
+        if trigger == "3c":
+            trigger_params = dict(trigger_params or {})
+            trigger_params["_source_mode"] = confluence_mode
+        signals = generate_signals(
+            levels_df,
+            zones=zones,
+            trigger=trigger,
+            direction=direction,
+            tick_size=tick_size,
+            trigger_timeframe=trigger_timeframe,
+            trigger_params=trigger_params,
+            naked_only=naked_only,
+            naked_flags=naked_flags if naked_only else None,
+            naked_requirement=naked_requirement,
+        )
+        if use_saved_setup and saved_setup is not None:
+            signals = signals.copy()
+            signals["setup_name"] = saved_setup.get("name", "Untitled setup")
+            last_setup = saved_setup
+            signal_context = {
+                "setup_name": saved_setup.get("name", "Untitled setup"),
+                "confluence_mode": confluence_mode,
+                "setup_caption": _saved_setup_caption(saved_setup),
+            }
+        else:
+            last_setup = None
+            signal_context = {
+                "setup_name": None,
+                "confluence_mode": confluence_mode,
+                "setup_caption": None,
+            }
+
+    if last_setup is not None:
+        state["last_signal_setup"] = last_setup
+    else:
+        state.pop("last_signal_setup", None)
+    state["signal_context"] = signal_context
+    state["confluence_zones"] = zones
+    state["naked_flags"] = naked_flags
+    state["signals"] = signals
+    if signal_settings is not None:
+        state[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_TRUSTED
+        state.pop(_SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY, None)
+        state["signal_settings"] = signal_settings
+        state["signal_settings_hash"] = settings_hash
+
+
+def _render_signals_chart(
+    *,
+    levels_df: pd.DataFrame,
+    signals: pd.DataFrame | None,
+    selected_levels: list[str],
+    confluence_zones: pd.DataFrame | None,
+    show_confluence_zones: bool,
+) -> None:
+    """Render the Signals price chart or a typed ``st.error`` (QI-03-05)."""
+    try:
+        fig = build_signals_chart(
+            levels_df=levels_df,
+            signals=signals,
+            selected_levels=selected_levels,
+            confluence_zones=confluence_zones,
+            show_confluence_zones=show_confluence_zones,
+        )
+        st.plotly_chart(fig, width="stretch")
+    except ValueError as exc:
+        st.error(_typed_signals_error_message(exc, surface="chart"))
 
 
 # ── Require levels ────────────────────────────────────────────────────────────
@@ -1364,106 +1566,29 @@ else:
 # ── Generate ──────────────────────────────────────────────────────────────────
 if generate_btn:
     try:
-        levels_for_naked_flags = selected_levels
-
-        if confluence_mode == "anchor_rules":
-            if not anchor_level:
-                st.error("Anchor mode requires an anchor level.")
-                st.stop()
-            if not confluence_rules and min_valid_confluences >= 1:
-                st.error("Anchor mode requires at least one confluence rule.")
-                st.stop()
-            missing_columns = _missing_anchor_columns(levels_df, anchor_level, confluence_rules)
-            if missing_columns:
-                st.error(
-                    "Anchor mode references level columns that are not available in the current levels DataFrame: "
-                    + ", ".join(missing_columns)
-                )
-                st.stop()
-            levels_for_naked_flags = _selected_anchor_levels(
-                anchor_level, confluence_rules, list(levels_df.columns)
-            )
-        elif not selected_levels:
-            st.error("Please select at least one level column.")
-            st.stop()
-
-        with st.spinner("Detecting confluence zones…"):
-            if confluence_mode == "global_cluster":
-                zones = detect_confluence_zones(
-                    levels_df,
-                    level_columns=selected_levels,
-                    tick_size=tick_size,
-                    tolerance_ticks=tolerance_ticks,
-                    min_confluences=min_conf,
-                    max_confluences=max_conf,
-                )
-            elif confluence_mode == "anchor_rules":
-                zones = detect_anchor_confluence_zones(
-                    levels_df,
-                    anchor_level=anchor_level,
-                    confluence_rules=confluence_rules,
-                    tick_size=tick_size,
-                    min_valid_confluences=min_valid_confluences,
-                )
-            else:
-                st.error(f"Unsupported confluence mode: {confluence_mode}")
-                st.stop()
-            st.session_state["confluence_zones"] = zones
-
-        with st.spinner("Flagging naked levels…"):
-            naked_flags = flag_naked_levels(
-                levels_df,
-                level_columns=levels_for_naked_flags,
-                tick_size=tick_size,
-                touch_tolerance_ticks=0,
-            )
-            st.session_state["naked_flags"] = naked_flags
-
-        with st.spinner("Generating signals…"):
-            if trigger == "3c":
-                trigger_params = dict(trigger_params or {})
-                trigger_params["_source_mode"] = confluence_mode
-            signals = generate_signals(
-                levels_df,
-                zones=zones,
-                trigger=trigger,
-                direction=direction,
-                tick_size=tick_size,
-                trigger_timeframe=trigger_timeframe,
-                trigger_params=trigger_params,
-                naked_only=naked_only,
-                naked_flags=naked_flags if naked_only else None,
-                naked_requirement=naked_requirement,
-            )
-            if use_saved_setup and saved_setup is not None:
-                signals = signals.copy()
-                signals["setup_name"] = saved_setup.get("name", "Untitled setup")
-                st.session_state["last_signal_setup"] = saved_setup
-                st.session_state["signal_context"] = {
-                    "setup_name": saved_setup.get("name", "Untitled setup"),
-                    "confluence_mode": confluence_mode,
-                    "setup_caption": _saved_setup_caption(saved_setup),
-                }
-            else:
-                st.session_state.pop("last_signal_setup", None)
-                st.session_state["signal_context"] = {
-                    "setup_name": None,
-                    "confluence_mode": confluence_mode,
-                    "setup_caption": None,
-                }
-            st.session_state["signals"] = signals
-            if signal_settings is not None:
-                st.session_state[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_TRUSTED
-                st.session_state.pop(_SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY, None)
-                st.session_state["signal_settings"] = signal_settings
-                st.session_state["signal_settings_hash"] = compute_signal_settings_hash(
-                    signal_settings
-                )
-    except Exception as exc:
-        st.error(
-            "Signal generation failed. Review the traceback below and adjust the setup or dataset."
+        _run_signal_generation(
+            levels_df=levels_df,
+            tick_size=tick_size,
+            confluence_mode=confluence_mode,
+            selected_levels=selected_levels,
+            anchor_level=anchor_level,
+            confluence_rules=confluence_rules,
+            min_valid_confluences=min_valid_confluences,
+            tolerance_ticks=tolerance_ticks,
+            min_confluences=min_conf,
+            max_confluences=max_conf,
+            naked_only=naked_only,
+            naked_requirement=naked_requirement,
+            trigger=trigger,
+            trigger_timeframe=trigger_timeframe,
+            direction=direction,
+            trigger_params=trigger_params,
+            use_saved_setup=use_saved_setup,
+            saved_setup=saved_setup,
+            signal_settings=signal_settings,
         )
-        st.exception(exc)
+    except ValueError as exc:
+        st.error(_typed_signals_error_message(exc, surface="generate"))
         st.stop()
 
 _view_controls_warning = _controls_changed_warning_for_view(st.session_state, signal_settings)
@@ -1792,15 +1917,10 @@ chart_zones_df = (
     else clip_by_time_window(zones, start=chart_start, end=chart_end)
 )
 
-try:
-    fig = build_signals_chart(
-        levels_df=chart_levels_df,
-        signals=chart_signals_df,
-        selected_levels=selected_levels,
-        confluence_zones=chart_zones_df,
-        show_confluence_zones=show_confluence_zones,
-    )
-    st.plotly_chart(fig, width="stretch")
-except Exception as exc:
-    st.error("Signal chart rendering failed. Signal tables above remain available.")
-    st.exception(exc)
+_render_signals_chart(
+    levels_df=chart_levels_df,
+    signals=chart_signals_df,
+    selected_levels=selected_levels,
+    confluence_zones=chart_zones_df,
+    show_confluence_zones=show_confluence_zones,
+)

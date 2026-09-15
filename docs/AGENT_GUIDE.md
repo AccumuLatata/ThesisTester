@@ -123,10 +123,13 @@ panels and splits `_render_subtimeframe_upload` /
 `_render_tick_attach` (QI-01-01). D-6
 ([#578](https://github.com/AccumuLatata/ThesisTester/pull/578)) drives
 Levels snapshot setdefaults and widget sync from ``DEFAULT_LEVELS_SETTINGS`` /
-``levels.defaults.canonicalize_levels_list_fields`` (QI-02-04). D-7 (this PR)
-drives Setup Builder widget sync from ``build_setup_config`` /
-``validate_setup_config`` and splits render vs sync (QI-03-04).
-Next: D-8.
+``levels.defaults.canonicalize_levels_list_fields`` (QI-02-04). D-7
+([#579](https://github.com/AccumuLatata/ThesisTester/pull/579)) drives
+Setup Builder widget sync from ``build_setup_config`` /
+``validate_setup_config`` and splits render vs sync (QI-03-04). D-8 (this PR)
+maps Signals generate/chart ``ValueError`` to ``st.error``, wires
+``ANCHOR_DIAGNOSTIC_COLUMNS`` / ``_get_stored_signal_settings``, and splits
+render vs sync (QI-03-05). Next: D-9.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -347,8 +350,11 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Levels snapshot setdefaults and widget sync from
    ``DEFAULT_LEVELS_SETTINGS`` /
    ``levels.defaults.canonicalize_levels_list_fields`` (QI-02-04). D-7
-   (this PR) drives Setup Builder widget sync from ``build_setup_config`` /
-   ``validate_setup_config`` and splits render vs sync (QI-03-04). Next: D-8.
+   ([#579](https://github.com/AccumuLatata/ThesisTester/pull/579)) drives
+   Setup Builder widget sync from ``build_setup_config`` /
+   ``validate_setup_config`` and splits render vs sync (QI-03-04). D-8
+   (this PR) maps Signals generate/chart ``ValueError`` to ``st.error``
+   and splits render vs sync (QI-03-05). Next: D-9.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

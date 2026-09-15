@@ -36,7 +36,6 @@ def _make_streamlit_stub() -> types.ModuleType:
         "success",
         "caption",
         "stop",
-        "spinner",
         "dataframe",
         "metric",
         "plotly_chart",
@@ -76,6 +75,7 @@ def _make_streamlit_stub() -> types.ModuleType:
             return _noop
 
     st.sidebar = _Ctx()  # type: ignore[assignment]
+    st.spinner = lambda *a, **k: _Ctx()  # type: ignore[assignment]
 
     return st
 
@@ -133,6 +133,12 @@ def _import_page_helpers():
         mod._SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY,
         mod._OTF_INVALID_ARTIFACT_BLOCKER,
         mod._SIGNAL_CONTROLS_CHANGED_WARNING,
+        mod.ANCHOR_DIAGNOSTIC_COLUMNS,
+        mod._get_stored_signal_settings,
+        mod._typed_signals_error_message,
+        mod._signal_generation_admission_error,
+        mod._run_signal_generation,
+        mod._render_signals_chart,
     )
 
 
@@ -166,6 +172,12 @@ def _import_page_helpers():
     _SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY,
     _OTF_INVALID_ARTIFACT_BLOCKER,
     _SIGNAL_CONTROLS_CHANGED_WARNING,
+    ANCHOR_DIAGNOSTIC_COLUMNS,
+    _get_stored_signal_settings,
+    _typed_signals_error_message,
+    _signal_generation_admission_error,
+    _run_signal_generation,
+    _render_signals_chart,
 ) = _import_page_helpers()
 
 
@@ -1509,3 +1521,249 @@ def test_c4_cai_signals_byte_identical_page6_bsc_vs_api(tmp_path):
     api_hash = hashlib.sha256(api_result["signals"].to_csv(index=False).encode()).hexdigest()
     page_hash = hashlib.sha256(page_signals.to_csv(index=False).encode()).hexdigest()
     assert api_hash == page_hash
+
+
+# ---------------------------------------------------------------------------
+# QI-03-05 / D-8 — typed generate/chart errors + unused-helper wiring
+# ---------------------------------------------------------------------------
+
+
+def test_typed_signals_error_message_includes_valueerror_text():
+    generate_msg = _typed_signals_error_message(
+        ValueError("trigger must be one of ['3c'], got 'nope'"),
+        surface="generate",
+    )
+    assert "trigger must be one of" in generate_msg
+    assert "traceback" not in generate_msg.lower()
+    chart_msg = _typed_signals_error_message(
+        ValueError("levels_df is missing required columns: close"),
+        surface="chart",
+    )
+    assert "levels_df is missing required columns: close" in chart_msg
+    assert "Signal tables above remain available." in chart_msg
+
+
+def test_signal_generation_admission_errors_stay_typed():
+    levels = pd.DataFrame({"timestamp": [], "close": [], "ONH": []})
+    assert (
+        _signal_generation_admission_error(
+            confluence_mode="anchor_rules",
+            selected_levels=[],
+            anchor_level=None,
+            confluence_rules=[],
+            min_valid_confluences=1,
+            levels_df=levels,
+        )
+        == "Anchor mode requires an anchor level."
+    )
+    assert (
+        _signal_generation_admission_error(
+            confluence_mode="anchor_rules",
+            selected_levels=[],
+            anchor_level="ONH",
+            confluence_rules=[],
+            min_valid_confluences=1,
+            levels_df=levels,
+        )
+        == "Anchor mode requires at least one confluence rule."
+    )
+    missing = _signal_generation_admission_error(
+        confluence_mode="anchor_rules",
+        selected_levels=[],
+        anchor_level="ONH",
+        confluence_rules=[{"level": "MISSING"}],
+        min_valid_confluences=0,
+        levels_df=levels,
+    )
+    assert missing is not None
+    assert "MISSING" in missing
+    assert (
+        _signal_generation_admission_error(
+            confluence_mode="global_cluster",
+            selected_levels=[],
+            anchor_level=None,
+            confluence_rules=[],
+            min_valid_confluences=0,
+            levels_df=levels,
+        )
+        == "Please select at least one level column."
+    )
+    assert (
+        _signal_generation_admission_error(
+            confluence_mode="global_cluster",
+            selected_levels=["ONH"],
+            anchor_level=None,
+            confluence_rules=[],
+            min_valid_confluences=0,
+            levels_df=levels,
+        )
+        is None
+    )
+
+
+def _generation_kwargs(**overrides) -> dict:
+    kwargs = {
+        "levels_df": pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2026-06-02 09:30:00"]),
+                "open": [4500.0],
+                "high": [4501.0],
+                "low": [4499.0],
+                "close": [4500.0],
+                "volume": [10.0],
+                "ONH": [4500.0],
+            }
+        ),
+        "tick_size": 0.25,
+        "confluence_mode": "global_cluster",
+        "selected_levels": ["ONH"],
+        "anchor_level": None,
+        "confluence_rules": [],
+        "min_valid_confluences": 1,
+        "tolerance_ticks": 4.0,
+        "min_confluences": 1,
+        "max_confluences": 2,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+        "use_saved_setup": False,
+        "saved_setup": None,
+        "signal_settings": None,
+        "session_state": {},
+    }
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_run_signal_generation_admission_raises_typed_valueerror():
+    state: dict = {}
+    with pytest.raises(ValueError, match="Anchor mode requires an anchor level"):
+        _run_signal_generation(
+            **_generation_kwargs(
+                levels_df=pd.DataFrame({"timestamp": [], "close": []}),
+                confluence_mode="anchor_rules",
+                selected_levels=[],
+                session_state=state,
+            )
+        )
+    assert state == {}
+
+
+def test_run_signal_generation_engine_valueerror_is_atomic():
+    """Typed generate refusal must not commit zones/flags beside stale signals."""
+    state = {"signals": pd.DataFrame({"signal_id": [1]})}
+    with pytest.raises(ValueError, match="trigger must be one of"):
+        _run_signal_generation(**_generation_kwargs(trigger="not_a_trigger", session_state=state))
+    assert list(state) == ["signals"]
+    assert list(state["signals"]["signal_id"]) == [1]
+
+
+def test_run_signal_generation_commits_session_on_success():
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    settings, _ = _try_normalize_signal_settings_for_hash(_valid_loaded_settings())
+    state: dict = {}
+    _run_signal_generation(**_generation_kwargs(signal_settings=settings, session_state=state))
+    assert isinstance(state["confluence_zones"], pd.DataFrame)
+    assert isinstance(state["naked_flags"], pd.DataFrame)
+    assert isinstance(state["signals"], pd.DataFrame)
+    assert state["signal_settings"] is settings
+    assert state["signal_settings_hash"] == compute_signal_settings_hash(settings)
+    assert state["signal_context"]["confluence_mode"] == "global_cluster"
+    assert "last_signal_setup" not in state
+
+
+def test_get_stored_signal_settings_reads_session_dict():
+    ss = _trusted_session_state()
+    stored, stored_hash = _get_stored_signal_settings(ss)
+    assert stored == ss["signal_settings"]
+    assert stored_hash == ss["signal_settings_hash"]
+    assert _get_stored_signal_settings({}) == (None, None)
+
+
+def test_get_stored_signal_settings_recomputes_hash_not_echo_stored():
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    ss = _trusted_session_state()
+    expected = compute_signal_settings_hash(ss["signal_settings"])
+    ss["signal_settings_hash"] = "tampered-hash-value"
+    stored, helper_hash = _get_stored_signal_settings(ss)
+    assert stored == ss["signal_settings"]
+    assert helper_hash == expected
+    assert helper_hash != "tampered-hash-value"
+    assert _get_stored_signal_settings({"signal_settings": "bad"}) == (None, None)
+
+
+def test_view_warning_fail_closed_when_stored_settings_unreadable():
+    """Leftover signals whose stored settings cannot be normalized must be flagged."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    current = _valid_loaded_settings()
+    normalized, _ = _try_normalize_signal_settings_for_hash(current)
+    current_hash = compute_signal_settings_hash(normalized)
+    ss = {
+        "signals": pd.DataFrame({"signal_id": [1]}),
+        "signal_settings": {"otf_filter": {"enabled": True, "timeframes": []}},
+        "signal_settings_hash": current_hash,
+    }
+    assert _controls_changed_warning_for_view(ss, current) == _SIGNAL_CONTROLS_CHANGED_WARNING
+
+
+def test_view_warning_fail_closed_when_stored_hash_does_not_match_settings():
+    """Session hash matching current controls is not enough if stored settings differ."""
+    ss = _trusted_session_state()
+    ss["signals"] = pd.DataFrame({"signal_id": [1]})
+    current = _valid_loaded_settings()
+    current["trigger"] = "reject" if ss["signal_settings"].get("trigger") == "touch" else "touch"
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    current_norm, _ = _try_normalize_signal_settings_for_hash(current)
+    ss["signal_settings_hash"] = compute_signal_settings_hash(current_norm)
+    assert _controls_changed_warning_for_view(ss, current) == _SIGNAL_CONTROLS_CHANGED_WARNING
+
+
+def test_render_signals_chart_maps_valueerror_without_raising():
+    _render_signals_chart(
+        levels_df=pd.DataFrame({"foo": [1]}),
+        signals=None,
+        selected_levels=[],
+        confluence_zones=None,
+        show_confluence_zones=False,
+    )
+
+
+def test_anchor_diagnostic_columns_drive_summary_contract():
+    assert "anchor_level" in ANCHOR_DIAGNOSTIC_COLUMNS
+    assert "rule_results" in ANCHOR_DIAGNOSTIC_COLUMNS
+    assert "level_names" in ANCHOR_DIAGNOSTIC_COLUMNS
+
+
+def test_page6_has_no_st_exception_and_splits_render_vs_sync():
+    """QI-03-05 exit: 0 st.exception on page 6; generate blockers stay typed."""
+    import ast
+    from pathlib import Path
+
+    source = Path("pages/6_Signals.py").read_text(encoding="utf-8")
+    assert "st.exception(" not in source
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler) or node.type is None:
+            continue
+        names: list[str] = []
+        if isinstance(node.type, ast.Name):
+            names = [node.type.id]
+        elif isinstance(node.type, ast.Tuple):
+            names = [elt.id for elt in node.type.elts if isinstance(elt, ast.Name)]
+        assert "Exception" not in names
+    called: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            called.add(node.func.id)
+    assert "_run_signal_generation" in called
+    assert "_render_signals_chart" in called
+    assert "_typed_signals_error_message" in called
+    assert "_get_stored_signal_settings" in called
+    assert "_signal_generation_admission_error" in called
