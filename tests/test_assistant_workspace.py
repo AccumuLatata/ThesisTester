@@ -568,7 +568,7 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "set_assistant_flash(" in validate_chunk
     assert "st.rerun()" in validate_chunk
     assert "Executable RunSpec is valid." in validate_chunk
-    cancel_idx = source.index('st.button("Cancel run"')
+    cancel_idx = source.index('"Cancel run", key=f"cancel-{run.run_id}"')
     cancel_chunk = source[cancel_idx : cancel_idx + 1200]
     assert "set_assistant_flash(" in cancel_chunk
     assert 'message="Research run cancelled."' in cancel_chunk
