@@ -1044,9 +1044,9 @@ and robustness (honest next steps after screening).
 **What it is.** Streamlit **Studies** Inspect lists `results/studies/` and
 `out/` (one level), loads `output_dir`, and shows a **Study briefing** (highest
 primary-metric cell + factor settings + best SL/TP + NY RTH bucket), ledger,
-groups, ranked / low-N, charts, and cell peek (grid + time-of-day). **Preview**
+groups, ranked / low-N, charts, and cell peek. **Preview**
 validates YAML. **Run via CLI** spawns `study run`. **Build** emits YAML.
-Inspect already lists Failed cell errors; `study report` / `study rollup`
+Inspect lists Failed; `study report` / `study rollup`
 emit MD **Failed** (stay in CSV/N; not ranked or promoted).
 
 **When to use it.** After a completed study, read the briefing first — then
@@ -1071,6 +1071,7 @@ study catalog, study list, StudyDraft
 | Canonical YAML / Preview | Validate + expand (cap 2_000) | Changed YAML reseeds CLI output dir |
 | CLI output directory | Spawn target for `study run` | Do not reuse another study’s dir |
 | Run via CLI / Confirm | Spawn existing CLI argv | Not in-process; watch Inspect → Refresh |
+| Tabs | Inspect / Preview / Build | Build = YAML; launch on Preview |
 | Build StudySpec | Widgets → YAML; Apply to Preview | Not a runner |
 | Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s; QT HE + omit/primary warns (no rewrite) |
 | Tick paths (optional) | Quantower Tick–Tick–Last list for prior VA, APOC, rolling POC | Emit writes the key only when set. Named VA / APOC / rolling POC without ticks refuse (`requires ticks`). Does not replace the 15s path |

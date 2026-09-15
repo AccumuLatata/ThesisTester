@@ -1507,9 +1507,8 @@ def _clamped_multiselect(key: str, options: list[Any]) -> list[Any] | None:
     return None
 
 
-def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
-    """Collect widget values onto a copy of ``base`` (preserves stage/report/pass-through)."""
-    draft = draft_from_mapping(draft_to_mapping(base))
+def _collect_builder_identity(draft: StudyDraft, base: StudyDraft) -> None:
+    """Collect identity widgets onto ``draft``."""
     draft.name = str(st.session_state.get(WIDGET_KEY_NAME) or "").strip() or "untitled_study"
     description = st.session_state.get(WIDGET_KEY_DESCRIPTION)
     if base.description is None and (description is None or str(description) == ""):
@@ -1520,6 +1519,10 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.output_dir = output_raw or None
     draft.workers = int(st.session_state.get(WIDGET_KEY_WORKERS) or 1)
     draft.confirm_above_runs = int(st.session_state.get(WIDGET_KEY_CONFIRM_ABOVE_RUNS) or 200)
+
+
+def _collect_builder_dataset(draft: StudyDraft) -> None:
+    """Collect dataset / ingest widgets onto ``draft``."""
     draft.dataset_path = str(st.session_state.get(WIDGET_KEY_DATASET_PATH) or "").strip()
     draft.instrument = str(st.session_state.get(WIDGET_KEY_INSTRUMENT) or draft.instrument)
     timezone = str(st.session_state.get(WIDGET_KEY_SOURCE_TIMEZONE) or "").strip()
@@ -1530,6 +1533,9 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.tick_paths = parse_tick_paths_widget(st.session_state.get(WIDGET_KEY_TICK_PATHS))
     _apply_builder_ingestion_mode(draft, st.session_state.get(WIDGET_KEY_INGESTION_MODE))
 
+
+def _collect_builder_levels(draft: StudyDraft) -> None:
+    """Collect levels-token widgets onto ``draft``."""
     levels = copy.deepcopy(dict(draft.levels))
     # Persist [] when the operator clears lengths. Omitting the key lets
     # closed_level_token_set merge DEFAULT_LEVELS_SETTINGS [50, 200] / [9, 21].
@@ -1570,6 +1576,9 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
             levels.pop(key, None)
     draft.levels = levels
 
+
+def _collect_builder_factors(draft: StudyDraft, base: StudyDraft) -> None:
+    """Collect factor-axis widgets onto ``draft``."""
     draft.core_level = [str(item) for item in (st.session_state.get(WIDGET_KEY_CORE_LEVEL) or [])]
     partner_sets: list[list[str]] = []
     for index in range(max(len(base.partner_levels), 1)):
@@ -1601,6 +1610,10 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     draft.direction_values = [
         str(item) for item in (st.session_state.get(WIDGET_KEY_DIRECTION_VALUES) or [])
     ]
+
+
+def _collect_builder_batteries(draft: StudyDraft) -> None:
+    """Collect constants / backtest / battery widgets onto ``draft``."""
     draft.tolerance_ticks = coerce_whole_number(st.session_state.get(WIDGET_KEY_TOLERANCE_TICKS, 0))
     draft.naked_only = bool(st.session_state.get(WIDGET_KEY_NAKED_ONLY))
     draft.naked_requirement = str(st.session_state.get(WIDGET_KEY_NAKED_REQUIREMENT) or "any")
@@ -1632,6 +1645,10 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
     raw_min_valid = st.session_state.get(WIDGET_KEY_MIN_VALID_CONFLUENCES)
     draft.min_valid_confluences = 1 if raw_min_valid is None else int(raw_min_valid)
     draft.from_partners = str(st.session_state.get(WIDGET_KEY_FROM_PARTNERS) or "required")
+
+
+def _collect_builder_stage_report(draft: StudyDraft, base: StudyDraft) -> None:
+    """Collect stage / report widgets onto ``draft`` when those keys exist."""
     domains = declared_factor_domains(draft)
     factor_keys = set(domains)
     if WIDGET_KEY_STAGE_MODE in st.session_state:
@@ -1670,6 +1687,17 @@ def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
         baseline = copy.deepcopy(dict(draft.otf_baseline))
         baseline["enabled"] = bool(st.session_state[WIDGET_KEY_OTF_BASELINE])
         draft.otf_baseline = baseline
+
+
+def _draft_from_builder_widgets(base: StudyDraft) -> StudyDraft:
+    """Collect widget values onto a copy of ``base`` (preserves stage/report/pass-through)."""
+    draft = draft_from_mapping(draft_to_mapping(base))
+    _collect_builder_identity(draft, base)
+    _collect_builder_dataset(draft)
+    _collect_builder_levels(draft)
+    _collect_builder_factors(draft, base)
+    _collect_builder_batteries(draft)
+    _collect_builder_stage_report(draft, base)
     return draft
 
 
@@ -1848,15 +1876,8 @@ def _render_builder_report(partial: StudyDraft) -> None:
     st.checkbox("otf_baseline.enabled", key=WIDGET_KEY_OTF_BASELINE)
 
 
-def _render_build() -> None:
-    base = _ensure_builder_draft()
-    st.caption(
-        "Author a closed StudySpec. Apply to Preview writes YAML onto the Preview tab — "
-        "Validate / Preview is still required. This tab does not spawn CLI. "
-        "Launch still refuses a missing dataset CSV; preview does not need the file. "
-        "New drafts default to MNQ, UTC, History Exporter, and 15s-primary."
-    )
-
+def _render_build_identity() -> None:
+    """Render Build identity widgets."""
     st.markdown("### Identity")
     st.text_input("Study name", key=WIDGET_KEY_NAME)
     st.text_input("Description", key=WIDGET_KEY_DESCRIPTION)
@@ -1872,6 +1893,9 @@ def _render_build() -> None:
     )
     st.caption("Workers stay at 1 on Windows (study lock is POSIX flock).")
 
+
+def _render_build_dataset(base: StudyDraft) -> None:
+    """Render Build dataset / ingest widgets."""
     st.markdown("### Dataset")
     st.text_input("Dataset path", key=WIDGET_KEY_DATASET_PATH)
     instrument_options = list(INSTRUMENTS.keys())
@@ -1960,6 +1984,9 @@ def _render_build() -> None:
         "15s bar CSV."
     )
 
+
+def _render_build_levels(base: StudyDraft) -> list[str]:
+    """Render Build levels-token widgets and return the live catalog."""
     st.markdown("### Levels → tokens")
     length_cols = st.columns(2)
     with length_cols[0]:
@@ -2016,7 +2043,11 @@ def _render_build() -> None:
     shown = ", ".join(catalog[:20])
     extra = f" … +{len(catalog) - 20} more" if len(catalog) > 20 else ""
     st.caption(f"**Closed tokens ({len(catalog)}):** {shown}{extra}")
+    return catalog
 
+
+def _render_build_factors(base: StudyDraft, catalog: list[str]) -> None:
+    """Render Build factor-axis widgets."""
     st.markdown("### Factors")
     core_options = list(dict.fromkeys([*catalog, *base.core_level]))
     st.multiselect("core_level", options=core_options, key=WIDGET_KEY_CORE_LEVEL)
@@ -2078,6 +2109,9 @@ def _render_build() -> None:
             key=WIDGET_KEY_DIRECTION_CONSTANT,
         )
 
+
+def _render_build_constants(base: StudyDraft) -> None:
+    """Render Build constants / backtest / battery widgets."""
     st.markdown("### Constants")
     const_cols = st.columns(3)
     const_cols[0].number_input(
@@ -2141,6 +2175,11 @@ def _render_build() -> None:
             "(SB2 does not clone Setup Builder’s entry-window block)."
         )
 
+
+def _render_build_persist_and_strip(
+    base: StudyDraft,
+) -> tuple[StudyDraft | None, StudyPreview | None, Exception | None]:
+    """Persist collected widgets, render stage/report/live strip (QI-07-01)."""
     partial = _draft_from_builder_widgets(base)
     _render_builder_stage(partial)
     _render_builder_report(partial)
@@ -2150,14 +2189,22 @@ def _render_build() -> None:
     except (TypeError, ValueError) as exc:
         st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(base)
         st.error(str(exc))
-        return
+        return None, None, exc
     st.session_state[STUDIES_BUILDER_DRAFT_KEY] = draft_to_mapping(draft)
     for warning in draft_warnings(draft):
         st.warning(warning)
 
     st.markdown("### Live strip")
     preview, emit_error = _render_builder_live_strip(draft)
+    return draft, preview, emit_error
 
+
+def _render_build_actions(
+    draft: StudyDraft,
+    preview: StudyPreview | None,
+    emit_error: Exception | None,
+) -> None:
+    """Render Build actions (hydrate / apply / download). Does not spawn CLI."""
     st.markdown("### Actions")
     example_labels = (
         "pRTH Open × one MA (MNQ HE 15s)",
@@ -2246,6 +2293,26 @@ def _render_build() -> None:
                 mime="text/yaml",
                 help="Browser download of emit_study_yaml. Not a store write; not the Inspect study.spec.yaml path.",
             )
+
+
+def _render_build() -> None:
+    """Build tab: section renderers + persist/strip + actions (QI-07-01)."""
+    base = _ensure_builder_draft()
+    st.caption(
+        "Author a closed StudySpec. Apply to Preview writes YAML onto the Preview tab — "
+        "Validate / Preview is still required. This tab does not spawn CLI. "
+        "Launch still refuses a missing dataset CSV; preview does not need the file. "
+        "New drafts default to MNQ, UTC, History Exporter, and 15s-primary."
+    )
+    _render_build_identity()
+    _render_build_dataset(base)
+    catalog = _render_build_levels(base)
+    _render_build_factors(base, catalog)
+    _render_build_constants(base)
+    draft, preview, emit_error = _render_build_persist_and_strip(base)
+    if draft is None:
+        return
+    _render_build_actions(draft, preview, emit_error)
 
 
 # Visual tab order is Inspect | Preview | Build. Execute Build before Preview
