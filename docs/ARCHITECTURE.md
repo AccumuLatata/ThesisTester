@@ -1315,7 +1315,9 @@ moves Q3 zone/trigger plus Q4–Q8 payload-to-table helpers to
 bracket-summary / row-frame helpers live in `counterfactual_tables.py`.
 TJ5 `_join_trade` MAE/MFE walk stays on `join.py`; row-to-frame helpers
 live in `join_rows.py`. Every table carries n, resolution, and recon status.
-Q2 slices with n < 30 stay hidden unless the explicit toggle is on.
+Q2 slices and Q3 Zones / Inferred trigger rows with n < 30 stay hidden
+unless the explicit toggle is on. ``hidden_slice_count`` covers Q2 + Q3
+Zones + Q3 Inferred trigger (and still counts when the toggle shows them).
 Missing attribution / counterfactual / match / zones files omit Q3–Q8; they
 are not errors. Persistence is `.thesistester_store/journal/v1/` —
 sibling of `datasets/` / `setups/`, **not** under
