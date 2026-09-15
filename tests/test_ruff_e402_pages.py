@@ -114,7 +114,10 @@ def test_only_data_page_bootstraps_sys_path_before_imports() -> None:
     # type-checked getattr bind. C-8 adds
     # `from thesistester.persistence.saved_dataset_state import
     # restore_saved_dataset_provenance` (store restore; not an app_state alias).
-    assert len(late_by_page[E402_IGNORE_KEY]) == 16
+    # D-1 adds `from thesistester.research_keys import DATASET_CLEAR_KEYS`
+    # so `_clear_dataset_dependent_state` iterates the registry, not a
+    # hardcoded leftover list.
+    assert len(late_by_page[E402_IGNORE_KEY]) == 17
 
     data_src = DATA_PAGE.read_text(encoding="utf-8")
     assert "REPO_ROOT = Path(__file__).resolve().parents[1]" in data_src

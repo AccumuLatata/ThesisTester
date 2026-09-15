@@ -672,29 +672,60 @@ def _iter_direct_body(fn: ast.FunctionDef):
         stack.extend(reversed(list(ast.iter_child_nodes(node))))
 
 
-def _clear_dataset_dependent_state_literals(source: str) -> set[str]:
-    """String literals in ``_clear_dataset_dependent_state``'s pop list (AST)."""
+def _clear_dataset_iterates_registry(source: str) -> None:
+    """D-1: dataset-switch must iterate ``DATASET_CLEAR_KEYS`` and pop each key."""
     fn = _module_function_def(source, "_clear_dataset_dependent_state")
     for node in fn.body:
-        if not isinstance(node, ast.For) or not isinstance(node.iter, (ast.List, ast.Tuple)):
+        if not isinstance(node, ast.For):
             continue
-        literals = {
+        if not isinstance(node.iter, ast.Name) or node.iter.id != "DATASET_CLEAR_KEYS":
+            continue
+        for child in ast.walk(node):
+            if (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Attribute)
+                and child.func.attr == "pop"
+            ):
+                return
+        raise AssertionError("_clear_dataset_dependent_state For DATASET_CLEAR_KEYS must pop")
+    raise AssertionError("_clear_dataset_dependent_state must iterate DATASET_CLEAR_KEYS")
+
+
+def _dataset_clear_source_literals() -> set[str]:
+    """String literals on ``_DATASET_CLEAR_SOURCE`` (comment needles fail-closed)."""
+    tree = ast.parse(pathlib.Path("thesistester/research_keys.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not isinstance(node.target, ast.Name) or node.target.id != "_DATASET_CLEAR_SOURCE":
+            continue
+        if not isinstance(node.value, ast.Tuple):
+            raise AssertionError("_DATASET_CLEAR_SOURCE must be a tuple of string literals")
+        return {
             elt.value
-            for elt in node.iter.elts
+            for elt in node.value.elts
             if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
         }
-        if literals:
-            return literals
-    raise AssertionError("_clear_dataset_dependent_state must pop a list/tuple of string literals")
+    raise AssertionError("missing _DATASET_CLEAR_SOURCE")
 
 
 def _assert_clear_list_literals(source: str) -> None:
-    """AST-bind leftover keys to the pop list. Comment needles fail-closed."""
-    literals = _clear_dataset_dependent_state_literals(source)
+    """AST-bind leftover keys to the D-1 registry. Comment needles fail-closed."""
+    _clear_dataset_iterates_registry(source)
+    from thesistester.research_keys import DATASET_CLEAR_KEYS, RESEARCH_KEY_BY_NAME
+
+    literals = _dataset_clear_source_literals()
     missing = [key for key in _QI1001_DATASET_CLEAR_LEFTOVERS if key not in literals]
-    assert missing == [], f"_clear_dataset_dependent_state missing literals {missing}"
+    assert missing == [], f"_DATASET_CLEAR_SOURCE missing literals {missing}"
     leaked = [key for key in _QI1001_A7_APPLY_ONLY_KEYS if key in literals]
     assert leaked == [], f"A-7 residuals must stay apply-clear only, leaked {leaked}"
+    for key in _QI1001_DATASET_CLEAR_LEFTOVERS:
+        spec = RESEARCH_KEY_BY_NAME[key]
+        assert spec.dataset_clear, f"{key} must be dataset_clear"
+        assert key in DATASET_CLEAR_KEYS
+    for key in _QI1001_A7_APPLY_ONLY_KEYS:
+        spec = RESEARCH_KEY_BY_NAME[key]
+        assert spec.apply_clear and spec.sticky and not spec.dataset_clear, key
 
 
 def _is_reset_display_timezone_call(node: ast.AST) -> bool:
@@ -820,7 +851,7 @@ def test_qi1001_clear_list_guard_ignores_comment_needles():
     try:
         _assert_clear_list_literals(fake)
     except AssertionError as exc:
-        assert "missing literals" in str(exc)
+        assert "DATASET_CLEAR_KEYS" in str(exc)
     else:
         raise AssertionError("comment leftover keys must not satisfy the dataset-clear probe")
 

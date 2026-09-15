@@ -33,6 +33,7 @@ from thesistester.levels.catalog import (
 )
 from thesistester.levels.indicators import SUPPORTED_INDICATOR_TIMEFRAMES
 from thesistester.levels.pivots import SUPPORTED_PIVOT_TIMEFRAMES
+from thesistester.research_keys import THESIS_CLEAR_KEYS
 from thesistester.study.schema import StudySpecError, closed_level_token_set
 
 # Additive Streamlit staging keys owned by the Research Assistant page.
@@ -69,24 +70,10 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
 )
 
 # Cleared whenever the active thesis changes so drafts/validation/handoff
-# staging cannot leak across theses.
-THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
-    "assistant_draft_prompt",
-    "assistant_draft_choices",
-    "assistant_hydrated_conversation_id",
-    "assistant_validated_run_spec",
-    "assistant_focused_run_id",
-    "assistant_results_qa_deep_link",
-    "assistant_results_qa_force_expand",
-    "assistant_bundle_handoff",
-    "assistant_flash",
-    "assistant_voice_results_sessions",
-    "assistant_voice_help_session_id",
-    "assistant_voice_last_turn",
-    "assistant_voice_playback",
-    "assistant_ux_mode",
-    "assistant_discuss_run_picker",
-)
+# staging cannot leak across theses. Generated from the D-1 / QI-10-03
+# research-key registry (thesis-clear flag). ``clear_thesis_scoped_state``
+# still resets each key explicitly (RUX: membership alone is not enough).
+THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = THESIS_CLEAR_KEYS
 
 # Streamlit expander widget keys (1.55+) controlled when forcing RQ-4 open.
 ASSISTANT_ADVANCED_EXPANDER_KEY: str = "ra-advanced-expander"
