@@ -16,10 +16,13 @@ from thesistester.cli import main as cli_main
 from thesistester.journal import report as report_mod
 from thesistester.journal import report_tables as report_tables_mod
 from thesistester.journal.report import (
+    INCLUDE_SMALL_N_HELP,
     REPORT_HONESTY,
     REPORT_MIN_N,
     JournalArtifacts,
+    JournalReport,
     build_journal_report,
+    format_hidden_slice_caption,
     journal_store_dir,
     load_journal_artifacts,
     report_files,
@@ -37,6 +40,8 @@ from thesistester.journal.schema import (
     RESOLUTION_MIXED,
     RESOLUTION_UNJOINED,
     STATUS_OPEN,
+    ZONE_REL_INSIDE,
+    encode_trigger_labels,
 )
 from thesistester.persistence.execution_artifacts import get_execution_artifacts_root
 from thesistester.persistence.local_store import get_store_root
@@ -44,6 +49,62 @@ from thesistester.persistence.local_store import get_store_root
 
 def _ts(stamp: str) -> pd.Timestamp:
     return pd.Timestamp(stamp, tz="UTC")
+
+
+def _small_n_rows(frame: pd.DataFrame) -> int:
+    """Gated table rows with n < REPORT_MIN_N. Empty / missing-n → 0."""
+    if frame is None or frame.empty or "n" not in frame.columns:
+        return 0
+    return int((frame["n"].map(int) < REPORT_MIN_N).sum())
+
+
+def _gated_small_n_row_count(report: JournalReport) -> int:
+    """Q2 + Q3 Zones + Q3 Inferred trigger rows below the n gate."""
+    return (
+        _small_n_rows(report.q2_slices)
+        + _small_n_rows(report.q3_zones_count)
+        + _small_n_rows(report.q3_zones_width)
+        + _small_n_rows(report.q3_zones_relation)
+        + _small_n_rows(report.q3_zones_names)
+        + _small_n_rows(report.q3_triggers)
+    )
+
+
+def _page_hidden_caption_call() -> ast.Call:
+    """Unique ``st.caption(format_hidden_slice_caption(...) + ...)`` on page 17."""
+    tree = ast.parse(Path("pages/17_Journal.py").read_text(encoding="utf-8"))
+    found: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "caption" or not node.args:
+            continue
+        arg = node.args[0]
+        if not isinstance(arg, ast.BinOp) or not isinstance(arg.op, ast.Add):
+            continue
+        left = arg.left
+        if (
+            isinstance(left, ast.Call)
+            and isinstance(left.func, ast.Name)
+            and left.func.id == "format_hidden_slice_caption"
+        ):
+            found.append(left)
+    if len(found) != 1:
+        raise AssertionError(
+            f"expected one st.caption(format_hidden_slice_caption(...) + …), got {len(found)}"
+        )
+    return found[0]
+
+
+def _kw_attr(call: ast.Call, name: str) -> tuple[str, str]:
+    for keyword in call.keywords:
+        if keyword.arg != name:
+            continue
+        value = keyword.value
+        if not isinstance(value, ast.Attribute) or not isinstance(value.value, ast.Name):
+            raise AssertionError(f"{name}= is not report.<attr>")
+        return value.value.id, value.attr
+    raise AssertionError(f"missing keyword {name}")
 
 
 def _trade(
@@ -179,6 +240,104 @@ def test_q2_hides_n_below_30_unless_toggled() -> None:
     rebuilt = report_from_artifacts(artifacts, include_small_n=True)
     hold_rebuilt = rebuilt.q2_slices.loc[rebuilt.q2_slices["slice_kind"] == REPORT_SLICE_HOLD]
     assert HOLD_LT_15S in set(hold_rebuilt["slice_value"])
+
+
+def test_include_small_n_help_names_q3(capsys) -> None:
+    """QI-08-05 / E-4: CLI help names every table the toggle gates."""
+    assert "Q2" in INCLUDE_SMALL_N_HELP
+    assert "Q3 Zones" in INCLUDE_SMALL_N_HELP
+    assert "Q3 Inferred trigger" in INCLUDE_SMALL_N_HELP
+    assert "n < 30" in INCLUDE_SMALL_N_HELP
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["journal", "report", "--help"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "Q3 Zones" in out
+    assert "Q3 Inferred trigger" in out
+    assert "n < 30" in out
+    assert "default: hide them" in out
+
+
+def test_hidden_slice_count_includes_q3_when_present(tmp_path: Path) -> None:
+    """QI-08-05 / E-4: hidden count sums Q2 + Q3 Zones + Q3 Inferred trigger."""
+    trades = pd.DataFrame([_trade(trade_id=f"t{index}") for index in range(5)])
+    q2_only = build_journal_report(trades)
+    assert q2_only.hidden_slice_count == 4
+    assert q2_only.q2_slices.empty
+    zones = pd.DataFrame(
+        {
+            "trade_id": [f"t{index}" for index in range(5)],
+            "entry_zone_relation": [ZONE_REL_INSIDE] * 5,
+            "zone_level_count": [2] * 5,
+            "zone_width_ticks": [3.0] * 5,
+            "zone_level_names": ["ONH|ONL"] * 5,
+            "zone_params_hash": ["zh"] * 5,
+            "zone_id": ["z1"] * 5,
+        }
+    )
+    with_zones = build_journal_report(trades, zones=zones)
+    assert with_zones.q3_zones_count.empty
+    assert with_zones.q3_zones_width.empty
+    assert with_zones.q3_zones_relation.empty
+    assert with_zones.q3_zones_names.empty
+    assert with_zones.hidden_slice_count == 8
+    triggers = pd.DataFrame(
+        {
+            "trade_id": [f"t{index}" for index in range(5)],
+            "inferred_triggers_1m": [encode_trigger_labels(("touch",))] * 5,
+            "zone_id": ["z1"] * 5,
+            "zone_params_hash": ["zh"] * 5,
+        }
+    )
+    with_both = build_journal_report(trades, zones=zones, triggers=triggers)
+    assert with_both.q3_triggers.empty
+    assert with_both.hidden_slice_count == 9
+    attribution = pd.DataFrame(
+        {
+            "trade_id": [f"t{index}" for index in range(5)],
+            "nearest_level_token": ["pdVAL"] * 5,
+            "level_context": ["at_level"] * 5,
+            "tag_alignment": ["none_aligned"] * 5,
+            "intent_mismatch": [False] * 5,
+        }
+    )
+    with_attr = build_journal_report(
+        trades, attribution=attribution, zones=zones, triggers=triggers
+    )
+    assert not with_attr.q3_levels.empty
+    assert with_attr.hidden_slice_count == with_both.hidden_slice_count
+    shown = build_journal_report(trades, zones=zones, triggers=triggers, include_small_n=True)
+    assert shown.hidden_slice_count == with_both.hidden_slice_count
+    assert _gated_small_n_row_count(shown) == shown.hidden_slice_count
+    assert _small_n_rows(shown.q3_zones_count) == 1
+    assert _small_n_rows(shown.q3_zones_width) == 1
+    assert _small_n_rows(shown.q3_zones_relation) == 1
+    assert _small_n_rows(shown.q3_zones_names) == 1
+    assert _small_n_rows(shown.q3_triggers) == 1
+    journal_dir = tmp_path / "journal_v1"
+    journal_dir.mkdir()
+    raw = trades.copy()
+    raw["session_date"] = raw["session_date"].map(lambda value: value.isoformat())
+    raw.to_parquet(journal_dir / "journal_trades.parquet", index=False)
+    zones.to_parquet(journal_dir / "journal_zones.parquet", index=False)
+    triggers.to_parquet(journal_dir / "journal_triggers.parquet", index=False)
+    out = tmp_path / "journal_out"
+    assert (
+        cli_main(["journal", "report", "--journal-dir", str(journal_dir), "--output-dir", str(out)])
+        == 0
+    )
+    payload = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    assert payload["hidden_slice_count"] == with_both.hidden_slice_count
+    assert payload["include_small_n"] is False
+    caption = format_hidden_slice_caption(
+        hidden_slice_count=int(payload["hidden_slice_count"]),
+        include_small_n=bool(payload["include_small_n"]),
+    )
+    assert caption == (
+        f"Q2 / Q3 Zones / Q3 Inferred trigger rows with n < 30: "
+        f"{with_both.hidden_slice_count} (hidden)."
+    )
+    assert str(payload["hidden_slice_count"]) in caption
 
 
 def test_q2_direction_slice_has_meta_columns() -> None:
@@ -484,6 +643,9 @@ def test_journal_page_ast_and_contract() -> None:
     assert "**Inferred trigger**" in source
     assert "journal_triggers.parquet" in source
     assert "Show slices with n < 30" in source
+    call = _page_hidden_caption_call()
+    assert _kw_attr(call, "hidden_slice_count") == ("report", "hidden_slice_count")
+    assert _kw_attr(call, "include_small_n") == ("report", "include_small_n")
     assert "REPORT_HONESTY" in source
     assert "journal_store_dir" in source
     assert "journal_cached_artifacts" in source

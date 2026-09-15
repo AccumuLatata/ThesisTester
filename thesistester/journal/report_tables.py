@@ -190,17 +190,20 @@ def _zone_groups(
     columns: list[str],
     *,
     include_small_n: bool,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, int]:
     if column not in frame.columns or frame.empty:
-        return pd.DataFrame(columns=columns)
+        return pd.DataFrame(columns=columns), 0
     rows: list[dict[str, object]] = []
+    hidden = 0
     grouped = frame.groupby([column, "zone_params_hash"], sort=True, dropna=False)
     for (value, digest), group in grouped:
         if _is_missing(value):
             continue
         n_value = int(len(group))
-        if n_value < REPORT_MIN_N and not include_small_n:
-            continue
+        if n_value < REPORT_MIN_N:
+            hidden += 1
+            if not include_small_n:
+                continue
         rows.append(
             {
                 column: str(value),
@@ -211,7 +214,7 @@ def _zone_groups(
                 "zone_params_hash": str(digest or ""),
             }
         )
-    return pd.DataFrame(rows, columns=columns)
+    return pd.DataFrame(rows, columns=columns), hidden
 
 
 def _q3_zones(
@@ -219,7 +222,7 @@ def _q3_zones(
     zones: pd.DataFrame | None,
     *,
     include_small_n: bool,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, int]:
     meta_cols = ["n", "mean_net_ticks", "resolution", "recon_status", "zone_params_hash"]
     count_cols = ["zone_level_count", *meta_cols]
     width_cols = ["zone_width_bucket", *meta_cols]
@@ -232,7 +235,7 @@ def _q3_zones(
         pd.DataFrame(columns=names_cols),
     )
     if zones is None or not isinstance(zones, pd.DataFrame) or zones.empty:
-        return empty
+        return (*empty, 0)
     work = zones.copy()
     if "trade_id" in work.columns and not trades.empty and "trade_id" in trades.columns:
         keep = [
@@ -270,19 +273,25 @@ def _q3_zones(
     if "entry_zone_relation" not in work.columns:
         work["entry_zone_relation"] = None
     attributed = work.loc[work["entry_zone_relation"].map(_is_attributed_zone)].copy()
-    count = _zone_groups(
+    count, hidden_count = _zone_groups(
         attributed, "zone_level_count", count_cols, include_small_n=include_small_n
     )
-    width = _zone_groups(
+    width, hidden_width = _zone_groups(
         attributed, "zone_width_bucket", width_cols, include_small_n=include_small_n
     )
-    relation = _zone_groups(
+    relation, hidden_relation = _zone_groups(
         work, "entry_zone_relation", relation_cols, include_small_n=include_small_n
     )
-    names = _zone_groups(
+    names, hidden_names = _zone_groups(
         attributed, "zone_level_names", names_cols, include_small_n=include_small_n
     )
-    return count, width, relation, names
+    return (
+        count,
+        width,
+        relation,
+        names,
+        hidden_count + hidden_width + hidden_relation + hidden_names,
+    )
 
 
 def _q3_triggers(
@@ -290,7 +299,7 @@ def _q3_triggers(
     triggers: pd.DataFrame | None,
     *,
     include_small_n: bool,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, int]:
     """Distribution and net ticks per 1m label. Multi-label counted once per label."""
     columns = [
         "inferred_trigger",
@@ -302,7 +311,7 @@ def _q3_triggers(
         "trigger_resolution",
     ]
     if triggers is None or not isinstance(triggers, pd.DataFrame) or triggers.empty:
-        return pd.DataFrame(columns=columns)
+        return pd.DataFrame(columns=columns), 0
     work = triggers.copy()
     if "trade_id" in work.columns and not trades.empty and "trade_id" in trades.columns:
         keep = [
@@ -349,8 +358,9 @@ def _q3_triggers(
             )
     exploded = pd.DataFrame(exploded_rows)
     if exploded.empty:
-        return pd.DataFrame(columns=columns)
+        return pd.DataFrame(columns=columns), 0
     rows: list[dict[str, object]] = []
+    hidden = 0
     grouped = exploded.groupby(
         ["inferred_trigger", "zone_params_hash", "trigger_resolution"],
         sort=True,
@@ -358,8 +368,10 @@ def _q3_triggers(
     )
     for (label, digest, trig_res), group in grouped:
         n_value = int(len(group))
-        if n_value < REPORT_MIN_N and not include_small_n:
-            continue
+        if n_value < REPORT_MIN_N:
+            hidden += 1
+            if not include_small_n:
+                continue
         rows.append(
             {
                 "inferred_trigger": str(label),
@@ -371,7 +383,7 @@ def _q3_triggers(
                 "trigger_resolution": str(trig_res),
             }
         )
-    return pd.DataFrame(rows, columns=columns)
+    return pd.DataFrame(rows, columns=columns), hidden
 
 
 def _q4_q6(

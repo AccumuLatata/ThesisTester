@@ -9,7 +9,7 @@ from thesistester.journal.counterfactual import counterfactual_files
 from thesistester.journal.levels import attribute_files
 from thesistester.journal.match import match_files
 from thesistester.journal.reconcile import reconcile_files
-from thesistester.journal.report import report_files
+from thesistester.journal.report import INCLUDE_SMALL_N_HELP, report_files
 from thesistester.journal.triggers import trigger_files
 from thesistester.journal.zones import zone_files
 from thesistester.journal.schema import (
@@ -335,7 +335,7 @@ def add_journal_subparser(subparsers: argparse._SubParsersAction) -> None:
     report_parser.add_argument(
         "--include-small-n",
         action="store_true",
-        help="Include Q2 slices with n < 30 (default: hide them)",
+        help=INCLUDE_SMALL_N_HELP,
     )
 
 

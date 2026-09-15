@@ -14,6 +14,7 @@ import streamlit as st
 from thesistester.journal.report import (
     REPORT_HONESTY,
     JournalIngestError,
+    format_hidden_slice_caption,
     journal_store_dir,
     load_journal_artifacts,
     report_from_artifacts,
@@ -121,8 +122,10 @@ if not present.get("trades"):
     st.stop()
 
 st.caption(
-    f"Q2 slices with n < 30: {report.hidden_slice_count}"
-    + (" (shown)." if report.include_small_n else " (hidden).")
+    format_hidden_slice_caption(
+        hidden_slice_count=report.hidden_slice_count,
+        include_small_n=report.include_small_n,
+    )
     + " Per-trade dollar-ticks are qty-scaled."
 )
 
