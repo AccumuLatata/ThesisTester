@@ -85,6 +85,11 @@ setup dict through `build_setup_config` (C-4 / QI-03-10) via
 and does **not** call `run_experiment` (Composer B; AH §2 items 1–2).
 3c `_source_mode` is generate-time engine metadata only. Setup Builder
 already used BSC; Study/API assembly stays on their own paths.
+The Signals **Signal table** is a preview subset of `_SIGNAL_COLUMNS`
+plus post-engine `setup_name`. Optional HTF/3c columns
+(`trigger_timestamp`, `trigger_timeframe`, `tested_level_price`) appear
+when those columns are present and non-null. `approach_side` stays out of
+the preview (DA4: not on `_SIGNAL_COLUMNS`).
 
 `thesistester/cli.py` validates experiment schema version 1, calls the facade,
 and sends its bundle-ready mapping to `build_research_bundle()`.
