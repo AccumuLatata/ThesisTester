@@ -2502,7 +2502,7 @@ def _selectbox_options(source: str, call: ast.Call) -> list:
             node = kw.value
             break
     if node is None:
-        raise AssertionError("Direction selectbox has no options")
+        raise AssertionError("widget has no options")
     try:
         value = ast.literal_eval(node)
     except (ValueError, TypeError):
@@ -2527,7 +2527,7 @@ def _selectbox_options(source: str, call: ast.Call) -> list:
                 best = (stmt.lineno, assigned)
         if best is not None:
             return best[1]
-    raise AssertionError("Direction options is not a list literal")
+    raise AssertionError("options is not a list literal")
 
 
 def _assert_da0_direction_help(source: str) -> None:
@@ -2680,8 +2680,12 @@ def _assert_naked_requirement_zone_help(source: str) -> None:
     """AST-bind zone-level any/all to the unique Naked requirement ``st.radio``.
 
     File-level / comment / other-widget ``help=`` needles fail-closed (A-1 class).
+    Options Name is last-wins (A-11 class): Setup Builder binds
+    ``options=naked_requirement_options``.
     """
     call = _radio_call(source, _NAKED_REQUIREMENT_LABEL)
+    options = _selectbox_options(source, call)
+    assert options == ["any", "all"], f"Naked requirement options drifted: {options!r}"
     help_text = _kw_str(call, "help")
     assert help_text, "Naked requirement radio must have help= (QI-03-09)"
     missing = [n for n in _NAKED_ZONE_HELP_NEEDLES if n not in help_text]
@@ -2705,8 +2709,14 @@ def _setup_builder_naked_pitfall(body: str) -> str:
 
 
 def test_setup_builder_naked_requirement_reuses_signals_zone_help():
-    """QI-03-09 / E-7: Setup Builder Naked requirement help= is zone-level any/all."""
-    _assert_naked_requirement_zone_help(_read(PAGES / "3_Setup_Builder.py"))
+    """QI-03-09 / E-7: page 3 Naked requirement help= equals the Signals literal."""
+    page3 = _read(PAGES / "3_Setup_Builder.py")
+    signals = _read(PAGES / "6_Signals.py")
+    _assert_naked_requirement_zone_help(page3)
+    _assert_naked_requirement_zone_help(signals)
+    page3_help = _kw_str(_radio_call(page3, _NAKED_REQUIREMENT_LABEL), "help")
+    signals_help = _kw_str(_radio_call(signals, _NAKED_REQUIREMENT_LABEL), "help")
+    assert page3_help == signals_help == _NAKED_ZONE_HELP_LITERAL
 
 
 def test_signals_naked_requirement_keeps_zone_help():
@@ -2740,6 +2750,40 @@ def test_naked_requirement_help_guard_ignores_comment_and_other_widget():
         )
 
 
+def test_naked_requirement_help_resolves_options_name():
+    """Setup Builder binds ``options=naked_requirement_options``; resolve the Name."""
+    fake = (
+        "import streamlit as st\n"
+        'naked_requirement_options = ["any", "all"]\n'
+        "st.radio(\n"
+        f'    "{_NAKED_REQUIREMENT_LABEL}",\n'
+        "    options=naked_requirement_options,\n"
+        f'    help="{_NAKED_ZONE_HELP_LITERAL}",\n'
+        ")\n"
+    )
+    _assert_naked_requirement_zone_help(fake)
+
+
+def test_naked_requirement_help_guard_rejects_stale_options_assignment():
+    """Earlier correct list-literal must not bind a later drifted Name (A-11)."""
+    fake = (
+        "import streamlit as st\n"
+        'naked_requirement_options = ["any", "all"]\n'
+        'naked_requirement_options = ["foo"]\n'
+        "st.radio(\n"
+        f'    "{_NAKED_REQUIREMENT_LABEL}",\n'
+        "    options=naked_requirement_options,\n"
+        f'    help="{_NAKED_ZONE_HELP_LITERAL}",\n'
+        ")\n"
+    )
+    try:
+        _assert_naked_requirement_zone_help(fake)
+    except AssertionError as exc:
+        assert "drifted" in str(exc)
+    else:
+        raise AssertionError("stale first assignment must not bind Naked requirement options")
+
+
 def test_user_guide_setup_builder_naked_pitfall_names_zone_level():
     """QI-03-09 / E-7: Setup Builder Naked pitfall names zone-level any/all."""
     body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _DA0_SETUP_BUILDER_H2)
@@ -2750,6 +2794,31 @@ def test_user_guide_setup_builder_naked_pitfall_names_zone_level():
     assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
         f"Setup Builder H2 exceeds USER_GUIDE soft budget: {len(body)}"
     )
+    fake = (
+        "## Notes\n"
+        "| `Naked only` + `Naked requirement` | filter | "
+        "at least one level in the zone every level must be naked |\n"
+        "## Signals\nunrelated\n"
+    )
+    try:
+        _md_h2_body(fake, _DA0_SETUP_BUILDER_H2)
+    except AssertionError as exc:
+        assert "Setup Builder" in str(exc)
+    else:
+        raise AssertionError("Notes-only needles must not bind as Setup Builder H2")
+
+    empty_then_notes = (
+        "## Setup Builder\n"
+        "| Control | Meaning | Common pitfall |\n"
+        "| `Naked only` + `Naked requirement` | filter | — |\n"
+        "## Notes\n"
+        "| `Naked only` + `Naked requirement` | filter | "
+        "at least one level in the zone every level must be naked |\n"
+    )
+    notes_body = _md_h2_body(empty_then_notes, _DA0_SETUP_BUILDER_H2)
+    notes_pitfall = _setup_builder_naked_pitfall(notes_body)
+    assert notes_pitfall == "—", "Notes-table needles must not bind as Setup Builder pitfall"
+    assert any(n not in notes_pitfall for n in _NAKED_ZONE_HELP_NEEDLES)
 
 
 _H14_SIGNALS_H2 = "Signals"
