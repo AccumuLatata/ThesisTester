@@ -112,9 +112,11 @@ unchanged. D-1 (QI-10-03) is the research-key registry
 apply-only members are explicitly sticky). D-2 (QI-03-12) pops session
 `signals` on setup `setup_config` mutation (save / set-active / clear /
 delete-active / copy-to-builder) and surfaces the controls-changed warning
-on Signals view. D-3 (this PR) extracts Backtest sidebar / run-persist /
-display into ``*_page_helpers`` (QI-04-05). Session keys and H7/H15
-call-site Names are unchanged. Next: D-4.
+on Signals view. D-3 ([#575](https://github.com/AccumuLatata/ThesisTester/pull/575))
+extracts Backtest sidebar / run-persist / display into ``*_page_helpers``
+(QI-04-05). D-4 (this PR) extracts Validation sidebar / WFA-OTF persist /
+Phase 8 display into ``*_page_helpers`` (QI-05-02). Session keys and
+H12/H13/M9/M10 copy are unchanged. Next: D-5.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -323,8 +325,10 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    is the research-key registry (explicit sticky for apply-only keys).
    D-2 (QI-03-12) pops session `signals` on setup `setup_config`
    mutation and surfaces the controls-changed warning on Signals view.
-   D-3 (this PR) extracts Backtest sidebar / run-persist / display
-   helpers (QI-04-05). Session keys unchanged. Next: D-4.
+   D-3 ([#575](https://github.com/AccumuLatata/ThesisTester/pull/575))
+   extracts Backtest sidebar / run-persist / display helpers (QI-04-05).
+   D-4 (this PR) extracts Validation sidebar / WFA-OTF persist /
+   Phase 8 display helpers (QI-05-02). Session keys unchanged. Next: D-5.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

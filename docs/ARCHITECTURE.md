@@ -1521,6 +1521,18 @@ D-3 / QI-04-05 extracts sidebar / run-persist / display into
 `thesistester/backtest_*_page_helpers.py` (page is thin orchestration).
 Session-key names are unchanged.
 
+Validation UI note: `pages/10_Validation.py` keeps the title / A-21 caption,
+trades prelude, Admit inherit, and Focus/H12 honesty on the page. D-4 /
+QI-05-02 extracts sidebar, WFA/OTF persist + WFA display, batteries,
+Phase 8 display, and the OTF matrix into
+`thesistester/validation_*_page_helpers.py`. Session-key names are
+unchanged (`validation_summary`, `walk_forward_*`, `wfa_matrix*`,
+`walk_forward_otf_filter`, `otf_validation_*`, battery summaries).
+MC drawdown parse and Phase 8 formatters live in
+`validation_page_helpers.py` (`parse_thresholds`, `fmt_value`); H13
+`p_val > 0.05` else `st.info` + caption literals stay on the display
+helper (assembler is the unit-tested twin).
+
 Backtest also exposes a collapsed diagnostic expander **Confluence combo attribution**
 near Breakdown. It recomputes on the fly from `_display_trades` via
 `thesistester.analytics.confluence_attribution` (exact combo / membership / parsed

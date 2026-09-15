@@ -2282,8 +2282,10 @@ class TestEthStartSessionPropagation:
         )
         # Validation page records the same resolved timezone used by fold OTF.
         assert resolve_otf_session_timezone(None, inst.exchange_tz) == inst.exchange_tz
-        page_path = pathlib.Path(__file__).parent.parent / "pages" / "10_Validation.py"
-        source_text = page_path.read_text(encoding="utf-8")
+        helper_path = (
+            pathlib.Path(__file__).parent.parent / "thesistester" / "validation_wfa_page_helpers.py"
+        )
+        source_text = helper_path.read_text(encoding="utf-8")
         assert "resolve_otf_session_timezone(" in source_text
         assert '"session_timezone": _wfo_session_tz' in source_text
 

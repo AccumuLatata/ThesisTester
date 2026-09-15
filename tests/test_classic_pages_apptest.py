@@ -22,6 +22,7 @@ RENDER_BUDGET_S = 1.0
 HOME = "app.py"
 DATA_PAGE = "pages/1_Data.py"
 BACKTEST_PAGE = "pages/7_Backtest.py"
+VALIDATION_PAGE = "pages/10_Validation.py"
 
 
 def _ensure_repo_root_on_path() -> None:
@@ -58,6 +59,18 @@ def _tiny_levels() -> pd.DataFrame:
             "volume": [10],
         },
         index=index,
+    )
+
+
+def _tiny_trades() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "trade_id": [1],
+            "direction": ["long"],
+            "r_multiple": [1.0],
+            "entry_timestamp": [pd.Timestamp("2024-01-02 14:30", tz="America/New_York")],
+            "exit_timestamp": [pd.Timestamp("2024-01-02 14:35", tz="America/New_York")],
+        }
     )
 
 
@@ -142,3 +155,36 @@ def test_backtest_seeded_signals_levels_instantiates_run_widgets(isolated_store)
     assert any(item.label == "▶ Run backtest" for item in app.button)
     infos = [item.value for item in app.info]
     assert any("Run backtest" in str(text) for text in infos)
+
+
+def test_validation_smoke_warning_without_trades(isolated_store) -> None:
+    """Empty Validation: warning + ``st.stop`` before run widgets (QI-10 §3.1)."""
+    app, elapsed = _run_page(VALIDATION_PAGE)
+    assert not app.exception, app.exception
+    assert elapsed < RENDER_BUDGET_S, elapsed
+    titles = [item.value for item in app.title]
+    assert any("Statistical Validation" in str(value) for value in titles)
+    warnings = [item.value for item in app.warning]
+    assert any("No trades found" in str(text) for text in warnings)
+    assert _has_named_key(app, "trades") is False
+    main_buttons = [item.label for item in app.button if item.label]
+    assert "▶ Run Validation" not in main_buttons
+    assert not any("Bootstrap samples" in str(item.label) for item in app.number_input)
+
+
+def test_validation_seeded_trades_instantiates_run_widgets(isolated_store) -> None:
+    """Seed ``trades`` before interaction (QI-10 §3.6 rule 4)."""
+    _ensure_repo_root_on_path()
+    started = time.perf_counter()
+    app = AppTest.from_file(str(REPO_ROOT / VALIDATION_PAGE), default_timeout=30)
+    app.session_state["trades"] = _tiny_trades()
+    app.session_state["instrument"] = "ES"
+    app.run()
+    elapsed = time.perf_counter() - started
+    assert not app.exception, app.exception
+    assert elapsed < RENDER_BUDGET_S, elapsed
+    assert _has_named_key(app, "trades") is True
+    assert any(item.label == "Bootstrap samples" for item in app.number_input)
+    assert any(item.label == "▶ Run Validation" for item in app.button)
+    infos = [item.value for item in app.info]
+    assert any("Run Validation" in str(text) for text in infos)
