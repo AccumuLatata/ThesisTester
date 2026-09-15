@@ -323,9 +323,7 @@ def test_hidden_slice_count_includes_q3_when_present(tmp_path: Path) -> None:
     triggers.to_parquet(journal_dir / "journal_triggers.parquet", index=False)
     out = tmp_path / "journal_out"
     assert (
-        cli_main(
-            ["journal", "report", "--journal-dir", str(journal_dir), "--output-dir", str(out)]
-        )
+        cli_main(["journal", "report", "--journal-dir", str(journal_dir), "--output-dir", str(out)])
         == 0
     )
     payload = json.loads((out / "report.json").read_text(encoding="utf-8"))
