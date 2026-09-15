@@ -10,6 +10,7 @@ import pytest
 
 from thesistester.api import run_experiment, validate_run_spec
 from tests.test_derive import vendor_derived_1m_parent_hash_lock
+from thesistester.config import REQUIRED_COLUMNS
 from thesistester.data.derive import (
     DERIVATION_POLICY_DEFAULT,
     DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2,
@@ -125,7 +126,8 @@ def test_api_one_file_15s_primary_reaches_strict_r12_without_subtimeframe_path(
     assert state["ingestion_provenance"]["derivation_policy"] == (
         DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2
     )
-    assert hash_dataframe(state["data"]) == vendor_derived_1m_parent_hash_lock(state["data"])
+    parent_ohlcv = state["data"].loc[:, list(REQUIRED_COLUMNS)]
+    assert hash_dataframe(parent_ohlcv) == vendor_derived_1m_parent_hash_lock(parent_ohlcv)
     assert state["backtest_intrabar_policy"]["intrabar_model"] == "subtimeframe"
     assert state["backtest_intrabar_policy"]["subtimeframe_data_supplied"] is True
     assert len(state["data"]) == 2

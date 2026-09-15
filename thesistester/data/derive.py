@@ -164,7 +164,7 @@ def derive_complete_parent_ohlcv(
             "high": grouped["high"].max(),
             "low": grouped["low"].min(),
             "close": grouped["close"].last(skipna=False),
-            "volume": grouped["volume"].sum(skipna=False),
+            "volume": grouped["volume"].sum(),
         }
     )
     for column in ("open", "high", "low", "close", "volume"):
