@@ -1235,11 +1235,62 @@ def test_c24_builder_hydrate_emit_stay_on_facade():
         assert not any(_hits_ban(name, "thesistester.study.execute") for name in imported), path
 
 
+def _page15_function_cc(fn: ast.FunctionDef) -> int:
+    """McCabe CC (radon-style: if/for/while/except/assert/boolop/ifexp/comp)."""
+
+    class _Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.cc = 1
+
+        def visit_If(self, node: ast.If) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_For(self, node: ast.For) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_While(self, node: ast.While) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_Assert(self, node: ast.Assert) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_BoolOp(self, node: ast.BoolOp) -> None:
+            self.cc += max(len(node.values) - 1, 0)
+            self.generic_visit(node)
+
+        def visit_IfExp(self, node: ast.IfExp) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_comprehension(self, node: ast.comprehension) -> None:
+            self.cc += 1 + len(node.ifs)
+            self.generic_visit(node)
+
+    visitor = _Visitor()
+    for child in fn.body:
+        visitor.visit(child)
+    return visitor.cc
+
+
 def test_page15_run_study_call_is_false():
-    """QI-07-01 / RS-D9 exit: page 15 never calls ``run_study``."""
+    """QI-07-01 / RS-D9 exit: page 15 never calls ``run_study`` or imports execute."""
     page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
     assert "run_study" not in page
     tree = ast.parse(page)
+    imported = _imported_module_names(tree, "pages.15_Studies")
+    assert not any(_hits_ban(name, "thesistester.study.execute") for name in imported)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -1293,3 +1344,56 @@ def test_page15_build_section_collectors_and_renderers_exist():
     assert "_render_build_persist_and_strip(" in build_src
     assert "_render_build_actions(" in build_src
     assert "spawn_launch" not in _page15_build_render_span(page)
+
+
+def test_page15_build_section_cc_at_most_30():
+    """QI-07-01 / D-9 exit: Build collect/render CC 73/59 → ≤ 30."""
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    tree = ast.parse(page)
+    measured: dict[str, int] = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            measured[node.name] = _page15_function_cc(node)
+    assert measured["_draft_from_builder_widgets"] <= 30
+    assert measured["_render_build"] <= 30
+    helpers = (
+        "_collect_builder_identity",
+        "_collect_builder_dataset",
+        "_collect_builder_levels",
+        "_collect_builder_factors",
+        "_collect_builder_batteries",
+        "_collect_builder_stage_report",
+        "_render_build_identity",
+        "_render_build_dataset",
+        "_render_build_levels",
+        "_render_build_factors",
+        "_render_build_constants",
+        "_render_build_persist_and_strip",
+        "_render_build_actions",
+    )
+    over = {name: measured[name] for name in helpers if measured[name] > 30}
+    assert over == {}, over
+
+
+def test_page15_build_levels_catalog_is_token_tuple():
+    """D-9: live catalog stays ``builder_token_catalog``'s tuple (not a list)."""
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    tree = ast.parse(page)
+    returns: dict[str, ast.expr | None] = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in {
+            "_render_build_levels",
+            "_render_build_factors",
+        }:
+            returns[node.name] = node.returns
+    levels_ann = returns["_render_build_levels"]
+    factors = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_render_build_factors"
+    )
+    catalog_ann = next(arg.annotation for arg in factors.args.args if arg.arg == "catalog")
+    for annotation in (levels_ann, catalog_ann):
+        assert annotation is not None
+        text = ast.unparse(annotation)
+        assert text == "tuple[str, ...]", text

@@ -1985,7 +1985,7 @@ def _render_build_dataset(base: StudyDraft) -> None:
     )
 
 
-def _render_build_levels(base: StudyDraft) -> list[str]:
+def _render_build_levels(base: StudyDraft) -> tuple[str, ...]:
     """Render Build levels-token widgets and return the live catalog."""
     st.markdown("### Levels → tokens")
     length_cols = st.columns(2)
@@ -2046,7 +2046,7 @@ def _render_build_levels(base: StudyDraft) -> list[str]:
     return catalog
 
 
-def _render_build_factors(base: StudyDraft, catalog: list[str]) -> None:
+def _render_build_factors(base: StudyDraft, catalog: tuple[str, ...]) -> None:
     """Render Build factor-axis widgets."""
     st.markdown("### Factors")
     core_options = list(dict.fromkeys([*catalog, *base.core_level]))
