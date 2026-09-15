@@ -31,9 +31,11 @@ from thesistester.research_keys import (
     DATASET_CLEAR_KEYS,
     RESEARCH_KEY_BY_NAME,
     RESEARCH_KEY_REGISTRY,
+    SETUP_MUTATION_SIGNAL_KEYS,
     STICKY_APPLY_KEYS,
     THESIS_CLEAR_KEYS,
     WIDGET_KEYS,
+    pop_setup_mutation_signal_keys,
     validate_apply_sticky,
 )
 
@@ -133,6 +135,24 @@ def test_registry_source_tuples_are_unique_literals():
         assert literals, f"missing {name} literals"
         dups = [key for key in literals if literals.count(key) > 1]
         assert dups == [], f"{name} has duplicate literals {dups}"
+
+
+def test_setup_mutation_signal_keys_are_known_or_page_local():
+    """D-2 pop cluster is registry keys plus page-6 identity fields."""
+    page_local = {
+        "signal_artifact_identity_status",
+        "signal_artifact_identity_error",
+    }
+    assert SETUP_MUTATION_SIGNAL_KEYS[0] == "signals"
+    extras = [key for key in SETUP_MUTATION_SIGNAL_KEYS if key not in RESEARCH_KEY_BY_NAME]
+    assert set(extras) == page_local
+    session = {"signals": object(), "trades": object(), "setup_config": {"name": "keep"}}
+    for key in SETUP_MUTATION_SIGNAL_KEYS:
+        session[key] = object()
+    pop_setup_mutation_signal_keys(session)
+    assert "signals" not in session
+    assert session["setup_config"]["name"] == "keep"
+    assert "trades" in session
 
 
 def test_apply_clear_source_literals_bind_a7_residuals():

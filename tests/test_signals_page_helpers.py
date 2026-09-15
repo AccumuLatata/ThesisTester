@@ -1228,6 +1228,98 @@ def test_view_warning_surfaces_controls_changed_when_signals_drifted():
     assert _controls_changed_warning_for_view(ss, different_settings) is None
 
 
+def test_view_warning_fail_closed_when_leftover_identity_missing():
+    """Leftover signals with no hash / no current controls must not stay unflagged."""
+    ss = _trusted_session_state()
+    ss["signals"] = pd.DataFrame({"signal_id": [1]})
+    ss.pop("signal_settings_hash")
+    assert (
+        _controls_changed_warning_for_view(ss, _valid_loaded_settings())
+        == _SIGNAL_CONTROLS_CHANGED_WARNING
+    )
+    ss = _trusted_session_state()
+    ss["signals"] = pd.DataFrame({"signal_id": [1]})
+    assert _controls_changed_warning_for_view(ss, None) == _SIGNAL_CONTROLS_CHANGED_WARNING
+
+
+def test_qi0312_view_warning_bound_on_signals_page():
+    """AST-bind view warning on page body before Save buttons. Comment needles fail-closed."""
+    import ast
+    import pathlib
+
+    source = pathlib.Path("pages/6_Signals.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    warning_assign = None
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == "_view_controls_warning"
+            for target in node.targets
+        ):
+            continue
+        if (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "_controls_changed_warning_for_view"
+        ):
+            warning_assign = node
+            break
+    if warning_assign is None:
+        raise AssertionError(
+            "page 6 must assign _controls_changed_warning_for_view on the page body"
+        )
+
+    warned = False
+    for node in tree.body:
+        if not isinstance(node, ast.If) or not isinstance(node.test, ast.Name):
+            continue
+        if node.test.id != "_view_controls_warning":
+            continue
+        for child in ast.walk(node):
+            if (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Attribute)
+                and child.func.attr == "warning"
+                and isinstance(child.func.value, ast.Name)
+                and child.func.value.id == "st"
+            ):
+                warned = True
+    assert warned, "page 6 must st.warning the view-helper result"
+
+    def _button_label(call: ast.AST) -> str | None:
+        if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
+            return None
+        if call.func.attr != "button" or not call.args:
+            return None
+        arg0 = call.args[0]
+        if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
+            return arg0.value
+        return None
+
+    copy_bound = False
+    save_linenos: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If) or not isinstance(node.test, ast.Call):
+            continue
+        label = _button_label(node.test)
+        if label == "Save current signals":
+            save_linenos.append(node.lineno)
+        if label == "Copy setup to Setup Builder":
+            for child in ast.walk(node):
+                if (
+                    isinstance(child, ast.Call)
+                    and isinstance(child.func, ast.Name)
+                    and child.func.id == "pop_setup_mutation_signal_keys"
+                ):
+                    copy_bound = True
+    assert copy_bound, "Copy setup to Setup Builder must pop setup-mutation signal keys"
+    assert save_linenos, "missing Save current signals button"
+    assert warning_assign.lineno < min(save_linenos), (
+        "view warning must render before Save current signals"
+    )
+
+
 def test_validate_save_controls_drift_returns_controls_changed_message():
     """Trusted artifacts but current controls differ → blocked with controls-changed message."""
     ss = _trusted_session_state()

@@ -110,7 +110,9 @@ journal payload-to-table helpers (`report_tables` / `match_classify` /
 unchanged. D-1 (QI-10-03) is the research-key registry
 (`dataset-clear` / `apply-clear` / `thesis-clear` / `widget` flags;
 apply-only members are explicitly sticky). D-2 (QI-03-12) pops session
-`signals` on setup save/set-active. Next: D-3.
+`signals` on setup `setup_config` mutation (save / set-active / clear /
+delete-active / copy-to-builder) and surfaces the controls-changed warning
+on Signals view. Next: D-3.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -317,7 +319,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    hydrate / emit. C-25 (QI-08-04) extracts journal payload-to-table
    helpers. Match classes and CF walk math unchanged. D-1 (QI-10-03)
    is the research-key registry (explicit sticky for apply-only keys).
-   D-2 (QI-03-12) pops session `signals` on setup save/set-active.
+   D-2 (QI-03-12) pops session `signals` on setup `setup_config`
+   mutation and surfaces the controls-changed warning on Signals view.
    Next: D-3.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration

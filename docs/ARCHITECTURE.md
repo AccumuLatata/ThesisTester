@@ -1073,7 +1073,9 @@ in A-7 (QI-06-03):** `direction_collision_diagnostic` is **clear-only** in
 are not restored (no export schema, not hashed). A-8 dataset-switch does
 **not** pop this A-7 residual (apply-clear only). C-7 landed the bundle key
 registry; D-1 generates apply-clear / dataset-clear / thesis-clear / widget
-pop lists from `research_keys.RESEARCH_KEY_REGISTRY`.
+pop lists from `research_keys.RESEARCH_KEY_REGISTRY`. D-2 (QI-03-12) adds
+`SETUP_MUTATION_SIGNAL_KEYS` / `pop_setup_mutation_signal_keys` for setup
+`setup_config` writes (not a new registry flag).
 DA3 reports the active
 `same_bar_opposite_direction` token in `policy`. `skip_both` collisions
 appear as `resolved_none` without a second pass; conflicted candidates stay
@@ -1684,15 +1686,15 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `session_levels` | Levels (`pages/2_Levels.py`) | Bundles/save (`pages/2_Levels.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` session-level table |
 | `levels_settings` | Levels (`pages/2_Levels.py`) | Levels stale checks (`pages/2_Levels.py`), Signals persistence context (`pages/6_Signals.py`) | `dict` |
 | `levels_data_fingerprint` | Levels (`pages/2_Levels.py`) | Levels stale checks (`pages/2_Levels.py`) | `dict` |
-| `setup_config` | Setup Builder (`pages/3_Setup_Builder.py`), Signals saved-run copy action (`pages/6_Signals.py`) | Signals setup-source selection (`pages/6_Signals.py`), Report (`pages/11_Report_Export.py`) | `dict` setup configuration. **QI-03-12 / D-2:** Save and Set active pop in-session `signals` plus signal-identity keys (`signal_settings`, `signal_settings_hash`, `last_signal_setup`, `signal_context`) so leftover candidates cannot reach Backtest unflagged. Dataset-clear still pops `signals` independently (A-8). |
+| `setup_config` | Setup Builder (`pages/3_Setup_Builder.py`), Signals saved-run copy action (`pages/6_Signals.py`) | Signals setup-source selection (`pages/6_Signals.py`), Report (`pages/11_Report_Export.py`) | `dict` setup configuration. **QI-03-12 / D-2:** Save, Set active, Clear active, Delete-of-active, and Signals copy-to-builder pop in-session `signals` plus signal-identity keys via `research_keys.pop_setup_mutation_signal_keys` so leftover candidates cannot reach Backtest unflagged. Dataset-clear still pops `signals` independently (A-8). |
 | `setup_configs` | Setup Builder (`pages/3_Setup_Builder.py`) | Setup Builder only | `list[dict]` |
 | `confluence_zones` | Signals (`pages/6_Signals.py`) | Signals display (`pages/6_Signals.py`), Backtest chart overlay (`pages/7_Backtest.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` zone rows |
 | `naked_flags` | Signals (`pages/6_Signals.py`) | Signals logic/save (`pages/6_Signals.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` naked-level flags |
-| `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Validation/Report/Bundles (`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` candidate/fill signal rows. Also popped on setup Save / Set active (QI-03-12 / D-2) and on dataset switch (A-8). The Signals page surfaces the existing controls-changed warning on **view** (not only Save) when leftover artifacts remain and current controls no longer match `signal_settings_hash`. |
-| `signal_settings` | Signals (`pages/6_Signals.py`) | Signals save consistency checks (`pages/6_Signals.py`) | `dict`. Also popped on dataset switch (`_clear_dataset_dependent_state`, A-8 / QI-10-01). |
-| `signal_settings_hash` | Signals (`pages/6_Signals.py`) | Signals save/load matching (`pages/6_Signals.py`) | `str`. Also popped on dataset switch with `signal_settings` (A-8 / QI-10-01) so a leftover hash cannot look like a match. |
-| `signal_context` | Signals (`pages/6_Signals.py`) | Backtest caption (`pages/7_Backtest.py`) | `dict` (`setup_name`, `confluence_mode`, `setup_caption`) |
-| `last_signal_setup` | Signals (`pages/6_Signals.py`) | Signals persistence/report artifact (`pages/6_Signals.py`, `thesistester/reporting.py`) | `dict` |
+| `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Validation/Report/Bundles (`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` candidate/fill signal rows. Also popped on setup `setup_config` mutation (QI-03-12 / D-2: Save / Set active / Clear / Delete-active / copy-to-builder) and on dataset switch (A-8). The Signals page surfaces the existing controls-changed warning on **view** (not only Save) when leftover artifacts remain and current controls no longer match `signal_settings_hash`. Missing or unhashable identity is treated as a mismatch. |
+| `signal_settings` | Signals (`pages/6_Signals.py`) | Signals save consistency checks (`pages/6_Signals.py`) | `dict`. Also popped on dataset switch (`_clear_dataset_dependent_state`, A-8 / QI-10-01) and on setup `setup_config` mutation (QI-03-12 / D-2). |
+| `signal_settings_hash` | Signals (`pages/6_Signals.py`) | Signals save/load matching (`pages/6_Signals.py`) | `str`. Also popped on dataset switch with `signal_settings` (A-8 / QI-10-01) and on setup `setup_config` mutation (QI-03-12 / D-2) so a leftover hash cannot look like a match. |
+| `signal_context` | Signals (`pages/6_Signals.py`) | Backtest caption (`pages/7_Backtest.py`) | `dict` (`setup_name`, `confluence_mode`, `setup_caption`). Also popped on setup `setup_config` mutation (QI-03-12 / D-2). |
+| `last_signal_setup` | Signals (`pages/6_Signals.py`) | Signals persistence/report artifact (`pages/6_Signals.py`, `thesistester/reporting.py`) | `dict`. Also popped on setup `setup_config` mutation (QI-03-12 / D-2). |
 | `trades` | Backtest (`pages/7_Backtest.py`) | Time/Validation/Report/Bundles/Portfolio (`pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`) | `pd.DataFrame` simulated trade rows |
 | `trade_summary` | Backtest (`pages/7_Backtest.py`) | Time/Report (`pages/9_Time_Analysis.py`, `thesistester/reporting.py`) | `dict` KPI summary |
 | `equity_curve` | Backtest (`pages/7_Backtest.py`) | Backtest display/Report/Bundles (`pages/7_Backtest.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` cumulative-R curve |

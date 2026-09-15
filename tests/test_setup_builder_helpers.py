@@ -517,6 +517,29 @@ _QI0312_SIGNAL_KEYS = (
     "last_signal_setup",
     "signal_context",
 )
+_QI0312_SETUP_BUTTONS = frozenset(
+    {"Save setup", "Set active", "Clear active setup", "Delete"}
+)
+
+
+def _qi0312_setup_mutation_literals() -> set[str]:
+    """String literals on ``SETUP_MUTATION_SIGNAL_KEYS``. Comment needles fail-closed."""
+    import ast
+
+    tree = ast.parse(pathlib.Path("thesistester/research_keys.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not isinstance(node.target, ast.Name) or node.target.id != "SETUP_MUTATION_SIGNAL_KEYS":
+            continue
+        if not isinstance(node.value, (ast.Tuple, ast.List)):
+            raise AssertionError("SETUP_MUTATION_SIGNAL_KEYS must be a list/tuple of literals")
+        return {
+            elt.value
+            for elt in node.value.elts
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+        }
+    raise AssertionError("missing SETUP_MUTATION_SIGNAL_KEYS")
 
 
 def test_qi0312_setup_mutation_pops_session_signals():
@@ -543,31 +566,32 @@ def test_qi0312_setup_mutation_pops_session_signals():
     assert "signals" not in session
 
 
-def test_qi0312_save_and_set_active_call_invalidate():
-    """AST-bind save / set-active to the invalidate helper. Comment needles fail-closed."""
+def test_qi0312_setup_config_mutations_call_invalidate():
+    """AST-bind setup_config writers to the invalidate helper. Comment needles fail-closed."""
     import ast
 
+    literals = _qi0312_setup_mutation_literals()
+    missing = [key for key in _QI0312_SIGNAL_KEYS if key not in literals]
+    assert missing == [], f"SETUP_MUTATION_SIGNAL_KEYS missing {missing}"
+
+    wrapper = None
     source = pathlib.Path("pages/3_Setup_Builder.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    literals: set[str] = set()
     for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(
-            isinstance(target, ast.Name) and target.id == "_SETUP_MUTATION_SIGNAL_KEYS"
-            for target in node.targets
+        if isinstance(node, ast.FunctionDef) and node.name == (
+            "_invalidate_session_signals_after_setup_mutation"
         ):
-            continue
-        if not isinstance(node.value, (ast.Tuple, ast.List)):
-            raise AssertionError("_SETUP_MUTATION_SIGNAL_KEYS must be a list/tuple of literals")
-        literals = {
-            elt.value
-            for elt in node.value.elts
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
-        }
-        break
-    missing = [key for key in _QI0312_SIGNAL_KEYS if key not in literals]
-    assert missing == [], f"_SETUP_MUTATION_SIGNAL_KEYS missing {missing}"
+            wrapper = node
+            break
+    if wrapper is None:
+        raise AssertionError("page 3 must wrap pop_setup_mutation_signal_keys")
+    if not any(
+        isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Name)
+        and child.func.id == "pop_setup_mutation_signal_keys"
+        for child in ast.walk(wrapper)
+    ):
+        raise AssertionError("wrapper must call pop_setup_mutation_signal_keys")
 
     def _button_label(call: ast.AST) -> str | None:
         if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
@@ -594,6 +618,6 @@ def test_qi0312_save_and_set_active_call_invalidate():
         if not isinstance(node, ast.If) or not isinstance(node.test, ast.Call):
             continue
         label = _button_label(node.test)
-        if label in {"Save setup", "Set active"} and _calls_invalidate(node):
+        if label in _QI0312_SETUP_BUTTONS and _calls_invalidate(node):
             bound.add(label)
-    assert bound == {"Save setup", "Set active"}, bound
+    assert bound == _QI0312_SETUP_BUTTONS, bound

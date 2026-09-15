@@ -207,6 +207,8 @@ direction, OTF filter, active setup, save setup, thesis link
 3. Edit **Setup name**, confluence mode, naked, trigger, timeframe, direction,
    optional OTF block, and optional Admit entry window.
 4. **Save setup** (becomes active) or clear with **Clear active setup**.
+   Save, Set active, Clear, and Delete of the active setup drop in-session
+   Signals candidates; regenerate before Backtest.
 5. Use the active/saved setup on **Signals**, then Backtest / Grid / Validation.
 
 **What it is not.**
