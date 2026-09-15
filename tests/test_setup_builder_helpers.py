@@ -517,9 +517,7 @@ _QI0312_SIGNAL_KEYS = (
     "last_signal_setup",
     "signal_context",
 )
-_QI0312_SETUP_BUTTONS = frozenset(
-    {"Save setup", "Set active", "Clear active setup", "Delete"}
-)
+_QI0312_SETUP_BUTTONS = frozenset({"Save setup", "Set active", "Clear active setup", "Delete"})
 
 
 def _qi0312_setup_mutation_literals() -> set[str]:
