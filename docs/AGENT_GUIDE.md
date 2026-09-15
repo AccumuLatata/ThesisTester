@@ -176,9 +176,12 @@ on-grid 15s→1m derive under locked ``observed_aligned_15s_to_1m_v2``
 (QI-14-06). E-10
 ([#592](https://github.com/AccumuLatata/ThesisTester/pull/592)) vectorizes
 the fixed-bracket ``sl_first`` P7 walk inside ``sim_core`` (QI-14-03).
-E-11 stays parked (CTO request only). F-5 (this PR) names Validation /
+E-11 stays parked (CTO request only). F-5
+([#593](https://github.com/AccumuLatata/ThesisTester/pull/593)) names Validation /
 Portfolio consumers on the ``ARCHITECTURE.md`` session-key table
-(QI-13-04 / QI-10-02). Next: F-9.
+(QI-13-04 / QI-10-02). F-9 (this PR) strips ``file:line`` cites and
+points the rule ledger at the B-10 import-linter contract; AIA-0 names
+the lazy ``st.secrets`` fallback (QI-13-06 / QI-09-05). Next: F-10.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -216,7 +219,9 @@ execution_artifacts → api` (C-9 landed: package-init no longer loads
 `engine.backtest`; it does not keep C7). C8 allow-list: lazy `app_state` adapter (C-8), lazy
 classic chrome (`classic_context` / `classic_ledger` / `classic_nav` /
 `classic_proposal` / `classic_record`), and the two secret readers
-(`assistant.llm`, `assistant.voice.xai_realtime`) until F-9. Eager
+(`assistant.llm`, `assistant.voice.xai_realtime`) that lazy-import
+`st.secrets` (AIA-0 / F-9 / QI-09-05). C-8 extracted the Streamlit-free
+saved-dataset reader, not a secrets reader. Eager
 Streamlit importers in the library are 0.
 C10 is page-scoped (`pages/15_Studies.py` ↛ `FORMAT_PROFILE_LABELS` from
 builder) and is gated by `tests/test_import_linter_contracts.py`. **C9**
@@ -226,6 +231,11 @@ so those forms cannot false-green. **C12** is the `validation_summary()`
 four-key freeze (`tests/test_validation.py`), not an import contract.
 Empty / no-valid-trade paths stay on the same four keys (`None` not
 NaN, `insufficient`). Blocking flip is a later PR.
+
+**Rule ledger vs import-linter (F-9 / QI-13-06).** Living do-nots in this
+file are lock reminders. Import and call-ban source of truth is
+`.importlinter` (C1–C5, C7–C10) plus `tests/test_import_linter_contracts.py`
+(C10 / C9 AST). Do not treat this ledger as a second import-ban contract.
 
 **RS-D8:** Studies page authoring preview — canonical StudySpec YAML
 validate + in-memory expand (cell count / confirm gate). `preview.py` must not
@@ -438,9 +448,13 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    ([#592](https://github.com/AccumuLatata/ThesisTester/pull/592))
    vectorizes the fixed-bracket ``sl_first`` P7 walk inside
    ``sim_core`` (QI-14-03). E-11 stays parked (CTO request only).
-   F-5 (this PR) names Validation / Portfolio consumers on the
-   ``ARCHITECTURE.md`` session-key table (QI-13-04 / QI-10-02).
-   Next: F-9.
+   F-5
+   ([#593](https://github.com/AccumuLatata/ThesisTester/pull/593)) names
+   Validation / Portfolio consumers on the ``ARCHITECTURE.md``
+   session-key table (QI-13-04 / QI-10-02). F-9 (this PR) strips
+   ``file:line`` cites and points the rule ledger at the B-10
+   import-linter contract; AIA-0 names the lazy ``st.secrets``
+   fallback (QI-13-06 / QI-09-05). Next: F-10.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
@@ -627,6 +641,10 @@ Agent safety requirements:
 
 `thesistester.assistant` is the shipped AI Research Assistant stack (AIA/C2/CAI +
 RQ/HC/DI/RI/VA/DX/RUX). Status index: `docs/ENGINEERING_ROADMAP.md`.
+AIA-0: dispatch / `execute_confirmed_run` execute only via declared public
+headless symbols; the only Streamlit use is a lazy `st.secrets` fallback
+in `assistant.llm` and `assistant.voice.xai_realtime` (env key wins;
+C-8 did not extract a Streamlit-free secrets reader).
 `FEATURE_PARITY_REGISTRY` is the source of truth for present product coverage.
 Every request must first parse as an `AssistantRequest`, then pass
 `validate_capability_request()`.
@@ -1344,10 +1362,13 @@ are B-1; H10/H11 lock tests are B-2.
   after R22 changes.
 
 ## Repository conventions (verified)
-- Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
+Path citations only (no `file:line` line anchors). Line numbers drift;
+producing/consuming paths are the contract. Import/call bans live in
+`.importlinter` (B-10), not this ledger.
+- Multipage Streamlit workflow with phase pages under `pages/` (`app.py`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).
-- Validation and reporting are explicitly diagnostic/research-only, not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`, `thesistester/reporting.py:13-19`).
-- Backtest intrabar ambiguity uses SL-first pessimistic behavior (`thesistester/engine/backtest.py:12-14`, `221-226`).
+- Validation and reporting are explicitly diagnostic/research-only, not proof of edge (`thesistester/analytics/validation.py`, `pages/10_Validation.py`, `thesistester/reporting.py`).
+- Backtest intrabar ambiguity uses SL-first pessimistic behavior (`thesistester/engine/backtest.py`).
 
 ## Regression-safe rules
 - Prefer minimal, surgical changes.

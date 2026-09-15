@@ -20,7 +20,9 @@ B-10 / QI-12-07, warn-first). C-8 (QI-06-05) split saved-dataset bootstrap:
 Streamlit. Remaining allow-list entries are lazy classic chrome
 (`classic_context`, `classic_ledger`, `classic_nav`, `classic_proposal`,
 `classic_record`) and two secret readers (`assistant.llm`,
-`assistant.voice.xai_realtime`) until F-9 extracts Streamlit-free readers.
+`assistant.voice.xai_realtime`) that lazy-import `st.secrets` (AIA-0 /
+F-9 / QI-09-05). C-8 extracted the Streamlit-free saved-dataset reader,
+not a secrets reader.
 Eager Streamlit importers in `thesistester/` are 0. Data, levels, engine,
 analytics, persistence store/identity, reporting, and visualization modules
 stay off that list. That is what makes the R18 headless facade a pure
@@ -626,11 +628,18 @@ history under an active thesis:
 
 ## AI Research Assistant contract boundary (AIA-0)
 
-`thesistester.assistant` is a Streamlit-free metadata boundary for the proposed
-single-user AI Research Assistant. It currently defines versioned, JSON-safe
-contracts, a feature-parity registry, and an additive local thesis repository.
-It does not execute research, import Streamlit, or alter engine/analytics
-behavior.
+`thesistester.assistant` is the shipped single-user AI Research Assistant
+boundary: versioned JSON-safe contracts, a feature-parity registry, and an
+additive local thesis repository. `AssistantOrchestrator.dispatch` and
+`execute_confirmed_run` execute research only through declared public
+headless symbols. The package does not import Streamlit at module load,
+does not render widgets, and does not write classic research
+`session_state`. The only Streamlit use is a lazy `st.secrets` fallback in
+`assistant.llm` (`OPENAI_API_KEY` env wins) and
+`assistant.voice.xai_realtime` (`XAI_API_KEY` env wins); import-linter C8
+allow-lists those two modules. C-8 extracted the Streamlit-free
+saved-dataset reader, not a secrets reader. Engine and analytics behavior
+stay unchanged.
 
 The registry records every user-visible product area as `executable`,
 `inspect_only`, `import_export`, or `unsupported`, with its public symbol,
