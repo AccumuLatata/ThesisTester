@@ -650,6 +650,4 @@ def test_simulate_trades_vectorized_matches_forced_serial(monkeypatch):
     ruler_vectorized = simulate_trades(ruler, ruler_signals, **ruler_kwargs)
     monkeypatch.setattr(sim_core_mod, "_can_vectorize_fixed_sl_first_walk", lambda **_: False)
     ruler_serial = simulate_trades(ruler, ruler_signals, **ruler_kwargs)
-    assert_frame_equal(
-        ruler_vectorized.reset_index(drop=True), ruler_serial.reset_index(drop=True)
-    )
+    assert_frame_equal(ruler_vectorized.reset_index(drop=True), ruler_serial.reset_index(drop=True))
