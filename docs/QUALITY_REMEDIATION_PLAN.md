@@ -386,7 +386,7 @@ Medium `Verified defect` rows proposed accepted in the same signature: QI-06-03 
 | QR-B Safety net | In progress (B-1 · B-2 · B-3 · B-4 · B-5 · B-6 · B-7 · B-8 · B-9 · B-10 · B-11 · B-12 · B-13 · B-14 · B-15 · B-16 · B-17 · B-18 · B-19) | 19 | 19 / 0 / 0 |
 | QR-C Structural refactors | In progress (C-1 · C-2 · C-3 · C-4 · C-5 · C-6 · C-7 · C-8 · C-9 · C-10 · C-11 · C-12 · C-13 · C-14 · C-15 · C-16 · C-17 · C-18 · C-19 · C-20 · C-21 · C-22 · C-23 · C-24 · C-25) | 25 | 27 / 0 / 0 |
 | QR-D UI decomposition / state | In progress (D-1 · D-2 · D-3 · D-4 · D-5 · D-6 · D-7 · D-8 · D-9 · D-10) | 10 | 10 / 0 / 0 |
-| QR-E Application functions | In progress (E-1 · E-2 · E-3 · E-4 · E-5 · E-6) | 11 | 10 / 2 / 0 |
+| QR-E Application functions | In progress (E-1 · E-2 · E-3 · E-4 · E-5 · E-6 · E-7) | 11 | 10 / 2 / 0 |
 | QR-F Documentation | In progress (F-1 · F-2 · F-3; F-4 via A-4; F-6 via A-22; F-7 via A-12; F-8 via A-9) | 10 (4 delivered inside QR-A PRs) | 12 / 5 / 3 |
 | QR-G Dependency / supply chain | In progress (G-1 · G-2 · G-3 · G-4 · G-5) | 5 | 6 / 0 / 0 |
 | Closed (no workstream) | — | — | 13 wont-fix · 1 locked without residual (QI-07-10) |

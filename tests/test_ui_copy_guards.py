@@ -93,6 +93,28 @@ def _selectbox_call(source: str, label: str) -> ast.Call:
     return found[0]
 
 
+def _radio_calls(source: str, label: str) -> list[ast.Call]:
+    """All ``st.radio`` calls whose label equals ``label``."""
+    tree = ast.parse(source)
+    found: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not _is_st_attr_call(node, "radio"):
+            continue
+        if _call_label(node) == label:
+            found.append(node)
+    return found
+
+
+def _radio_call(source: str, label: str) -> ast.Call:
+    """Return the unique ``st.radio(label, …)`` call."""
+    found = _radio_calls(source, label)
+    if not found:
+        raise AssertionError(f"no st.radio({label!r}) in source")
+    if len(found) != 1:
+        raise AssertionError(f"expected exactly one st.radio({label!r}), got {len(found)}")
+    return found[0]
+
+
 def _kw_str(call: ast.Call, name: str) -> str | None:
     for kw in call.keywords:
         if kw.arg != name:
@@ -2641,6 +2663,93 @@ def test_user_guide_setup_builder_direction_pitfall_names_da0():
     notes_pitfall = _setup_builder_direction_pitfall(notes_body)
     assert notes_pitfall == "—", "Notes-table needles must not bind as Setup Builder pitfall"
     assert any(n not in notes_pitfall for n in _DA0_DIRECTION_HELP_NEEDLES)
+
+
+# QI-03-09 / E-7: Setup Builder reuses Signals zone-level any/all naked help (M5).
+_NAKED_REQUIREMENT_LABEL = "Naked requirement"
+_NAKED_ZONE_HELP_LITERAL = (
+    "'any': at least one level in the zone must be naked. 'all': every level must be naked."
+)
+_NAKED_ZONE_HELP_NEEDLES = (
+    "at least one level in the zone",
+    "every level must be naked",
+)
+
+
+def _assert_naked_requirement_zone_help(source: str) -> None:
+    """AST-bind zone-level any/all to the unique Naked requirement ``st.radio``.
+
+    File-level / comment / other-widget ``help=`` needles fail-closed (A-1 class).
+    """
+    call = _radio_call(source, _NAKED_REQUIREMENT_LABEL)
+    help_text = _kw_str(call, "help")
+    assert help_text, "Naked requirement radio must have help= (QI-03-09)"
+    missing = [n for n in _NAKED_ZONE_HELP_NEEDLES if n not in help_text]
+    assert missing == [], f"Naked requirement help missing {missing}: {help_text!r}"
+    assert help_text == _NAKED_ZONE_HELP_LITERAL, (
+        f"Naked requirement help must reuse the Signals zone-level literal: {help_text!r}"
+    )
+
+
+def _setup_builder_naked_pitfall(body: str) -> str:
+    """Common-pitfall cell of the Setup Builder Naked only / Naked requirement row."""
+    for line in body.splitlines():
+        if "| `Naked only`" not in line:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        if cells[0].startswith("`Naked only`"):
+            return cells[2]
+    raise AssertionError("Setup Builder H2 missing Naked only / Naked requirement row")
+
+
+def test_setup_builder_naked_requirement_reuses_signals_zone_help():
+    """QI-03-09 / E-7: Setup Builder Naked requirement help= is zone-level any/all."""
+    _assert_naked_requirement_zone_help(_read(PAGES / "3_Setup_Builder.py"))
+
+
+def test_signals_naked_requirement_keeps_zone_help():
+    """QI-03-09: Signals manual radio remains the reused zone-level source."""
+    _assert_naked_requirement_zone_help(_read(PAGES / "6_Signals.py"))
+
+
+def test_naked_requirement_help_guard_ignores_comment_and_other_widget():
+    """Comment / Trigger help= needles must not satisfy Naked requirement."""
+    fake = (
+        "import streamlit as st\n"
+        "st.radio(\n"
+        f'    "{_NAKED_REQUIREMENT_LABEL}",\n'
+        '    options=["any", "all"],\n'
+        ")\n"
+        "st.selectbox(\n"
+        '    "Trigger",\n'
+        '    options=["touch"],\n'
+        "    index=0,\n"
+        f'    help="{_NAKED_ZONE_HELP_LITERAL}",\n'
+        ")\n"
+        f"# {_NAKED_ZONE_HELP_LITERAL}\n"
+    )
+    try:
+        _assert_naked_requirement_zone_help(fake)
+    except AssertionError as exc:
+        assert "help=" in str(exc)
+    else:
+        raise AssertionError(
+            "Naked requirement without help= must not pass via Trigger/comment needles"
+        )
+
+
+def test_user_guide_setup_builder_naked_pitfall_names_zone_level():
+    """QI-03-09 / E-7: Setup Builder Naked pitfall names zone-level any/all."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _DA0_SETUP_BUILDER_H2)
+    pitfall = _setup_builder_naked_pitfall(body)
+    assert pitfall != "—", "Naked pitfall must not stay empty (QI-03-09)"
+    missing = [n for n in _NAKED_ZONE_HELP_NEEDLES if n not in pitfall]
+    assert missing == [], f"Setup Builder Naked pitfall missing zone needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Setup Builder H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
 
 
 _H14_SIGNALS_H2 = "Signals"

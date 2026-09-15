@@ -195,7 +195,7 @@ direction, OTF filter, active setup, save setup, thesis link
 | `Selected level columns` / anchor + confluence levels | Which levels can cluster | Unavailable levels block clean saves |
 | `Tolerance ticks` / per-level tolerances | How close levels must be | Too wide → noisy zones |
 | `Minimum` / `Maximum confluences` | Cluster size bounds | Max < min yields nothing useful |
-| `Naked only` + `Naked requirement` | Untested-level filter (`any` / `all`) | — |
+| `Naked only` + `Naked requirement` | Untested-level filter (`any` / `all`) | Zone-level: `any` = at least one level in the zone must be naked; `all` = every level must be naked |
 | `Trigger` | `touch`, `reject`, `break`, `reclaim`, `3c`, `fade`, `continuation` | 3c adds retrace / wait-bar params. `fade` / `continuation` derive side from approach; optional close confirmation |
 | `Trigger timeframe` | Base or higher TF for trigger logic | Non-base 3c splits work across TFs |
 | `Direction` | `long`, `short`, or `both` | `touch` + `both` + `single_position` accepted trades are long-only (same-bar short skipped; ASSUMPTIONS §4b). Not a long-vs-short test |
