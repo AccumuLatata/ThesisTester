@@ -7,13 +7,30 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from thesistester.config import REQUIRED_COLUMNS
 from thesistester.data.derive import (
+    DERIVATION_POLICY_DEFAULT,
     DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2,
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+    DerivedParentResult,
+    _EXPECTED_SUB_BARS,
+    _PARENT_INTERVAL,
+    _SOURCE_INTERVAL,
+    _DROPPED_COLUMNS,
+    _SPARSE_COLUMNS,
+    _coverage_bucket_row,
+    _floor_to_local_minute,
+    _group_is_on_grid,
+    _normalize_source_frame,
+    _timestamps_matching_source_dtype,
+    _validate_15s_cadence,
+    _validate_group_ohlcv,
+    _validate_source_frame,
     build_derivation_provenance,
     derive_complete_parent_ohlcv,
     hash_source_frame,
 )
+from thesistester.persistence.local_store import hash_dataframe
 from thesistester.data.loader import load_ohlcv
 from thesistester.data.resample import resample_ohlcv
 from thesistester.engine.intrabar import (
@@ -449,3 +466,121 @@ def test_unsupported_parent_interval_fails_closed():
     source = _complete_minute("2026-06-02 09:30:00")
     with pytest.raises(ValueError, match="parent_interval"):
         derive_complete_parent_ohlcv(source, parent_interval="5min")
+
+
+def _loop_reference_derive(source: pd.DataFrame) -> DerivedParentResult:
+    """Pre-E-9 Python groupby (QI-14-06). Hash-locks the vectorized on-grid path."""
+    source_frame = _normalize_source_frame(source)
+    _validate_source_frame(source_frame)
+    _validate_15s_cadence(source_frame["timestamp"])
+    buckets = source_frame["timestamp"].map(
+        lambda value: pd.Timestamp(value).replace(second=0, microsecond=0, nanosecond=0)
+    )
+    parent_rows = []
+    dropped_rows = []
+    sparse_rows = []
+    for bucket_start, group in source_frame.groupby(buckets, sort=True):
+        bucket_ts = pd.Timestamp(bucket_start)
+        group = group.sort_values("timestamp").reset_index(drop=True)
+        observed = list(group["timestamp"])
+        if not _group_is_on_grid(observed, bucket_ts):
+            dropped_rows.append(
+                _coverage_bucket_row(
+                    timestamp=bucket_ts,
+                    reason="timestamp_misalignment",
+                    observed=observed,
+                )
+            )
+            continue
+        _validate_group_ohlcv(group, bucket_ts)
+        parent_rows.append(
+            {
+                "timestamp": bucket_ts,
+                "open": float(group["open"].iloc[0]),
+                "high": float(group["high"].max()),
+                "low": float(group["low"].min()),
+                "close": float(group["close"].iloc[-1]),
+                "volume": float(group["volume"].sum()),
+            }
+        )
+        if len(group) != _EXPECTED_SUB_BARS:
+            sparse_rows.append(
+                _coverage_bucket_row(
+                    timestamp=bucket_ts,
+                    reason="incomplete_coverage",
+                    observed=observed,
+                )
+            )
+    if not parent_rows:
+        raise ValueError(
+            "observed aligned derivation retained no parent bars; "
+            f"dropped {len(dropped_rows)} misaligned minute buckets"
+        )
+    parent_data = pd.DataFrame(parent_rows, columns=list(REQUIRED_COLUMNS))
+    parent_data["timestamp"] = _timestamps_matching_source_dtype(
+        parent_data["timestamp"], source_frame["timestamp"].dtype
+    )
+    dropped_buckets = pd.DataFrame(dropped_rows, columns=list(_DROPPED_COLUMNS))
+    sparse_buckets = pd.DataFrame(sparse_rows, columns=list(_SPARSE_COLUMNS))
+    if not dropped_buckets.empty:
+        dropped_buckets["timestamp"] = _timestamps_matching_source_dtype(
+            dropped_buckets["timestamp"], source_frame["timestamp"].dtype
+        )
+    if not sparse_buckets.empty:
+        sparse_buckets["timestamp"] = _timestamps_matching_source_dtype(
+            sparse_buckets["timestamp"], source_frame["timestamp"].dtype
+        )
+    return DerivedParentResult(
+        parent_data=parent_data.reset_index(drop=True),
+        source_data=source_frame.reset_index(drop=True),
+        source_interval=_SOURCE_INTERVAL,
+        parent_interval=_PARENT_INTERVAL,
+        dropped_buckets=dropped_buckets.reset_index(drop=True),
+        sparse_buckets=sparse_buckets.reset_index(drop=True),
+        derivation_policy=DERIVATION_POLICY_DEFAULT,
+    )
+
+
+def test_floor_to_local_minute_matches_replace_across_dst_fall_back():
+    timestamps = pd.to_datetime(
+        [
+            "2026-11-01 05:59:00+00:00",
+            "2026-11-01 05:59:15+00:00",
+            "2026-11-01 05:59:45+00:00",
+            "2026-11-01 06:00:00+00:00",
+            "2026-11-01 06:00:15+00:00",
+        ],
+        utc=True,
+    ).tz_convert("America/New_York")
+    expected = timestamps.map(
+        lambda value: pd.Timestamp(value).replace(second=0, microsecond=0, nanosecond=0)
+    )
+    floored = _floor_to_local_minute(pd.Series(timestamps))
+    assert [ts.isoformat() for ts in floored] == [ts.isoformat() for ts in expected]
+
+
+def test_vectorized_derive_is_hash_identical_to_loop_reference():
+    """QI-14-06 / QR E-9: on-grid vectorization must not change parent or diagnostics."""
+    vendor = load_ohlcv(
+        VENDOR_FIXTURES / "quantower_history_exporter_15s.csv",
+        format_profile="quantower_history_exporter",
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+    sparse = _complete_minute("2026-06-02 09:30:00").iloc[:2]
+    misaligned = _complete_minute("2026-06-02 09:31:00")
+    misaligned.loc[3, "timestamp"] = misaligned.loc[3, "timestamp"] + pd.Timedelta(seconds=5)
+    complete = _complete_minute("2026-06-02 09:32:00", open_price=120.0)
+    mixed = pd.concat([sparse, misaligned, complete], ignore_index=True)
+
+    for source in (vendor, mixed):
+        result = derive_complete_parent_ohlcv(source)
+        reference = _loop_reference_derive(source)
+        assert hash_dataframe(result.parent_data) == hash_dataframe(reference.parent_data)
+        assert hash_dataframe(result.dropped_buckets) == hash_dataframe(reference.dropped_buckets)
+        assert hash_dataframe(result.sparse_buckets) == hash_dataframe(reference.sparse_buckets)
+        assert hash_dataframe(result.source_data) == hash_dataframe(reference.source_data)
+        assert build_derivation_provenance(
+            result, format_profile="quantower_history_exporter"
+        ) == build_derivation_provenance(reference, format_profile="quantower_history_exporter")
+        assert result.derivation_policy == DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2

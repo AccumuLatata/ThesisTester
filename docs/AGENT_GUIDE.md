@@ -168,8 +168,11 @@ Draft ``min_valid_confluences`` accept AO1 ``0`` (QI-09-11). E-6
 three integrity bars on pages 12/14 (QI-09-10). E-7
 ([#589](https://github.com/AccumuLatata/ThesisTester/pull/589)) reuses the
 Signals zone-level any/all help on Setup Builder naked controls
-(QI-03-09). E-8 (this PR) adds optional HTF/3c columns to the Signals
-preview when non-null (QI-03-11). Next: E-9.
+(QI-03-09). E-8
+([#590](https://github.com/AccumuLatata/ThesisTester/pull/590)) adds optional
+HTF/3c columns to the Signals preview when non-null (QI-03-11). E-9 (this PR)
+vectorizes on-grid 15s→1m derive under locked
+``observed_aligned_15s_to_1m_v2`` (QI-14-06). Next: E-10.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -419,8 +422,11 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    the three integrity bars on pages 12/14 (QI-09-10). E-7
    ([#589](https://github.com/AccumuLatata/ThesisTester/pull/589)) reuses
    the Signals zone-level any/all help on Setup Builder naked controls
-   (QI-03-09). E-8 (this PR) adds optional HTF/3c columns to the Signals
-   preview when non-null (QI-03-11). Next: E-9.
+   (QI-03-09). E-8
+   ([#590](https://github.com/AccumuLatata/ThesisTester/pull/590)) adds
+   optional HTF/3c columns to the Signals preview when non-null (QI-03-11).
+   E-9 (this PR) vectorizes on-grid 15s→1m derive under locked
+   ``observed_aligned_15s_to_1m_v2`` (QI-14-06). Next: E-10.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
