@@ -240,9 +240,10 @@ page-local — do not `from viewer import` those names. Studies-scoped keys:
 - `normalize_levels_config(config, *, instrument)` — product defaults, instrument
   binding (inbound `instrument` keys are ignored; the parameter wins),
   unknown-key rejection, and sorted unordered list fields via
-  `canonicalize_levels_list_fields` / `LEVELS_SORT_KEYS`. **H4 locked:** three
-  planes (page widgets / these defaults / kwargs). Omit a family key ⇒ on;
-  CAI recipes merge product DEFAULT when a key is missing.
+  `levels.defaults.canonicalize_levels_list_fields` / `LEVELS_SORT_KEYS`.
+  **H4 locked:** three planes (page widgets / these defaults / kwargs).
+  Omit a family key ⇒ on; CAI recipes merge product DEFAULT when a key
+  is missing.
 - frozen `DataIdentity` / `LevelsIdentity` / `ExperimentIdentity` constructors
   used by the headless API, CLI, classic page state, and bundle restore.
   **H9 locked:** `compute_dataset_id` / `DataIdentity.dataset_id` omit
@@ -1944,13 +1945,14 @@ settings.
 When a saved snapshot is loaded, `_sync_levels_widget_state` restores all advanced opt-in controls.
 `_normalize_levels_settings` and `_sync_levels_widget_state` fill missing keys from
 `DEFAULT_LEVELS_SETTINGS` and sort the same list fields via
-`canonicalize_levels_list_fields` / `LEVELS_SORT_KEYS` (QI-02-04 / D-6). There is no
-third default table and no private `_LEVELS_SORT_KEYS` import. Extra snapshot keys are
-kept and `instrument` is not injected (page/snapshot path). A stored snapshot that
-omits product-table keys is treated as settings-stale after that fill so a frame
-computed under the old implicit-off table is not treated as current. Identity
-derivation still calls `normalize_levels_config`. The three planes stay distinct:
-page widgets / `normalize_levels_config` / `compute_all_levels` kwargs.
+`thesistester.levels.defaults.canonicalize_levels_list_fields` /
+`LEVELS_SORT_KEYS` (QI-02-04 / D-6). There is no third default table and no
+page → `research_identity` import. Extra snapshot keys are kept and `instrument`
+is not injected (page/snapshot path). A stored snapshot that omits product-table
+keys is treated as settings-stale after that fill so a frame computed under the
+old implicit-off table is not treated as current. Identity derivation still
+calls `normalize_levels_config`. The three planes stay distinct: page widgets /
+`normalize_levels_config` / `compute_all_levels` kwargs.
 
 Direct low-level `compute_all_levels` calls retain disabled keyword defaults; the shared
 product configuration is applied by the page and headless API.

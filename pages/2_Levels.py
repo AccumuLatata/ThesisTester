@@ -9,8 +9,10 @@ from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
-from thesistester.research_identity import canonicalize_levels_list_fields
+from thesistester.levels.defaults import (
+    DEFAULT_LEVELS_SETTINGS,
+    canonicalize_levels_list_fields,
+)
 from thesistester.setup import is_setup_eligible_level_column
 from thesistester.persistence import (
     clear_active_levels_hash,

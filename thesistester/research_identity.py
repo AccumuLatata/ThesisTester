@@ -15,7 +15,11 @@ from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
+from thesistester.levels.defaults import (
+    DEFAULT_LEVELS_SETTINGS,
+    OPTIONAL_LEVELS_SETTINGS,
+    canonicalize_levels_list_fields,
+)
 from thesistester.levels.apoc_tick import (
     APOC_PROFILE_SOURCES,
     LEVELS_APOC_IDENTITY_KEYS,
@@ -46,38 +50,9 @@ from thesistester.persistence.local_store import (
 RESEARCH_IDENTITY_SCHEMA_VERSION = 1
 LEVELS_ARTIFACT_SCHEMA_VERSION = 1
 
-# Unordered list fields: order is not semantically meaningful for identity.
-# Public so the Levels page snapshot path sorts the same keys without a
-# private import (QI-02-04 / D-6).
-LEVELS_SORT_KEYS = (
-    "sma_lengths",
-    "ema_lengths",
-    "sma_timeframes",
-    "ema_timeframes",
-    "vwap_windows",
-    "poc_windows",
-    "pivot_timeframes",
-)
-
 EXECUTION_ORIGINS = frozenset({"api", "assistant", "cli", "classic", "study", "unknown"})
 
 _IDENTITY_META_FILENAME = "research_identity.json"
-
-
-def canonicalize_levels_list_fields(settings: dict[str, Any]) -> dict[str, Any]:
-    """Sort the same unordered list keys as ``normalize_levels_config``.
-
-    Mutates ``settings`` in place and returns it. List and tuple values are
-    replaced with a new sorted list. Other types are left unchanged so the
-    page/snapshot path can keep extra or malformed keys without raising.
-    """
-    for key in LEVELS_SORT_KEYS:
-        value = settings.get(key)
-        if isinstance(value, list):
-            settings[key] = sorted(value)
-        elif isinstance(value, tuple):
-            settings[key] = sorted(list(value))
-    return settings
 
 
 def normalize_levels_config(

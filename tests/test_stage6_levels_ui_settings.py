@@ -12,7 +12,6 @@ import pandas as pd
 
 from thesistester.levels import compute_all_levels
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
-from thesistester.research_identity import LEVELS_SORT_KEYS, canonicalize_levels_list_fields
 
 
 # ---------------------------------------------------------------------------
@@ -231,8 +230,13 @@ class TestNormalizeStage6Defaults:
         assert "instrument" not in result
 
     def test_page_uses_public_list_canonicalizer(self):
+        from thesistester.levels.defaults import (
+            LEVELS_SORT_KEYS,
+            canonicalize_levels_list_fields,
+        )
+
         source = pathlib.Path(_mod.__file__).read_text(encoding="utf-8")
-        assert "import _LEVELS_SORT_KEYS" not in source
+        assert "research_identity" not in source
         assert "canonicalize_levels_list_fields" in source
         assert LEVELS_SORT_KEYS == (
             "sma_lengths",
