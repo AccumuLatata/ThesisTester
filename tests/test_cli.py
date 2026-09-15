@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pandas as pd
-import pytest
 import yaml
 
 import thesistester.api as api
@@ -618,51 +618,71 @@ def test_module_cli_help_exits_zero():
 
 
 def test_module_cli_run_error_paths_exit_one(tmp_path):
-    """QI-6 §3.2: missing file / invalid YAML / empty runs → exit 1 + traceback."""
+    """QI-06-07 / E-3: missing file / invalid YAML / empty runs → rc ≠ 0, no traceback."""
     missing = tmp_path / "missing.yaml"
     missing_proc = _module_cli("run", str(missing))
-    assert missing_proc.returncode == 1
-    assert "Traceback" in missing_proc.stderr
+    assert missing_proc.returncode != 0
+    assert missing_proc.returncode == os.EX_DATAERR
+    assert "Traceback" not in missing_proc.stderr
     assert "Unable to load experiment file" in missing_proc.stderr
 
     invalid = tmp_path / "invalid.yaml"
     invalid.write_text("[\n", encoding="utf-8")
     invalid_proc = _module_cli("run", str(invalid))
-    assert invalid_proc.returncode == 1
-    assert "Traceback" in invalid_proc.stderr
+    assert invalid_proc.returncode != 0
+    assert invalid_proc.returncode == os.EX_DATAERR
+    assert "Traceback" not in invalid_proc.stderr
     assert "Unable to load experiment file" in invalid_proc.stderr
 
     empty = tmp_path / "empty-runs.yaml"
     empty.write_text("schema_version: 1\nruns: []\n", encoding="utf-8")
     empty_proc = _module_cli("run", str(empty))
-    assert empty_proc.returncode == 1
-    assert "Traceback" in empty_proc.stderr
+    assert empty_proc.returncode != 0
+    assert empty_proc.returncode == os.EX_DATAERR
+    assert "Traceback" not in empty_proc.stderr
     assert "Experiment file must define a non-empty runs list" in empty_proc.stderr
 
 
-def test_cli_main_error_paths_raise_value_error(tmp_path):
-    """QI-06-07 residual: ``cli.main`` does not catch ValueError (raw traceback)."""
+def test_cli_main_error_paths_return_ex_dataerr(tmp_path, capsys):
+    """QI-06-07 / E-3: ``cli.main`` prints ``str(exc)`` and returns ``EX_DATAERR``."""
     missing = tmp_path / "missing.yaml"
-    with pytest.raises(ValueError, match="Unable to load experiment file"):
-        main(["run", str(missing)])
+    assert main(["run", str(missing)]) == os.EX_DATAERR
+    missing_err = capsys.readouterr().err
+    assert "Unable to load experiment file" in missing_err
+    assert "Traceback" not in missing_err
 
     not_mapping = tmp_path / "list.yaml"
     not_mapping.write_text("- just a list\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="YAML mapping"):
-        main(["run", str(not_mapping)])
+    assert main(["run", str(not_mapping)]) == os.EX_DATAERR
+    assert "YAML mapping" in capsys.readouterr().err
 
     empty = tmp_path / "empty-runs.yaml"
     empty.write_text("schema_version: 1\nruns: []\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="non-empty runs list"):
-        main(["run", str(empty)])
+    assert main(["run", str(empty)]) == os.EX_DATAERR
+    assert "non-empty runs list" in capsys.readouterr().err
 
     unknown = tmp_path / "unknown-key.yaml"
     unknown.write_text(
         "schema_version: 1\nruns:\n  - name: x\nextra: 1\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="Unknown experiment configuration keys"):
-        main(["run", str(unknown)])
+    assert main(["run", str(unknown)]) == os.EX_DATAERR
+    assert "Unknown experiment configuration keys" in capsys.readouterr().err
+
+
+def test_cli_main_oserror_returns_ex_noinput(tmp_path, monkeypatch, capsys):
+    """QI-06-07 / E-3: unwrapped ``OSError`` on ``run`` is ``EX_NOINPUT``."""
+    yaml_path = tmp_path / "experiment.yaml"
+    yaml_path.write_text("schema_version: 1\nruns: []\n", encoding="utf-8")
+
+    def _raise_oserror(_path):
+        raise OSError("experiment unreadable")
+
+    monkeypatch.setattr("thesistester.cli.load_experiment_file", _raise_oserror)
+    assert main(["run", str(yaml_path)]) == os.EX_NOINPUT
+    err = capsys.readouterr().err
+    assert err.strip() == "experiment unreadable"
+    assert "Traceback" not in err
 
 
 def test_cli_main_resolves_yaml_workers_and_output_dir(tmp_path, monkeypatch, capsys):

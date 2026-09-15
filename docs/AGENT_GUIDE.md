@@ -41,6 +41,14 @@ the loader object. No pydantic. No composer collapse.
 python -m thesistester run experiment.yaml --workers 4
 ```
 
+### CLI errors (`run` verb)
+
+`python -m thesistester run` catches `ValueError` / `OSError` in `cli.main`
+(QI-06-07 / E-3), prints `str(exc)` to stderr, and returns `os.EX_DATAERR`
+(65) / `os.EX_NOINPUT` (66). No traceback for those typed refusals
+(missing file, invalid YAML, empty `runs`). `study` and `journal` dispatch
+is unchanged — each verb keeps its own error printer.
+
 ### Research Study Runner (RS1–RS5 + post-MVP through RS-D9)
 
 For closed multi-factor confluence studies, use the additive Study Runner (see
@@ -136,8 +144,11 @@ Studies Build section collectors / renderers (QI-07-01). D-10
 Assistant voice/sidecar and Advanced blocks (QI-09-03). E-1
 ([#583](https://github.com/AccumuLatata/ThesisTester/pull/583)) routes
 Levels Calculate through ``product_tick_family_preflight`` (QI-02-03).
-E-2 (this PR) maps known Levels ``ValueError`` refusals to ``st.error``
-without a traceback expander (QI-02-05). Next: E-3.
+E-2
+([#584](https://github.com/AccumuLatata/ThesisTester/pull/584)) maps known
+Levels ``ValueError`` refusals to ``st.error`` without a traceback expander
+(QI-02-05). E-3 (this PR) maps ``run``-verb ``ValueError`` / ``OSError`` to
+``EX_DATAERR`` / ``EX_NOINPUT`` without a traceback (QI-06-07). Next: E-4.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -370,8 +381,11 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Assistant voice/sidecar and Advanced blocks (QI-09-03). E-1
    ([#583](https://github.com/AccumuLatata/ThesisTester/pull/583)) routes
    Levels Calculate through ``product_tick_family_preflight`` (QI-02-03).
-   E-2 (this PR) maps known Levels ``ValueError`` refusals to ``st.error``
-   without a traceback expander (QI-02-05). Next: E-3.
+   E-2
+   ([#584](https://github.com/AccumuLatata/ThesisTester/pull/584)) maps known
+   Levels ``ValueError`` refusals to ``st.error`` without a traceback expander
+   (QI-02-05). E-3 (this PR) maps ``run``-verb ``ValueError`` / ``OSError`` to
+   ``EX_DATAERR`` / ``EX_NOINPUT`` without a traceback (QI-06-07). Next: E-4.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
