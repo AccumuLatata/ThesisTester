@@ -179,9 +179,13 @@ the fixed-bracket ``sl_first`` P7 walk inside ``sim_core`` (QI-14-03).
 E-11 stays parked (CTO request only). F-5
 ([#593](https://github.com/AccumuLatata/ThesisTester/pull/593)) names Validation /
 Portfolio consumers on the ``ARCHITECTURE.md`` session-key table
-(QI-13-04 / QI-10-02). F-9 (this PR) strips ``file:line`` cites and
-points the rule ledger at the B-10 import-linter contract; AIA-0 names
-the lazy ``st.secrets`` fallback (QI-13-06 / QI-09-05). Next: F-10.
+(QI-13-04 / QI-10-02). F-9
+([#594](https://github.com/AccumuLatata/ThesisTester/pull/594)) strips
+``file:line`` cites and points the rule ledger at the B-10 import-linter
+contract; AIA-0 names the lazy ``st.secrets`` fallback (QI-13-06 /
+QI-09-05). F-10 (this PR) re-records ``CAI_BASELINE.md`` small/realistic
+tables on the tick-gated path (QI-14-02 / QI-14-07). Next: none
+(QR-F complete; E-11 parked).
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -451,10 +455,13 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    F-5
    ([#593](https://github.com/AccumuLatata/ThesisTester/pull/593)) names
    Validation / Portfolio consumers on the ``ARCHITECTURE.md``
-   session-key table (QI-13-04 / QI-10-02). F-9 (this PR) strips
+   session-key table (QI-13-04 / QI-10-02). F-9
+   ([#594](https://github.com/AccumuLatata/ThesisTester/pull/594)) strips
    ``file:line`` cites and points the rule ledger at the B-10
    import-linter contract; AIA-0 names the lazy ``st.secrets``
-   fallback (QI-13-06 / QI-09-05). Next: F-10.
+   fallback (QI-13-06 / QI-09-05). F-10 (this PR) re-records
+   ``CAI_BASELINE.md`` small/realistic tables on the tick-gated path
+   (QI-14-02 / QI-14-07). Next: none (QR-F complete; E-11 parked).
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
@@ -925,7 +932,8 @@ Every request must first parse as an `AssistantRequest`, then pass
   / anchor / rules), not the setup mapping keys. Do not revive
   typical-price `_rolling_poc`.
   `--fixture both` / `--fixture realistic` emit six stage rows. Timing
-  tables stay informational; F-10 re-records them.
+  tables stay informational; F-10 re-recorded them on the tick-gated
+  path (QI-14-02 / QI-14-07).
 - **E402 / page import path (B-14 / QI-10-08).** Only `pages/1_Data.py` may
   execute code before importing `thesistester` (it inserts `REPO_ROOT` onto
   `sys.path`). The ruff `E402` per-file ignore is that file only — do not
