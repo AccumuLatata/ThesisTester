@@ -15,7 +15,11 @@ from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
-from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS, OPTIONAL_LEVELS_SETTINGS
+from thesistester.levels.defaults import (
+    DEFAULT_LEVELS_SETTINGS,
+    OPTIONAL_LEVELS_SETTINGS,
+    canonicalize_levels_list_fields,
+)
 from thesistester.levels.apoc_tick import (
     APOC_PROFILE_SOURCES,
     LEVELS_APOC_IDENTITY_KEYS,
@@ -46,17 +50,6 @@ from thesistester.persistence.local_store import (
 RESEARCH_IDENTITY_SCHEMA_VERSION = 1
 LEVELS_ARTIFACT_SCHEMA_VERSION = 1
 
-# Unordered list fields: order is not semantically meaningful for identity.
-_LEVELS_SORT_KEYS = (
-    "sma_lengths",
-    "ema_lengths",
-    "sma_timeframes",
-    "ema_timeframes",
-    "vwap_windows",
-    "poc_windows",
-    "pivot_timeframes",
-)
-
 EXECUTION_ORIGINS = frozenset({"api", "assistant", "cli", "classic", "study", "unknown"})
 
 _IDENTITY_META_FILENAME = "research_identity.json"
@@ -70,8 +63,11 @@ def normalize_levels_config(
     """Merge product defaults, bind instrument, and canonicalize list fields.
 
     This is the API-path normalizer lifted for shared use. Unknown keys are
-    rejected. Classic page sparse setdefaults remain a separate legacy UX path;
-    identity derivation must call this function on equivalent inputs.
+    rejected. Classic page snapshot/widget helpers merge the same
+    ``DEFAULT_LEVELS_SETTINGS`` and sort the same list keys via
+    ``canonicalize_levels_list_fields`` / ``LEVELS_SORT_KEYS`` without
+    requiring ``instrument`` or rejecting unknown keys (page/snapshot path).
+    Identity derivation must call this function on equivalent inputs.
     """
     if not isinstance(instrument, str) or not instrument.strip():
         raise ValueError("instrument must be a non-empty string")
@@ -107,10 +103,7 @@ def normalize_levels_config(
             )
     settings = {**DEFAULT_LEVELS_SETTINGS, **raw}
     settings["instrument"] = instrument
-    for key in _LEVELS_SORT_KEYS:
-        value = settings[key]
-        settings[key] = sorted(list(value))
-    return settings
+    return canonicalize_levels_list_fields(settings)
 
 
 def _dataset_tick_paths(dataset: Mapping[str, Any] | None) -> list[str | Path] | None:

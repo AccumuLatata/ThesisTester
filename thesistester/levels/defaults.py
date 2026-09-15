@@ -44,3 +44,33 @@ DEFAULT_LEVELS_SETTINGS: dict[str, Any] = {
 OPTIONAL_LEVELS_SETTINGS: frozenset[str] = frozenset(
     {"apoc_profile_source", "rolling_poc_profile_source"}
 )
+
+# Unordered list fields: order is not semantically meaningful for identity.
+# Shared by ``normalize_levels_config`` and the Levels page snapshot path
+# (QI-02-04 / D-6). Not a third default table — these are the list-valued
+# keys already in ``DEFAULT_LEVELS_SETTINGS``.
+LEVELS_SORT_KEYS = (
+    "sma_lengths",
+    "ema_lengths",
+    "sma_timeframes",
+    "ema_timeframes",
+    "vwap_windows",
+    "poc_windows",
+    "pivot_timeframes",
+)
+
+
+def canonicalize_levels_list_fields(settings: dict[str, Any]) -> dict[str, Any]:
+    """Sort the same unordered list keys as ``normalize_levels_config``.
+
+    Mutates ``settings`` in place and returns it. List and tuple values are
+    replaced with a new sorted list. Other types are left unchanged so the
+    page/snapshot path can keep extra or malformed keys without raising.
+    """
+    for key in LEVELS_SORT_KEYS:
+        value = settings.get(key)
+        if isinstance(value, list):
+            settings[key] = sorted(value)
+        elif isinstance(value, tuple):
+            settings[key] = sorted(list(value))
+    return settings

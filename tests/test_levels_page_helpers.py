@@ -62,6 +62,7 @@ def _import_levels_helpers():
         mod,
         mod._normalize_levels_settings,
         mod._sync_levels_widget_state,
+        mod._levels_settings_are_stale,
         mod._calculate_levels_transaction,
         mod._LEVELS_CALCULATION_STATUS_KEY,
         mod._SMA_TIMEFRAMES_KEY,
@@ -77,6 +78,7 @@ def _import_levels_helpers():
     _levels_page,
     _normalize_levels_settings,
     _sync_levels_widget_state,
+    _levels_settings_are_stale,
     _calculate_levels_transaction,
     _LEVELS_CALCULATION_STATUS_KEY,
     _SMA_TIMEFRAMES_KEY,
@@ -101,9 +103,9 @@ def test_normalize_levels_settings_sorts_indicator_timeframes():
     assert normalized["ema_timeframes"] == ["1min", "5min"]
     assert normalized["vwap_windows"] == ["15min", "1h"]
     assert normalized["poc_windows"] == ["30min", "4h"]
-    assert normalized["prior_day_profile_aggregation_ticks"] == 1
-    assert normalized["prior_week_profile_aggregation_ticks"] == 1
-    assert normalized["prior_month_profile_aggregation_ticks"] == 1
+    assert normalized["prior_day_profile_aggregation_ticks"] == 4
+    assert normalized["prior_week_profile_aggregation_ticks"] == 8
+    assert normalized["prior_month_profile_aggregation_ticks"] == 10
 
 
 def test_sync_levels_widget_state_restores_indicator_timeframe_selections():
@@ -121,6 +123,13 @@ def test_sync_levels_widget_state_restores_indicator_timeframe_selections():
     assert "unsupported" not in _st_stub.session_state[_EMA_TIMEFRAMES_KEY]
 
 
+def test_sparse_stored_settings_are_stale_after_product_fill():
+    current = _normalize_levels_settings({"opening_range_minutes": 30})
+    assert _levels_settings_are_stale({"opening_range_minutes": 30}, current) is True
+    assert current is not None
+    assert _levels_settings_are_stale(dict(current), current) is False
+
+
 def test_sync_levels_widget_state_restores_prior_profile_aggregation_ticks():
     _st_stub.session_state.clear()
     _sync_levels_widget_state(
@@ -132,7 +141,7 @@ def test_sync_levels_widget_state_restores_prior_profile_aggregation_ticks():
 
     assert _st_stub.session_state[_PRIOR_DAY_AGG_TICKS_KEY] == 4
     assert _st_stub.session_state[_PRIOR_WEEK_AGG_TICKS_KEY] == 10
-    assert _st_stub.session_state[_PRIOR_MONTH_AGG_TICKS_KEY] == 1
+    assert _st_stub.session_state[_PRIOR_MONTH_AGG_TICKS_KEY] == 10
 
 
 def test_calculation_transaction_installs_complete_results_and_diagnostics():
