@@ -52,9 +52,7 @@ def vendor_derived_1m_parent_hash_lock(frame: pd.DataFrame) -> str:
     try:
         return VENDOR_DERIVED_1M_PARENT_HASH_BY_UNIT[unit]
     except KeyError as exc:
-        raise AssertionError(
-            f"unrecorded vendor parent hash for timestamp unit {unit!r}"
-        ) from exc
+        raise AssertionError(f"unrecorded vendor parent hash for timestamp unit {unit!r}") from exc
 
 
 def _complete_minute(

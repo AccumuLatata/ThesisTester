@@ -320,9 +320,7 @@ def _validate_aligned_source_ohlcv(aligned_rows: pd.DataFrame) -> None:
         return
     for bucket_ts, group in aligned_rows.groupby("_bucket", sort=True):
         _validate_group_ohlcv(group, pd.Timestamp(bucket_ts))
-    raise ValueError(
-        "source OHLC/volume failed vectorized validation without a per-minute match"
-    )
+    raise ValueError("source OHLC/volume failed vectorized validation without a per-minute match")
 
 
 def _coverage_bucket_row_from_work(
