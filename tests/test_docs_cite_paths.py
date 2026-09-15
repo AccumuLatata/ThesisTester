@@ -44,14 +44,15 @@ def test_clock_strings_are_not_file_line_cites() -> None:
 
 
 def test_aia0_names_lazy_st_secrets_fallback() -> None:
+    """Bind QI-09-05 to the AIA-0 opening paragraph, not a later H2 body."""
     text = ARCHITECTURE.read_text(encoding="utf-8")
     heading = "## AI Research Assistant contract boundary (AIA-0)"
     start = text.find(heading)
     assert start >= 0, "AIA-0 heading missing from ARCHITECTURE.md"
-    rest = text[start + len(heading) :]
-    next_h2 = rest.find("\n## ")
-    section = rest if next_h2 < 0 else rest[:next_h2]
-    lowered = section.lower()
-    assert "st.secrets" in section, "AIA-0 must name the lazy st.secrets fallback"
-    assert "lazy" in lowered, "AIA-0 must say the secrets import is lazy"
+    rest = text[start + len(heading) :].lstrip("\n")
+    first_para = rest.split("\n\n", 1)[0]
+    lowered = first_para.lower()
+    assert "st.secrets" in first_para, "AIA-0 opening paragraph must name st.secrets"
+    assert "lazy" in lowered, "AIA-0 opening paragraph must say the import is lazy"
+    assert "declared public" in lowered and "headless symbols" in lowered
     assert "does not execute research, import streamlit" not in lowered
