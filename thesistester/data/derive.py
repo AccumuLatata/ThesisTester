@@ -154,12 +154,18 @@ def derive_complete_parent_ohlcv(
         )
 
     aligned_rows = work.loc[work["_bucket"].map(aligned)]
-    parent_agg = aligned_rows.groupby("_bucket", sort=True).agg(
-        open=("open", "first"),
-        high=("high", "max"),
-        low=("low", "min"),
-        close=("close", "last"),
-        volume=("volume", "sum"),
+    # Positional open/close (skipna=False) matches the locked iloc[0]/iloc[-1]
+    # loop. Default GroupBy.first/last skip NaN and would emit the next finite
+    # print if validation were ever reordered.
+    grouped = aligned_rows.groupby("_bucket", sort=True)
+    parent_agg = pd.DataFrame(
+        {
+            "open": grouped["open"].first(skipna=False),
+            "high": grouped["high"].max(),
+            "low": grouped["low"].min(),
+            "close": grouped["close"].last(skipna=False),
+            "volume": grouped["volume"].sum(skipna=False),
+        }
     )
     for column in ("open", "high", "low", "close", "volume"):
         parent_agg[column] = parent_agg[column].astype("float64")
@@ -285,14 +291,18 @@ def _floor_to_local_minute(timestamps: pd.Series) -> pd.Series:
     """Floor to exchange-local minutes while preserving DST fold.
 
     Equivalent to ``Timestamp.replace(second=0, microsecond=0, nanosecond=0)``.
-    Subtracting intra-minute nanos keeps the timezone fold (unlike ``floor("min")``).
+    Subtracting intra-minute offsets keeps the timezone fold (unlike ``floor("min")``).
+    Stay in the source datetime unit: a nanosecond timedelta would promote
+    pandas 3 ``datetime64[us, tz]`` buckets to ``ns`` and make parent identity
+    depend on ``_timestamps_matching_source_dtype`` recovery.
     """
-    nanos_into_minute = (
-        timestamps.dt.second.to_numpy(dtype="int64") * 1_000_000_000
-        + timestamps.dt.microsecond.to_numpy(dtype="int64") * 1_000
-        + timestamps.dt.nanosecond.to_numpy(dtype="int64")
+    intra = pd.to_timedelta(timestamps.dt.second, unit="s") + pd.to_timedelta(
+        timestamps.dt.microsecond, unit="us"
     )
-    return timestamps - pd.to_timedelta(nanos_into_minute, unit="ns")
+    nanoseconds = timestamps.dt.nanosecond
+    if bool((nanoseconds != 0).any()):
+        intra = intra + pd.to_timedelta(nanoseconds, unit="ns")
+    return timestamps - intra
 
 
 def _validate_aligned_source_ohlcv(aligned_rows: pd.DataFrame) -> None:
@@ -310,6 +320,9 @@ def _validate_aligned_source_ohlcv(aligned_rows: pd.DataFrame) -> None:
         return
     for bucket_ts, group in aligned_rows.groupby("_bucket", sort=True):
         _validate_group_ohlcv(group, pd.Timestamp(bucket_ts))
+    raise ValueError(
+        "source OHLC/volume failed vectorized validation without a per-minute match"
+    )
 
 
 def _coverage_bucket_row_from_work(

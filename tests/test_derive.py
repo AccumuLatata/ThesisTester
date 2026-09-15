@@ -39,6 +39,22 @@ from thesistester.engine.intrabar import (
 )
 
 VENDOR_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "vendor"
+# hash_dataframe includes timestamp unit (pandas 2 ns / pandas 3 us).
+VENDOR_DERIVED_1M_PARENT_HASH_BY_UNIT = {
+    "us": "2b6d2414b8cbd60e3de08892748bfdf2d82b738ad6c25e4bcc383d5b78f72033",
+    "ns": "773d0fc033e678824933331b814e7a4ed19c17caf8f845af9ce22e6390ca159d",
+}
+
+
+def vendor_derived_1m_parent_hash_lock(frame: pd.DataFrame) -> str:
+    """Return the locked vendor 15s→1m parent hash for this pandas datetime unit."""
+    unit = getattr(frame["timestamp"].dtype, "unit", "ns")
+    try:
+        return VENDOR_DERIVED_1M_PARENT_HASH_BY_UNIT[unit]
+    except KeyError as exc:
+        raise AssertionError(
+            f"unrecorded vendor parent hash for timestamp unit {unit!r}"
+        ) from exc
 
 
 def _complete_minute(
@@ -373,6 +389,9 @@ def test_quantower_vendor_15s_derives_and_reconciles_with_r12():
     assert getattr(result.parent_data["timestamp"].dtype, "unit", None) == getattr(
         source["timestamp"].dtype, "unit", None
     )
+    assert hash_dataframe(result.parent_data) == vendor_derived_1m_parent_hash_lock(
+        result.parent_data
+    )
 
 
 def test_future_shock_append_does_not_change_prior_parents_or_diagnostics():
@@ -555,8 +574,51 @@ def test_floor_to_local_minute_matches_replace_across_dst_fall_back():
     expected = timestamps.map(
         lambda value: pd.Timestamp(value).replace(second=0, microsecond=0, nanosecond=0)
     )
-    floored = _floor_to_local_minute(pd.Series(timestamps))
+    series = pd.Series(timestamps)
+    floored = _floor_to_local_minute(series)
     assert [ts.isoformat() for ts in floored] == [ts.isoformat() for ts in expected]
+    assert str(floored.dtype) == str(series.dtype)
+
+
+def _dst_both_0130_hours() -> pd.DataFrame:
+    """Both fall-back 01:30 hours (fold 0 EDT and fold 1 EST)."""
+    first = pd.to_datetime(
+        [
+            "2026-11-01 05:30:00+00:00",
+            "2026-11-01 05:30:15+00:00",
+            "2026-11-01 05:30:30+00:00",
+            "2026-11-01 05:30:45+00:00",
+        ],
+        utc=True,
+    ).tz_convert("America/New_York")
+    second = pd.to_datetime(
+        [
+            "2026-11-01 06:30:00+00:00",
+            "2026-11-01 06:30:15+00:00",
+            "2026-11-01 06:30:30+00:00",
+            "2026-11-01 06:30:45+00:00",
+        ],
+        utc=True,
+    ).tz_convert("America/New_York")
+    stamps = list(first) + list(second)
+    return pd.DataFrame(
+        {
+            "timestamp": stamps,
+            "open": list(range(100, 108)),
+            "high": list(range(101, 109)),
+            "low": list(range(99, 107)),
+            "close": [value + 0.5 for value in range(100, 108)],
+            "volume": [1.0] * 8,
+        }
+    )
+
+
+def _mixed_sparse_misaligned_complete() -> pd.DataFrame:
+    sparse = _complete_minute("2026-06-02 09:30:00").iloc[:2]
+    misaligned = _complete_minute("2026-06-02 09:31:00")
+    misaligned.loc[3, "timestamp"] = misaligned.loc[3, "timestamp"] + pd.Timedelta(seconds=5)
+    complete = _complete_minute("2026-06-02 09:32:00", open_price=120.0)
+    return pd.concat([sparse, misaligned, complete], ignore_index=True)
 
 
 def test_vectorized_derive_is_hash_identical_to_loop_reference():
@@ -567,13 +629,10 @@ def test_vectorized_derive_is_hash_identical_to_loop_reference():
         source_tz="America/New_York",
         target_tz="America/New_York",
     )
-    sparse = _complete_minute("2026-06-02 09:30:00").iloc[:2]
-    misaligned = _complete_minute("2026-06-02 09:31:00")
-    misaligned.loc[3, "timestamp"] = misaligned.loc[3, "timestamp"] + pd.Timedelta(seconds=5)
-    complete = _complete_minute("2026-06-02 09:32:00", open_price=120.0)
-    mixed = pd.concat([sparse, misaligned, complete], ignore_index=True)
+    mixed = _mixed_sparse_misaligned_complete()
+    dst_fold = _dst_both_0130_hours()
 
-    for source in (vendor, mixed):
+    for source in (vendor, mixed, dst_fold):
         result = derive_complete_parent_ohlcv(source)
         reference = _loop_reference_derive(source)
         assert hash_dataframe(result.parent_data) == hash_dataframe(reference.parent_data)
@@ -584,3 +643,37 @@ def test_vectorized_derive_is_hash_identical_to_loop_reference():
             result, format_profile="quantower_history_exporter"
         ) == build_derivation_provenance(reference, format_profile="quantower_history_exporter")
         assert result.derivation_policy == DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2
+
+    assert hash_dataframe(derive_complete_parent_ohlcv(vendor).parent_data) == (
+        vendor_derived_1m_parent_hash_lock(vendor)
+    )
+    mixed_result = derive_complete_parent_ohlcv(mixed)
+    assert len(mixed_result.parent_data) == 2
+    assert list(mixed_result.dropped_buckets["reason"]) == ["timestamp_misalignment"]
+    assert list(mixed_result.sparse_buckets["reason"]) == ["incomplete_coverage"]
+    dst_result = derive_complete_parent_ohlcv(dst_fold)
+    assert [ts.isoformat() for ts in dst_result.parent_data["timestamp"]] == [
+        "2026-11-01T01:30:00-04:00",
+        "2026-11-01T01:30:00-05:00",
+    ]
+
+
+def test_invalid_ohlcv_names_first_failing_parent_minute():
+    bad = _complete_minute("2026-06-02 09:30:00")
+    bad.loc[0, "high"] = 50.0
+    good = _complete_minute("2026-06-02 09:31:00", open_price=110.0)
+    source = pd.concat([bad, good], ignore_index=True)
+    with pytest.raises(ValueError, match="parent minute 2026-06-02 09:30:00-04:00"):
+        derive_complete_parent_ohlcv(source)
+
+
+def test_nan_first_open_fail_closed_does_not_skip_to_next_print():
+    """GroupBy.first skipna=True would take 101; locked path must refuse the minute."""
+    source = _complete_minute("2026-06-02 09:30:00")
+    source.loc[0, "open"] = float("nan")
+    source = pd.concat(
+        [source, _complete_minute("2026-06-02 09:31:00", open_price=110.0)],
+        ignore_index=True,
+    )
+    with pytest.raises(ValueError, match="non-finite values for parent minute 2026-06-02 09:30:00"):
+        derive_complete_parent_ohlcv(source)
