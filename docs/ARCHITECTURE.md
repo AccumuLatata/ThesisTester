@@ -1521,6 +1521,16 @@ D-3 / QI-04-05 extracts sidebar / run-persist / display into
 `thesistester/backtest_*_page_helpers.py` (page is thin orchestration).
 Session-key names are unchanged.
 
+Data UI note: `pages/1_Data.py` keeps title / websocket-cap chrome, H10
+admission (`_apply_source_dataset` legacy `tag_session(raw_df)` vs 15s
+parent abort-on-fatal), dataset-switch (`_clear_dataset_dependent_state` /
+`_set_active_dataset_state`), and 15s prepare/install. D-5 / QI-01-01
+extracts the module-level upload/save tree and splits the D-grade attach
+renderers into `thesistester/data_*_page_helpers.py` /
+`data_page_constants.py`. Session-key names are unchanged
+(`data`, `tick_paths`, `subtimeframe_*`, `ingestion_provenance`,
+`derived_parent_diagnostics`, `roll_policy`).
+
 Validation UI note: `pages/10_Validation.py` keeps the title / A-21 caption,
 trades prelude, Admit inherit, and Focus/H12 honesty on the page. D-4 /
 QI-05-02 extracts sidebar, WFA/OTF persist + WFA display, batteries,
@@ -1678,7 +1688,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
 | `subtimeframe_fallback_parent_bars` | Data page / R18 / Research Bundle import | Backtest/Grid conservative R12 fallback; Research Bundles dataset section | Optional parent-bar fallback frame when the 15s source cannot replay conservatively. Popped on dataset switch (`DATASET_CLEAR_KEYS`); also apply-clear. |
 | `subtimeframe_duplicate_resolution` | Data page 15s-primary duplicate audit | Data-page diagnostics / `ingestion_provenance` | How OHLC-identical 15s source opens were resolved. Popped on dataset switch (`DATASET_CLEAR_KEYS`). |
-| `tick_paths` | Data page optional tick-last attach | Data page honesty / copy-into Studies Build; TJ5 tick join (already-loaded Last prints, not this path list) | `list[str]` durable Quantower Tick–Tick–Last paths under cwd or the local store (launch-parity trusted roots). Not an ingestion mode and not a replacement for `data`. Cleared when dataset identity changes or source invalidation runs |
+| `tick_paths` | Data page optional tick-last attach (`data_tick_page_helpers.py`) | Data page honesty / copy-into Studies Build; TJ5 tick join (already-loaded Last prints, not this path list) | `list[str]` durable Quantower Tick–Tick–Last paths under cwd or the local store (launch-parity trusted roots). Not an ingestion mode and not a replacement for `data`. Cleared when dataset identity changes or source invalidation runs |
 | `_tick_paths_text` | Data page tick path textarea | Data page only | Widget-bound typed paths; not cleared with installed `tick_paths` |
 | `_tick_uploader_nonce` | Data page / bundle source invalidation | Data page tick `file_uploader` key | `int` — bumped so a leftover tick upload cannot re-apply after restore |
 | `_tick_upload_signature` | Data page tick attach | Data page only | Installed-path signature; not bundle-managed |
@@ -1688,7 +1698,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `roll_validation` | Data page roll assumptions | Data page caption | Roll-metadata validation report. Popped on dataset switch. |
 | `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count, sparse-minute count; when 15s source opens were OHLC-identical duplicates, also `source_duplicate_resolution` / group and discarded-row counts / `source_duplicate_audit`) |
 | `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Mapping with `sparse_buckets` (`incomplete_coverage`, retained) and `dropped_buckets` (`timestamp_misalignment`, absent from canonical); never used to patch source or parent bars |
-| `resampled_data` | Data (`pages/1_Data.py`) | Data summary (`pages/1_Data.py`) | `dict[str, pd.DataFrame]` |
+| `resampled_data` | Data (`pages/1_Data.py`) | Data summary (`data_display_page_helpers.py`) | `dict[str, pd.DataFrame]` |
 | `instrument` | Data (`pages/1_Data.py`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/2_Levels.py`, `pages/3_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`) | `str` (e.g., `ES`, `NQ`) |
 | `base_interval` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), dataset persistence (`pages/1_Data.py`) | `str \| None` |
 | `source_timezone` | Data (`pages/1_Data.py`) | Levels fingerprint (`pages/2_Levels.py`), dataset persistence (`pages/1_Data.py`) | `str \| None` |

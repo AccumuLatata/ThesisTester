@@ -613,6 +613,17 @@ _QI1001_A7_APPLY_ONLY_KEYS = (
     "direction_collision_diagnostic",
 )
 _DATA_PAGE_SOURCE = pathlib.Path("pages/1_Data.py").read_text(encoding="utf-8")
+_DATA_PAGE_HELPER_SOURCES = "\n".join(
+    pathlib.Path(path).read_text(encoding="utf-8")
+    for path in (
+        "pages/1_Data.py",
+        "thesistester/data_workspace_page_helpers.py",
+        "thesistester/data_tick_page_helpers.py",
+        "thesistester/data_subtimeframe_page_helpers.py",
+        "thesistester/data_display_page_helpers.py",
+        "thesistester/data_page_constants.py",
+    )
+)
 
 
 def _qi1001_leftover_session(*, data, dataset_id: str) -> dict:
@@ -939,7 +950,9 @@ def test_resolve_existing_tick_path_checks_store_root(tmp_path, monkeypatch):
     dest = tmp_path / "nested" / "ticks.csv"
     dest.parent.mkdir()
     dest.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
-    monkeypatch.setattr(data_page, "get_store_root", lambda: tmp_path)
+    import thesistester.data_tick_page_helpers as tick_helpers
+
+    monkeypatch.setattr(tick_helpers, "get_store_root", lambda: tmp_path)
     assert data_page._resolve_existing_tick_path("nested/ticks.csv") == dest.resolve()
     assert data_page._resolve_existing_tick_path("missing/ticks.csv") is None
 
@@ -950,7 +963,9 @@ def test_classify_typed_tick_path_rejects_outside_trusted_roots(tmp_path, monkey
     store.mkdir()
     outside = tmp_path / "outside.csv"
     outside.write_text("Aggressor flag;Price;Volume;Time left;\n", encoding="utf-8")
-    monkeypatch.setattr(data_page, "get_store_root", lambda: store)
+    import thesistester.data_tick_page_helpers as tick_helpers
+
+    monkeypatch.setattr(tick_helpers, "get_store_root", lambda: store)
     status, found = data_page._classify_typed_tick_path(str(outside))
     assert status == "outside"
     assert found is None
@@ -1123,33 +1138,54 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert data_page.LEGACY_SUBTIMEFRAME_EXPANDER_TITLE == "Legacy dual-upload (optional)"
     assert "DEFAULT_UPLOAD_INGESTION_MODE" in page_text
     assert "Legacy dual-upload (optional)" in page_text
-    assert "Sample data remains the legacy one-minute fixture path." in page_text
+    helper_text = _DATA_PAGE_HELPER_SOURCES
+    assert "Sample data remains the legacy one-minute fixture path." in helper_text
     assert "quantower_history_exporter" in data_page.DERIVE_15S_SUPPORTED_PROFILES
     from thesistester.data import loader as loader_mod
 
     assert data_page.DERIVE_15S_SUPPORTED_PROFILES is loader_mod.DERIVE_15S_SUPPORTED_PROFILES
     assert data_page.SUBTIMEFRAME_FORMAT_PROFILES is loader_mod.SUBTIMEFRAME_FORMAT_PROFILES
     assert data_page.INGESTION_MODE_PRIMARY == "primary"
-    assert "on_change=_on_ingestion_mode_change" in page_text
+    assert "on_change=page._on_ingestion_mode_change" in helper_text
     assert "_leave_15s_primary_session_if_active()" in page_text
     assert "_invalidate_primary_csv_uploader()" in page_text
-    assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in page_text
-    assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
-    page_body = page_text.split("st.title(")[-1]
-    assert "_render_tick_attach(" in page_body
-    assert page_body.index("_render_tick_attach(") > page_body.index(
-        "_hide_legacy_subtimeframe_uploader(ingestion_mode)"
+    assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in helper_text
+    assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in helper_text
+    assert "_render_tick_attach(" in helper_text
+    assert helper_text.index("page._render_tick_attach(") > helper_text.index(
+        "page._hide_legacy_subtimeframe_uploader(ingestion_mode)"
     )
-    assert "Quantower tick-last (optional; VA / APOC / rolling POC)" in page_text
-    assert "Named VA / APOC / rolling POC refuse without ticks" in page_text
-    assert "APOC remains" not in page_text
-    assert "all-NaN without" not in page_text
-    assert "rolling POC remain 1m typical" not in page_text
-    assert "{digest}_{name}" in page_text or 'f"{digest}_{name}"' in page_text
+    assert "Quantower tick-last (optional; VA / APOC / rolling POC)" in helper_text
+    assert "Named VA / APOC / rolling POC refuse without ticks" in helper_text
+    assert "APOC remains" not in helper_text
+    assert "all-NaN without" not in helper_text
+    assert "rolling POC remain 1m typical" not in helper_text
+    assert "{digest}_{name}" in helper_text or 'f"{digest}_{name}"' in helper_text
     assert "TICK_WARNINGS_KEY" in page_text
-    assert "Data-page attach does not feed classic Calculate" in page_text
-    assert "_classify_typed_tick_path(" in page_text
-    assert "outside the trusted local roots (cwd and store)" in page_text
+    assert "Data-page attach does not feed classic Calculate" in helper_text
+    assert "_classify_typed_tick_path(" in helper_text
+    assert "outside the trusted local roots (cwd and store)" in helper_text
+    from thesistester.data_subtimeframe_page_helpers import (
+        _apply_new_subtimeframe_upload,
+        _render_subtimeframe_compatibility_report,
+        _render_subtimeframe_duplicate_report,
+        _render_subtimeframe_loaded_state,
+        render_subtimeframe_upload,
+    )
+    from thesistester.data_tick_page_helpers import (
+        _handle_tick_attach_submit,
+        _render_tick_attached_status,
+        render_tick_attach,
+    )
+
+    assert callable(render_subtimeframe_upload)
+    assert callable(_render_subtimeframe_duplicate_report)
+    assert callable(_render_subtimeframe_compatibility_report)
+    assert callable(_apply_new_subtimeframe_upload)
+    assert callable(_render_subtimeframe_loaded_state)
+    assert callable(render_tick_attach)
+    assert callable(_handle_tick_attach_submit)
+    assert callable(_render_tick_attached_status)
 
 
 def test_bind_loader_profile_allow_list_falls_back_when_missing_or_mistyped():
@@ -1220,8 +1256,7 @@ def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch)
     )
 
     # Sample render must not write the Upload selector (Source defaults to Sample).
-    page_text = pathlib.Path(data_page.__file__).read_text(encoding="utf-8")
-    assert "Do not write data_ingestion_mode_selector here" in page_text
+    assert "Do not write data_ingestion_mode_selector here" in _DATA_PAGE_HELPER_SOURCES
     with pytest.raises(ValueError, match="Unsupported ingestion mode"):
         data_page._sync_upload_ingestion_mode_selector("bogus", session_state={})
 

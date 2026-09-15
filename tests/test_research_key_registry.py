@@ -291,6 +291,10 @@ def test_architecture_session_key_table_covers_measured_research_keys():
         REPO_ROOT / "thesistester" / "validation_otf_page_helpers.py",
         REPO_ROOT / "thesistester" / "validation_display_page_helpers.py",
         REPO_ROOT / "thesistester" / "validation_sidebar_page_helpers.py",
+        REPO_ROOT / "thesistester" / "data_workspace_page_helpers.py",
+        REPO_ROOT / "thesistester" / "data_tick_page_helpers.py",
+        REPO_ROOT / "thesistester" / "data_subtimeframe_page_helpers.py",
+        REPO_ROOT / "thesistester" / "data_display_page_helpers.py",
     ]
     measured: set[str] = set()
     by_file: dict[str, set[str]] = {}
