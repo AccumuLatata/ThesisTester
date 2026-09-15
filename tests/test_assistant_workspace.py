@@ -174,6 +174,19 @@ def test_page_is_orchestrator_only_and_keeps_json_advanced():
     assert "restore_run_bundle_to_session(" in source[restore_idx : restore_idx + 1200]
 
 
+def test_draft_min_valid_confluences_allows_ao1_zero():
+    """QI-09-11: Assistant Draft can author AO1 min_valid=0 (E-5)."""
+    source = _load_research_assistant_page()
+    start = source.index("min_valid_confluences = st.number_input(")
+    block = source[start : start + 420]
+    assert '"Minimum valid confluences"' in block
+    assert "min_value=0" in block
+    assert "min_value=1" not in block
+    assert "AO1" in block
+    assert "Setup Builder" in block
+    assert "YAML" in block
+
+
 def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_selected_thesis_id" in ASSISTANT_SESSION_KEYS
     assert "assistant_validated_run_spec" in ASSISTANT_SESSION_KEYS

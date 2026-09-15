@@ -158,9 +158,11 @@ Levels ``ValueError`` refusals to ``st.error`` without a traceback expander
 (QI-02-05). E-3
 ([#585](https://github.com/AccumuLatata/ThesisTester/pull/585)) maps
 ``run``-verb ``ValueError`` / ``OSError`` to ``EX_DATAERR`` / ``EX_NOINPUT``
-without a traceback (QI-06-07). E-4 (this PR) widens journal
+without a traceback (QI-06-07). E-4
+([#586](https://github.com/AccumuLatata/ThesisTester/pull/586)) widens journal
 ``--include-small-n`` / ``hidden_slice_count`` to Q3 Zones and Inferred
-trigger (QI-08-05). Next: E-5.
+trigger (QI-08-05). E-5 (this PR) lets Assistant Draft
+``min_valid_confluences`` accept AO1 ``0`` (QI-09-11). Next: E-6.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -400,8 +402,10 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    ([#585](https://github.com/AccumuLatata/ThesisTester/pull/585)) maps
    ``run``-verb ``ValueError`` / ``OSError`` to
    ``EX_DATAERR`` / ``EX_NOINPUT`` without a traceback (QI-06-07). E-4
-   (this PR) widens journal ``--include-small-n`` / ``hidden_slice_count``
-   to Q3 Zones and Inferred trigger (QI-08-05). Next: E-5.
+   ([#586](https://github.com/AccumuLatata/ThesisTester/pull/586)) widens
+   journal ``--include-small-n`` / ``hidden_slice_count`` to Q3 Zones and
+   Inferred trigger (QI-08-05). E-5 (this PR) lets Assistant Draft
+   ``min_valid_confluences`` accept AO1 ``0`` (QI-09-11). Next: E-6.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
