@@ -180,7 +180,7 @@ protobuf==7.36.1
     # via streamlit
 py-serializable==2.1.0
     # via cyclonedx-python-lib
-pyarrow==24.0.0
+pyarrow==25.0.1
     # via
     #   thesistester (pyproject.toml)
     #   streamlit
