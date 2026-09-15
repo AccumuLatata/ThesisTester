@@ -1,12 +1,14 @@
-"""Internal array-backed primitives for the serial trade-simulation hot path.
+"""Internal array-backed primitives for the trade-simulation hot path.
 
-This module intentionally has no public execution API. It narrows the future
-optimization boundary (R22) while preserving `simulate_trades` orchestration
-in `backtest.py`. C-19 (QI-04-01) owns the serial P7 walk here: session-close
-cap math and the per-bar SL/TP + flatten + R13 walk. C-20 (QI-14-09) stores
-parent OHLC as write-protected ``float64`` arrays. Admission, skip-row
-schema, costs, and P&L stay in `backtest.py`. ``resolve_ohlc_bar`` math is
-unchanged.
+This module intentionally has no public execution API. It is the R22
+optimization boundary while ``simulate_trades`` orchestration stays in
+``backtest.py``. C-19 (QI-04-01) owns the P7 walk here: session-close cap
+math and the per-bar SL/TP + flatten + R13 walk. C-20 (QI-14-09) stores
+parent OHLC as write-protected ``float64`` arrays. E-10 (QI-14-03)
+vectorizes the fixed-bracket ``sl_first`` walk; R13, ``path_open_proximity``,
+subtimeframe, and 3c/confirm_3bar entry-bar clipping stay serial.
+Admission, skip-row schema, costs, and P&L stay in `backtest.py`.
+``resolve_ohlc_bar`` math is unchanged.
 """
 
 from __future__ import annotations
@@ -304,7 +306,161 @@ def _exit_walk_bounds(
     return start_bar, max_bar, time_cap_bar
 
 
-def walk_trade_exit(
+def _max_excursion(values: np.ndarray) -> float:
+    """Peak excursion matching serial ``max(0.0, …)`` starting at 0.0.
+
+    Python ``max(running, nan)`` keeps ``running`` because NaN comparisons
+    are false. ``np.max`` would return NaN and then ``max(0.0, nan)`` is 0.0.
+    """
+    clean = values[~np.isnan(values)]
+    if clean.size == 0:
+        return 0.0
+    return max(0.0, float(np.max(clean)))
+
+
+def _can_vectorize_fixed_sl_first_walk(
+    *,
+    intrabar_model: str,
+    exit_management_active: bool,
+    trigger: str,
+    start_bar: int,
+    entry_bar_index: int,
+) -> bool:
+    """True when the sl_first range rule uses one fixed stop/target for every bar."""
+    if intrabar_model != "sl_first" or exit_management_active:
+        return False
+    # 3c / confirm_3bar clip the entry bar with theoretical_entry_price.
+    return not (trigger in {"3c", "confirm_3bar"} and start_bar <= entry_bar_index)
+
+
+def _empty_trade_exit_walk(
+    *,
+    stop_price: float,
+    target_price: float,
+    stop_state: ExitManagementState,
+    start_bar: int,
+    max_bar: int,
+    time_cap_bar: int | None,
+) -> TradeExitWalk:
+    return TradeExitWalk(
+        stop_price=stop_price,
+        target_price=target_price,
+        stop_state=stop_state,
+        exit_bar_index=None,
+        theoretical_exit_price=None,
+        resolution=None,
+        mae_pts=0.0,
+        mfe_pts=0.0,
+        pending_intrabar_ambiguity=False,
+        start_bar=start_bar,
+        max_bar=max_bar,
+        time_cap_bar=time_cap_bar,
+        bracket_exit=False,
+        parent_both_hit=False,
+        bracket_ambiguous=False,
+        proximity_tie=False,
+        subtimeframe_resolved=False,
+        subtimeframe_fallback=False,
+    )
+
+
+def _walk_trade_exit_sl_first_vectorized(
+    bars: BarData,
+    *,
+    direction: str,
+    entry_price: float,
+    stop_price: float,
+    target_price: float,
+    stop_state: ExitManagementState,
+    start_bar: int,
+    max_bar: int,
+    time_cap_bar: int | None,
+) -> TradeExitWalk:
+    """Fixed-bracket sl_first walk on C-20 float64 arrays (E-10 / QI-14-03).
+
+    Matches ``resolve_ohlc_bar(..., model="sl_first", entry_price=None)``:
+    stop wins when both levels are in range; MAE/MFE floor at 0.0.
+    """
+    if start_bar > max_bar:
+        return _empty_trade_exit_walk(
+            stop_price=stop_price,
+            target_price=target_price,
+            stop_state=stop_state,
+            start_bar=start_bar,
+            max_bar=max_bar,
+            time_cap_bar=time_cap_bar,
+        )
+    end = max_bar + 1
+    lows = bars.low[start_bar:end]
+    highs = bars.high[start_bar:end]
+    if direction == "long":
+        stop_hits = lows <= stop_price
+        target_hits = highs >= target_price
+        adverse = entry_price - lows
+        favorable = highs - entry_price
+    else:
+        stop_hits = highs >= stop_price
+        target_hits = lows <= target_price
+        adverse = highs - entry_price
+        favorable = entry_price - lows
+    hits = stop_hits | target_hits
+    if bool(hits.any()):
+        offset = int(np.flatnonzero(hits)[0])
+        sl_hit = bool(stop_hits[offset])
+        both_hit = sl_hit and bool(target_hits[offset])
+        kind = "SL" if sl_hit else "TP"
+        hit_resolution = IntrabarResolution(
+            kind,
+            "legacy_sl_first" if both_hit else "single_hit",
+            both_hit,
+            ambiguous=both_hit,
+        )
+        window = slice(0, offset + 1)
+        mae_pts = _max_excursion(adverse[window])
+        mfe_pts = _max_excursion(favorable[window])
+        return TradeExitWalk(
+            stop_price=stop_price,
+            target_price=target_price,
+            stop_state=stop_state,
+            exit_bar_index=start_bar + offset,
+            theoretical_exit_price=(stop_state.effective_stop if kind == "SL" else target_price),
+            resolution=hit_resolution,
+            mae_pts=mae_pts,
+            mfe_pts=mfe_pts,
+            pending_intrabar_ambiguity=both_hit,
+            start_bar=start_bar,
+            max_bar=max_bar,
+            time_cap_bar=time_cap_bar,
+            bracket_exit=True,
+            parent_both_hit=both_hit,
+            bracket_ambiguous=both_hit,
+            proximity_tie=False,
+            subtimeframe_resolved=False,
+            subtimeframe_fallback=False,
+        )
+    return TradeExitWalk(
+        stop_price=stop_price,
+        target_price=target_price,
+        stop_state=stop_state,
+        exit_bar_index=None,
+        theoretical_exit_price=None,
+        resolution=None,
+        mae_pts=_max_excursion(adverse),
+        mfe_pts=_max_excursion(favorable),
+        pending_intrabar_ambiguity=False,
+        start_bar=start_bar,
+        max_bar=max_bar,
+        time_cap_bar=time_cap_bar,
+        bracket_exit=False,
+        parent_both_hit=False,
+        bracket_ambiguous=False,
+        proximity_tie=False,
+        subtimeframe_resolved=False,
+        subtimeframe_fallback=False,
+    )
+
+
+def _walk_trade_exit_serial(
     bars: BarData,
     *,
     direction: str,
@@ -313,64 +469,22 @@ def walk_trade_exit(
     entry_bar_index: int,
     entry_model: str,
     trigger: str,
-    sl_pts: float,
-    tp_pts: float,
-    n_bars: int,
-    allow_same_bar_exit: bool,
-    max_holding_bars: int | None,
-    session_cap_bar: int | None,
+    stop_price: float,
+    target_price: float,
+    stop_state: ExitManagementState,
+    start_bar: int,
+    max_bar: int,
+    time_cap_bar: int | None,
     exit_management_active: bool,
     tick_size: float,
+    sl_pts: float,
     breakeven_after_r: float | None,
     trailing_after_r: float | None,
     trailing_distance_ticks: float | None,
     intrabar_model: str,
     subtimeframe_context: Any,
 ) -> TradeExitWalk:
-    """Walk SL/TP + R13 until a bracket hit or the flatten/time/data cap.
-
-    Exit-reason tokens, skip rows, and P&L stay in ``backtest.py``.
-    """
-    stop_price, target_price = _fixed_bracket_prices(
-        direction=direction,
-        entry_price=entry_price,
-        sl_pts=sl_pts,
-        tp_pts=tp_pts,
-    )
-    stop_state = initial_exit_management_state(
-        initial_stop=stop_price,
-        entry_price=entry_price,
-        direction=direction,
-    )
-    start_bar, max_bar, time_cap_bar = _exit_walk_bounds(
-        n_bars=n_bars,
-        entry_bar_index=entry_bar_index,
-        allow_same_bar_exit=allow_same_bar_exit,
-        max_holding_bars=max_holding_bars,
-        session_cap_bar=session_cap_bar,
-    )
-    if (
-        exit_management_active
-        and not allow_same_bar_exit
-        and entry_model == "next_bar_open"
-        and entry_bar_index < max_bar
-    ):
-        entry_bar = bars.at(entry_bar_index)
-        stop_state = update_exit_management_after_bar(
-            state=stop_state,
-            direction=direction,
-            entry_price=entry_price,
-            initial_stop=stop_price,
-            tick_size=tick_size,
-            risk_points=sl_pts,
-            bar_high=entry_bar.high,
-            bar_low=entry_bar.low,
-            bar_index=entry_bar_index,
-            breakeven_after_r=breakeven_after_r,
-            trailing_after_r=trailing_after_r,
-            trailing_distance_ticks=trailing_distance_ticks,
-        )
-
+    """C-19 per-bar P7 walk. Used for R13 / path / subtf / 3c entry-bar."""
     exit_bar_index: int | None = None
     theoretical_exit_price: float | None = None
     hit_resolution: IntrabarResolution | None = None
@@ -460,4 +574,116 @@ def walk_trade_exit(
         proximity_tie=proximity_tie,
         subtimeframe_resolved=subtimeframe_resolved,
         subtimeframe_fallback=subtimeframe_fallback,
+    )
+
+
+def walk_trade_exit(
+    bars: BarData,
+    *,
+    direction: str,
+    entry_price: float,
+    theoretical_entry_price: float,
+    entry_bar_index: int,
+    entry_model: str,
+    trigger: str,
+    sl_pts: float,
+    tp_pts: float,
+    n_bars: int,
+    allow_same_bar_exit: bool,
+    max_holding_bars: int | None,
+    session_cap_bar: int | None,
+    exit_management_active: bool,
+    tick_size: float,
+    breakeven_after_r: float | None,
+    trailing_after_r: float | None,
+    trailing_distance_ticks: float | None,
+    intrabar_model: str,
+    subtimeframe_context: Any,
+) -> TradeExitWalk:
+    """Walk SL/TP + R13 until a bracket hit or the flatten/time/data cap.
+
+    Exit-reason tokens, skip rows, and P&L stay in ``backtest.py``.
+    Fixed-bracket ``sl_first`` uses the E-10 vectorized walk; other models
+    keep the C-19 serial loop.
+    """
+    stop_price, target_price = _fixed_bracket_prices(
+        direction=direction,
+        entry_price=entry_price,
+        sl_pts=sl_pts,
+        tp_pts=tp_pts,
+    )
+    stop_state = initial_exit_management_state(
+        initial_stop=stop_price,
+        entry_price=entry_price,
+        direction=direction,
+    )
+    start_bar, max_bar, time_cap_bar = _exit_walk_bounds(
+        n_bars=n_bars,
+        entry_bar_index=entry_bar_index,
+        allow_same_bar_exit=allow_same_bar_exit,
+        max_holding_bars=max_holding_bars,
+        session_cap_bar=session_cap_bar,
+    )
+    if (
+        exit_management_active
+        and not allow_same_bar_exit
+        and entry_model == "next_bar_open"
+        and entry_bar_index < max_bar
+    ):
+        entry_bar = bars.at(entry_bar_index)
+        stop_state = update_exit_management_after_bar(
+            state=stop_state,
+            direction=direction,
+            entry_price=entry_price,
+            initial_stop=stop_price,
+            tick_size=tick_size,
+            risk_points=sl_pts,
+            bar_high=entry_bar.high,
+            bar_low=entry_bar.low,
+            bar_index=entry_bar_index,
+            breakeven_after_r=breakeven_after_r,
+            trailing_after_r=trailing_after_r,
+            trailing_distance_ticks=trailing_distance_ticks,
+        )
+
+    if _can_vectorize_fixed_sl_first_walk(
+        intrabar_model=intrabar_model,
+        exit_management_active=exit_management_active,
+        trigger=trigger,
+        start_bar=start_bar,
+        entry_bar_index=entry_bar_index,
+    ):
+        return _walk_trade_exit_sl_first_vectorized(
+            bars,
+            direction=direction,
+            entry_price=entry_price,
+            stop_price=stop_price,
+            target_price=target_price,
+            stop_state=stop_state,
+            start_bar=start_bar,
+            max_bar=max_bar,
+            time_cap_bar=time_cap_bar,
+        )
+    return _walk_trade_exit_serial(
+        bars,
+        direction=direction,
+        entry_price=entry_price,
+        theoretical_entry_price=theoretical_entry_price,
+        entry_bar_index=entry_bar_index,
+        entry_model=entry_model,
+        trigger=trigger,
+        stop_price=stop_price,
+        target_price=target_price,
+        stop_state=stop_state,
+        start_bar=start_bar,
+        max_bar=max_bar,
+        time_cap_bar=time_cap_bar,
+        exit_management_active=exit_management_active,
+        tick_size=tick_size,
+        sl_pts=sl_pts,
+        breakeven_after_r=breakeven_after_r,
+        trailing_after_r=trailing_after_r,
+        trailing_distance_ticks=trailing_distance_ticks,
+        intrabar_model=intrabar_model,
+        subtimeframe_context=subtimeframe_context,
     )

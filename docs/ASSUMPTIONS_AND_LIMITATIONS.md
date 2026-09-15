@@ -168,6 +168,12 @@ This engine is for **research screening**, not proof of a durable edge.
 ### 3) TIME, SESSION_CLOSE, DATA_END, and EOD exits are bar-index based
 - `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) in `simulate_trades()` in `thesistester/engine/backtest.py`.
 - TIME exit uses that capped bar’s close in `simulate_trades()` in `thesistester/engine/backtest.py`.
+- **W12 (QI-14-03 / QR E-10):** the fixed-bracket `sl_first` P7 walk is
+  vectorized inside `sim_core.walk_trade_exit`. R13, `path_open_proximity`,
+  subtimeframe, and 3c/confirm_3bar entry-bar clipping stay serial.
+  Admission (window / cutoff / exposure / 3c-void) is never parallelized.
+  Trade outputs stay byte-identical to the serial reference. R22 ruler:
+  `docs/SIMULATE_PERF.md`.
 - Default mode keeps legacy behavior: if no SL/TP/TIME exit triggers, `EOD` is the **final bar in the loaded dataset**, not a session close event.
 - Optional session-aware mode (`flat_by_session_close=True`) caps exits to the configured session close for **this trade’s** entry calendar date (`entry_local_ts.normalize()` + `session_close_time`, default `16:00`). Each candidate stores its own `entry_local_ts`; flatten does not reuse another signal’s clock.
   - `SESSION_CLOSE` means forced flat at the last available bar at or before that per-entry close (when SL/TP is not hit first). It is **not** CME session close and does not use `trading_session_date` or `eth_start`.
@@ -840,7 +846,9 @@ other than the last bar in the dataset.
   noise. Tick-valued candidates use nearest-integer rounding and may collapse
   to fewer unique values than requested.
 - R19 cost scales with profiled parameters × perturbation steps × serial trade
-  replays. It is opt-in; R22 acceleration is not yet available.
+  replays. It is opt-in. R22 E-10 vectorizes the fixed-bracket `sl_first`
+  walk only; R19 still multiplies serial admission × walk (no parallel
+  replicas).
 - R20 trade-review charts show completed-trade parent-bar OHLC context. MAE/MFE
   bands are terminal extrema relative to entry, not a temporal replay of
   adverse/favorable movement or evidence of intrabar fill ordering.
