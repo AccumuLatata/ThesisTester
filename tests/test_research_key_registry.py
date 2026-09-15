@@ -277,7 +277,7 @@ def _is_widgetish(key: str) -> bool:
 
 
 def test_architecture_session_key_table_covers_measured_research_keys():
-    """F-5 / QI-10-03: table ⊇ measured research keys and named consumers."""
+    """D-1 / QI-10-03: table ⊇ measured research keys. F-5 names consumers."""
     table_keys, consumers = _architecture_research_table()
     assert table_keys
 
@@ -319,6 +319,40 @@ def test_architecture_session_key_table_covers_measured_research_keys():
         f"ARCHITECTURE session-key table missing dataset-clear keys {missing_dataset}"
     )
 
+    _assert_qi1304_named_consumers(by_file, consumers, research)
+
+
+def test_qi1304_session_key_table_names_validation_and_portfolio_consumers():
+    """F-5 / QI-13-04 (+ QI-10-02): Validation + Portfolio consumers; CAI-5 chrome."""
+    _table_keys, consumers = _architecture_research_table()
+    paths = {
+        "pages/10_Validation.py": REPO_ROOT / "pages" / "10_Validation.py",
+        "pages/13_Portfolio.py": REPO_ROOT / "pages" / "13_Portfolio.py",
+        "thesistester/validation_wfa_page_helpers.py": (
+            REPO_ROOT / "thesistester" / "validation_wfa_page_helpers.py"
+        ),
+        "thesistester/validation_batteries_page_helpers.py": (
+            REPO_ROOT / "thesistester" / "validation_batteries_page_helpers.py"
+        ),
+    }
+    by_file = {rel: _measured_session_keys(path) for rel, path in paths.items()}
+    _assert_qi1304_named_consumers(by_file, consumers, research=set())
+    assert "trades" in by_file["pages/10_Validation.py"]
+    assert "data" in by_file["pages/13_Portfolio.py"]
+    assert "Portfolio" in consumers["data"]
+    assert "validation_*_page_helpers.py" in consumers["data"]
+    assert "validation_*_page_helpers.py" in consumers["levels"]
+    assert "validation_*_page_helpers.py" in consumers["signals"]
+    arch = ARCHITECTURE.read_text(encoding="utf-8")
+    assert "## Classic thesis research context (CAI-5)" in arch
+    assert "F-5 / QI-13-04" in arch
+
+
+def _assert_qi1304_named_consumers(
+    by_file: dict[str, set[str]],
+    consumers: dict[str, str],
+    research: set[str],
+) -> None:
     for key, label, path in (
         ("data", "Validation", "thesistester/validation_wfa_page_helpers.py"),
         ("levels", "Validation", "thesistester/validation_wfa_page_helpers.py"),
@@ -331,7 +365,8 @@ def test_architecture_session_key_table_covers_measured_research_keys():
     arch = ARCHITECTURE.read_text(encoding="utf-8")
     assert "CAI-5" in arch
     assert "classic_*" in arch or "`classic_" in arch
-    assert not (set(WIDGET_KEYS) & research)
+    if research:
+        assert not (set(WIDGET_KEYS) & research)
 
 
 def test_qi10_stale_state_matrix_d1_rows(monkeypatch):

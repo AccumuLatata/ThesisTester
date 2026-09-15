@@ -1708,8 +1708,9 @@ re-arm after a later Backtest/Report: `focused_trades`, `focused_equity_curve`,
 `setup_config`, plus `display_timezone`. A-7 residuals
 (`otf_validation_*` / `skipped_signals` / `direction_collision_diagnostic`)
 stay apply-clear / sticky (not dataset-clear) via `_STICKY_APPLY_SOURCE`.
-Classic chrome (`classic_*`) lives in the CAI-5 table, not this research
-table. Widget nonce / Admit / roll-selector keys are flagged `widget` on
+Classic chrome (`classic_*`) lives in the **CAI-5** table above (`## Classic
+thesis research context (CAI-5)`), not this research table — F-5 / QI-13-04
+/ QI-10-02. Widget nonce / Admit / roll-selector keys are flagged `widget` on
 `research_keys.RESEARCH_KEY_REGISTRY` and stay out of the consumer-contract
 assertion. `data_identity` / `levels_identity` are also named in CAI-1.
 After a dataset-less import,
@@ -1720,7 +1721,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
-| `data` | Data (`pages/1_Data.py`), Research Bundle import | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Validation (`pages/10_Validation.py`), Report/Bundles (`pages/12_Research_Bundles.py`); TJ5 `join_journal_bars` (read-only 1m parent) | `pd.DataFrame` OHLCV/session columns. Data page Sample auto-load applies only to empty sessions; navigation must not replace in-session bars. |
+| `data` | Data (`pages/1_Data.py`), Research Bundle import | Levels (`pages/2_Levels.py`), Backtest (`pages/7_Backtest.py`), Grid (`pages/8_Grid_Search.py`), Validation (`pages/10_Validation.py` via `validation_*_page_helpers.py`), Portfolio (`pages/13_Portfolio.py`, parent bar-count only), Report/Bundles (`pages/12_Research_Bundles.py`); TJ5 `join_journal_bars` (read-only 1m parent) | `pd.DataFrame` OHLCV/session columns. Data page Sample auto-load applies only to empty sessions; navigation must not replace in-session bars. |
 | `bundle_import_omitted_data` | Research Bundle apply | Page 12 / Data bootstrap and Sample auto-load gate; cleared on Data-page successful load | `bool` — True when the imported zip omitted `data` |
 | `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
 | `raw_data` | NinjaTrader capture, data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated NinjaTrader 3/5-field capture or tick/trade rows restored from `raw.parquet`; never consumed by the bar engine. A canonical-only resave preserves an existing sidecar and its provenance. |
@@ -1750,7 +1751,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `dataset_id` | Data (`pages/1_Data.py`) | Levels/Signals persistence (`pages/2_Levels.py`, `pages/6_Signals.py`) | `str` |
 | `data_identity` | Data / bundle apply / CAI-8 open-exact | Bundles / identity restore (CAI-1) | Identity mapping for the active dataset. Also named in CAI-1. Apply-clear / sticky (not dataset-clear). |
 | `levels_identity` | Levels / bundle apply / CAI-8 open-exact | Bundles / identity restore (CAI-1) | Identity mapping for computed levels. Also named in CAI-1. Apply-clear / sticky (not dataset-clear). |
-| `levels` | Levels (`pages/2_Levels.py`) | Setup/Signals/Backtest/Grid/Validation/Report/Bundles (`pages/3_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV + derived level columns |
+| `levels` | Levels (`pages/2_Levels.py`) | Setup/Signals/Backtest/Grid/Validation/Report/Bundles (`pages/3_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py` via `validation_*_page_helpers.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` OHLCV + derived level columns |
 | `session_levels` | Levels (`pages/2_Levels.py`) | Bundles/save (`pages/2_Levels.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` session-level table |
 | `levels_settings` | Levels (`pages/2_Levels.py`) | Levels stale checks (`pages/2_Levels.py`), Signals persistence context (`pages/6_Signals.py`) | `dict` |
 | `levels_data_fingerprint` | Levels (`pages/2_Levels.py`) | Levels stale checks (`pages/2_Levels.py`) | `dict` |
@@ -1761,7 +1762,7 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `_setup_builder_*` widgets | Setup Builder (`pages/3_Setup_Builder.py`) | Setup Builder only | Widget keys (`_setup_builder_setup_name`, `_setup_builder_trigger`, `_setup_builder_otf_*`, `_setup_builder_entry_window_*`, …). D-7 / QI-03-04: `_sync_editor_widget_state` hydrates them from `build_setup_config` outputs after validator-aligned repair; render reads the keys and does not sync. |
 | `confluence_zones` | Signals (`pages/6_Signals.py`) | Signals display (`pages/6_Signals.py`), Backtest chart overlay (`pages/7_Backtest.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` zone rows |
 | `naked_flags` | Signals (`pages/6_Signals.py`) | Signals logic/save (`pages/6_Signals.py`), Bundles (`pages/12_Research_Bundles.py`) | `pd.DataFrame` naked-level flags |
-| `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Validation/Report/Bundles (`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` candidate/fill signal rows. Also popped on setup `setup_config` mutation (QI-03-12 / D-2: Save / Set active / Clear / Delete-active / copy-to-builder) and on dataset switch (A-8). The Signals page surfaces the existing controls-changed warning on **view** (not only Save) when leftover artifacts remain and current controls no longer match `signal_settings_hash`. Missing or unhashable identity is treated as a mismatch. |
+| `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Validation/Report/Bundles (`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py` via `validation_*_page_helpers.py`, `pages/11_Report_Export.py`, `pages/12_Research_Bundles.py`) | `pd.DataFrame` candidate/fill signal rows. Also popped on setup `setup_config` mutation (QI-03-12 / D-2: Save / Set active / Clear / Delete-active / copy-to-builder) and on dataset switch (A-8). The Signals page surfaces the existing controls-changed warning on **view** (not only Save) when leftover artifacts remain and current controls no longer match `signal_settings_hash`. Missing or unhashable identity is treated as a mismatch. |
 | `signal_settings` | Signals (`pages/6_Signals.py`) | Signals save consistency checks (`pages/6_Signals.py`) | `dict`. Also popped on dataset switch (`_clear_dataset_dependent_state`, A-8 / QI-10-01) and on setup `setup_config` mutation (QI-03-12 / D-2). |
 | `signal_settings_hash` | Signals (`pages/6_Signals.py`) | Signals save/load matching (`pages/6_Signals.py`) | `str`. Also popped on dataset switch with `signal_settings` (A-8 / QI-10-01) and on setup `setup_config` mutation (QI-03-12 / D-2) so a leftover hash cannot look like a match. |
 | `signal_context` | Signals (`pages/6_Signals.py`) | Backtest caption (`pages/7_Backtest.py`) | `dict` (`setup_name`, `confluence_mode`, `setup_caption`). Also popped on setup `setup_config` mutation (QI-03-12 / D-2). |
