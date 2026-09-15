@@ -120,12 +120,13 @@ Phase 8 display into ``*_page_helpers`` (QI-05-02). D-5
 ([#577](https://github.com/AccumuLatata/ThesisTester/pull/577)) extracts
 the Data-page upload/save tree into saved / source-apply / attach-save
 panels and splits `_render_subtimeframe_upload` /
-`_render_tick_attach` (QI-01-01). D-6 (this PR) drives Levels snapshot
-setdefaults and widget sync from ``DEFAULT_LEVELS_SETTINGS`` /
-``levels.defaults.canonicalize_levels_list_fields`` (QI-02-04). Sparse
-old snapshots are settings-stale after product-fill. Composers are not
-collapsed.
-Next: D-7.
+`_render_tick_attach` (QI-01-01). D-6
+([#578](https://github.com/AccumuLatata/ThesisTester/pull/578)) drives
+Levels snapshot setdefaults and widget sync from ``DEFAULT_LEVELS_SETTINGS`` /
+``levels.defaults.canonicalize_levels_list_fields`` (QI-02-04). D-7 (this PR)
+drives Setup Builder widget sync from ``build_setup_config`` /
+``validate_setup_config`` and splits render vs sync (QI-03-04).
+Next: D-8.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -341,12 +342,13 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Phase 8 display helpers (QI-05-02). D-5
    ([#577](https://github.com/AccumuLatata/ThesisTester/pull/577)) extracts
    the Data-page upload/save tree into saved / source-apply / attach-save
-   panels and splits the D-grade attach renderers (QI-01-01). D-6 (this PR)
-   drives Levels snapshot setdefaults and widget sync from
+   panels and splits the D-grade attach renderers (QI-01-01). D-6
+   ([#578](https://github.com/AccumuLatata/ThesisTester/pull/578)) drives
+   Levels snapshot setdefaults and widget sync from
    ``DEFAULT_LEVELS_SETTINGS`` /
-   ``levels.defaults.canonicalize_levels_list_fields`` (QI-02-04).
-   Sparse old snapshots are settings-stale after product-fill.
-   Composers are not collapsed. Next: D-7.
+   ``levels.defaults.canonicalize_levels_list_fields`` (QI-02-04). D-7
+   (this PR) drives Setup Builder widget sync from ``build_setup_config`` /
+   ``validate_setup_config`` and splits render vs sync (QI-03-04). Next: D-8.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
