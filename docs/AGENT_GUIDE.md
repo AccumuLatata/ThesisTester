@@ -173,9 +173,12 @@ Signals zone-level any/all help on Setup Builder naked controls
 HTF/3c columns to the Signals preview when non-null (QI-03-11). E-9
 ([#591](https://github.com/AccumuLatata/ThesisTester/pull/591)) vectorizes
 on-grid 15s→1m derive under locked ``observed_aligned_15s_to_1m_v2``
-(QI-14-06). E-10 (this PR) vectorizes the fixed-bracket ``sl_first`` P7
-walk inside ``sim_core`` (QI-14-03). Next: E-11 (parked; CTO request
-only).
+(QI-14-06). E-10
+([#592](https://github.com/AccumuLatata/ThesisTester/pull/592)) vectorizes
+the fixed-bracket ``sl_first`` P7 walk inside ``sim_core`` (QI-14-03).
+E-11 stays parked (CTO request only). F-5 (this PR) names Validation /
+Portfolio consumers on the ``ARCHITECTURE.md`` session-key table
+(QI-13-04 / QI-10-02). Next: F-9.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -431,9 +434,13 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    E-9
    ([#591](https://github.com/AccumuLatata/ThesisTester/pull/591))
    vectorizes on-grid 15s→1m derive under locked
-   ``observed_aligned_15s_to_1m_v2`` (QI-14-06). E-10 (this PR)
+   ``observed_aligned_15s_to_1m_v2`` (QI-14-06). E-10
+   ([#592](https://github.com/AccumuLatata/ThesisTester/pull/592))
    vectorizes the fixed-bracket ``sl_first`` P7 walk inside
-   ``sim_core`` (QI-14-03). Next: E-11 (parked; CTO request only).
+   ``sim_core`` (QI-14-03). E-11 stays parked (CTO request only).
+   F-5 (this PR) names Validation / Portfolio consumers on the
+   ``ARCHITECTURE.md`` session-key table (QI-13-04 / QI-10-02).
+   Next: F-9.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
