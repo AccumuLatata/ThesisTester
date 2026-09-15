@@ -122,7 +122,8 @@ the Data-page upload/save tree into saved / source-apply / attach-save
 panels and splits `_render_subtimeframe_upload` /
 `_render_tick_attach` (QI-01-01). D-6 (this PR) drives Levels snapshot
 setdefaults and widget sync from ``DEFAULT_LEVELS_SETTINGS`` /
-``normalize_levels_config`` (QI-02-04). Composers are not collapsed.
+``canonicalize_levels_list_fields`` (QI-02-04). Sparse old snapshots
+are settings-stale after product-fill. Composers are not collapsed.
 Next: D-7.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
@@ -341,7 +342,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    the Data-page upload/save tree into saved / source-apply / attach-save
    panels and splits the D-grade attach renderers (QI-01-01). D-6 (this PR)
    drives Levels snapshot setdefaults and widget sync from
-   ``DEFAULT_LEVELS_SETTINGS`` / ``normalize_levels_config`` (QI-02-04).
+   ``DEFAULT_LEVELS_SETTINGS`` / ``canonicalize_levels_list_fields``
+   (QI-02-04). Sparse old snapshots are settings-stale after product-fill.
    Composers are not collapsed. Next: D-7.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration

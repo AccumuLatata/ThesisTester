@@ -12,6 +12,7 @@ import pandas as pd
 
 from thesistester.levels import compute_all_levels
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.research_identity import LEVELS_SORT_KEYS, canonicalize_levels_list_fields
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +96,8 @@ def _import_levels_helpers():
 _st_stub, _mod = _import_levels_helpers()
 _normalize = _mod._normalize_levels_settings
 _sync = _mod._sync_levels_widget_state
+_settings_are_stale = _mod._levels_settings_are_stale
+_saved_levels_label = _mod._saved_levels_label
 
 _PIVOTS_ENABLED_KEY = _mod._PIVOTS_ENABLED_KEY
 _PIVOT_TIMEFRAMES_KEY = _mod._PIVOT_TIMEFRAMES_KEY
@@ -226,6 +229,23 @@ class TestNormalizeStage6Defaults:
         assert result["custom_note"] == "keep"
         assert result["opening_range_minutes"] == 30
         assert "instrument" not in result
+
+    def test_page_uses_public_list_canonicalizer(self):
+        source = pathlib.Path(_mod.__file__).read_text(encoding="utf-8")
+        assert "import _LEVELS_SORT_KEYS" not in source
+        assert "canonicalize_levels_list_fields" in source
+        assert LEVELS_SORT_KEYS == (
+            "sma_lengths",
+            "ema_lengths",
+            "sma_timeframes",
+            "ema_timeframes",
+            "vwap_windows",
+            "poc_windows",
+            "pivot_timeframes",
+        )
+        payload = {"sma_lengths": (200, 50), "custom_note": "keep"}
+        assert canonicalize_levels_list_fields(payload)["sma_lengths"] == [50, 200]
+        assert payload["custom_note"] == "keep"
 
 
 class TestNormalizeSorting:
@@ -368,6 +388,39 @@ class TestSyncStage6WidgetState:
         _st_stub.session_state[_PIVOT_LEFT_KEY] = 2
         _sync({"pivot_left": 0})
         assert _st_stub.session_state[_PIVOT_LEFT_KEY] == 2
+
+    def test_bool_true_not_synced_as_positive_int(self):
+        _st_stub.session_state[_PIVOT_LEFT_KEY] = 2
+        _sync({"pivot_left": True})
+        assert _st_stub.session_state[_PIVOT_LEFT_KEY] == 2
+
+    def test_tuple_sma_lengths_synced(self):
+        _sync({"sma_lengths": (50, 200)})
+        assert _st_stub.session_state[_mod._SMA_LENGTHS_KEY] == "50,200"
+
+
+class TestStoredSettingsStaleAfterProductFill:
+    """Sparse old snapshots must not compare as current after product-on fill."""
+
+    def test_sparse_snapshot_is_stale_against_filled_current(self):
+        current = _normalize({"opening_range_minutes": 30})
+        assert _settings_are_stale({"opening_range_minutes": 30}, current) is True
+
+    def test_complete_matching_snapshot_is_not_stale(self):
+        current = _normalize({"opening_range_minutes": 30})
+        assert current is not None
+        assert _settings_are_stale(dict(current), current) is False
+
+    def test_none_stored_is_not_stale(self):
+        current = _normalize({"opening_range_minutes": 30})
+        assert _settings_are_stale(None, current) is False
+
+    def test_label_omits_missing_agg_without_third_table(self):
+        label = _saved_levels_label(
+            {"settings_hash": "abc123def456", "levels_settings": {"opening_range_minutes": 30}}
+        )
+        assert "Day/Week/Month agg —/—/—" in label
+        assert "Opt-in:" not in label
 
 
 # ===========================================================================

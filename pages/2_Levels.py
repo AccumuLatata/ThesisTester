@@ -10,7 +10,7 @@ from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
-from thesistester.research_identity import _LEVELS_SORT_KEYS
+from thesistester.research_identity import canonicalize_levels_list_fields
 from thesistester.setup import is_setup_eligible_level_column
 from thesistester.persistence import (
     clear_active_levels_hash,
@@ -104,17 +104,6 @@ def _with_product_levels_defaults(settings: dict) -> dict:
     return {**DEFAULT_LEVELS_SETTINGS, **settings}
 
 
-def _canonicalize_levels_list_fields(settings: dict) -> dict:
-    """Sort the same list keys as ``normalize_levels_config`` (page path)."""
-    for key in _LEVELS_SORT_KEYS:
-        value = settings.get(key)
-        if isinstance(value, list):
-            settings[key] = sorted(value)
-        elif isinstance(value, tuple):
-            settings[key] = sorted(list(value))
-    return settings
-
-
 def _normalize_levels_settings(settings: dict | None) -> dict | None:
     """Return a stable settings shape for stale-result comparisons.
 
@@ -124,7 +113,28 @@ def _normalize_levels_settings(settings: dict | None) -> dict | None:
     """
     if not isinstance(settings, dict):
         return None
-    return _canonicalize_levels_list_fields(_with_product_levels_defaults(settings))
+    return canonicalize_levels_list_fields(_with_product_levels_defaults(settings))
+
+
+def _stored_levels_omit_product_keys(stored: dict | None) -> bool:
+    """True when a stored snapshot is missing a product-table key.
+
+    After D-6, missing keys fill as product-on. A frame computed under the
+    old implicit-off table must not compare as current against that fill.
+    """
+    if not isinstance(stored, dict):
+        return False
+    return any(key not in stored for key in DEFAULT_LEVELS_SETTINGS)
+
+
+def _levels_settings_are_stale(stored: dict | None, current: dict | None) -> bool:
+    """True when stored settings (or their product-fill) disagree with current."""
+    normalized = _normalize_levels_settings(stored)
+    if normalized is None or current is None:
+        return False
+    if normalized != current:
+        return True
+    return _stored_levels_omit_product_keys(stored)
 
 
 def _levels_data_fingerprint(df, instrument: str) -> dict:
@@ -252,9 +262,9 @@ def _saved_levels_label(meta: dict) -> str:
         value_area_label = f"{int(value_area_pct * 100)}%"
     else:
         value_area_label = "—"
-    daily_agg = settings.get("prior_day_profile_aggregation_ticks", 1)
-    weekly_agg = settings.get("prior_week_profile_aggregation_ticks", 1)
-    monthly_agg = settings.get("prior_month_profile_aggregation_ticks", 1)
+    daily_agg = settings.get("prior_day_profile_aggregation_ticks", "—")
+    weekly_agg = settings.get("prior_week_profile_aggregation_ticks", "—")
+    monthly_agg = settings.get("prior_month_profile_aggregation_ticks", "—")
     created_at_raw = meta.get("created_at")
     created_at = str(created_at_raw)[:10] if created_at_raw else "unknown date"
     opt_in_parts = []
@@ -297,7 +307,7 @@ def _sync_opening_range_widget(opening_range) -> None:
 
 
 def _sync_length_csv_widget(widget_key: str, lengths) -> None:
-    if isinstance(lengths, list) and lengths:
+    if isinstance(lengths, (list, tuple)) and lengths:
         st.session_state[widget_key] = ",".join(str(length) for length in lengths)
 
 
@@ -322,7 +332,7 @@ def _sync_value_area_pct_widget(value_area_pct) -> None:
 
 
 def _sync_positive_int_widget(widget_key: str, value) -> None:
-    if isinstance(value, int) and value >= 1:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
         st.session_state[widget_key] = value
 
 
@@ -617,7 +627,8 @@ current_settings = _normalize_levels_settings(
 )
 current_data_fingerprint = _levels_data_fingerprint(st.session_state["data"], instrument)
 current_settings_hash = compute_levels_settings_hash(current_settings)
-previous_settings = _normalize_levels_settings(st.session_state.get("levels_settings"))
+stored_levels_settings = st.session_state.get("levels_settings")
+previous_settings = _normalize_levels_settings(stored_levels_settings)
 previous_data_fingerprint = st.session_state.get("levels_data_fingerprint")
 has_calculated_levels = "levels" in st.session_state and "session_levels" in st.session_state
 levels_df = st.session_state.get("levels")
@@ -631,7 +642,7 @@ levels_are_stale = (
     and previous_data_fingerprint is not None
     and previous_data_fingerprint != current_data_fingerprint
 )
-settings_are_stale = previous_settings is not None and previous_settings != current_settings
+settings_are_stale = _levels_settings_are_stale(stored_levels_settings, current_settings)
 
 if matching_saved_levels is not None and (
     not has_calculated_levels or levels_are_stale or settings_are_stale
@@ -684,10 +695,9 @@ if saved_level_snapshots:
         key="saved_levels_snapshot_selector",
     )
     selected_snapshot_meta = snapshot_options[selected_settings_hash]
-    selected_snapshot_settings = _normalize_levels_settings(
-        selected_snapshot_meta.get("levels_settings")
-    )
-    if selected_snapshot_settings is not None and selected_snapshot_settings != current_settings:
+    if _levels_settings_are_stale(
+        selected_snapshot_meta.get("levels_settings"), current_settings
+    ):
         st.caption("Selected snapshot settings differ from current controls.")
     snapshot_actions = st.columns(2)
     if snapshot_actions[0].button(
@@ -794,7 +804,7 @@ if (
     st.warning("Loaded data has changed. Click **Recalculate levels** to update results.")
     st.stop()
 
-if previous_settings is not None and previous_settings != current_settings:
+if settings_are_stale:
     st.info("Settings have changed. Click **Recalculate levels** to update results.")
 
 levels_current = (
@@ -802,7 +812,7 @@ levels_current = (
     and previous_data_fingerprint is not None
     and previous_data_fingerprint == current_data_fingerprint
     and previous_settings is not None
-    and previous_settings == current_settings
+    and not settings_are_stale
 )
 
 if levels_current:

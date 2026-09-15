@@ -47,7 +47,9 @@ RESEARCH_IDENTITY_SCHEMA_VERSION = 1
 LEVELS_ARTIFACT_SCHEMA_VERSION = 1
 
 # Unordered list fields: order is not semantically meaningful for identity.
-_LEVELS_SORT_KEYS = (
+# Public so the Levels page snapshot path sorts the same keys without a
+# private import (QI-02-04 / D-6).
+LEVELS_SORT_KEYS = (
     "sma_lengths",
     "ema_lengths",
     "sma_timeframes",
@@ -62,6 +64,22 @@ EXECUTION_ORIGINS = frozenset({"api", "assistant", "cli", "classic", "study", "u
 _IDENTITY_META_FILENAME = "research_identity.json"
 
 
+def canonicalize_levels_list_fields(settings: dict[str, Any]) -> dict[str, Any]:
+    """Sort the same unordered list keys as ``normalize_levels_config``.
+
+    Mutates ``settings`` in place and returns it. List and tuple values are
+    replaced with a new sorted list. Other types are left unchanged so the
+    page/snapshot path can keep extra or malformed keys without raising.
+    """
+    for key in LEVELS_SORT_KEYS:
+        value = settings.get(key)
+        if isinstance(value, list):
+            settings[key] = sorted(value)
+        elif isinstance(value, tuple):
+            settings[key] = sorted(list(value))
+    return settings
+
+
 def normalize_levels_config(
     config: Mapping[str, Any] | None,
     *,
@@ -71,9 +89,10 @@ def normalize_levels_config(
 
     This is the API-path normalizer lifted for shared use. Unknown keys are
     rejected. Classic page snapshot/widget helpers merge the same
-    ``DEFAULT_LEVELS_SETTINGS`` and sort the same list keys without requiring
-    ``instrument`` or rejecting unknown keys (page/snapshot path). Identity
-    derivation must call this function on equivalent inputs.
+    ``DEFAULT_LEVELS_SETTINGS`` and sort the same list keys via
+    ``canonicalize_levels_list_fields`` / ``LEVELS_SORT_KEYS`` without
+    requiring ``instrument`` or rejecting unknown keys (page/snapshot path).
+    Identity derivation must call this function on equivalent inputs.
     """
     if not isinstance(instrument, str) or not instrument.strip():
         raise ValueError("instrument must be a non-empty string")
@@ -109,10 +128,7 @@ def normalize_levels_config(
             )
     settings = {**DEFAULT_LEVELS_SETTINGS, **raw}
     settings["instrument"] = instrument
-    for key in _LEVELS_SORT_KEYS:
-        value = settings[key]
-        settings[key] = sorted(list(value))
-    return settings
+    return canonicalize_levels_list_fields(settings)
 
 
 def _dataset_tick_paths(dataset: Mapping[str, Any] | None) -> list[str | Path] | None:

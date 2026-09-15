@@ -62,6 +62,7 @@ def _import_levels_helpers():
         mod,
         mod._normalize_levels_settings,
         mod._sync_levels_widget_state,
+        mod._levels_settings_are_stale,
         mod._calculate_levels_transaction,
         mod._LEVELS_CALCULATION_STATUS_KEY,
         mod._SMA_TIMEFRAMES_KEY,
@@ -77,6 +78,7 @@ def _import_levels_helpers():
     _levels_page,
     _normalize_levels_settings,
     _sync_levels_widget_state,
+    _levels_settings_are_stale,
     _calculate_levels_transaction,
     _LEVELS_CALCULATION_STATUS_KEY,
     _SMA_TIMEFRAMES_KEY,
@@ -119,6 +121,13 @@ def test_sync_levels_widget_state_restores_indicator_timeframe_selections():
     assert _st_stub.session_state[_EMA_TIMEFRAMES_KEY] == ["5min"]
     assert "unsupported" not in _st_stub.session_state[_SMA_TIMEFRAMES_KEY]
     assert "unsupported" not in _st_stub.session_state[_EMA_TIMEFRAMES_KEY]
+
+
+def test_sparse_stored_settings_are_stale_after_product_fill():
+    current = _normalize_levels_settings({"opening_range_minutes": 30})
+    assert _levels_settings_are_stale({"opening_range_minutes": 30}, current) is True
+    assert current is not None
+    assert _levels_settings_are_stale(dict(current), current) is False
 
 
 def test_sync_levels_widget_state_restores_prior_profile_aggregation_ticks():
