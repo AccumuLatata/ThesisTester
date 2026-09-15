@@ -20,6 +20,13 @@ def _make_streamlit_stub() -> types.ModuleType:
     def _stop():
         raise _StopCalled()
 
+    class _Ctx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
     for name in (
         "title",
         "warning",
@@ -32,6 +39,8 @@ def _make_streamlit_stub() -> types.ModuleType:
         "rerun",
     ):
         setattr(st, name, _noop)
+    st.expander = lambda *args, **kwargs: _Ctx()  # type: ignore[assignment]
+    st.code = _noop  # type: ignore[assignment]
     st.stop = _stop  # type: ignore[assignment]
     st.session_state = {}  # type: ignore[assignment]
     return st
@@ -206,6 +215,97 @@ def test_calculation_transaction_preserves_prior_results_on_failure():
     assert status["error_type"] == "MemoryError"
     assert status["error_message"] == "allocation failed"
     assert "MemoryError: allocation failed" in status["traceback"]
+
+
+def test_valueerror_refuse_status_exposes_message_without_traceback():
+    """QI-02-05 / E-2: tick-family refuse is st.error only — no traceback."""
+    prior_levels = object()
+    state = {
+        "levels": prior_levels,
+        "session_levels": object(),
+        "levels_settings": {"opening_range_minutes": 15},
+        "levels_data_fingerprint": {"rows": 10},
+    }
+    refuse = "APOC requires ticks and rolling POC requires ticks: tick_paths is missing or empty"
+
+    def _raise_tick_refuse():
+        raise ValueError(refuse)
+
+    succeeded = _calculate_levels_transaction(
+        calculate=_raise_tick_refuse,
+        session_state=state,
+        current_settings={"opening_range_minutes": 30},
+        current_data_fingerprint={"rows": 42},
+        dataset_id="dataset-1",
+        settings_hash="abc123",
+        input_rows=42,
+    )
+
+    assert succeeded is False
+    assert state["levels"] is prior_levels
+    status = state[_LEVELS_CALCULATION_STATUS_KEY]
+    assert status["state"] == "failed"
+    assert status["error_type"] == "ValueError"
+    assert status["error_message"] == refuse
+    assert not status.get("traceback")
+
+    recorded: list[tuple] = []
+
+    def _record(name):
+        def _inner(*args, **kwargs):
+            recorded.append((name, args, kwargs))
+
+        return _inner
+
+    class _Ctx:
+        def __enter__(self):
+            recorded.append(("expander_enter", (), {}))
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    _st_stub.error = _record("error")
+    _st_stub.expander = lambda *args, **kwargs: _Ctx()
+    _st_stub.code = _record("code")
+    _levels_page._render_levels_calculation_status(status)
+    assert any(name == "error" and refuse in str(args) for name, args, _kwargs in recorded)
+    assert not any(name == "code" for name, _args, _kwargs in recorded)
+    assert not any(name == "expander_enter" for name, _args, _kwargs in recorded)
+
+
+def test_unexpected_failure_still_renders_traceback_expander():
+    state: dict = {}
+
+    def _raise_memory_error():
+        raise MemoryError("allocation failed")
+
+    _calculate_levels_transaction(
+        calculate=_raise_memory_error,
+        session_state=state,
+        current_settings={"opening_range_minutes": 30},
+        current_data_fingerprint={"rows": 42},
+        dataset_id="dataset-1",
+        settings_hash="abc123",
+        input_rows=42,
+    )
+    status = state[_LEVELS_CALCULATION_STATUS_KEY]
+    recorded: list[str] = []
+
+    class _Ctx:
+        def __enter__(self):
+            recorded.append("expander")
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    _st_stub.error = lambda *args, **kwargs: recorded.append("error")
+    _st_stub.expander = lambda *args, **kwargs: _Ctx()
+    _st_stub.code = lambda *args, **kwargs: recorded.append("code")
+    _st_stub.caption = lambda *args, **kwargs: None
+    _levels_page._render_levels_calculation_status(status)
+    assert recorded == ["error", "expander", "code"]
 
 
 def test_loading_saved_levels_clears_stale_calculation_status(monkeypatch):

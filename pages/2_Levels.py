@@ -205,15 +205,17 @@ def _calculate_levels_transaction(
         calculated_levels, calculated_session_levels = calculate()
     except Exception as exc:
         completed_at = datetime.now(timezone.utc).isoformat()
-        session_state[_LEVELS_CALCULATION_STATUS_KEY] = {
+        failed = {
             **context,
             "state": "failed",
             "completed_at": completed_at,
             "duration_seconds": time.perf_counter() - started,
             "error_type": type(exc).__name__,
             "error_message": str(exc),
-            "traceback": traceback.format_exc(),
         }
+        if not isinstance(exc, ValueError):
+            failed["traceback"] = traceback.format_exc()
+        session_state[_LEVELS_CALCULATION_STATUS_KEY] = failed
         return False
 
     completed_at = datetime.now(timezone.utc).isoformat()
@@ -258,13 +260,17 @@ def _render_levels_calculation_status(status: dict | None) -> None:
             f"{status.get('error_message', 'no message')}). "
             "Previous successful levels, if any, were retained."
         )
+        traceback_text = status.get("traceback")
+        # QI-02-05 / E-2: known ValueError refusals stay st.error only.
+        if status.get("error_type") == "ValueError" or not traceback_text:
+            return
         with st.expander("Calculation diagnostics"):
             st.caption(
                 f"Dataset: {status.get('dataset_id', '—')} · "
                 f"Settings hash: {str(status.get('settings_hash', '—'))[:12]}… · "
                 f"Input rows: {status.get('input_rows', '—'):,}"
             )
-            st.code(status.get("traceback", ""), language="text")
+            st.code(traceback_text, language="text")
 
 
 def _saved_levels_label(meta: dict) -> str:
