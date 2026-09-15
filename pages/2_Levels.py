@@ -213,6 +213,8 @@ def _calculate_levels_transaction(
             "error_type": type(exc).__name__,
             "error_message": str(exc),
         }
+        # QI-02-05 / E-2: ValueError and typed engine subclasses (e.g.
+        # APOCProfileInputError) are known refusals — message only.
         if not isinstance(exc, ValueError):
             failed["traceback"] = traceback.format_exc()
         session_state[_LEVELS_CALCULATION_STATUS_KEY] = failed
@@ -253,22 +255,30 @@ def _render_levels_calculation_status(status: dict | None) -> None:
             f"{status.get('duration_seconds', 0.0):.1f}s)."
         )
     elif state == "failed":
+        duration = status.get("duration_seconds", 0.0)
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+            duration = 0.0
         st.error(
             "Level calculation failed "
-            f"after {status.get('duration_seconds', 0.0):.1f}s "
+            f"after {duration:.1f}s "
             f"({status.get('error_type', 'Exception')}: "
             f"{status.get('error_message', 'no message')}). "
             "Previous successful levels, if any, were retained."
         )
         traceback_text = status.get("traceback")
-        # QI-02-05 / E-2: known ValueError refusals stay st.error only.
+        # QI-02-05 / E-2: known ValueError refusals stay st.error only,
+        # including leftover E-1 statuses that still carry traceback.
         if status.get("error_type") == "ValueError" or not traceback_text:
             return
+        raw_rows = status.get("input_rows")
+        rows_label = (
+            f"{raw_rows:,}" if isinstance(raw_rows, int) and not isinstance(raw_rows, bool) else "—"
+        )
         with st.expander("Calculation diagnostics"):
             st.caption(
                 f"Dataset: {status.get('dataset_id', '—')} · "
                 f"Settings hash: {str(status.get('settings_hash', '—'))[:12]}… · "
-                f"Input rows: {status.get('input_rows', '—'):,}"
+                f"Input rows: {rows_label}"
             )
             st.code(traceback_text, language="text")
 
