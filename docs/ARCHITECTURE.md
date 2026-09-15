@@ -636,8 +636,8 @@ headless symbols. The package does not import Streamlit at module load,
 does not render widgets, and does not write classic research
 `session_state`. The only Streamlit use is a lazy `st.secrets` fallback in
 `assistant.llm` (`OPENAI_API_KEY` env wins) and
-`assistant.voice.xai_realtime` (`XAI_API_KEY` env wins); import-linter C8
-allow-lists those two modules. C-8 extracted the Streamlit-free
+`assistant.voice.xai_realtime` (`XAI_API_KEY` env wins); those two modules
+stay on the import-linter C8 allow-list. C-8 extracted the Streamlit-free
 saved-dataset reader, not a secrets reader. Engine and analytics behavior
 stay unchanged.
 
