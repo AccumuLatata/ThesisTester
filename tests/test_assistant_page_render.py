@@ -350,6 +350,20 @@ def test_help_mode_shows_disabled_guidance_when_product_help_off(workspace, monk
     assert app.chat_input[0].disabled is True
 
 
+def test_discuss_captions_name_three_distinct_integrity_bars(workspace):
+    """QI-09-10: Discuss Open exact captions name three distinct bars."""
+    orchestrator, thesis = workspace
+    _seed_discussable_run(orchestrator, thesis.thesis_id)
+    app = _render(thesis.thesis_id)
+
+    assert not app.exception
+    joined = "\n".join(item.value for item in app.caption)
+    assert "stay distinct" in joined
+    assert "schema-only" in joined
+    assert "hash-fail-closed" in joined
+    assert "open-exact" in joined
+
+
 def test_rendered_captions_contain_rux2_nav_fragments(workspace):
     """Draft-mode captions compose the flipped Discuss/Help nav constants."""
     _, thesis = workspace

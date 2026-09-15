@@ -1119,6 +1119,23 @@ def test_ah4_p5_page_12_stays_schema_only():
     assert "bootstrap_active_saved_dataset()" in source
 
 
+def test_page_12_labels_three_integrity_bars_without_hash_gate():
+    """QI-09-10 / QI-06-06 residual: page 12 names three distinct bars; no hash symbol.
+
+    AST-bound to title-chrome and Import-site ``st.caption`` (file-level needles
+    / collapsed open-exact=hash-fail-closed sentence fail-closed).
+    """
+    from tests.test_ui_copy_guards import (
+        _assert_page_12_import_schema_only_caption,
+        _assert_page_12_three_bar_title_chrome,
+    )
+
+    source = Path("pages/12_Research_Bundles.py").read_text(encoding="utf-8")
+    _assert_page_12_three_bar_title_chrome(source)
+    _assert_page_12_import_schema_only_caption(source)
+    assert "canonical_bundle_hash" not in source
+
+
 _QI0603_CLEAR_ONLY_KEYS = (
     "otf_validation_matrix",
     "otf_validation_config",
