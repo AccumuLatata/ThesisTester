@@ -904,4 +904,19 @@ st.caption(
 )
 render_classic_nav_prefill_caption(target_page="pages/1_Data.py")
 
-render_data_workspace(st, page=sys.modules[__name__])
+
+class _DataPageModule:
+    """Resolve page names without requiring ``sys.modules[__name__]``.
+
+    Helper tests ``exec_module`` the page without inserting it into
+    ``sys.modules``; a globals proxy still sees monkeypatched names.
+    """
+
+    def __getattr__(self, name):
+        try:
+            return globals()[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
+render_data_workspace(st, page=_DataPageModule())
