@@ -317,7 +317,8 @@ def render_backtest_results(
         "Outlier dependency", format_metric(_display_summary.get("outlier_dependency_ratio"))
     )
     adv_row_2[3].metric(
-        "Max consecutive losses", format_metric_int(_display_summary.get("max_consecutive_losses", 0))
+        "Max consecutive losses",
+        format_metric_int(_display_summary.get("max_consecutive_losses", 0)),
     )
 
     direction_summary = summarize_trades_by_direction(_display_trades)

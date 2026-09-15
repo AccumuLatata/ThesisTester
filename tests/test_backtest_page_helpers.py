@@ -133,7 +133,9 @@ def test_signal_setup_context_prefers_single_column_name() -> None:
         == "Backtesting signals from saved setup: Open drive • cap"
     )
     multi = pd.DataFrame({"setup_name": ["A", "B"]})
-    assert signal_setup_context(multi, None) == "Backtesting signals from multiple saved setups: A, B"
+    assert (
+        signal_setup_context(multi, None) == "Backtesting signals from multiple saved setups: A, B"
+    )
     empty = pd.DataFrame({"direction": ["long"]})
     assert signal_setup_context(empty, {"setup_caption": "only cap"}) == (
         "Backtesting generated signals • only cap"
