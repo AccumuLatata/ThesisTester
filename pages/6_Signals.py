@@ -681,6 +681,29 @@ def _validate_signal_artifact_identity_for_save(
     return True, None
 
 
+def _controls_changed_warning_for_view(
+    session_state: dict,
+    current_settings: dict | None,
+) -> str | None:
+    """Return the save-path controls-changed warning for page view (QI-03-12).
+
+    Setup save/set-active pops ``signals``. This surfaces the same warning when
+    leftover artifacts remain and current controls no longer match the stored
+    identity — viewing, not only Save.
+    """
+    if session_state.get("signals") is None:
+        return None
+    if current_settings is None:
+        return None
+    stored_hash = session_state.get("signal_settings_hash")
+    if not isinstance(stored_hash, str) or not stored_hash:
+        return None
+    current_hash = compute_signal_settings_hash(current_settings)
+    if current_hash != stored_hash:
+        return _SIGNAL_CONTROLS_CHANGED_WARNING
+    return None
+
+
 def _build_signal_settings(
     *,
     confluence_mode: str,
@@ -1622,6 +1645,9 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
 # ── Display results ───────────────────────────────────────────────────────────
 zones = st.session_state.get("confluence_zones")
 signals = st.session_state.get("signals")
+_view_controls_warning = _controls_changed_warning_for_view(st.session_state, signal_settings)
+if _view_controls_warning:
+    st.warning(_view_controls_warning)
 
 if zones is None:
     st.info("Configure settings in the sidebar and click **Generate signals**.")

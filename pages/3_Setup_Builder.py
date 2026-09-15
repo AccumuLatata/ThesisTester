@@ -301,6 +301,27 @@ def _dataset_relation_label(setup_dataset_id: object, current_dataset_id: str | 
     return "other dataset"
 
 
+# QI-03-12 / D-2: setup save / set-active pops the in-session candidate
+# cluster so leftover ``signals`` cannot reach Backtest unflagged. Same
+# identity siblings dataset-clear pops (A-8) so a leftover hash cannot
+# look like a match. Zones stay; regenerate rebuilds candidates.
+_SETUP_MUTATION_SIGNAL_KEYS = (
+    "signals",
+    "signal_settings",
+    "signal_settings_hash",
+    "signal_artifact_identity_status",
+    "signal_artifact_identity_error",
+    "last_signal_setup",
+    "signal_context",
+)
+
+
+def _invalidate_session_signals_after_setup_mutation(session_state: Any) -> None:
+    """Pop leftover candidates after setup save / set-active (QI-03-12)."""
+    for key in _SETUP_MUTATION_SIGNAL_KEYS:
+        session_state.pop(key, None)
+
+
 def _saved_setup_label(meta: dict[str, Any], current_dataset_id: str | None) -> str:
     updated_raw = meta.get("updated_at") or meta.get("created_at") or ""
     updated = str(updated_raw)[:10] if updated_raw else "unknown date"
@@ -859,6 +880,7 @@ if saved_setup_options:
     if action_cols[2].button("Set active", width="stretch"):
         loaded_meta = load_setup(selected_saved_setup_id)
         st.session_state["setup_config"] = dict(loaded_meta.get("setup_config", {}))
+        _invalidate_session_signals_after_setup_mutation(st.session_state)
         st.success(f"Active setup set to '{loaded_meta.get('name', 'setup')}'.")
 
     if action_cols[3].button("Delete", width="stretch"):
@@ -1438,6 +1460,7 @@ if st.button("Save setup", type="primary"):
             persisted_config = dict(saved_meta["setup_config"])
             st.session_state["setup_config"] = persisted_config
             st.session_state[EDITOR_STATE_KEY] = persisted_config
+            _invalidate_session_signals_after_setup_mutation(st.session_state)
             existing = st.session_state.get("setup_configs", [])
             replaced = any(item.get("name") == persisted_config["name"] for item in existing)
             updated = [item for item in existing if item.get("name") != persisted_config["name"]]

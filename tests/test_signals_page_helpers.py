@@ -125,6 +125,7 @@ def _import_page_helpers():
         mod._try_normalize_signal_settings_for_hash,
         mod._resolve_loaded_signal_identity,
         mod._validate_signal_artifact_identity_for_save,
+        mod._controls_changed_warning_for_view,
         mod._IDENTITY_STATUS_TRUSTED,
         mod._IDENTITY_STATUS_INVALID,
         mod._IDENTITY_STATUS_UNAVAILABLE,
@@ -157,6 +158,7 @@ def _import_page_helpers():
     _try_normalize_signal_settings_for_hash,
     _resolve_loaded_signal_identity,
     _validate_signal_artifact_identity_for_save,
+    _controls_changed_warning_for_view,
     _IDENTITY_STATUS_TRUSTED,
     _IDENTITY_STATUS_INVALID,
     _IDENTITY_STATUS_UNAVAILABLE,
@@ -1208,6 +1210,22 @@ def test_validate_save_none_current_settings_blocks_save():
     can_save, err = _validate_signal_artifact_identity_for_save(ss, None)
     assert can_save is False
     assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_view_warning_surfaces_controls_changed_when_signals_drifted():
+    """QI-03-12 / D-2: leftover candidates show the save-path warning on view."""
+    ss = _trusted_session_state()
+    ss["signals"] = pd.DataFrame({"signal_id": [1]})
+    stored_trigger = ss["signal_settings"].get("trigger", "touch")
+    different_settings = _valid_loaded_settings()
+    different_settings["trigger"] = "reject" if stored_trigger == "touch" else "touch"
+    assert (
+        _controls_changed_warning_for_view(ss, different_settings)
+        == _SIGNAL_CONTROLS_CHANGED_WARNING
+    )
+    assert _controls_changed_warning_for_view(ss, _valid_loaded_settings()) is None
+    ss.pop("signals")
+    assert _controls_changed_warning_for_view(ss, different_settings) is None
 
 
 def test_validate_save_controls_drift_returns_controls_changed_message():
