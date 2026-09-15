@@ -16,8 +16,8 @@
 # JS2 (engine.signals stays allowed). C-9 slims journal/__init__.py so a
 # runtime `import thesistester.journal` does not load backtest; it does
 # not keep this contract. C8: C-8 made `app_state` a lazy page adapter;
-# classic_* stay lazy. Secret readers stay until F-9 extracts
-# Streamlit-free readers.
+# classic_* stay lazy. Secret readers stay on the C8 allow-list
+# and lazy-import st.secrets (AIA-0 / F-9 / QI-09-05).
 # C10 is page-scoped: pages/ are not a Python package, so import-linter
 # cannot name pages/15_Studies.py. The FORMAT_PROFILE_LABELS-from-builder
 # ban is this file's C10 comment plus tests/study/test_study_builder.py
