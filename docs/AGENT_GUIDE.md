@@ -163,8 +163,11 @@ without a traceback (QI-06-07). E-4
 ``--include-small-n`` / ``hidden_slice_count`` to Q3 Zones and Inferred
 trigger (QI-08-05). E-5
 ([#587](https://github.com/AccumuLatata/ThesisTester/pull/587)) lets Assistant
-Draft ``min_valid_confluences`` accept AO1 ``0`` (QI-09-11). E-6 (this PR)
-labels the three integrity bars on pages 12/14 (QI-09-10). Next: E-7.
+Draft ``min_valid_confluences`` accept AO1 ``0`` (QI-09-11). E-6
+([#588](https://github.com/AccumuLatata/ThesisTester/pull/588)) labels the
+three integrity bars on pages 12/14 (QI-09-10). E-7 (this PR) reuses the
+Signals zone-level any/all help on Setup Builder naked controls
+(QI-03-09). Next: E-8.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -409,8 +412,11 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Inferred trigger (QI-08-05). E-5
    ([#587](https://github.com/AccumuLatata/ThesisTester/pull/587)) lets
    Assistant Draft ``min_valid_confluences`` accept AO1 ``0`` (QI-09-11).
-   E-6 (this PR) labels the three integrity bars on pages 12/14
-   (QI-09-10). Next: E-7.
+   E-6
+   ([#588](https://github.com/AccumuLatata/ThesisTester/pull/588)) labels
+   the three integrity bars on pages 12/14 (QI-09-10). E-7 (this PR)
+   reuses the Signals zone-level any/all help on Setup Builder naked
+   controls (QI-03-09). Next: E-8.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

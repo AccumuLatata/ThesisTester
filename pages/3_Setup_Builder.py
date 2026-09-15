@@ -1308,6 +1308,7 @@ naked_requirement = st.radio(
     index=naked_requirement_index,
     horizontal=True,
     key=WIDGET_KEY_NAKED_REQUIREMENT,
+    help=("'any': at least one level in the zone must be naked. 'all': every level must be naked."),
 )
 
 st.subheader("Trigger settings")
