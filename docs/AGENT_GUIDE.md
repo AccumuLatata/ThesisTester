@@ -133,9 +133,11 @@ sync (QI-03-05). D-9
 ([#581](https://github.com/AccumuLatata/ThesisTester/pull/581)) extracts
 Studies Build section collectors / renderers (QI-07-01). D-10
 ([#582](https://github.com/AccumuLatata/ThesisTester/pull/582)) extracts
-Assistant voice/sidecar and Advanced blocks (QI-09-03). E-1 (this PR)
-routes Levels Calculate through ``product_tick_family_preflight``
-(QI-02-03). Next: E-2.
+Assistant voice/sidecar and Advanced blocks (QI-09-03). E-1
+([#583](https://github.com/AccumuLatata/ThesisTester/pull/583)) routes
+Levels Calculate through ``product_tick_family_preflight`` (QI-02-03).
+E-2 (this PR) maps known Levels ``ValueError`` refusals to ``st.error``
+without a traceback expander (QI-02-05). Next: E-3.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -365,9 +367,11 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    ([#581](https://github.com/AccumuLatata/ThesisTester/pull/581)) extracts
    Studies Build section collectors / renderers (QI-07-01). D-10
    ([#582](https://github.com/AccumuLatata/ThesisTester/pull/582)) extracts
-   Assistant voice/sidecar and Advanced blocks (QI-09-03). E-1 (this PR)
-   routes Levels Calculate through ``product_tick_family_preflight``
-   (QI-02-03). Next: E-2.
+   Assistant voice/sidecar and Advanced blocks (QI-09-03). E-1
+   ([#583](https://github.com/AccumuLatata/ThesisTester/pull/583)) routes
+   Levels Calculate through ``product_tick_family_preflight`` (QI-02-03).
+   E-2 (this PR) maps known Levels ``ValueError`` refusals to ``st.error``
+   without a traceback expander (QI-02-05). Next: E-3.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

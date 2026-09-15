@@ -2023,8 +2023,15 @@ generically without stage-specific workflow changes.
 frames and installs `levels`, `session_levels`, settings, and the data fingerprint in
 `st.session_state` only after both level calls succeed. A failure retains any prior valid results
 and records `levels_calculation_status` with the dataset id, settings hash, input row count,
-duration, exception type/message, and traceback for in-page diagnosis. This status is UI-only:
-it does not alter level-engine inputs, outputs, persistence schemas, or saved-level hashes.
+duration, exception type, and message. E-2 / QI-02-05: known `ValueError` refusals
+(tick-family preflight and other typed engine refuse, including `ValueError`
+subclasses such as `APOCProfileInputError`) store `error_message` only and
+render `st.error` without a traceback expander — leftover E-1 `ValueError`
+statuses that still carry `traceback` stay expander-free. Unexpected exception
+types still attach `traceback` and keep the Calculation diagnostics expander
+(`st.code`).
+This status is UI-only: it does not alter level-engine inputs, outputs, persistence
+schemas, or saved-level hashes.
 Loading a saved-level snapshot clears this transient status so its diagnostics cannot be
 misrepresented as the result of the loaded snapshot.
 

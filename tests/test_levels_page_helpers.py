@@ -4,6 +4,7 @@ import importlib.util
 import pathlib
 import sys
 import types
+from contextlib import contextmanager
 
 import pandas as pd
 
@@ -20,6 +21,13 @@ def _make_streamlit_stub() -> types.ModuleType:
     def _stop():
         raise _StopCalled()
 
+    class _Ctx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
     for name in (
         "title",
         "warning",
@@ -32,6 +40,8 @@ def _make_streamlit_stub() -> types.ModuleType:
         "rerun",
     ):
         setattr(st, name, _noop)
+    st.expander = lambda *args, **kwargs: _Ctx()  # type: ignore[assignment]
+    st.code = _noop  # type: ignore[assignment]
     st.stop = _stop  # type: ignore[assignment]
     st.session_state = {}  # type: ignore[assignment]
     return st
@@ -89,6 +99,44 @@ def _import_levels_helpers():
     _PRIOR_WEEK_AGG_TICKS_KEY,
     _PRIOR_MONTH_AGG_TICKS_KEY,
 ) = _import_levels_helpers()
+
+
+@contextmanager
+def _capture_streamlit_calls():
+    """Record page ``st`` calls and restore the shared stub afterwards."""
+    recorded: list[tuple] = []
+
+    def _record(name):
+        def _inner(*args, **kwargs):
+            recorded.append((name, args, kwargs))
+
+        return _inner
+
+    class _Ctx:
+        def __enter__(self):
+            recorded.append(("expander_enter", (), {}))
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    originals = {
+        "error": _st_stub.error,
+        "expander": _st_stub.expander,
+        "code": _st_stub.code,
+        "caption": _st_stub.caption,
+    }
+    _st_stub.error = _record("error")
+    _st_stub.expander = lambda *args, **kwargs: (
+        recorded.append(("expander", args, kwargs)) or _Ctx()
+    )
+    _st_stub.code = _record("code")
+    _st_stub.caption = _record("caption")
+    try:
+        yield recorded
+    finally:
+        for name, value in originals.items():
+            setattr(_st_stub, name, value)
 
 
 def test_normalize_levels_settings_sorts_indicator_timeframes():
@@ -206,6 +254,148 @@ def test_calculation_transaction_preserves_prior_results_on_failure():
     assert status["error_type"] == "MemoryError"
     assert status["error_message"] == "allocation failed"
     assert "MemoryError: allocation failed" in status["traceback"]
+
+
+def test_valueerror_refuse_status_exposes_message_without_traceback():
+    """QI-02-05 / E-2: tick-family refuse is st.error only — no traceback."""
+    prior_levels = object()
+    state = {
+        "levels": prior_levels,
+        "session_levels": object(),
+        "levels_settings": {"opening_range_minutes": 15},
+        "levels_data_fingerprint": {"rows": 10},
+    }
+    refuse = "APOC requires ticks and rolling POC requires ticks: tick_paths is missing or empty"
+
+    def _raise_tick_refuse():
+        raise ValueError(refuse)
+
+    succeeded = _calculate_levels_transaction(
+        calculate=_raise_tick_refuse,
+        session_state=state,
+        current_settings={"opening_range_minutes": 30},
+        current_data_fingerprint={"rows": 42},
+        dataset_id="dataset-1",
+        settings_hash="abc123",
+        input_rows=42,
+    )
+
+    assert succeeded is False
+    assert state["levels"] is prior_levels
+    status = state[_LEVELS_CALCULATION_STATUS_KEY]
+    assert status["state"] == "failed"
+    assert status["error_type"] == "ValueError"
+    assert status["error_message"] == refuse
+    assert "traceback" not in status
+
+    with _capture_streamlit_calls() as recorded:
+        _levels_page._render_levels_calculation_status(status)
+    error_calls = [args for name, args, _kwargs in recorded if name == "error"]
+    assert error_calls
+    error_text = str(error_calls[0])
+    assert refuse in error_text
+    assert "Traceback" not in error_text
+    assert "File " not in error_text
+    assert not any(name == "code" for name, _args, _kwargs in recorded)
+    assert not any(name == "expander" for name, _args, _kwargs in recorded)
+    assert not any(name == "expander_enter" for name, _args, _kwargs in recorded)
+
+
+def test_typed_valueerror_subclass_refuse_omits_traceback():
+    """Typed engine subclasses of ValueError stay st.error-only."""
+    from thesistester.levels.apoc_candidates import APOCProfileInputError
+
+    state: dict = {}
+
+    def _raise_apoc_input():
+        raise APOCProfileInputError("A-period rows require timezone-aware timestamps.")
+
+    succeeded = _calculate_levels_transaction(
+        calculate=_raise_apoc_input,
+        session_state=state,
+        current_settings={"opening_range_minutes": 30},
+        current_data_fingerprint={"rows": 42},
+        dataset_id="dataset-1",
+        settings_hash="abc123",
+        input_rows=42,
+    )
+
+    assert succeeded is False
+    status = state[_LEVELS_CALCULATION_STATUS_KEY]
+    assert status["error_type"] == "APOCProfileInputError"
+    assert "traceback" not in status
+
+    with _capture_streamlit_calls() as recorded:
+        _levels_page._render_levels_calculation_status(status)
+    error_text = str([args for name, args, _kwargs in recorded if name == "error"][0])
+    assert "timezone-aware" in error_text
+    assert "Traceback" not in error_text
+    assert not any(name == "code" for name, _args, _kwargs in recorded)
+    assert not any(name == "expander_enter" for name, _args, _kwargs in recorded)
+
+
+def test_stale_valueerror_status_hides_leftover_traceback():
+    """E-1 leftover traceback on ValueError must not reopen the expander."""
+    status = {
+        "state": "failed",
+        "error_type": "ValueError",
+        "error_message": "APOC requires ticks: tick_paths is missing or empty",
+        "duration_seconds": None,
+        "traceback": "Traceback (most recent call last):\n  File 'levels.py', line 1\nValueError",
+    }
+    with _capture_streamlit_calls() as recorded:
+        _levels_page._render_levels_calculation_status(status)
+    error_text = str([args for name, args, _kwargs in recorded if name == "error"][0])
+    assert "APOC requires ticks" in error_text
+    assert "Traceback" not in error_text
+    assert not any(name == "code" for name, _args, _kwargs in recorded)
+    assert not any(name == "expander_enter" for name, _args, _kwargs in recorded)
+
+
+def test_unexpected_failure_still_renders_traceback_expander():
+    state: dict = {}
+
+    def _raise_memory_error():
+        raise MemoryError("allocation failed")
+
+    _calculate_levels_transaction(
+        calculate=_raise_memory_error,
+        session_state=state,
+        current_settings={"opening_range_minutes": 30},
+        current_data_fingerprint={"rows": 42},
+        dataset_id="dataset-1",
+        settings_hash="abc123",
+        input_rows=42,
+    )
+    status = state[_LEVELS_CALCULATION_STATUS_KEY]
+    assert "MemoryError: allocation failed" in status["traceback"]
+
+    with _capture_streamlit_calls() as recorded:
+        _levels_page._render_levels_calculation_status(status)
+    names = [name for name, _args, _kwargs in recorded]
+    assert names[:3] == ["error", "expander", "expander_enter"]
+    assert "code" in names
+    code_args = [args for name, args, _kwargs in recorded if name == "code"]
+    assert code_args
+    assert "MemoryError: allocation failed" in str(code_args[0])
+    assert "Traceback" in str(code_args[0])
+
+
+def test_unexpected_expander_survives_missing_input_rows():
+    """Diagnostics caption must not raise when input_rows is absent."""
+    status = {
+        "state": "failed",
+        "error_type": "MemoryError",
+        "error_message": "allocation failed",
+        "traceback": "Traceback (most recent call last):\nMemoryError: allocation failed",
+    }
+    with _capture_streamlit_calls() as recorded:
+        _levels_page._render_levels_calculation_status(status)
+    assert any(name == "expander_enter" for name, _args, _kwargs in recorded)
+    caption_args = [args for name, args, _kwargs in recorded if name == "caption"]
+    assert caption_args
+    assert "Input rows: —" in str(caption_args[0])
+    assert any(name == "code" for name, _args, _kwargs in recorded)
 
 
 def test_loading_saved_levels_clears_stale_calculation_status(monkeypatch):
