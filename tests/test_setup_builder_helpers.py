@@ -206,8 +206,7 @@ def test_sync_editor_widget_state_canonicalizes_via_build_setup_config():
     assert warnings == []
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SETUP_NAME] == built["name"]
     assert (
-        setup_builder.st.session_state[setup_builder.WIDGET_KEY_DESCRIPTION]
-        == built["description"]
+        setup_builder.st.session_state[setup_builder.WIDGET_KEY_DESCRIPTION] == built["description"]
     )
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER] == built["trigger"]
     assert (
@@ -246,15 +245,13 @@ def test_sync_editor_widget_state_fade_require_close_follows_builder():
     warnings = setup_builder._sync_editor_widget_state(raw, ["ONH"], overwrite=True)
     assert warnings == []
     assert (
-        setup_builder.st.session_state[setup_builder.WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION]
-        is False
+        setup_builder.st.session_state[setup_builder.WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION] is False
     )
     raw["trigger_params"] = {"require_close_confirmation": "0"}
     setup_builder.st.session_state = {}
     setup_builder._sync_editor_widget_state(raw, ["ONH"], overwrite=True)
     assert (
-        setup_builder.st.session_state[setup_builder.WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION]
-        is False
+        setup_builder.st.session_state[setup_builder.WIDGET_KEY_REQUIRE_CLOSE_CONFIRMATION] is False
     )
 
 
