@@ -2169,8 +2169,9 @@ if handoff is not None:
     except Exception:
         st.caption("Identity vs handoff run: **identity unavailable**")
     st.caption(
-        "Open exact is hash-fail-closed restore (open-exact). "
-        "Page 12 zip import is schema-only — a different integrity bar."
+        "Three integrity bars stay distinct: page-12 zip import is schema-only; "
+        "Assistant restore is hash-fail-closed; Open exact is hash-fail-closed "
+        "restore into Backtest (open-exact)."
     )
     if st.button(
         "Open exact run in Backtest",
@@ -2354,8 +2355,9 @@ if mode == ASSISTANT_MODE_DISCUSS:
         if explanation:
             st.write(explanation)
         st.caption(
-            "Open exact is hash-fail-closed restore (open-exact). "
-            "Page 12 zip import is schema-only — a different integrity bar."
+            "Three integrity bars stay distinct: page-12 zip import is schema-only; "
+            "Assistant restore is hash-fail-closed; Open exact is hash-fail-closed "
+            "restore into Backtest (open-exact)."
         )
         open_col, restore_col = st.columns(2)
         with open_col:

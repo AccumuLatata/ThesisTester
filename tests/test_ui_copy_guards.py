@@ -1936,6 +1936,11 @@ _H8_PURPOSE_H2 = "Purpose and honesty"
 _H8_ASSISTANT_H2 = "Research Assistant (draft, Discuss, Help)"
 _H8_STUDY_H2 = "Research Study Runner (headless)"
 _USER_GUIDE_H2_SOFT_BUDGET = 4500
+_BUNDLES_USER_GUIDE_H2 = "Research Bundles"
+_OPEN_EXACT_BUTTON = "Open exact run in Backtest"
+_THREE_INTEGRITY_BAR_NEEDLES = ("schema-only", "hash-fail-closed", "open-exact")
+_THREE_BAR_DISTINCT_MARKER = "stay distinct"
+_COLLAPSED_OPEN_EXACT_AS_HASH_BAR = "open-exact is a separate hash-fail-closed integrity bar"
 
 
 def _assert_h8_confirm_run_caption(source: str) -> None:
@@ -2125,6 +2130,166 @@ def test_user_guide_assistant_h2_names_confirm_run_omit_means_on():
         assert "Research Assistant" in str(exc)
     else:
         raise AssertionError("Notes-only needles must not bind as Research Assistant H2")
+
+
+def _caption_has_three_distinct_bars(text: str) -> bool:
+    return _THREE_BAR_DISTINCT_MARKER in text and all(
+        needle in text for needle in _THREE_INTEGRITY_BAR_NEEDLES
+    )
+
+
+def _assert_caption_has_three_distinct_bars(text: str) -> None:
+    missing = [needle for needle in _THREE_INTEGRITY_BAR_NEEDLES if needle not in text]
+    if missing:
+        raise AssertionError(f"st.caption missing three-bar needles {missing}: {text!r}")
+    if _THREE_BAR_DISTINCT_MARKER not in text:
+        raise AssertionError(f"st.caption must say the three bars stay distinct (got {text!r})")
+    if _COLLAPSED_OPEN_EXACT_AS_HASH_BAR in text:
+        raise AssertionError("st.caption collapsed open-exact into the hash-fail-closed bar")
+
+
+def _assert_page_12_three_bar_title_chrome(source: str) -> None:
+    """AST-bind page-12 title-chrome caption; comments / later helpers fail-closed."""
+    matching = [
+        text
+        for call in _module_title_chrome_captions(source)
+        if (text := _first_arg_text(call)) is not None and _caption_has_three_distinct_bars(text)
+    ]
+    if not matching:
+        raise AssertionError("page 12 title-chrome st.caption missing distinct three-bar vocabulary")
+    if "does not hash-gate" not in matching[0]:
+        raise AssertionError("page 12 three-bar caption must say this page does not hash-gate")
+    if "canonical_bundle_hash" in source:
+        raise AssertionError("page 12 must not name canonical_bundle_hash")
+
+
+def _assert_page_12_import_schema_only_caption(source: str) -> None:
+    """AST-bind the first ``st.caption`` after ``Import bundle`` (action site)."""
+    tree = ast.parse(source)
+    import_line = _subheader_lineno(tree, "Import bundle")
+    if import_line is None:
+        raise AssertionError("missing Import bundle subheader")
+    after = [
+        (call.lineno, text)
+        for call in _st_calls(tree, "caption")
+        if call.lineno > import_line and (text := _first_arg_text(call)) is not None
+    ]
+    if not after:
+        raise AssertionError("Import bundle has no following st.caption")
+    _lineno, text = min(after, key=lambda item: item[0])
+    missing = [needle for needle in _THREE_INTEGRITY_BAR_NEEDLES if needle not in text]
+    if missing:
+        raise AssertionError(f"Import st.caption missing {missing}: {text!r}")
+    if "does not hash-gate" not in text:
+        raise AssertionError("Import st.caption must say this page does not hash-gate")
+
+
+def _assert_open_exact_buttons_have_three_bar_captions(source: str) -> None:
+    """Each Open exact button must have a nearby preceding distinct-bar ``st.caption``.
+
+    File-level needles / comments / ``help=`` / a single collapsed sentence fail-closed.
+    """
+    tree = ast.parse(source)
+    buttons = [
+        call for call in _st_calls(tree, "button") if _call_label(call) == _OPEN_EXACT_BUTTON
+    ]
+    if len(buttons) != 2:
+        raise AssertionError(f"expected 2 Open exact buttons, got {len(buttons)}")
+    captions = [
+        (call.lineno, text)
+        for call in _st_calls(tree, "caption")
+        if (text := _first_arg_text(call)) is not None
+    ]
+    for button in buttons:
+        preceding = [(lineno, text) for lineno, text in captions if lineno < button.lineno]
+        if not preceding:
+            raise AssertionError(f"Open exact at line {button.lineno} has no preceding st.caption")
+        nearest_lineno, nearest_text = max(preceding, key=lambda item: item[0])
+        if button.lineno - nearest_lineno > 20:
+            raise AssertionError(
+                f"Open exact at line {button.lineno} nearest st.caption is "
+                f"{button.lineno - nearest_lineno} lines away"
+            )
+        _assert_caption_has_three_distinct_bars(nearest_text)
+
+
+def test_user_guide_research_bundles_h2_names_three_integrity_bars():
+    """QI-09-10 / E-6: Bundles H2 lists three distinct bars; Related pages must not collapse."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _BUNDLES_USER_GUIDE_H2)
+    missing = [needle for needle in _THREE_INTEGRITY_BAR_NEEDLES if needle not in body]
+    assert missing == [], f"Research Bundles H2 missing three-bar needles {missing}"
+    assert _THREE_BAR_DISTINCT_MARKER in body
+    assert "does not hash-gate" in body
+    assert "Open exact** (hash-fail-closed bar" not in body
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Research Bundles H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+
+
+def test_user_guide_assistant_h2_names_open_exact_vs_schema_only():
+    """QI-09-10 / E-6: Assistant H2 names Open exact vs page-12 schema-only."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_ASSISTANT_H2)
+    missing = [
+        needle
+        for needle in ("Open exact", "open-exact", "schema-only", "hash-fail-closed")
+        if needle not in body
+    ]
+    assert missing == [], f"Research Assistant H2 missing Open exact needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Research Assistant H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+
+
+def test_three_bar_caption_guard_requires_st_caption_not_help_or_comment():
+    """Comment / help= / collapsed one-bar sentence must not satisfy E-6 captions."""
+    needles = " ".join(_THREE_INTEGRITY_BAR_NEEDLES)
+    collapsed = (
+        "import streamlit as st\n"
+        'st.title("Research Bundles")\n'
+        f'st.caption("Assistant {_COLLAPSED_OPEN_EXACT_AS_HASH_BAR}. schema-only.")\n'
+    )
+    comment_only = (
+        "import streamlit as st\n"
+        'st.title("Research Bundles")\n'
+        f"# Three integrity bars {needles} {_THREE_BAR_DISTINCT_MARKER}\n"
+        "st.selectbox(\n"
+        '    "x",\n'
+        f'    options=["a"],\n'
+        f'    help="{needles} {_THREE_BAR_DISTINCT_MARKER}",\n'
+        ")\n"
+    )
+    try:
+        _assert_page_12_three_bar_title_chrome(collapsed)
+    except AssertionError as exc:
+        assert "distinct" in str(exc) or "collapsed" in str(exc) or "stay distinct" in str(exc)
+    else:
+        raise AssertionError("collapsed open-exact=hash-fail-closed caption must not pass")
+    try:
+        _assert_page_12_three_bar_title_chrome(comment_only)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc) or "three-bar" in str(exc)
+    else:
+        raise AssertionError("help=/comment three-bar needles must not false-green st.caption")
+
+
+def test_open_exact_caption_guard_requires_caption_before_each_button():
+    """A file-level three-bar comment must not satisfy both Open exact sites."""
+    needles = (
+        f"Three integrity bars {_THREE_BAR_DISTINCT_MARKER}: "
+        "schema-only; restore is hash-fail-closed; open-exact"
+    )
+    fake = (
+        "import streamlit as st\n"
+        f"# {needles}\n"
+        f'st.button("{_OPEN_EXACT_BUTTON}", key="a")\n'
+        f'st.button("{_OPEN_EXACT_BUTTON}", key="b")\n'
+    )
+    try:
+        _assert_open_exact_buttons_have_three_bar_captions(fake)
+    except AssertionError as exc:
+        assert "st.caption" in str(exc) or "Open exact" in str(exc)
+    else:
+        raise AssertionError("comment-only three-bar needles must not false-green Open exact")
 
 
 _H16_STUDIES_VIEWER_H2 = "Studies viewer (read-only)"

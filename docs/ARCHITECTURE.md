@@ -312,8 +312,8 @@ after) and rejects a **named** member whose `ZipInfo.file_size` exceeds
 uses the same upload cap (path or bytes) and the same member cap on
 `research_identity.json`. Unknown / traversal members are never extracted
 to disk and are ignored. Column policy stays schema-only. Page 12 does
-**not** add a hash gate (AH §2 item 8). Assistant open-exact remains the
-hash-fail-closed path.
+**not** add a hash gate (AH §2 item 8). Assistant restore and open-exact
+remain hash-fail-closed (distinct bars; table below).
 
 **Persistence integrity bars (QI-09-10 / QI-06-06 residual).** Three
 mechanically distinct bars — do not collapse:

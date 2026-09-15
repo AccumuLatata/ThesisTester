@@ -27,8 +27,9 @@ st.title("🧳 Research Bundles")
 st.caption("Diagnostic only — not proof of edge.")
 st.caption("Export and import portable research state snapshots for this session.")
 st.caption(
-    "This page is schema-only zip import (manifest / columns / members). "
-    "Assistant open-exact is a separate hash-fail-closed integrity bar. "
+    "Three integrity bars stay distinct: this page is schema-only zip import "
+    "(manifest / columns / members). Assistant restore is hash-fail-closed. "
+    "Open exact is hash-fail-closed restore into Backtest (open-exact). "
     "This page does not hash-gate."
 )
 if not should_skip_dataset_bootstrap(st.session_state):
@@ -169,6 +170,10 @@ render_discuss_this_run(page_key="research_bundles")
 
 st.divider()
 st.subheader("Import bundle")
+st.caption(
+    "Import is schema-only (manifest / columns / members) — not hash-fail-closed "
+    "and not open-exact. This page does not hash-gate."
+)
 
 uploaded = st.file_uploader("Upload research bundle", type=["zip"])
 if uploaded is not None:

@@ -818,8 +818,8 @@ snapshot, hash identity, restore session, record and discuss, portable state
   restore into Backtest). Page 12 does not hash-gate.
 
 **Related pages.** Report Export; classic pages listed in the import flash
-(Data through Portfolio); Research Assistant **Open exact** (hash-fail-closed
-bar, not this page’s schema-only zip import).
+(Data through Portfolio); Research Assistant **Open exact** (open-exact bar)
+and **Restore** (hash-fail-closed bar), not this page’s schema-only zip import.
 
 ## Portfolio
 
@@ -932,6 +932,8 @@ the run preselected for **Discuss results**. Discuss Q&A lives in that mode, not
 - Help does not invent run metrics or undocumented settings.
 - Linked runs list **thesis-recorded** runs only — classic exploration without
   research mode is never listed.
+- **Open exact** is hash-fail-closed restore into Backtest (open-exact), not
+  page-12 schema-only.
 
 **Related pages.** Classic research mode (record/discuss); USER_GUIDE how-tos
 via Help.

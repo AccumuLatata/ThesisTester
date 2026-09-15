@@ -204,12 +204,15 @@ def _kw_literal(call: ast.Call, name: str):
 
 
 def test_open_exact_caption_names_three_integrity_bars():
-    """QI-09-10: Assistant Open exact names schema-only / hash-fail-closed / open-exact."""
+    """QI-09-10: each Open exact button has a distinct three-bar ``st.caption``.
+
+    File-level needles / a comment / a collapsed open-exact=hash-fail-closed
+    sentence fail-closed. Both handoff and Discuss sites must be labelled.
+    """
+    from tests.test_ui_copy_guards import _assert_open_exact_buttons_have_three_bar_captions
+
     source = _load_research_assistant_page()
-    assert "schema-only" in source
-    assert "hash-fail-closed" in source
-    assert "open-exact" in source
-    assert "Open exact run in Backtest" in source
+    _assert_open_exact_buttons_have_three_bar_captions(source)
 
 
 def test_draft_min_valid_confluences_allows_ao1_zero():
