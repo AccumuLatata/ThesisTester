@@ -1993,7 +1993,11 @@ The A-period tick table (`thesistester/levels/apoc_tick.py`) is not
 `dataset.tick_paths` into the A-period table when a prior-VA parquet is also
 attached. Named or product-default APOC / rolling POC refuse without
 `tick_paths` (`requires ticks`); they never fall back to typical and do not
-emit quiet all-NaN placeholders when those families are required. Studies
+emit quiet all-NaN placeholders when those families are required.
+E-1 / QI-02-03: page Calculate (`_product_tick_family_refuse_message`) uses
+the same `product_tick_family_preflight` / `product_tick_family_message` as
+`api.compute_levels`. Study `validate_study_spec` still names tokens; all
+three share `APOC requires ticks` / `rolling POC requires ticks`. Studies
 that name neither family still run on 15s-only (`disable_unneeded_tick_families`).
 `typical_mvp_v1` is a dead/test-only library helper, not a production source.
 Fresh Program B Wave 7 packets live in `manifest_tick.yaml`, omit

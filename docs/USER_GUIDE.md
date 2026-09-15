@@ -148,7 +148,7 @@ saved snapshots, regenerate
 | `Rolling VWAP windows` / `Rolling POC windows` | Intraday rolling anchors | Large data + rolling POC can be slow |
 | `Value area (%)` + prior D/W/M VA aggregation ticks | Profile VA/POC binning | Aggregation ticks ≠ instrument tick size. Classic Calculate omits `pdVA*` / `pw*` / `pm*` (no tick table). Data-page attach does not feed that button — paste paths into Studies `dataset.tick_paths` |
 | **Advanced opt-in levels** | Pivots, dVWAP_RTH, dVWAP (CME session), wVWAP, mVWAP (developing week/month), TPO single prints, APOC, prev30mVWAP | Three planes (page / `normalize_levels_config` defaults / kwargs). Omit a family key ⇒ on; uncheck a box to omit |
-| **Calculate levels** / **Recalculate levels** | Build or refresh level artifacts | Stale after data/settings change |
+| **Calculate levels** / **Recalculate levels** | Build or refresh level artifacts | First-visit product defaults (APOC + rolling POC on) refuse with the same `product_tick_family_message` as `api.compute_levels` (`APOC requires ticks` and `rolling POC requires ticks`). Uncheck APOC and clear rolling POC for 15s-only. Stale after data/settings change |
 
 **How to use.**
 
@@ -164,9 +164,12 @@ recalculations keep the previous successful levels. Levels are research inputs,
 not trade signals by themselves. Prior `pdVA*` / `pw*` / `pm*` are tick VAP
 when `dataset.tick_paths` (or a prior-profile table) is provided, and
 **absent** otherwise — they are not 1m typical under those names. Classic
-Calculate does not read Data-page attach. APOC and rolling POC are tick
+Calculate does not read Data-page attach. First-visit Calculate with
+product defaults therefore refuses before compute (same family string as
+the API; Study validate names tokens but shares `APOC requires ticks` /
+`rolling POC requires ticks`). APOC and rolling POC are tick
 Last×Volume (desk default). Missing `tick_paths` refuse when those
-families are in play (`requires ticks`); they never fall back to typical.
+families are in play; they never fall back to typical.
 
 **Related pages.** Data (prerequisite); Setup Builder / Signals (consumers).
 
