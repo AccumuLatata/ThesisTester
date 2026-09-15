@@ -116,10 +116,14 @@ on Signals view. D-3 ([#575](https://github.com/AccumuLatata/ThesisTester/pull/5
 extracts Backtest sidebar / run-persist / display into ``*_page_helpers``
 (QI-04-05). D-4 ([#576](https://github.com/AccumuLatata/ThesisTester/pull/576))
 extracts Validation sidebar / WFA-OTF persist /
-Phase 8 display into ``*_page_helpers`` (QI-05-02). D-5 (this PR) extracts
+Phase 8 display into ``*_page_helpers`` (QI-05-02). D-5
+([#577](https://github.com/AccumuLatata/ThesisTester/pull/577)) extracts
 the Data-page upload/save tree into saved / source-apply / attach-save
 panels and splits `_render_subtimeframe_upload` /
-`_render_tick_attach` (QI-01-01). H10 admission is unchanged. Next: D-6.
+`_render_tick_attach` (QI-01-01). D-6 (this PR) drives Levels snapshot
+setdefaults and widget sync from ``DEFAULT_LEVELS_SETTINGS`` /
+``normalize_levels_config`` (QI-02-04). Composers are not collapsed.
+Next: D-7.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -332,10 +336,13 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    extracts Backtest sidebar / run-persist / display helpers (QI-04-05).
    D-4 ([#576](https://github.com/AccumuLatata/ThesisTester/pull/576))
    extracts Validation sidebar / WFA-OTF persist /
-   Phase 8 display helpers (QI-05-02). D-5 (this PR) extracts the Data-page
-   upload/save tree into saved / source-apply / attach-save panels and
-   splits the D-grade attach renderers (QI-01-01).
-   H10 admission is unchanged. Next: D-6.
+   Phase 8 display helpers (QI-05-02). D-5
+   ([#577](https://github.com/AccumuLatata/ThesisTester/pull/577)) extracts
+   the Data-page upload/save tree into saved / source-apply / attach-save
+   panels and splits the D-grade attach renderers (QI-01-01). D-6 (this PR)
+   drives Levels snapshot setdefaults and widget sync from
+   ``DEFAULT_LEVELS_SETTINGS`` / ``normalize_levels_config`` (QI-02-04).
+   Composers are not collapsed. Next: D-7.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

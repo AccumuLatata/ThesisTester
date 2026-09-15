@@ -10,6 +10,7 @@ from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.research_identity import _LEVELS_SORT_KEYS
 from thesistester.setup import is_setup_eligible_level_column
 from thesistester.persistence import (
     clear_active_levels_hash,
@@ -59,6 +60,27 @@ _PREV30M_VWAP_VALIDITY_KEY = "levels_prev30m_vwap_validity_periods"
 _PIVOT_TIMEFRAME_OPTIONS = ["1min", "5min", "30min", "4h"]
 _LEVELS_CALCULATION_STATUS_KEY = "levels_calculation_status"
 _LEVELS_COST_WARNING_BARS = 3_000
+_LIST_SYNC_SPECS = (
+    (_SMA_TIMEFRAMES_KEY, "sma_timeframes", _INDICATOR_TIMEFRAME_OPTIONS, False),
+    (_EMA_TIMEFRAMES_KEY, "ema_timeframes", _INDICATOR_TIMEFRAME_OPTIONS, False),
+    (_VWAP_WINDOWS_KEY, "vwap_windows", _VWAP_WINDOW_OPTIONS, False),
+    (_POC_WINDOWS_KEY, "poc_windows", _POC_WINDOW_OPTIONS, False),
+    (_PIVOT_TIMEFRAMES_KEY, "pivot_timeframes", _PIVOT_TIMEFRAME_OPTIONS, True),
+)
+_POSITIVE_INT_SYNC_SPECS = (
+    (_PRIOR_DAY_AGG_TICKS_KEY, "prior_day_profile_aggregation_ticks"),
+    (_PRIOR_WEEK_AGG_TICKS_KEY, "prior_week_profile_aggregation_ticks"),
+    (_PRIOR_MONTH_AGG_TICKS_KEY, "prior_month_profile_aggregation_ticks"),
+    (_PIVOT_LEFT_KEY, "pivot_left"),
+    (_PIVOT_RIGHT_KEY, "pivot_right"),
+)
+_BOOL_SYNC_SPECS = (
+    (_PIVOTS_ENABLED_KEY, "pivots_enabled"),
+    (_SESSION_VWAP_ENABLED_KEY, "session_vwap_enabled"),
+    (_SINGLE_PRINTS_ENABLED_KEY, "single_prints_enabled"),
+    (_APOC_ENABLED_KEY, "apoc_enabled"),
+    (_PREV30M_VWAP_ENABLED_KEY, "prev30m_vwap_enabled"),
+)
 
 
 def _parse_lengths(raw: str, label: str) -> list[int]:
@@ -77,38 +99,32 @@ def _parse_lengths(raw: str, label: str) -> list[int]:
     return sorted(set(lengths))
 
 
+def _with_product_levels_defaults(settings: dict) -> dict:
+    """Fill missing keys from ``DEFAULT_LEVELS_SETTINGS`` (no third table)."""
+    return {**DEFAULT_LEVELS_SETTINGS, **settings}
+
+
+def _canonicalize_levels_list_fields(settings: dict) -> dict:
+    """Sort the same list keys as ``normalize_levels_config`` (page path)."""
+    for key in _LEVELS_SORT_KEYS:
+        value = settings.get(key)
+        if isinstance(value, list):
+            settings[key] = sorted(value)
+        elif isinstance(value, tuple):
+            settings[key] = sorted(list(value))
+    return settings
+
+
 def _normalize_levels_settings(settings: dict | None) -> dict | None:
-    """Return a stable settings shape for stale-result comparisons."""
+    """Return a stable settings shape for stale-result comparisons.
+
+    Missing keys fill from ``DEFAULT_LEVELS_SETTINGS``. List fields are
+    sorted with the same keys as ``normalize_levels_config``. Extra keys
+    are kept and ``instrument`` is not injected (page/snapshot path).
+    """
     if not isinstance(settings, dict):
         return None
-    out = dict(settings)
-    out.setdefault("prior_day_profile_aggregation_ticks", 1)
-    out.setdefault("prior_week_profile_aggregation_ticks", 1)
-    out.setdefault("prior_month_profile_aggregation_ticks", 1)
-    # Stage 6 — opt-in level family defaults (all disabled for backward compat)
-    out.setdefault("pivots_enabled", False)
-    out.setdefault("pivot_timeframes", ["1min", "5min", "30min", "4h"])
-    out.setdefault("pivot_left", 2)
-    out.setdefault("pivot_right", 2)
-    out.setdefault("session_vwap_enabled", False)
-    out.setdefault("session_vwap_anchor", "RTH")
-    out.setdefault("single_prints_enabled", False)
-    out.setdefault("apoc_enabled", False)
-    out.setdefault("prev30m_vwap_enabled", False)
-    out.setdefault("prev30m_vwap_validity_periods", 1)
-    for key in (
-        "sma_timeframes",
-        "ema_timeframes",
-        "vwap_windows",
-        "poc_windows",
-        "pivot_timeframes",
-    ):
-        value = out.get(key)
-        if isinstance(value, list):
-            out[key] = sorted(value)
-        elif isinstance(value, tuple):
-            out[key] = sorted(list(value))
-    return out
+    return _canonicalize_levels_list_fields(_with_product_levels_defaults(settings))
 
 
 def _levels_data_fingerprint(df, instrument: str) -> dict:
@@ -275,93 +291,69 @@ def _queue_levels_widget_sync(settings: dict | None) -> None:
         st.session_state[_PENDING_WIDGET_SYNC_KEY] = None
 
 
-def _sync_levels_widget_state(settings: dict) -> None:
-    opening_range = settings.get("opening_range_minutes")
+def _sync_opening_range_widget(opening_range) -> None:
     if opening_range in {5, 15, 30}:
         st.session_state[_OPENING_RANGE_KEY] = opening_range
 
-    sma_lengths = settings.get("sma_lengths")
-    if isinstance(sma_lengths, list) and sma_lengths:
-        st.session_state[_SMA_LENGTHS_KEY] = ",".join(str(length) for length in sma_lengths)
 
-    ema_lengths = settings.get("ema_lengths")
-    if isinstance(ema_lengths, list) and ema_lengths:
-        st.session_state[_EMA_LENGTHS_KEY] = ",".join(str(length) for length in ema_lengths)
+def _sync_length_csv_widget(widget_key: str, lengths) -> None:
+    if isinstance(lengths, list) and lengths:
+        st.session_state[widget_key] = ",".join(str(length) for length in lengths)
 
-    sma_timeframes = settings.get("sma_timeframes")
-    if isinstance(sma_timeframes, list):
-        st.session_state[_SMA_TIMEFRAMES_KEY] = [
-            timeframe for timeframe in _INDICATOR_TIMEFRAME_OPTIONS if timeframe in sma_timeframes
-        ]
 
-    ema_timeframes = settings.get("ema_timeframes")
-    if isinstance(ema_timeframes, list):
-        st.session_state[_EMA_TIMEFRAMES_KEY] = [
-            timeframe for timeframe in _INDICATOR_TIMEFRAME_OPTIONS if timeframe in ema_timeframes
-        ]
+def _sync_filtered_multiselect(
+    widget_key: str,
+    values,
+    options,
+    *,
+    default_all_if_invalid: bool,
+) -> None:
+    if isinstance(values, (list, tuple)):
+        st.session_state[widget_key] = [item for item in options if item in values]
+    elif default_all_if_invalid:
+        st.session_state[widget_key] = list(options)
 
-    vwap_windows = settings.get("vwap_windows")
-    if isinstance(vwap_windows, list):
-        st.session_state[_VWAP_WINDOWS_KEY] = [
-            window for window in _VWAP_WINDOW_OPTIONS if window in vwap_windows
-        ]
 
-    poc_windows = settings.get("poc_windows")
-    if isinstance(poc_windows, list):
-        st.session_state[_POC_WINDOWS_KEY] = [
-            window for window in _POC_WINDOW_OPTIONS if window in poc_windows
-        ]
-
-    value_area_pct = settings.get("value_area_pct")
+def _sync_value_area_pct_widget(value_area_pct) -> None:
     if isinstance(value_area_pct, (int, float)):
         value_area_pct_int = round(value_area_pct * 100)
         if 50 <= value_area_pct_int <= 95:
             st.session_state[_VALUE_AREA_PCT_KEY] = value_area_pct_int
 
-    prior_day_aggregation_ticks = settings.get("prior_day_profile_aggregation_ticks", 1)
-    if isinstance(prior_day_aggregation_ticks, int) and prior_day_aggregation_ticks > 0:
-        st.session_state[_PRIOR_DAY_AGG_TICKS_KEY] = prior_day_aggregation_ticks
 
-    prior_week_aggregation_ticks = settings.get("prior_week_profile_aggregation_ticks", 1)
-    if isinstance(prior_week_aggregation_ticks, int) and prior_week_aggregation_ticks > 0:
-        st.session_state[_PRIOR_WEEK_AGG_TICKS_KEY] = prior_week_aggregation_ticks
+def _sync_positive_int_widget(widget_key: str, value) -> None:
+    if isinstance(value, int) and value >= 1:
+        st.session_state[widget_key] = value
 
-    prior_month_aggregation_ticks = settings.get("prior_month_profile_aggregation_ticks", 1)
-    if isinstance(prior_month_aggregation_ticks, int) and prior_month_aggregation_ticks > 0:
-        st.session_state[_PRIOR_MONTH_AGG_TICKS_KEY] = prior_month_aggregation_ticks
 
-    # Stage 6 — opt-in level family widget sync
-    st.session_state[_PIVOTS_ENABLED_KEY] = bool(settings.get("pivots_enabled", False))
-
-    pivot_timeframes = settings.get("pivot_timeframes")
-    if isinstance(pivot_timeframes, (list, tuple)):
-        st.session_state[_PIVOT_TIMEFRAMES_KEY] = [
-            tf for tf in _PIVOT_TIMEFRAME_OPTIONS if tf in pivot_timeframes
-        ]
-    else:
-        st.session_state[_PIVOT_TIMEFRAMES_KEY] = list(_PIVOT_TIMEFRAME_OPTIONS)
-
-    pivot_left = settings.get("pivot_left", 2)
-    if isinstance(pivot_left, int) and pivot_left >= 1:
-        st.session_state[_PIVOT_LEFT_KEY] = pivot_left
-
-    pivot_right = settings.get("pivot_right", 2)
-    if isinstance(pivot_right, int) and pivot_right >= 1:
-        st.session_state[_PIVOT_RIGHT_KEY] = pivot_right
-
-    st.session_state[_SESSION_VWAP_ENABLED_KEY] = bool(settings.get("session_vwap_enabled", False))
-    st.session_state[_SINGLE_PRINTS_ENABLED_KEY] = bool(
-        settings.get("single_prints_enabled", False)
-    )
-    st.session_state[_APOC_ENABLED_KEY] = bool(settings.get("apoc_enabled", False))
-    st.session_state[_PREV30M_VWAP_ENABLED_KEY] = bool(settings.get("prev30m_vwap_enabled", False))
-    validity = settings.get("prev30m_vwap_validity_periods", 1)
+def _sync_validity_periods_widget(validity) -> None:
     try:
         validity_int = int(validity)
     except (TypeError, ValueError):
         validity_int = None
     if validity_int is not None and not isinstance(validity, bool) and validity_int >= 1:
         st.session_state[_PREV30M_VWAP_VALIDITY_KEY] = validity_int
+
+
+def _sync_levels_widget_state(settings: dict) -> None:
+    """Restore Levels widgets from a snapshot using product defaults for gaps."""
+    settings = _with_product_levels_defaults(settings)
+    _sync_opening_range_widget(settings.get("opening_range_minutes"))
+    _sync_length_csv_widget(_SMA_LENGTHS_KEY, settings.get("sma_lengths"))
+    _sync_length_csv_widget(_EMA_LENGTHS_KEY, settings.get("ema_lengths"))
+    for widget_key, field, options, default_all_if_invalid in _LIST_SYNC_SPECS:
+        _sync_filtered_multiselect(
+            widget_key,
+            settings.get(field),
+            options,
+            default_all_if_invalid=default_all_if_invalid,
+        )
+    _sync_value_area_pct_widget(settings.get("value_area_pct"))
+    for widget_key, field in _POSITIVE_INT_SYNC_SPECS:
+        _sync_positive_int_widget(widget_key, settings.get(field))
+    for widget_key, field in _BOOL_SYNC_SPECS:
+        st.session_state[widget_key] = bool(settings.get(field))
+    _sync_validity_periods_widget(settings.get("prev30m_vwap_validity_periods"))
 
 
 def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool:

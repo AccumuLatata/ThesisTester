@@ -1941,8 +1941,12 @@ matching. `pivot_timeframes` is sorted deterministically alongside the other lis
 settings.
 
 When a saved snapshot is loaded, `_sync_levels_widget_state` restores all advanced opt-in controls.
-Old snapshots missing Stage 6 keys still default those controls to disabled without raising
-errors, preserving the historical saved calculation contract.
+`_normalize_levels_settings` and `_sync_levels_widget_state` fill missing keys from
+`DEFAULT_LEVELS_SETTINGS` and sort the same list fields as `normalize_levels_config`
+(QI-02-04 / D-6). There is no third default table on the page. Extra snapshot keys are
+kept and `instrument` is not injected (page/snapshot path). Identity derivation still
+calls `normalize_levels_config`. The three planes stay distinct: page widgets /
+`normalize_levels_config` / `compute_all_levels` kwargs.
 
 Direct low-level `compute_all_levels` calls retain disabled keyword defaults; the shared
 product configuration is applied by the page and headless API.

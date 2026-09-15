@@ -101,9 +101,9 @@ def test_normalize_levels_settings_sorts_indicator_timeframes():
     assert normalized["ema_timeframes"] == ["1min", "5min"]
     assert normalized["vwap_windows"] == ["15min", "1h"]
     assert normalized["poc_windows"] == ["30min", "4h"]
-    assert normalized["prior_day_profile_aggregation_ticks"] == 1
-    assert normalized["prior_week_profile_aggregation_ticks"] == 1
-    assert normalized["prior_month_profile_aggregation_ticks"] == 1
+    assert normalized["prior_day_profile_aggregation_ticks"] == 4
+    assert normalized["prior_week_profile_aggregation_ticks"] == 8
+    assert normalized["prior_month_profile_aggregation_ticks"] == 10
 
 
 def test_sync_levels_widget_state_restores_indicator_timeframe_selections():
@@ -132,7 +132,7 @@ def test_sync_levels_widget_state_restores_prior_profile_aggregation_ticks():
 
     assert _st_stub.session_state[_PRIOR_DAY_AGG_TICKS_KEY] == 4
     assert _st_stub.session_state[_PRIOR_WEEK_AGG_TICKS_KEY] == 10
-    assert _st_stub.session_state[_PRIOR_MONTH_AGG_TICKS_KEY] == 1
+    assert _st_stub.session_state[_PRIOR_MONTH_AGG_TICKS_KEY] == 10
 
 
 def test_calculation_transaction_installs_complete_results_and_diagnostics():

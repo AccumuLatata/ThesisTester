@@ -70,8 +70,10 @@ def normalize_levels_config(
     """Merge product defaults, bind instrument, and canonicalize list fields.
 
     This is the API-path normalizer lifted for shared use. Unknown keys are
-    rejected. Classic page sparse setdefaults remain a separate legacy UX path;
-    identity derivation must call this function on equivalent inputs.
+    rejected. Classic page snapshot/widget helpers merge the same
+    ``DEFAULT_LEVELS_SETTINGS`` and sort the same list keys without requiring
+    ``instrument`` or rejecting unknown keys (page/snapshot path). Identity
+    derivation must call this function on equivalent inputs.
     """
     if not isinstance(instrument, str) or not instrument.strip():
         raise ValueError("instrument must be a non-empty string")

@@ -133,11 +133,11 @@ def _make_tz_df(n: int = 10) -> pd.DataFrame:
 
 
 class TestNormalizeStage6Defaults:
-    """Old settings without Stage 6 keys normalize to all new defaults disabled."""
+    """Old settings without Stage 6 keys fill from DEFAULT_LEVELS_SETTINGS."""
 
-    def test_old_settings_get_pivots_disabled(self):
+    def test_old_settings_get_pivots_enabled(self):
         result = _normalize({"opening_range_minutes": 30})
-        assert result["pivots_enabled"] is False
+        assert result["pivots_enabled"] is True
 
     def test_old_settings_get_pivot_timeframes_all_supported(self):
         result = _normalize({"opening_range_minutes": 30})
@@ -151,25 +151,25 @@ class TestNormalizeStage6Defaults:
         result = _normalize({"opening_range_minutes": 30})
         assert result["pivot_right"] == 2
 
-    def test_old_settings_get_session_vwap_disabled(self):
+    def test_old_settings_get_session_vwap_enabled(self):
         result = _normalize({"opening_range_minutes": 30})
-        assert result["session_vwap_enabled"] is False
+        assert result["session_vwap_enabled"] is True
 
     def test_old_settings_get_session_vwap_anchor_rth(self):
         result = _normalize({"opening_range_minutes": 30})
         assert result["session_vwap_anchor"] == "RTH"
 
-    def test_old_settings_get_single_prints_disabled(self):
+    def test_old_settings_get_single_prints_enabled(self):
         result = _normalize({"opening_range_minutes": 30})
-        assert result["single_prints_enabled"] is False
+        assert result["single_prints_enabled"] is True
 
-    def test_old_settings_get_apoc_disabled(self):
+    def test_old_settings_get_apoc_enabled(self):
         result = _normalize({"opening_range_minutes": 30})
-        assert result["apoc_enabled"] is False
+        assert result["apoc_enabled"] is True
 
-    def test_old_settings_get_prev30m_vwap_disabled(self):
+    def test_old_settings_get_prev30m_vwap_enabled(self):
         result = _normalize({"opening_range_minutes": 30})
-        assert result["prev30m_vwap_enabled"] is False
+        assert result["prev30m_vwap_enabled"] is True
         assert result["prev30m_vwap_validity_periods"] == 1
 
     def test_none_input_returns_none(self):
@@ -207,14 +207,25 @@ class TestNormalizeStage6Defaults:
     def test_empty_dict_gets_all_defaults(self):
         result = _normalize({})
         assert result is not None
-        assert result["pivots_enabled"] is False
-        assert result["session_vwap_enabled"] is False
-        assert result["single_prints_enabled"] is False
-        assert result["apoc_enabled"] is False
-        assert result["prev30m_vwap_enabled"] is False
+        assert result["pivots_enabled"] is True
+        assert result["session_vwap_enabled"] is True
+        assert result["single_prints_enabled"] is True
+        assert result["apoc_enabled"] is True
+        assert result["prev30m_vwap_enabled"] is True
         assert result["prev30m_vwap_validity_periods"] == 1
         assert result["pivot_left"] == 2
         assert result["pivot_right"] == 2
+        assert result["prior_day_profile_aggregation_ticks"] == 4
+        assert result["prior_week_profile_aggregation_ticks"] == 8
+        assert result["prior_month_profile_aggregation_ticks"] == 10
+        assert "instrument" not in result
+
+    def test_extra_keys_kept_without_calling_identity_normalizer(self):
+        result = _normalize({"opening_range_minutes": 30, "custom_note": "keep"})
+        assert result is not None
+        assert result["custom_note"] == "keep"
+        assert result["opening_range_minutes"] == 30
+        assert "instrument" not in result
 
 
 class TestNormalizeSorting:
@@ -249,6 +260,11 @@ class TestNormalizeSorting:
         b = _normalize({"pivot_timeframes": ["4h", "30min", "5min", "1min"]})
         assert a == b
 
+    def test_sma_and_ema_lengths_sorted(self):
+        result = _normalize({"sma_lengths": [200, 50], "ema_lengths": [21, 9]})
+        assert result["sma_lengths"] == [50, 200]
+        assert result["ema_lengths"] == [9, 21]
+
     def test_old_settings_without_new_keys_do_not_crash(self):
         result = _normalize(
             {
@@ -259,7 +275,7 @@ class TestNormalizeSorting:
             }
         )
         assert result is not None
-        assert result["pivots_enabled"] is False
+        assert result["pivots_enabled"] is True
 
     def test_explicit_values_not_overwritten_by_defaults(self):
         result = _normalize(
@@ -339,13 +355,13 @@ class TestSyncStage6WidgetState:
         _sync({"apoc_enabled": False})
         assert _st_stub.session_state[_APOC_ENABLED_KEY] is False
 
-    def test_old_snapshot_missing_keys_defaults_to_disabled(self):
-        """Old saved snapshot without Stage 6 keys must load without error."""
+    def test_old_snapshot_missing_keys_defaults_to_product_table(self):
+        """Old saved snapshot without Stage 6 keys fills from product defaults."""
         _sync({"opening_range_minutes": 30, "value_area_pct": 0.70})
-        assert _st_stub.session_state[_PIVOTS_ENABLED_KEY] is False
-        assert _st_stub.session_state[_SESSION_VWAP_ENABLED_KEY] is False
-        assert _st_stub.session_state[_SINGLE_PRINTS_ENABLED_KEY] is False
-        assert _st_stub.session_state[_APOC_ENABLED_KEY] is False
+        assert _st_stub.session_state[_PIVOTS_ENABLED_KEY] is True
+        assert _st_stub.session_state[_SESSION_VWAP_ENABLED_KEY] is True
+        assert _st_stub.session_state[_SINGLE_PRINTS_ENABLED_KEY] is True
+        assert _st_stub.session_state[_APOC_ENABLED_KEY] is True
 
     def test_pivot_left_not_synced_if_zero(self):
         """pivot_left must be >= 1 to be accepted."""
