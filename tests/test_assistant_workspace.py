@@ -187,8 +187,7 @@ def _assistant_min_valid_number_input() -> ast.Call:
     ]
     if len(found) != 1:
         raise AssertionError(
-            "expected exactly one st.number_input('Minimum valid confluences'), "
-            f"got {len(found)}"
+            f"expected exactly one st.number_input('Minimum valid confluences'), got {len(found)}"
         )
     return found[0]
 
