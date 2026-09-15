@@ -92,6 +92,17 @@ class JournalArtifacts:
     trigger_payload: dict[str, object] | None = None
 
 
+INCLUDE_SMALL_N_HELP = (
+    "Include Q2, Q3 Zones, and Q3 Inferred trigger rows with n < 30 (default: hide them)"
+)
+
+
+def format_hidden_slice_caption(*, hidden_slice_count: int, include_small_n: bool) -> str:
+    """Page 17 / CLI-shared n<30 caption. Count includes Q2 + Q3 when present."""
+    state = "shown" if include_small_n else "hidden"
+    return f"Q2 / Q3 Zones / Q3 Inferred trigger rows with n < 30: {hidden_slice_count} ({state})."
+
+
 @dataclass(frozen=True)
 class JournalReport:
     """Q1–Q8 tables. Every table carries n, resolution, recon_status."""
@@ -168,12 +179,13 @@ def build_journal_report(
         raise JournalIngestError("include_small_n must be a bool")
     work = _coerce_trades(trades)
     q1 = _q1_days(work)
-    slices, hidden = _q2_slices(work, include_small_n=include_small_n)
+    slices, hidden_q2 = _q2_slices(work, include_small_n=include_small_n)
     q3_levels, q3_context, q3_tags = _q3_attribution(work, attribution)
-    q3_count, q3_width, q3_relation, q3_names = _q3_zones(
+    q3_count, q3_width, q3_relation, q3_names, hidden_q3_zones = _q3_zones(
         work, zones, include_small_n=include_small_n
     )
-    q3_triggers = _q3_triggers(work, triggers, include_small_n=include_small_n)
+    q3_triggers, hidden_q3_triggers = _q3_triggers(work, triggers, include_small_n=include_small_n)
+    hidden = hidden_q2 + hidden_q3_zones + hidden_q3_triggers
     q4, q5, q6 = _q4_q6(counterfactual_payload, counterfactuals)
     q7, q8 = _q7_q8(matches, match_payload)
     captions = {
