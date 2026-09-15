@@ -697,9 +697,7 @@ if saved_level_snapshots:
         key="saved_levels_snapshot_selector",
     )
     selected_snapshot_meta = snapshot_options[selected_settings_hash]
-    if _levels_settings_are_stale(
-        selected_snapshot_meta.get("levels_settings"), current_settings
-    ):
+    if _levels_settings_are_stale(selected_snapshot_meta.get("levels_settings"), current_settings):
         st.caption("Selected snapshot settings differ from current controls.")
     snapshot_actions = st.columns(2)
     if snapshot_actions[0].button(
