@@ -1043,11 +1043,11 @@ and robustness (honest next steps after screening).
 
 **What it is.** Streamlit **Studies** Inspect lists `results/studies/` and
 `out/` (one level), loads `output_dir`, and shows a **Study briefing** (highest
-primary-metric cell + factor settings + best SL/TP + NY RTH bucket), ledger,
-groups, ranked / low-N, charts, and cell peek. **Preview**
-validates YAML. **Run via CLI** spawns `study run`. **Build** emits YAML.
-Inspect lists Failed; `study report` / `study rollup`
-emit MD **Failed** (stay in CSV/N; not ranked or promoted).
+primary-metric cell + settings + best SL/TP + NY RTH), ledger, groups,
+ranked / low-N, charts, and cell peek. **Preview** validates YAML.
+**Run via CLI** spawns `study run`. **Build** emits YAML. Inspect lists
+Failed; `study report` / `study rollup` emit MD **Failed** (stay in CSV/N;
+not ranked or promoted).
 
 **When to use it.** After a completed study, read the briefing first — then
 decide whether to constrain NY session (Admit) or promote survivors. Author
@@ -1057,7 +1057,7 @@ onto Preview (same cache-clear as Apply; draft ≠ run). CLI
 
 **Related terms.** Studies viewer, study briefing, time of day, NY session,
 RTH segment, grid results, best SL/TP, ranked cells, low-N, failed cells,
-study catalog, study list, StudyDraft
+StudyDraft
 
 **Key settings.**
 
@@ -1074,7 +1074,7 @@ study catalog, study list, StudyDraft
 | Tabs | Inspect / Preview / Build | Build = YAML; launch on Preview |
 | Build StudySpec | Widgets → YAML; Apply to Preview | Not a runner |
 | Ingestion mode | New drafts: MNQ/UTC/HE/15s-primary | Omit = `primary` ≠ Data 15s; QT HE + omit/primary warns (no rewrite) |
-| Tick paths (optional) | Quantower Tick–Tick–Last list for prior VA, APOC, rolling POC | Emit writes the key only when set. Named VA / APOC / rolling POC without ticks refuse (`requires ticks`). Does not replace the 15s path |
+| Tick paths (optional) | Quantower Tick–Tick–Last list for prior VA, APOC, rolling POC | Writes the key only when set. Named VA / APOC / rolling POC without ticks refuse (`requires ticks`). Not a 15s replacement |
 | Start from example | pRTH (32 cells) or pdPOC | Replace `dataset.path` |
 | Stage radio | Full / Filter / Explicit | Filter ⊆ widgets; explicit is delete-only |
 | Draft Admit follow-up | Child Admit YAML → Preview | Greyed out = no ranked NY segment. Red error (thin/zip/extra-root) leaves Preview unchanged |
@@ -1085,9 +1085,9 @@ study catalog, study list, StudyDraft
 
 1. CLI `study expand` → `study run` → `study report`, or Build / Preview first.
 2. Inspect: **Load selected** or paste `output_dir`. Read **Study briefing**,
-   then Ranked cells (factor grid) and Cell peek (SL/TP grid + NY RTH).
-   **Draft Admit follow-up** (ranked crown + NY segment) writes the Admit
-   child onto Preview; Validate / Run via CLI still required.
+   then Ranked cells and Cell peek (SL/TP + NY RTH). **Draft Admit follow-up**
+   (ranked crown + NY segment) writes the Admit child onto Preview; Validate
+   / Run via CLI still required.
 3. Build (optional): **Start from example** (`pRTH_open_ma.yaml`, 32 cells).
    Apply to Preview → Validate / Preview. Workers=1 on Windows.
 4. New CLI output dir. Under threshold: **Run via CLI**. Over: **Bind confirm**
@@ -1099,12 +1099,12 @@ study catalog, study list, StudyDraft
 
 - Not an in-process runner or job queue. Not a validated edge.
 - **Draft Admit follow-up** does not spawn `study run` or write `drafts/`.
-- Time-of-day is **not** a StudySpec factor (avoids a 7× cartesian explosion).
-  It is a post-hoc NY RTH breakdown of completed trades.
+- Time-of-day is **not** a StudySpec factor (avoids a 7× cartesian). It is
+  a post-hoc NY RTH breakdown of completed trades.
 - Ranked cells ≠ SL/TP grid. `grid.enabled` writes `best_grid_*` + zip
-  `grid_results.parquet` per cell — Inspect now shows those.
+  `grid_results.parquet` per cell — Inspect shows those.
 - Does not mutate classic session keys or deep-link Research Bundles.
-- Cross-study readout lives on **Study Observatory**. Inspect remains one
+- Cross-study readout lives on **Study Observatory**. Inspect is one
   study at a time.
 
 **Related pages.** Study Observatory; Journal; Research Study Runner
