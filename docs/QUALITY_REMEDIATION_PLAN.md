@@ -252,7 +252,7 @@ Column key: **Files (expected)** = paths a reviewer should expect in the diff (f
 | F-7 | QI-13-08 (M) — MG-11 | `docs/USER_GUIDE.md` Setup Builder | **Delivered inside A-12**: DA0 sentence in the Direction pitfall cell. | Copy guard | — | closes with A-12 |
 | F-8 | QI-13-09 (M) — MG-05 | `docs/USER_GUIDE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | **Delivered inside A-9**: omitted battery `enabled` ⇒ on for api/CLI; Study emit explicit `false`. | Help-text assert (A-9) | — | closes with A-9 |
 | F-9 | QI-13-06 (M), QI-09-05 (M) — MG-16 | `docs/AGENT_GUIDE.md` (rule ledger), `docs/ARCHITECTURE.md` (AIA-0, import-ban paragraphs) | Rule ledger → pointers to the B-10 import-linter contract; strip `file:line` cites; AIA-0 names the lazy `st.secrets` fallback (or the Streamlit-free reader if C-8 extracts one). After B-10. | Cite checker (0 `file:line`) | — | 0 `file:line` cites; AIA-0 true |
-| F-10 | QI-14-02 (M) — MG-27 (+ dup QI-14-07) | `docs/CAI_BASELINE.md` | Re-record realistic and small tables (incl. bundle row) on the tick-gated path after B-18; keep CAI-10 "no second signal cache yet". | B-18 harness output | `ENGINEERING_PROPOSAL.md` if it cites the 71 % sentence | tables reproducible from `--fixture both` |
+| F-10 | QI-14-02 (M) — MG-27 (+ dup QI-14-07) | `docs/CAI_BASELINE.md` | Re-record realistic and small tables (incl. bundle row) on the tick-gated path after B-18; keep CAI-10 "no second signal cache yet". | `tests/test_cai_baseline_tables.py` + B-18 harness | `ENGINEERING_PROPOSAL.md` if it cites the 71 % sentence | tables reproducible from `--fixture both` |
 
 **Exit:** `QI-15_SYNTHESIS.md` §5.6 docs-drift rows closed; `ENGINEERING_ROADMAP.md` carries QI (Completed) and QR (In progress) rows; AGENT_GUIDE has 0 `file:line` cites and points at mechanized contracts.
 
@@ -387,7 +387,7 @@ Medium `Verified defect` rows proposed accepted in the same signature: QI-06-03 
 | QR-C Structural refactors | In progress (C-1 · C-2 · C-3 · C-4 · C-5 · C-6 · C-7 · C-8 · C-9 · C-10 · C-11 · C-12 · C-13 · C-14 · C-15 · C-16 · C-17 · C-18 · C-19 · C-20 · C-21 · C-22 · C-23 · C-24 · C-25) | 25 | 27 / 0 / 0 |
 | QR-D UI decomposition / state | In progress (D-1 · D-2 · D-3 · D-4 · D-5 · D-6 · D-7 · D-8 · D-9 · D-10) | 10 | 10 / 0 / 0 |
 | QR-E Application functions | In progress (E-1 · E-2 · E-3 · E-4 · E-5 · E-6 · E-7 · E-8 · E-9 · E-10) | 11 | 10 / 2 / 0 |
-| QR-F Documentation | In progress (F-1 · F-2 · F-3 · F-5 · F-9; F-4 via A-4; F-6 via A-22; F-7 via A-12; F-8 via A-9) | 10 (4 delivered inside QR-A PRs) | 12 / 5 / 3 |
+| QR-F Documentation | In progress (F-1 · F-2 · F-3 · F-5 · F-9 · F-10; F-4 via A-4; F-6 via A-22; F-7 via A-12; F-8 via A-9) | 10 (4 delivered inside QR-A PRs) | 12 / 5 / 3 |
 | QR-G Dependency / supply chain | In progress (G-1 · G-2 · G-3 · G-4 · G-5) | 5 | 6 / 0 / 0 |
 | Closed (no workstream) | — | — | 13 wont-fix · 1 locked without residual (QI-07-10) |
 | **Total** | | **102 PR rows, 99 distinct** | **106 / 11 / 3 + 13 wont-fix + QI-07-10 = 134** |

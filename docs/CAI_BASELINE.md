@@ -37,9 +37,10 @@ Initial classic-to-thesis attachment uses **manual record-after-run**:
 `--fixture both` / `--fixture realistic` run on the tick-gated path. The
 harness calls `compute_levels` only after `disable_unneeded_tick_families`
 on named setup tokens (selected / anchor / rules). Do not revive
-typical-price `_rolling_poc`. The recorded tables below are the CAI-0
-typical-price snapshot; **F-10** re-records them on this path (QI-14-01 /
-QI-14-02).
+typical-price `_rolling_poc`. The recorded tables below are the F-10
+tick-gated snapshot from `--fixture both --repeats 5` (QI-14-02 /
+QI-14-07). The retired CAI-0 typical-price `compute_levels` ~71% share
+is not the live envelope.
 
 Source of truth:
 
@@ -65,38 +66,42 @@ python3 -m pytest tests/test_assistant_execution_parity.py -q
 
 ## Recorded baseline
 
-Recorded on the CAI-0 implementation environment: CPython 3.12.3, pandas 3.0.5,
-NumPy 2.4.4, Linux 6.12. One warmup plus five `time.perf_counter()` repetitions
-per stage; median and nearest-rank p95.
+Recorded on the F-10 environment: CPython 3.12.3, pandas 3.0.5, NumPy 2.5.3,
+Linux 6.12. Command: `python3 -m tests.benchmarks.cai_cold_path --fixture both
+--repeats 5`. One warmup plus five `time.perf_counter()` repetitions per
+stage; median and nearest-rank p95. Isolated-stage shares are
+`stage_median / e2e_median` and need not sum to 100%. Wall times are
+informational (not a CI gate).
 
 ### Small fixture (60 bars, no rolling POC)
 
 | Stage | Median ms | P95 ms |
 |---|---:|---:|
-| `load_dataset` | 6.984 | 6.990 |
-| `compute_levels` | 95.309 | 95.338 |
-| `generate_signals` | 24.440 | 24.504 |
-| `run_backtest` | 17.638 | 17.652 |
-| `build_research_bundle` | 17.006 | 17.026 |
-| `run_experiment_end_to_end` | 149.799 | 151.222 |
+| `load_dataset` | 7.124 | 7.580 |
+| `compute_levels` | 108.453 | 108.673 |
+| `generate_signals` | 25.848 | 25.888 |
+| `run_backtest` | 18.720 | 19.017 |
+| `build_research_bundle` | 56.811 | 56.959 |
+| `run_experiment_end_to_end` | 167.811 | 167.834 |
 
-### Realistic fixture (780 bars; CAI-0 table used typical-price rolling POC `30min`)
+### Realistic fixture (780 bars; tick-gated `poc_windows=[]`)
 
 | Stage | Median ms | P95 ms | Share of e2e median |
 |---|---:|---:|---:|
-| `load_dataset` | 12.573 | 12.666 | 0.7% |
-| `compute_levels` | 1293.267 | 1294.099 | 70.9% |
-| `generate_signals` | 322.610 | 332.232 | 17.7% |
-| `run_backtest` | 156.016 | 156.043 | 8.6% |
-| `build_research_bundle` | 35.205 | 35.511 | 1.9% |
-| `run_experiment_end_to_end` | 1824.623 | 1843.264 | 100% |
+| `load_dataset` | 12.768 | 12.802 | 1.7% |
+| `compute_levels` | 196.582 | 197.351 | 26.1% |
+| `generate_signals` | 344.582 | 362.596 | 45.7% |
+| `run_backtest` | 167.712 | 184.815 | 22.3% |
+| `build_research_bundle` | 75.566 | 76.358 | 10.0% |
+| `run_experiment_end_to_end` | 753.330 | 757.082 | 100% |
 
 ## Interpretation for later milestones
 
-1. On the CAI-0 typical-price snapshot, **levels dominate** cold recomputation.
-   The current tick-gated path is signal-dominated (QI-14 §9.3). F-10
-   re-records; do not treat the table above as the live envelope.
-2. CSV reload itself is currently cheap relative to levels; source-content
+1. On the live tick-gated table, **signals dominate** isolated-stage share
+   (`generate_signals` > `compute_levels`). The retired CAI-0 typical-price
+   snapshot (`poc_windows=["30min"]`, `compute_levels` ~71% of e2e) is
+   historical only (QI-14-01 / QI-14-02).
+2. CSV reload remains cheap relative to compute stages; source-content
    identity checks remain mandatory even if parse time is small.
 3. Signal generation can be non-trivial once confluence density is high. Signal
    caching stays deferred until after levels-cache impact is measured
@@ -113,10 +118,9 @@ Harness: `tests/benchmarks/cai_warm_path.py` (smoke:
 
 Rationale:
 
-- The CAI-0 table above still shows levels ~71% of e2e (typical-price rolling
-  POC). That path is gone. Current tick-gated realistic is signal-dominated
-  (QI-14 §9.3). CAI-3 data/levels reuse stays the first cache surface until
-  F-10 re-records; CAI-10 still says no second signal cache yet.
+- The live F-10 table is signal-dominated (`generate_signals` share >
+  `compute_levels`). CAI-3 data/levels reuse stays the first cache
+  surface. CAI-10 still says no second signal cache yet.
 - Warm-path harness proves cold↔warm canonical bundle-hash equality and reports
   end-to-end speedup informationally. A signal second layer is warranted only
   after warm runs still show a large `generate_signals` share once levels hits
@@ -140,14 +144,15 @@ Empty trigger frames stay an empty map (no column access). Nullable
 dtypes were **not** changed;
 `generate_signals` hashes stay identical to C-14. Timing below is
 informational on this image (CPython 3.12.3, tick-gated realistic,
-`--repeats 5`). It does **not** replace the CAI-0 historical table above.
+`--repeats 5`). It is a C-14→C-15 delta footnote, not the live envelope
+(F-10 tables above).
 
 | Stage | Before (C-14 / `#561`) median ms | After (C-15) median ms |
 |---|---:|---:|
 | `generate_signals` | 331.765 | 352.338 |
 | `run_experiment_end_to_end` | 756.672 | 748.973 |
 
-F-10 still re-records the live envelope. Do not treat these rows as a CI gate.
+Do not treat these rows as a CI gate.
 
 ## DEFAULT merge (H4 / QI-14-04)
 
