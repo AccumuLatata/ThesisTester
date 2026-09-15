@@ -178,7 +178,10 @@ def test_batteries_uses_extracted_parse_thresholds() -> None:
     tree = ast.parse(BATTERIES.read_text(encoding="utf-8"))
     imported = False
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "thesistester.validation_page_helpers":
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "thesistester.validation_page_helpers"
+        ):
             imported = any(alias.name == "parse_thresholds" for alias in node.names)
         if isinstance(node, ast.FunctionDef) and node.name == "render_validation_batteries":
             nested = [
