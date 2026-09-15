@@ -13,6 +13,10 @@ SL-first fallback where sparse.
 
 This remains stricter than ``resample_ohlcv`` for misaligned timestamps, but
 matches vendor aggregation for trade-only 15s exports.
+
+On-grid minutes are aggregated with a vectorized ``groupby`` (QR E-9 /
+QI-14-06) under the locked ``observed_aligned_15s_to_1m_v2`` policy. Sparse
+and misaligned diagnostics keep the same coverage-table contract.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import hashlib
 import math
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from thesistester.config import REQUIRED_COLUMNS
@@ -39,6 +44,12 @@ _SOURCE_INTERVAL = pd.Timedelta(seconds=15)
 _PARENT_INTERVAL = pd.Timedelta(minutes=1)
 _EXPECTED_SUB_BARS = 4
 _VALID_SECONDS = frozenset({0, 15, 30, 45})
+_ON_GRID_OFFSETS = (
+    pd.Timedelta(0),
+    pd.Timedelta(seconds=15),
+    pd.Timedelta(seconds=30),
+    pd.Timedelta(seconds=45),
+)
 _DROPPED_COLUMNS = (
     "timestamp",
     "reason",
@@ -127,53 +138,55 @@ def derive_complete_parent_ohlcv(
     timestamps = source_frame["timestamp"]
     # Preserve timezone fold so fall-back ambiguous minutes stay distinct.
     buckets = _floor_to_local_minute(timestamps)
-    parent_rows: list[dict[str, Any]] = []
-    dropped_rows: list[dict[str, Any]] = []
-    sparse_rows: list[dict[str, Any]] = []
+    on_grid = (timestamps - buckets).isin(_ON_GRID_OFFSETS)
+    work = source_frame.assign(_bucket=buckets)
+    bucket_n = work.groupby("_bucket", sort=True).size()
+    bucket_n_on = on_grid.groupby(work["_bucket"], sort=True).sum()
+    aligned = (bucket_n <= _EXPECTED_SUB_BARS) & (
+        bucket_n_on.reindex(bucket_n.index).fillna(0) == bucket_n
+    )
+    dropped_index = bucket_n.index[~aligned]
 
-    for bucket_start, group in source_frame.groupby(buckets, sort=True):
-        bucket_ts = pd.Timestamp(bucket_start)
-        group = group.sort_values("timestamp").reset_index(drop=True)
-        observed = list(group["timestamp"])
-        if not _group_is_on_grid(observed, bucket_ts):
-            dropped_rows.append(
-                _coverage_bucket_row(
-                    timestamp=bucket_ts,
-                    reason="timestamp_misalignment",
-                    observed=observed,
-                )
-            )
-            continue
-        _validate_group_ohlcv(group, bucket_ts)
-        parent_rows.append(
-            {
-                "timestamp": bucket_ts,
-                "open": float(group["open"].iloc[0]),
-                "high": float(group["high"].max()),
-                "low": float(group["low"].min()),
-                "close": float(group["close"].iloc[-1]),
-                "volume": float(group["volume"].sum()),
-            }
-        )
-        if len(group) != _EXPECTED_SUB_BARS:
-            sparse_rows.append(
-                _coverage_bucket_row(
-                    timestamp=bucket_ts,
-                    reason="incomplete_coverage",
-                    observed=observed,
-                )
-            )
-
-    if not parent_rows:
+    if not bool(aligned.any()):
         raise ValueError(
             "observed aligned derivation retained no parent bars; "
-            f"dropped {len(dropped_rows)} misaligned minute buckets"
+            f"dropped {int(len(dropped_index))} misaligned minute buckets"
         )
 
-    parent_data = pd.DataFrame(parent_rows, columns=list(REQUIRED_COLUMNS))
+    aligned_rows = work.loc[work["_bucket"].map(aligned)]
+    # Positional open/close (skipna=False) matches the locked iloc[0]/iloc[-1]
+    # loop. Default GroupBy.first/last skip NaN and would emit the next finite
+    # print if validation were ever reordered.
+    grouped = aligned_rows.groupby("_bucket", sort=True)
+    parent_agg = pd.DataFrame(
+        {
+            "open": grouped["open"].first(skipna=False),
+            "high": grouped["high"].max(),
+            "low": grouped["low"].min(),
+            "close": grouped["close"].last(skipna=False),
+            "volume": grouped["volume"].sum(),
+        }
+    )
+    for column in ("open", "high", "low", "close", "volume"):
+        parent_agg[column] = parent_agg[column].astype("float64")
+    _validate_aligned_source_ohlcv(aligned_rows)
+
+    parent_data = parent_agg.reset_index().rename(columns={"_bucket": "timestamp"})
+    parent_data = parent_data.loc[:, list(REQUIRED_COLUMNS)]
     parent_data["timestamp"] = _timestamps_matching_source_dtype(
         parent_data["timestamp"], source_frame["timestamp"].dtype
     )
+
+    # Diagnostics stay on the sparse/misaligned buckets only (not the on-grid hot path).
+    sparse_index = bucket_n.index[aligned & (bucket_n != _EXPECTED_SUB_BARS)]
+    dropped_rows = [
+        _coverage_bucket_row_from_work(work, bucket_ts, "timestamp_misalignment")
+        for bucket_ts in dropped_index
+    ]
+    sparse_rows = [
+        _coverage_bucket_row_from_work(work, bucket_ts, "incomplete_coverage")
+        for bucket_ts in sparse_index
+    ]
     dropped_buckets = pd.DataFrame(dropped_rows, columns=list(_DROPPED_COLUMNS))
     sparse_buckets = pd.DataFrame(sparse_rows, columns=list(_SPARSE_COLUMNS))
     if not dropped_buckets.empty:
@@ -275,9 +288,52 @@ def _validate_15s_cadence(timestamps: pd.Series) -> None:
 
 
 def _floor_to_local_minute(timestamps: pd.Series) -> pd.Series:
-    """Floor to exchange-local minutes while preserving DST fold."""
-    return timestamps.map(
-        lambda value: pd.Timestamp(value).replace(second=0, microsecond=0, nanosecond=0)
+    """Floor to exchange-local minutes while preserving DST fold.
+
+    Equivalent to ``Timestamp.replace(second=0, microsecond=0, nanosecond=0)``.
+    Subtracting intra-minute offsets keeps the timezone fold (unlike ``floor("min")``).
+    Stay in the source datetime unit: a nanosecond timedelta would promote
+    pandas 3 ``datetime64[us, tz]`` buckets to ``ns`` and make parent identity
+    depend on ``_timestamps_matching_source_dtype`` recovery.
+    """
+    intra = pd.to_timedelta(timestamps.dt.second, unit="s") + pd.to_timedelta(
+        timestamps.dt.microsecond, unit="us"
+    )
+    nanoseconds = timestamps.dt.nanosecond
+    if bool((nanoseconds != 0).any()):
+        intra = intra + pd.to_timedelta(nanoseconds, unit="ns")
+    return timestamps - intra
+
+
+def _validate_aligned_source_ohlcv(aligned_rows: pd.DataFrame) -> None:
+    """Vectorized OHLCV check; first failing bucket keeps the locked error text."""
+    values = aligned_rows.loc[:, ("open", "high", "low", "close", "volume")]
+    finite_ok = bool(values.notna().all().all()) and bool(
+        np.isfinite(values.to_numpy(dtype="float64")).all()
+    )
+    volume_ok = bool((aligned_rows["volume"] >= 0).all())
+    invalid_range = (aligned_rows["high"] < aligned_rows[["open", "close"]].max(axis=1)) | (
+        aligned_rows["low"] > aligned_rows[["open", "close"]].min(axis=1)
+    )
+    invalid_range |= aligned_rows["high"] < aligned_rows["low"]
+    if finite_ok and volume_ok and not bool(invalid_range.any()):
+        return
+    for bucket_ts, group in aligned_rows.groupby("_bucket", sort=True):
+        _validate_group_ohlcv(group, pd.Timestamp(bucket_ts))
+    raise ValueError("source OHLC/volume failed vectorized validation without a per-minute match")
+
+
+def _coverage_bucket_row_from_work(
+    work: pd.DataFrame,
+    bucket_ts: pd.Timestamp,
+    reason: str,
+) -> dict[str, Any]:
+    """Sparse/misaligned diagnostic row; timestamps stay in source order."""
+    observed = list(work.loc[work["_bucket"] == bucket_ts, "timestamp"])
+    return _coverage_bucket_row(
+        timestamp=pd.Timestamp(bucket_ts),
+        reason=reason,
+        observed=observed,
     )
 
 

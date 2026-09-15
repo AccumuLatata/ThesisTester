@@ -71,7 +71,12 @@ This engine is for **research screening**, not proof of a durable edge.
   bars are never synthesized. Strict R12 `intrabar_model=subtimeframe` still
   requires complete four-bar coverage — use `subtimeframe_conservative` for
   observed replay plus SL-first fallback on sparse minutes, or enable
-  Quantower Build empty bars for full coverage.
+  Quantower Build empty bars for full coverage. On-grid minutes are aggregated
+  with a vectorized `groupby` under this locked policy (QR E-9 / QI-14-06);
+  sparse and misaligned diagnostics are unchanged. Parent / sparse / dropped
+  outputs stay hash-identical to the prior Python loop. Recorded 1-week derive
+  wall time (5 RTH sessions × 1,560 on-grid 15s bars = 7,800 rows) is 21.8 ms
+  median on the E-9 agent host (QI-14 loop baseline 4,157 ms).
 - In that mode the derived one-minute frame is the canonical `data` used for
   levels/signals, and the original 15-second bars are attached as
   `subtimeframe_data` for R12. The separate lower-timeframe uploader is hidden

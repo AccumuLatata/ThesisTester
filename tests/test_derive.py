@@ -7,13 +7,30 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from thesistester.config import REQUIRED_COLUMNS
 from thesistester.data.derive import (
+    DERIVATION_POLICY_DEFAULT,
     DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2,
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+    DerivedParentResult,
+    _EXPECTED_SUB_BARS,
+    _PARENT_INTERVAL,
+    _SOURCE_INTERVAL,
+    _DROPPED_COLUMNS,
+    _SPARSE_COLUMNS,
+    _coverage_bucket_row,
+    _floor_to_local_minute,
+    _group_is_on_grid,
+    _normalize_source_frame,
+    _timestamps_matching_source_dtype,
+    _validate_15s_cadence,
+    _validate_group_ohlcv,
+    _validate_source_frame,
     build_derivation_provenance,
     derive_complete_parent_ohlcv,
     hash_source_frame,
 )
+from thesistester.persistence.local_store import hash_dataframe
 from thesistester.data.loader import load_ohlcv
 from thesistester.data.resample import resample_ohlcv
 from thesistester.engine.intrabar import (
@@ -22,6 +39,20 @@ from thesistester.engine.intrabar import (
 )
 
 VENDOR_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "vendor"
+# hash_dataframe includes timestamp unit (pandas 2 ns / pandas 3 us).
+VENDOR_DERIVED_1M_PARENT_HASH_BY_UNIT = {
+    "us": "2b6d2414b8cbd60e3de08892748bfdf2d82b738ad6c25e4bcc383d5b78f72033",
+    "ns": "773d0fc033e678824933331b814e7a4ed19c17caf8f845af9ce22e6390ca159d",
+}
+
+
+def vendor_derived_1m_parent_hash_lock(frame: pd.DataFrame) -> str:
+    """Return the locked vendor 15s→1m parent hash for this pandas datetime unit."""
+    unit = getattr(frame["timestamp"].dtype, "unit", "ns")
+    try:
+        return VENDOR_DERIVED_1M_PARENT_HASH_BY_UNIT[unit]
+    except KeyError as exc:
+        raise AssertionError(f"unrecorded vendor parent hash for timestamp unit {unit!r}") from exc
 
 
 def _complete_minute(
@@ -356,6 +387,9 @@ def test_quantower_vendor_15s_derives_and_reconciles_with_r12():
     assert getattr(result.parent_data["timestamp"].dtype, "unit", None) == getattr(
         source["timestamp"].dtype, "unit", None
     )
+    assert hash_dataframe(result.parent_data) == vendor_derived_1m_parent_hash_lock(
+        result.parent_data
+    )
 
 
 def test_future_shock_append_does_not_change_prior_parents_or_diagnostics():
@@ -449,3 +483,195 @@ def test_unsupported_parent_interval_fails_closed():
     source = _complete_minute("2026-06-02 09:30:00")
     with pytest.raises(ValueError, match="parent_interval"):
         derive_complete_parent_ohlcv(source, parent_interval="5min")
+
+
+def _loop_reference_derive(source: pd.DataFrame) -> DerivedParentResult:
+    """Pre-E-9 Python groupby (QI-14-06). Hash-locks the vectorized on-grid path."""
+    source_frame = _normalize_source_frame(source)
+    _validate_source_frame(source_frame)
+    _validate_15s_cadence(source_frame["timestamp"])
+    buckets = source_frame["timestamp"].map(
+        lambda value: pd.Timestamp(value).replace(second=0, microsecond=0, nanosecond=0)
+    )
+    parent_rows = []
+    dropped_rows = []
+    sparse_rows = []
+    for bucket_start, group in source_frame.groupby(buckets, sort=True):
+        bucket_ts = pd.Timestamp(bucket_start)
+        group = group.sort_values("timestamp").reset_index(drop=True)
+        observed = list(group["timestamp"])
+        if not _group_is_on_grid(observed, bucket_ts):
+            dropped_rows.append(
+                _coverage_bucket_row(
+                    timestamp=bucket_ts,
+                    reason="timestamp_misalignment",
+                    observed=observed,
+                )
+            )
+            continue
+        _validate_group_ohlcv(group, bucket_ts)
+        parent_rows.append(
+            {
+                "timestamp": bucket_ts,
+                "open": float(group["open"].iloc[0]),
+                "high": float(group["high"].max()),
+                "low": float(group["low"].min()),
+                "close": float(group["close"].iloc[-1]),
+                "volume": float(group["volume"].sum()),
+            }
+        )
+        if len(group) != _EXPECTED_SUB_BARS:
+            sparse_rows.append(
+                _coverage_bucket_row(
+                    timestamp=bucket_ts,
+                    reason="incomplete_coverage",
+                    observed=observed,
+                )
+            )
+    if not parent_rows:
+        raise ValueError(
+            "observed aligned derivation retained no parent bars; "
+            f"dropped {len(dropped_rows)} misaligned minute buckets"
+        )
+    parent_data = pd.DataFrame(parent_rows, columns=list(REQUIRED_COLUMNS))
+    parent_data["timestamp"] = _timestamps_matching_source_dtype(
+        parent_data["timestamp"], source_frame["timestamp"].dtype
+    )
+    dropped_buckets = pd.DataFrame(dropped_rows, columns=list(_DROPPED_COLUMNS))
+    sparse_buckets = pd.DataFrame(sparse_rows, columns=list(_SPARSE_COLUMNS))
+    if not dropped_buckets.empty:
+        dropped_buckets["timestamp"] = _timestamps_matching_source_dtype(
+            dropped_buckets["timestamp"], source_frame["timestamp"].dtype
+        )
+    if not sparse_buckets.empty:
+        sparse_buckets["timestamp"] = _timestamps_matching_source_dtype(
+            sparse_buckets["timestamp"], source_frame["timestamp"].dtype
+        )
+    return DerivedParentResult(
+        parent_data=parent_data.reset_index(drop=True),
+        source_data=source_frame.reset_index(drop=True),
+        source_interval=_SOURCE_INTERVAL,
+        parent_interval=_PARENT_INTERVAL,
+        dropped_buckets=dropped_buckets.reset_index(drop=True),
+        sparse_buckets=sparse_buckets.reset_index(drop=True),
+        derivation_policy=DERIVATION_POLICY_DEFAULT,
+    )
+
+
+def test_floor_to_local_minute_matches_replace_across_dst_fall_back():
+    timestamps = pd.to_datetime(
+        [
+            "2026-11-01 05:59:00+00:00",
+            "2026-11-01 05:59:15+00:00",
+            "2026-11-01 05:59:45+00:00",
+            "2026-11-01 06:00:00+00:00",
+            "2026-11-01 06:00:15+00:00",
+        ],
+        utc=True,
+    ).tz_convert("America/New_York")
+    expected = timestamps.map(
+        lambda value: pd.Timestamp(value).replace(second=0, microsecond=0, nanosecond=0)
+    )
+    series = pd.Series(timestamps)
+    floored = _floor_to_local_minute(series)
+    assert [ts.isoformat() for ts in floored] == [ts.isoformat() for ts in expected]
+    assert str(floored.dtype) == str(series.dtype)
+
+
+def _dst_both_0130_hours() -> pd.DataFrame:
+    """Both fall-back 01:30 hours (fold 0 EDT and fold 1 EST)."""
+    first = pd.to_datetime(
+        [
+            "2026-11-01 05:30:00+00:00",
+            "2026-11-01 05:30:15+00:00",
+            "2026-11-01 05:30:30+00:00",
+            "2026-11-01 05:30:45+00:00",
+        ],
+        utc=True,
+    ).tz_convert("America/New_York")
+    second = pd.to_datetime(
+        [
+            "2026-11-01 06:30:00+00:00",
+            "2026-11-01 06:30:15+00:00",
+            "2026-11-01 06:30:30+00:00",
+            "2026-11-01 06:30:45+00:00",
+        ],
+        utc=True,
+    ).tz_convert("America/New_York")
+    stamps = list(first) + list(second)
+    return pd.DataFrame(
+        {
+            "timestamp": stamps,
+            "open": list(range(100, 108)),
+            "high": list(range(101, 109)),
+            "low": list(range(99, 107)),
+            "close": [value + 0.5 for value in range(100, 108)],
+            "volume": [1.0] * 8,
+        }
+    )
+
+
+def _mixed_sparse_misaligned_complete() -> pd.DataFrame:
+    sparse = _complete_minute("2026-06-02 09:30:00").iloc[:2]
+    misaligned = _complete_minute("2026-06-02 09:31:00")
+    misaligned.loc[3, "timestamp"] = misaligned.loc[3, "timestamp"] + pd.Timedelta(seconds=5)
+    complete = _complete_minute("2026-06-02 09:32:00", open_price=120.0)
+    return pd.concat([sparse, misaligned, complete], ignore_index=True)
+
+
+def test_vectorized_derive_is_hash_identical_to_loop_reference():
+    """QI-14-06 / QR E-9: on-grid vectorization must not change parent or diagnostics."""
+    vendor = load_ohlcv(
+        VENDOR_FIXTURES / "quantower_history_exporter_15s.csv",
+        format_profile="quantower_history_exporter",
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+    mixed = _mixed_sparse_misaligned_complete()
+    dst_fold = _dst_both_0130_hours()
+
+    for source in (vendor, mixed, dst_fold):
+        result = derive_complete_parent_ohlcv(source)
+        reference = _loop_reference_derive(source)
+        assert hash_dataframe(result.parent_data) == hash_dataframe(reference.parent_data)
+        assert hash_dataframe(result.dropped_buckets) == hash_dataframe(reference.dropped_buckets)
+        assert hash_dataframe(result.sparse_buckets) == hash_dataframe(reference.sparse_buckets)
+        assert hash_dataframe(result.source_data) == hash_dataframe(reference.source_data)
+        assert build_derivation_provenance(
+            result, format_profile="quantower_history_exporter"
+        ) == build_derivation_provenance(reference, format_profile="quantower_history_exporter")
+        assert result.derivation_policy == DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2
+
+    assert hash_dataframe(derive_complete_parent_ohlcv(vendor).parent_data) == (
+        vendor_derived_1m_parent_hash_lock(vendor)
+    )
+    mixed_result = derive_complete_parent_ohlcv(mixed)
+    assert len(mixed_result.parent_data) == 2
+    assert list(mixed_result.dropped_buckets["reason"]) == ["timestamp_misalignment"]
+    assert list(mixed_result.sparse_buckets["reason"]) == ["incomplete_coverage"]
+    dst_result = derive_complete_parent_ohlcv(dst_fold)
+    assert [ts.isoformat() for ts in dst_result.parent_data["timestamp"]] == [
+        "2026-11-01T01:30:00-04:00",
+        "2026-11-01T01:30:00-05:00",
+    ]
+
+
+def test_invalid_ohlcv_names_first_failing_parent_minute():
+    bad = _complete_minute("2026-06-02 09:30:00")
+    bad.loc[0, "high"] = 50.0
+    good = _complete_minute("2026-06-02 09:31:00", open_price=110.0)
+    source = pd.concat([bad, good], ignore_index=True)
+    with pytest.raises(ValueError, match="parent minute 2026-06-02 09:30:00-04:00"):
+        derive_complete_parent_ohlcv(source)
+
+
+def test_nan_first_open_fail_closed_does_not_skip_to_next_print():
+    """GroupBy.first skipna=True would take 101; locked path must refuse the minute."""
+    source = _complete_minute("2026-06-02 09:30:00")
+    source.loc[0, "open"] = float("nan")
+    source = pd.concat(
+        [source, _complete_minute("2026-06-02 09:31:00", open_price=110.0)],
+        ignore_index=True,
+    )
+    with pytest.raises(ValueError, match="non-finite values for parent minute 2026-06-02 09:30:00"):
+        derive_complete_parent_ohlcv(source)

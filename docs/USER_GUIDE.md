@@ -111,6 +111,7 @@ levels and downstream results when the dataset identity changes.
 - Not a live data feed or broker connection.
 - Native 1m primary never auto-dedupes (volume/VWAP). 15s-primary resolves
   OHLC-identical source dups (lowest volume) before derive; OHLC conflicts fail.
+  On-grid 15s→1m derive is vectorized; parent hashes stay identical.
 - Lower-timeframe dual-upload is optional/legacy and for replay diagnostics.
 - Tick-last is optional until VA / APOC / rolling POC **need** ticks
   (`requires ticks`). Math is tick Last×Volume; 15s stays the bar clock.
