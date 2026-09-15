@@ -41,6 +41,22 @@ the loader object. No pydantic. No composer collapse.
 python -m thesistester run experiment.yaml --workers 4
 ```
 
+### CLI errors (`run` verb)
+
+`python -m thesistester run` catches `ValueError` / `OSError` in `cli.main`
+(QI-06-07 / E-3) and prints `str(exc)` to stderr. No traceback for those
+typed refusals.
+
+- `OSError`, and `ValueError` whose `__cause__` is `OSError` (missing /
+  unreadable experiment file — `load_experiment_file` wraps the I/O
+  error): `os.EX_NOINPUT` (66)
+- other `ValueError` (invalid YAML, empty `runs`, unknown keys):
+  `os.EX_DATAERR` (65)
+
+`study` and `journal` dispatch is unchanged — each verb keeps its own
+error printer (`study report` missing dir → rc 2; journal typed failures
+→ rc 2).
+
 ### Research Study Runner (RS1–RS5 + post-MVP through RS-D9)
 
 For closed multi-factor confluence studies, use the additive Study Runner (see
@@ -136,8 +152,11 @@ Studies Build section collectors / renderers (QI-07-01). D-10
 Assistant voice/sidecar and Advanced blocks (QI-09-03). E-1
 ([#583](https://github.com/AccumuLatata/ThesisTester/pull/583)) routes
 Levels Calculate through ``product_tick_family_preflight`` (QI-02-03).
-E-2 (this PR) maps known Levels ``ValueError`` refusals to ``st.error``
-without a traceback expander (QI-02-05). Next: E-3.
+E-2
+([#584](https://github.com/AccumuLatata/ThesisTester/pull/584)) maps known
+Levels ``ValueError`` refusals to ``st.error`` without a traceback expander
+(QI-02-05). E-3 (this PR) maps ``run``-verb ``ValueError`` / ``OSError`` to
+``EX_DATAERR`` / ``EX_NOINPUT`` without a traceback (QI-06-07). Next: E-4.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -370,8 +389,11 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    Assistant voice/sidecar and Advanced blocks (QI-09-03). E-1
    ([#583](https://github.com/AccumuLatata/ThesisTester/pull/583)) routes
    Levels Calculate through ``product_tick_family_preflight`` (QI-02-03).
-   E-2 (this PR) maps known Levels ``ValueError`` refusals to ``st.error``
-   without a traceback expander (QI-02-05). Next: E-3.
+   E-2
+   ([#584](https://github.com/AccumuLatata/ThesisTester/pull/584)) maps known
+   Levels ``ValueError`` refusals to ``st.error`` without a traceback expander
+   (QI-02-05). E-3 (this PR) maps ``run``-verb ``ValueError`` / ``OSError`` to
+   ``EX_DATAERR`` / ``EX_NOINPUT`` without a traceback (QI-06-07). Next: E-4.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
@@ -974,9 +996,11 @@ Every request must first parse as an `AssistantRequest`, then pass
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:
-  - `thesistester/__main__.py` — `if __name__` guard only. `cli.main()` is
-    exercised from journal/study CLI tests; `test_cli.py` covers
-    argparse / `run_batch`, not the `__main__` wrapper.
+  - `thesistester/__main__.py` — `if __name__` guard only (`SystemExit(main())`).
+    `cli.main()` is exercised from journal/study CLI tests. `test_cli.py`
+    `_module_cli` process-invokes `python -m thesistester` for `--help` and
+    run-verb typed errors (QI-06-07 / E-3); it does not re-test the
+    two-line wrapper in isolation.
   - `thesistester/assistant/voice/sidecar.py` — subprocess / network
     lifecycle. Voice tests cover bind/redact, not launch or the health loop.
   - `thesistester/assistant/voice/xai_realtime.py` — provider I/O. Evals

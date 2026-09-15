@@ -8,6 +8,7 @@ import multiprocessing
 import numbers
 import os
 import re
+import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -262,19 +263,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         return dispatch_journal(args)
     if args.command != "run":
         raise AssertionError(f"Unhandled command: {args.command}")
-    experiment_path = args.experiment.resolve()
-    experiment = load_experiment_file(experiment_path)
-    workers = args.workers if args.workers is not None else int(experiment.get("workers", 1))
-    configured_output = experiment.get("output_dir", "thesistester_results")
-    output = args.output_dir or Path(configured_output)
-    if not output.is_absolute():
-        output = experiment_path.parent / output
-    index = run_batch(
-        experiment,
-        base_directory=experiment_path.parent,
-        output_directory=output,
-        workers=workers,
-    )
+    try:
+        experiment_path = args.experiment.resolve()
+        experiment = load_experiment_file(experiment_path)
+        workers = args.workers if args.workers is not None else int(experiment.get("workers", 1))
+        configured_output = experiment.get("output_dir", "thesistester_results")
+        output = args.output_dir or Path(configured_output)
+        if not output.is_absolute():
+            output = experiment_path.parent / output
+        index = run_batch(
+            experiment,
+            base_directory=experiment_path.parent,
+            output_directory=output,
+            workers=workers,
+        )
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return os.EX_NOINPUT
+    except ValueError as exc:
+        # load_experiment_file wraps OSError (missing / unreadable file) as
+        # ValueError. Keep sysexits EX_NOINPUT for that I/O cause.
+        print(str(exc), file=sys.stderr)
+        if isinstance(exc.__cause__, OSError):
+            return os.EX_NOINPUT
+        return os.EX_DATAERR
     print(f"Completed {len(index)} run(s) with {workers} worker(s).")
     print(f"Results index: {(output / 'results_index.csv').resolve()}")
     return os.EX_OK
