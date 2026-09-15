@@ -885,6 +885,7 @@ version
 | `Assistant chat` (`Draft thesis` mode) | Thesis drafting only — choices + clarifications | Not for run metrics or product docs |
 | `Advanced: draft, runs & compare` | Optional draft → validate → confirm → run path | Classic pages remain the primary workflow |
 | `Draft research plan` (optional) | Persists an immutable specification version | `Apply` controls only stage the session draft |
+| Draft **Minimum valid confluences** | Valid-rule floor on the session draft | `0` is legal (AO1 / empty rules), same as Setup Builder and YAML |
 | `Validate executable RunSpec` → `Confirm validated RunSpec` | Confirmation-/schema-gated | Confirm appears only after Validate succeeds **and** clarifications are clear |
 | `Run confirmed research` | Executes only a **Confirmed** spec version | Apply/Draft alone never start compute. Omitted battery `enabled` means **on** (same as api/CLI); set `enabled: false` to skip. Nested OTF matrix stays default-off |
 

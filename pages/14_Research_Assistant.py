@@ -868,8 +868,13 @@ def _render_advanced_block() -> None:
                 )
                 min_valid_confluences = st.number_input(
                     "Minimum valid confluences",
-                    min_value=1,
+                    min_value=0,
+                    step=1,
                     value=safe_int(setup.get("min_valid_confluences"), 1),
+                    help=(
+                        "0 is legal (AO1 / empty confluence rules), same as "
+                        "Setup Builder and YAML. Default remains 1."
+                    ),
                 )
                 if st.form_submit_button("Apply setup controls"):
                     try:

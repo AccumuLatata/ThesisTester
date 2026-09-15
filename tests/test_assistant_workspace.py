@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import sys
 import types
@@ -172,6 +173,70 @@ def test_page_is_orchestrator_only_and_keeps_json_advanced():
     # the restore path's post-success st.rerun().
     assert "st.rerun()" in source[restore_idx : restore_idx + 1200]
     assert "restore_run_bundle_to_session(" in source[restore_idx : restore_idx + 1200]
+
+
+def _assistant_min_valid_number_input() -> ast.Call:
+    """Unique Draft ``st.number_input("Minimum valid confluences")`` (E-5)."""
+    from tests.test_ui_copy_guards import _call_label, _st_calls
+
+    tree = ast.parse(_load_research_assistant_page())
+    found = [
+        call
+        for call in _st_calls(tree, "number_input")
+        if _call_label(call) == "Minimum valid confluences"
+    ]
+    if len(found) != 1:
+        raise AssertionError(
+            f"expected exactly one st.number_input('Minimum valid confluences'), got {len(found)}"
+        )
+    return found[0]
+
+
+def _kw_literal(call: ast.Call, name: str):
+    for keyword in call.keywords:
+        if keyword.arg != name:
+            continue
+        try:
+            return ast.literal_eval(keyword.value)
+        except (ValueError, TypeError) as exc:
+            raise AssertionError(f"{name}= is not a literal") from exc
+    raise AssertionError(f"missing keyword {name}")
+
+
+def test_draft_min_valid_confluences_allows_ao1_zero():
+    """QI-09-11: Assistant Draft can author AO1 min_valid=0 (E-5)."""
+    call = _assistant_min_valid_number_input()
+    assert _kw_literal(call, "min_value") == 0
+    assert _kw_literal(call, "step") == 1
+    help_text = _kw_literal(call, "help")
+    assert "AO1" in help_text
+    assert "Setup Builder" in help_text
+    assert "YAML" in help_text
+
+
+def test_merge_setup_controls_persists_ao1_min_valid_zero():
+    """Apply-path: merge_setup_controls stores min_valid=0 (does not clamp to 1)."""
+    choices = merge_setup_controls(
+        {},
+        setup_name="AO1",
+        description="",
+        selected_levels_raw=["ONH"],
+        trigger="touch",
+        direction="both",
+        tolerance_ticks=10.0,
+        min_confluences=1,
+        max_confluences=1,
+        naked_only=False,
+        naked_requirement="any",
+        trigger_timeframe="base",
+        confluence_mode="anchor_rules",
+        anchor_level="ONH",
+        min_valid_confluences=0,
+    )
+    assert choices["setup"]["min_valid_confluences"] == 0
+    assert isinstance(choices["setup"]["min_valid_confluences"], int)
+    assert choices["setup"]["confluence_mode"] == "anchor_rules"
+    assert choices["setup"]["confluence_rules"] == []
 
 
 def test_assistant_session_keys_cover_documented_staging_surface():
@@ -897,6 +962,8 @@ def test_safe_numeric_defaults_tolerate_malformed_draft_values():
     assert safe_int("nope", 8) == 8
     assert safe_int(None, 8) == 8
     assert safe_int(True, 8) == 8
+    assert safe_int(0, 1) == 0
+    assert safe_int(0.0, 1) == 0
     assert safe_float("1.5", 0.0) == 1.5
     assert safe_float("bad", 0.25) == 0.25
     assert safe_float(None, 0.0) == 0.0
