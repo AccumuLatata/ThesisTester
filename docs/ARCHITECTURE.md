@@ -315,6 +315,15 @@ to disk and are ignored. Column policy stays schema-only. Page 12 does
 **not** add a hash gate (AH §2 item 8). Assistant open-exact remains the
 hash-fail-closed path.
 
+**Persistence integrity bars (QI-09-10 / QI-06-06 residual).** Three
+mechanically distinct bars — do not collapse:
+
+| Bar | Surface | Gate |
+|---|---|---|
+| schema-only | Page 12 zip import | Manifest / columns / members. No hash gate (AH §2 item 8). |
+| hash-fail-closed | Assistant restore / `complete_run` | Provenance hash must match; refuse on mismatch. |
+| open-exact | Assistant **Open exact run in Backtest** | Hash-fail-closed restore, then navigate to Backtest. |
+
 ## Classic/Assistant execution-artifact store (CAI-2)
 
 `thesistester/persistence/execution_artifacts.py` owns an **internal**

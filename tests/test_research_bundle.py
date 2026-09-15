@@ -1119,6 +1119,15 @@ def test_ah4_p5_page_12_stays_schema_only():
     assert "bootstrap_active_saved_dataset()" in source
 
 
+def test_page_12_labels_three_integrity_bars_without_hash_gate():
+    """QI-09-10 / QI-06-06 residual: page 12 names the three bars; no hash symbol."""
+    source = Path("pages/12_Research_Bundles.py").read_text(encoding="utf-8")
+    assert "schema-only" in source
+    assert "hash-fail-closed" in source
+    assert "open-exact" in source
+    assert "canonical_bundle_hash" not in source
+
+
 _QI0603_CLEAR_ONLY_KEYS = (
     "otf_validation_matrix",
     "otf_validation_config",

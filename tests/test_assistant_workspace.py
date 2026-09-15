@@ -203,6 +203,15 @@ def _kw_literal(call: ast.Call, name: str):
     raise AssertionError(f"missing keyword {name}")
 
 
+def test_open_exact_caption_names_three_integrity_bars():
+    """QI-09-10: Assistant Open exact names schema-only / hash-fail-closed / open-exact."""
+    source = _load_research_assistant_page()
+    assert "schema-only" in source
+    assert "hash-fail-closed" in source
+    assert "open-exact" in source
+    assert "Open exact run in Backtest" in source
+
+
 def test_draft_min_valid_confluences_allows_ao1_zero():
     """QI-09-11: Assistant Draft can author AO1 min_valid=0 (E-5)."""
     call = _assistant_min_valid_number_input()

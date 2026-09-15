@@ -26,6 +26,11 @@ from thesistester.research_bundle import (
 st.title("🧳 Research Bundles")
 st.caption("Diagnostic only — not proof of edge.")
 st.caption("Export and import portable research state snapshots for this session.")
+st.caption(
+    "This page is schema-only zip import (manifest / columns / members). "
+    "Assistant open-exact is a separate hash-fail-closed integrity bar. "
+    "This page does not hash-gate."
+)
 if not should_skip_dataset_bootstrap(st.session_state):
     bootstrap_active_saved_dataset()
 render_classic_thesis_chrome(
