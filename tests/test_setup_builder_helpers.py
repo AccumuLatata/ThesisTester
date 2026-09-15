@@ -500,11 +500,17 @@ def test_anchor_only_editor_config_validates():
 def test_backtest_and_grid_pages_describe_live_otf_admission():
     root = pathlib.Path(__file__).parent.parent / "pages"
     backtest = (root / "7_Backtest.py").read_text(encoding="utf-8")
+    backtest_display = (
+        pathlib.Path(__file__).parent.parent / "thesistester" / "backtest_display_page_helpers.py"
+    ).read_text(encoding="utf-8")
     grid = (root / "8_Grid_Search.py").read_text(encoding="utf-8")
-    for text in (backtest, grid):
+    for text in (backtest, backtest_display, grid):
         assert "until PR 5" not in text
         assert "metadata only" not in text
-    assert "before** trade simulation" in backtest or "before trade simulation" in backtest
+    assert (
+        "before** trade simulation" in backtest_display
+        or "before trade simulation" in backtest_display
+    )
     assert "before the SL/TP grid" in grid
 
 

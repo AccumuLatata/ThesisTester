@@ -1517,6 +1517,9 @@ are `studies_builder_draft` and `studies_builder_pending_sync` only.
 
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
 ("Long vs Short KPIs") section sourced from the same `trades` DataFrame.
+D-3 / QI-04-05 extracts sidebar / run-persist / display into
+`thesistester/backtest_*_page_helpers.py` (page is thin orchestration).
+Session-key names are unchanged.
 
 Backtest also exposes a collapsed diagnostic expander **Confluence combo attribution**
 near Breakdown. It recomputes on the fly from `_display_trades` via

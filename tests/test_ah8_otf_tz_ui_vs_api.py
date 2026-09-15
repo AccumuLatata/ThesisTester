@@ -20,6 +20,9 @@ from thesistester.engine.otf_integration import apply_configured_otf_filter
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKTEST = (REPO_ROOT / "pages" / "7_Backtest.py").read_text(encoding="utf-8")
+BACKTEST_RUN = (REPO_ROOT / "thesistester" / "backtest_run_page_helpers.py").read_text(
+    encoding="utf-8"
+)
 API = (REPO_ROOT / "thesistester" / "api.py").read_text(encoding="utf-8")
 
 _H15_CALLS = (
@@ -134,11 +137,33 @@ def assert_every_call_kw(tree: ast.AST, func_name: str, kw_name: str, expected: 
         raise AssertionError(f"missing {func_name} call")
 
 
-def assert_h15_ui_wiring(source: str) -> None:
-    assert_exchange_tz_is_data_page_or_instrument(source)
+def assert_assemble_otf_clocks_uses_exchange_tz(source: str) -> None:
+    """Bind ``assemble_otf_filter_clocks(exchange_tz, …)`` (first positional)."""
     tree = ast.parse(source)
+    found = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node) != "assemble_otf_filter_clocks":
+            continue
+        found = True
+        if not node.args:
+            raise AssertionError("assemble_otf_filter_clocks missing positional exchange_tz")
+        got = _kw_expr(node.args[0])
+        if got != "exchange_tz":
+            raise AssertionError(
+                f"assemble_otf_filter_clocks arg0={got!r} inverts H15 (want exchange_tz)"
+            )
+    if not found:
+        raise AssertionError("missing assemble_otf_filter_clocks call")
+
+
+def assert_h15_ui_wiring(page_source: str, run_source: str | None = None) -> None:
+    assert_exchange_tz_is_data_page_or_instrument(page_source)
+    tree_source = run_source if run_source is not None else page_source
+    tree = ast.parse(tree_source)
     for func_name, kw_name in _H15_CALLS:
         assert_every_call_kw(tree, func_name, kw_name, "exchange_tz")
+    if run_source is not None:
+        assert_assemble_otf_clocks_uses_exchange_tz(run_source)
 
 
 def assert_h15_api_wiring(source: str) -> None:
@@ -149,7 +174,7 @@ def assert_h15_api_wiring(source: str) -> None:
 
 def test_h15_ui_otf_and_admit_use_session_or_instrument_exchange_tz() -> None:
     """Classic Backtest OTF/Admit clocks use session ``exchange_tz`` (H15 UI)."""
-    assert_h15_ui_wiring(BACKTEST)
+    assert_h15_ui_wiring(BACKTEST, BACKTEST_RUN)
 
 
 def test_h15_api_otf_and_admit_use_instrument_exchange_tz() -> None:
@@ -219,6 +244,23 @@ def test_h15_wiring_guard_rejects_inverted_or_comment_tz() -> None:
         pass
     else:
         raise AssertionError("omitted session_timezone must not bind H15 UI")
+
+    inverted_clocks = (
+        "import streamlit as st\n"
+        "exchange_tz = st.session_state.get('exchange_timezone') or (\n"
+        "    inst.exchange_tz if inst else 'America/New_York'\n"
+        ")\n"
+        "assemble_otf_filter_clocks(inst.exchange_tz, inst)\n"
+        "apply_configured_otf_filter(session_timezone=exchange_tz)\n"
+        "normalize_entry_window(exchange_tz=exchange_tz)\n"
+        "simulate_trades(entry_window_exchange_tz=exchange_tz)\n"
+    )
+    try:
+        assert_h15_ui_wiring(inverted_clocks, inverted_clocks)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("assemble_otf_filter_clocks(inst.exchange_tz) must invert H15")
 
     inverted_api = (
         "def run_backtest():\n"

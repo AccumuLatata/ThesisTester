@@ -19,6 +19,7 @@ from thesistester.engine.backtest import simulate_trades
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PAGES = REPO_ROOT / "pages"
+HELPERS = REPO_ROOT / "thesistester"
 CLASSIC_EXPORT = REPO_ROOT / "thesistester" / "classic_export.py"
 
 _BACKTEST = "7_Backtest.py"
@@ -136,6 +137,66 @@ def assert_effective_cutoff_forces_none_when_flatten_off(source: str) -> None:
         found = True
     if not found:
         raise AssertionError("missing effective_no_new_entries_after assignment")
+
+
+def assert_effective_cutoff_helper_function(source: str) -> None:
+    """D-3: H7 IfExp lives in ``effective_no_new_entries_after`` (not a comment)."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or node.name != "effective_no_new_entries_after":
+            continue
+        returns = [stmt for stmt in node.body if isinstance(stmt, ast.Return)]
+        if not returns:
+            raise AssertionError("effective_no_new_entries_after missing return")
+        if not _is_flatten_gated_none(returns[0].value):
+            raise AssertionError(
+                "effective_no_new_entries_after must return "
+                "(no_new_entries_after.strip() or None) if flat_by_session_close else None"
+            )
+        return
+    raise AssertionError("missing effective_no_new_entries_after helper")
+
+
+_H7_HELPER_CALL_NAMES = frozenset(
+    {"effective_no_new_entries_after", "compute_effective_no_new_entries_after"}
+)
+
+
+def assert_sidebar_binds_effective_cutoff_via_helper(source: str) -> None:
+    """Bind sidebar ``effective_no_new_entries_after`` to the H7 helper call.
+
+    A passthrough ``= no_new_entries_after`` would invert H7: Streamlit still
+    returns leftover cutoff text from a disabled widget when flatten is off.
+    """
+    tree = ast.parse(source)
+    found = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id != "effective_no_new_entries_after":
+            continue
+        call = node.value
+        if not isinstance(call, ast.Call) or call.keywords:
+            raise AssertionError(
+                "effective_no_new_entries_after must be a positional H7 helper call"
+            )
+        func_name = _call_name(call)
+        if func_name not in _H7_HELPER_CALL_NAMES:
+            raise AssertionError(
+                f"effective_no_new_entries_after must call the H7 helper, got {func_name!r}"
+            )
+        if len(call.args) != 2:
+            raise AssertionError(
+                "H7 helper must be called with (flat_by_session_close, no_new_entries_after)"
+            )
+        if _kw_expr(call.args[0]) != "flat_by_session_close":
+            raise AssertionError("H7 helper arg0 must be flat_by_session_close")
+        if _kw_expr(call.args[1]) != "no_new_entries_after":
+            raise AssertionError("H7 helper arg1 must be no_new_entries_after")
+        found = True
+    if not found:
+        raise AssertionError("missing effective_no_new_entries_after helper-call assignment")
 
 
 def assert_cutoff_widget_disabled_when_flatten_off(source: str, widget_key: str) -> None:
@@ -287,6 +348,18 @@ def _skip_reasons(skipped: pd.DataFrame | None) -> list[str]:
 def test_h7_ui_and_grid_force_cutoff_none_when_flatten_off() -> None:
     """Classic composers gate cutoff on flatten (H7 UI side)."""
     for page, (engine_name, widget_key) in _PAGE_ENGINE.items():
+        if page == _BACKTEST:
+            assert_effective_cutoff_helper_function(_read(HELPERS / "backtest_page_helpers.py"))
+            assert_sidebar_binds_effective_cutoff_via_helper(
+                _read(HELPERS / "backtest_sidebar_page_helpers.py")
+            )
+            assert_cutoff_widget_disabled_when_flatten_off(
+                _read(HELPERS / "backtest_sidebar_page_helpers.py"), widget_key
+            )
+            assert_engine_uses_effective_cutoff(
+                _read(HELPERS / "backtest_run_page_helpers.py"), engine_name
+            )
+            continue
         source = _read(PAGES / page)
         assert_effective_cutoff_forces_none_when_flatten_off(source)
         assert_cutoff_widget_disabled_when_flatten_off(source, widget_key)
@@ -314,6 +387,16 @@ def test_h7_wiring_guard_rejects_comment_unused_and_other_widget() -> None:
         ")\n"
         "simulate_trades(no_new_entries_after=no_new_entries_after)\n"
     )
+    passthrough_sidebar = (
+        "effective_no_new_entries_after = no_new_entries_after\n"
+        "simulate_trades(no_new_entries_after=effective_no_new_entries_after)\n"
+    )
+    try:
+        assert_sidebar_binds_effective_cutoff_via_helper(passthrough_sidebar)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("passthrough cutoff assignment must not bind the H7 helper call")
     try:
         assert_engine_uses_effective_cutoff(unused_formula, "simulate_trades")
     except AssertionError:
