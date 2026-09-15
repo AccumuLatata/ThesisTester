@@ -257,6 +257,18 @@ developing partners, H14, signal table, signal runs
    optional chart (**Chart range** is visualization-only).
 5. Optionally **Save current signals** or **Copy setup to Setup Builder**.
 
+**Errors.**
+
+- **Generate signals** is disabled when setup/source blockers exist (invalid
+  saved setup, missing required fields). Those show as warnings above the
+  button — generate does not run.
+- Engine or validate refusals (invalid trigger/direction, missing level
+  columns, unsupported confluence mode, failed OTF hash) show as a typed
+  error line. The page does not print a traceback.
+- Chart render failures show a typed error; signal tables above the chart
+  stay available.
+- Invalid OTF cannot be hashed: an error appears before generate or save.
+
 **What it is not.**
 
 - Not a broker order blaster and not a filled-trade list.

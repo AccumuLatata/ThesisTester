@@ -36,7 +36,6 @@ def _make_streamlit_stub() -> types.ModuleType:
         "success",
         "caption",
         "stop",
-        "spinner",
         "dataframe",
         "metric",
         "plotly_chart",
@@ -76,6 +75,7 @@ def _make_streamlit_stub() -> types.ModuleType:
             return _noop
 
     st.sidebar = _Ctx()  # type: ignore[assignment]
+    st.spinner = lambda *a, **k: _Ctx()  # type: ignore[assignment]
 
     return st
 
@@ -133,6 +133,11 @@ def _import_page_helpers():
         mod._SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY,
         mod._OTF_INVALID_ARTIFACT_BLOCKER,
         mod._SIGNAL_CONTROLS_CHANGED_WARNING,
+        mod.ANCHOR_DIAGNOSTIC_COLUMNS,
+        mod._get_stored_signal_settings,
+        mod._typed_signals_error_message,
+        mod._signal_generation_admission_error,
+        mod._run_signal_generation,
     )
 
 
@@ -166,6 +171,11 @@ def _import_page_helpers():
     _SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY,
     _OTF_INVALID_ARTIFACT_BLOCKER,
     _SIGNAL_CONTROLS_CHANGED_WARNING,
+    ANCHOR_DIAGNOSTIC_COLUMNS,
+    _get_stored_signal_settings,
+    _typed_signals_error_message,
+    _signal_generation_admission_error,
+    _run_signal_generation,
 ) = _import_page_helpers()
 
 
@@ -1509,3 +1519,148 @@ def test_c4_cai_signals_byte_identical_page6_bsc_vs_api(tmp_path):
     api_hash = hashlib.sha256(api_result["signals"].to_csv(index=False).encode()).hexdigest()
     page_hash = hashlib.sha256(page_signals.to_csv(index=False).encode()).hexdigest()
     assert api_hash == page_hash
+
+
+# ---------------------------------------------------------------------------
+# QI-03-05 / D-8 — typed generate/chart errors + unused-helper wiring
+# ---------------------------------------------------------------------------
+
+
+def test_typed_signals_error_message_includes_valueerror_text():
+    generate_msg = _typed_signals_error_message(
+        ValueError("trigger must be one of ['3c'], got 'nope'"),
+        surface="generate",
+    )
+    assert "trigger must be one of" in generate_msg
+    assert "traceback" not in generate_msg.lower()
+    chart_msg = _typed_signals_error_message(
+        ValueError("levels_df is missing required columns: close"),
+        surface="chart",
+    )
+    assert "levels_df is missing required columns: close" in chart_msg
+    assert "Signal tables above remain available." in chart_msg
+
+
+def test_signal_generation_admission_errors_stay_typed():
+    levels = pd.DataFrame({"timestamp": [], "close": [], "ONH": []})
+    assert (
+        _signal_generation_admission_error(
+            confluence_mode="anchor_rules",
+            selected_levels=[],
+            anchor_level=None,
+            confluence_rules=[],
+            min_valid_confluences=1,
+            levels_df=levels,
+        )
+        == "Anchor mode requires an anchor level."
+    )
+    assert (
+        _signal_generation_admission_error(
+            confluence_mode="anchor_rules",
+            selected_levels=[],
+            anchor_level="ONH",
+            confluence_rules=[],
+            min_valid_confluences=1,
+            levels_df=levels,
+        )
+        == "Anchor mode requires at least one confluence rule."
+    )
+    missing = _signal_generation_admission_error(
+        confluence_mode="anchor_rules",
+        selected_levels=[],
+        anchor_level="ONH",
+        confluence_rules=[{"level": "MISSING"}],
+        min_valid_confluences=0,
+        levels_df=levels,
+    )
+    assert missing is not None
+    assert "MISSING" in missing
+    assert (
+        _signal_generation_admission_error(
+            confluence_mode="global_cluster",
+            selected_levels=[],
+            anchor_level=None,
+            confluence_rules=[],
+            min_valid_confluences=0,
+            levels_df=levels,
+        )
+        == "Please select at least one level column."
+    )
+    assert (
+        _signal_generation_admission_error(
+            confluence_mode="global_cluster",
+            selected_levels=["ONH"],
+            anchor_level=None,
+            confluence_rules=[],
+            min_valid_confluences=0,
+            levels_df=levels,
+        )
+        is None
+    )
+
+
+def test_run_signal_generation_admission_raises_typed_valueerror():
+    with pytest.raises(ValueError, match="Anchor mode requires an anchor level"):
+        _run_signal_generation(
+            levels_df=pd.DataFrame({"timestamp": [], "close": []}),
+            tick_size=0.25,
+            confluence_mode="anchor_rules",
+            selected_levels=[],
+            anchor_level=None,
+            confluence_rules=[],
+            min_valid_confluences=1,
+            tolerance_ticks=4.0,
+            min_confluences=1,
+            max_confluences=2,
+            naked_only=False,
+            naked_requirement="any",
+            trigger="touch",
+            trigger_timeframe="base",
+            direction="both",
+            trigger_params={},
+            use_saved_setup=False,
+            saved_setup=None,
+            signal_settings=None,
+            session_state={},
+        )
+
+
+def test_get_stored_signal_settings_reads_session_dict():
+    ss = _trusted_session_state()
+    stored, stored_hash = _get_stored_signal_settings(ss)
+    assert stored == ss["signal_settings"]
+    assert stored_hash == ss["signal_settings_hash"]
+    assert _get_stored_signal_settings({}) == (None, None)
+
+
+def test_anchor_diagnostic_columns_drive_summary_contract():
+    assert "anchor_level" in ANCHOR_DIAGNOSTIC_COLUMNS
+    assert "rule_results" in ANCHOR_DIAGNOSTIC_COLUMNS
+    assert "level_names" in ANCHOR_DIAGNOSTIC_COLUMNS
+
+
+def test_page6_has_no_st_exception_and_splits_render_vs_sync():
+    """QI-03-05 exit: 0 st.exception on page 6; generate blockers stay typed."""
+    import ast
+    from pathlib import Path
+
+    source = Path("pages/6_Signals.py").read_text(encoding="utf-8")
+    assert "st.exception(" not in source
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler) or node.type is None:
+            continue
+        names: list[str] = []
+        if isinstance(node.type, ast.Name):
+            names = [node.type.id]
+        elif isinstance(node.type, ast.Tuple):
+            names = [elt.id for elt in node.type.elts if isinstance(elt, ast.Name)]
+        assert "Exception" not in names
+    called: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            called.add(node.func.id)
+    assert "_run_signal_generation" in called
+    assert "_render_signals_chart" in called
+    assert "_typed_signals_error_message" in called
+    assert "_get_stored_signal_settings" in called
