@@ -34,6 +34,7 @@ from thesistester.research_keys import (
     STICKY_APPLY_KEYS,
     THESIS_CLEAR_KEYS,
     WIDGET_KEYS,
+    validate_apply_sticky,
 )
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -51,14 +52,55 @@ _CHROME_PREFIXES = (
 )
 
 
+_IDENTITY_STICKY_KEYS = (
+    "data",
+    "dataset_id",
+    "instrument",
+    "base_interval",
+    "source_timezone",
+    "exchange_timezone",
+    "data_identity",
+    "levels_identity",
+)
+_REGISTRY_SOURCE_NAMES = (
+    "_DATASET_CLEAR_SOURCE",
+    "_APPLY_CLEAR_SOURCE",
+    "_THESIS_CLEAR_SOURCE",
+    "_WIDGET_SOURCE",
+    "_STICKY_APPLY_SOURCE",
+)
+
+
+def _source_tuple_literals(name: str) -> tuple[str, ...]:
+    """String Constants on a module-level annotated source tuple (comments fail-closed)."""
+    tree = ast.parse((REPO_ROOT / "thesistester" / "research_keys.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not isinstance(node.target, ast.Name) or node.target.id != name:
+            continue
+        if not isinstance(node.value, ast.Tuple):
+            raise AssertionError(f"{name} must be a tuple of string literals")
+        return tuple(
+            elt.value
+            for elt in node.value.elts
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+        )
+    raise AssertionError(f"missing {name} literals")
+
+
 def test_research_key_registry_completeness():
     """Every managed key is dataset-clear or explicitly sticky (QI-10-03)."""
     assert RESEARCH_KEY_REGISTRY
+    sticky_literals = set(_source_tuple_literals("_STICKY_APPLY_SOURCE"))
     for spec in RESEARCH_KEY_REGISTRY:
         if spec.apply_clear:
             assert spec.dataset_clear or spec.sticky, spec.key
+            if spec.sticky:
+                assert spec.key in sticky_literals, spec.key
         if spec.sticky:
             assert spec.apply_clear and not spec.dataset_clear, spec.key
+            assert spec.key in sticky_literals, spec.key
         if spec.thesis_clear:
             assert spec.key.startswith("assistant_"), spec.key
 
@@ -66,36 +108,62 @@ def test_research_key_registry_completeness():
     assert len(APPLY_CLEAR_KEYS) == 105
     assert set(THESIS_CLEAR_KEYS) == set(THESIS_SCOPED_STAGING_KEYS)
     assert set(STICKY_APPLY_KEYS) == set(APPLY_CLEAR_KEYS) - set(DATASET_CLEAR_KEYS)
+    assert set(STICKY_APPLY_KEYS) == sticky_literals
 
     for key in _QI1001_DATASET_CLEAR_LEFTOVERS:
         spec = RESEARCH_KEY_BY_NAME[key]
         assert spec.dataset_clear
         assert key in DATASET_CLEAR_KEYS
+        assert key not in sticky_literals
     for key in _QI1001_A7_APPLY_ONLY_KEYS:
         spec = RESEARCH_KEY_BY_NAME[key]
         assert spec.apply_clear and spec.sticky and not spec.dataset_clear
         assert key not in DATASET_CLEAR_KEYS
+        assert key in sticky_literals
+    for key in _IDENTITY_STICKY_KEYS:
+        spec = RESEARCH_KEY_BY_NAME[key]
+        assert spec.apply_clear and spec.sticky and not spec.dataset_clear, key
+        assert key in sticky_literals
+
+
+def test_registry_source_tuples_are_unique_literals():
+    """Source tuples cannot silently collapse duplicates."""
+    for name in _REGISTRY_SOURCE_NAMES:
+        literals = _source_tuple_literals(name)
+        assert literals, f"missing {name} literals"
+        dups = [key for key in literals if literals.count(key) > 1]
+        assert dups == [], f"{name} has duplicate literals {dups}"
 
 
 def test_apply_clear_source_literals_bind_a7_residuals():
     """Comment needles in research_keys.py must not bind A-7 apply-clear keys."""
-    tree = ast.parse((REPO_ROOT / "thesistester" / "research_keys.py").read_text(encoding="utf-8"))
-    literals: set[str] = set()
-    for node in tree.body:
-        if not isinstance(node, ast.AnnAssign):
-            continue
-        if not isinstance(node.target, ast.Name) or node.target.id != "_APPLY_CLEAR_SOURCE":
-            continue
-        assert isinstance(node.value, ast.Tuple)
-        literals = {
-            elt.value
-            for elt in node.value.elts
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
-        }
-        break
-    assert literals, "missing _APPLY_CLEAR_SOURCE literals"
-    missing = [key for key in _QI1001_A7_APPLY_ONLY_KEYS if key not in literals]
-    assert missing == [], missing
+    apply_literals = set(_source_tuple_literals("_APPLY_CLEAR_SOURCE"))
+    sticky_literals = set(_source_tuple_literals("_STICKY_APPLY_SOURCE"))
+    missing_apply = [key for key in _QI1001_A7_APPLY_ONLY_KEYS if key not in apply_literals]
+    missing_sticky = [key for key in _QI1001_A7_APPLY_ONLY_KEYS if key not in sticky_literals]
+    assert missing_apply == [], missing_apply
+    assert missing_sticky == [], missing_sticky
+
+
+def test_unlabeled_apply_clear_key_fails_closed():
+    """Derived sticky (apply minus dataset) must not satisfy the completeness gate."""
+    apply_set = set(APPLY_CLEAR_KEYS) | {"unlabeled_apply_key"}
+    dataset_set = set(DATASET_CLEAR_KEYS)
+    sticky_set = set(STICKY_APPLY_KEYS)
+    try:
+        validate_apply_sticky(apply_set, dataset_set, sticky_set)
+    except ValueError as exc:
+        assert "explicitly sticky" in str(exc)
+        assert "unlabeled_apply_key" in str(exc)
+    else:
+        raise AssertionError("unlabeled apply-clear key must not pass as implied sticky")
+
+    try:
+        validate_apply_sticky(set(APPLY_CLEAR_KEYS), dataset_set, sticky_set | {"levels"})
+    except ValueError as exc:
+        assert "dataset-clear" in str(exc)
+    else:
+        raise AssertionError("sticky ∩ dataset-clear must fail closed")
 
 
 def _is_session_state(node: ast.AST) -> bool:
@@ -213,6 +281,14 @@ def test_architecture_session_key_table_covers_measured_research_keys():
     }
     missing = sorted(research - table_keys)
     assert missing == [], f"ARCHITECTURE session-key table missing measured keys {missing}"
+
+    public_dataset_clear = {
+        key for key in DATASET_CLEAR_KEYS if not key.startswith("_") and key not in WIDGET_KEYS
+    }
+    missing_dataset = sorted(public_dataset_clear - table_keys)
+    assert missing_dataset == [], (
+        f"ARCHITECTURE session-key table missing dataset-clear keys {missing_dataset}"
+    )
 
     for key, label, path in (
         ("data", "Validation", "pages/10_Validation.py"),

@@ -108,7 +108,8 @@ hydrate / emit; public signatures unchanged. C-25 (QI-08-04) extracts
 journal payload-to-table helpers (`report_tables` / `match_classify` /
 `counterfactual_tables` / `join_rows`); match classes and CF walk math
 unchanged. D-1 (QI-10-03) is the research-key registry
-(`dataset-clear` / `apply-clear` / `thesis-clear` / `widget` flags). Next: D-2.
+(`dataset-clear` / `apply-clear` / `thesis-clear` / `widget` flags;
+apply-only members are explicitly sticky). Next: D-2.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -314,7 +315,8 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    C-24 (QI-07-07) splits Observatory join / desk / lens and builder
    hydrate / emit. C-25 (QI-08-04) extracts journal payload-to-table
    helpers. Match classes and CF walk math unchanged. D-1 (QI-10-03)
-   is the research-key registry. Next: D-2.
+   is the research-key registry (explicit sticky for apply-only keys).
+   Next: D-2.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;

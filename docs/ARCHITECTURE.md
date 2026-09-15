@@ -276,8 +276,10 @@ table: section → files → session keys → managed? → hashed?. It generates
 A-7 residuals stay `clear_only` (apply-clear, not hashed, not zip members).
 **Research-key registry (D-1 / QI-10-03).** `thesistester.research_keys`
 owns dataset-clear / apply-clear / thesis-clear / widget flags and generates
-the pop lists. `research_bundle` consumes `APPLY_CLEAR_KEYS` as
-`_MANAGED_RESEARCH_KEYS`. Additive-only: do not drop a key a page still reads.
+the pop lists. Apply-clear keys that survive dataset switch are listed on
+`_STICKY_APPLY_SOURCE` (explicit; not derived). `research_bundle` consumes
+`APPLY_CLEAR_KEYS` as `_MANAGED_RESEARCH_KEYS`. Additive-only: do not drop
+a key a page still reads.
 
 Known zip members (plus always-written `manifest.json`):
 
@@ -1635,7 +1637,7 @@ re-arm after a later Backtest/Report: `focused_trades`, `focused_equity_curve`,
 `otf_accepted_signals`, `signal_settings`, `signal_settings_hash`,
 `setup_config`, plus `display_timezone`. A-7 residuals
 (`otf_validation_*` / `skipped_signals` / `direction_collision_diagnostic`)
-stay apply-clear / sticky (not dataset-clear).
+stay apply-clear / sticky (not dataset-clear) via `_STICKY_APPLY_SOURCE`.
 Classic chrome (`classic_*`) lives in the CAI-5 table, not this research
 table. Widget nonce / Admit / roll-selector keys are flagged `widget` on
 `research_keys.RESEARCH_KEY_REGISTRY` and stay out of the consumer-contract
@@ -1657,6 +1659,8 @@ The flag is cleared on Data-page successful load (`_set_active_dataset_state`).
 | `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles; TJ5 `join_journal_bars` (read-only 15s clock) | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
 | `subtimeframe_interval` | Data page, R18 API/CLI, or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
+| `subtimeframe_fallback_parent_bars` | Data page / R18 / Research Bundle import | Backtest/Grid conservative R12 fallback; Research Bundles dataset section | Optional parent-bar fallback frame when the 15s source cannot replay conservatively. Popped on dataset switch (`DATASET_CLEAR_KEYS`); also apply-clear. |
+| `subtimeframe_duplicate_resolution` | Data page 15s-primary duplicate audit | Data-page diagnostics / `ingestion_provenance` | How OHLC-identical 15s source opens were resolved. Popped on dataset switch (`DATASET_CLEAR_KEYS`). |
 | `tick_paths` | Data page optional tick-last attach | Data page honesty / copy-into Studies Build; TJ5 tick join (already-loaded Last prints, not this path list) | `list[str]` durable Quantower Tick–Tick–Last paths under cwd or the local store (launch-parity trusted roots). Not an ingestion mode and not a replacement for `data`. Cleared when dataset identity changes or source invalidation runs |
 | `_tick_paths_text` | Data page tick path textarea | Data page only | Widget-bound typed paths; not cleared with installed `tick_paths` |
 | `_tick_uploader_nonce` | Data page / bundle source invalidation | Data page tick `file_uploader` key | `int` — bumped so a leftover tick upload cannot re-apply after restore |

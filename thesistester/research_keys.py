@@ -5,9 +5,11 @@ widget flags. Generated tuples are the pop lists consumed by Data-page
 dataset switch, bundle apply, and thesis-scoped staging.
 
 Additive-only: do not drop a key a page still reads. Managed (apply-clear)
-keys that must survive dataset switch are ``sticky`` (identity + A-7
-residuals and other apply-only members). Execution-clear stays local on
-the Data page (D-1 does not own that list).
+keys that must survive dataset switch are listed on ``_STICKY_APPLY_SOURCE``
+(identity + A-7 residuals and other apply-only members). Sticky is never
+derived from “apply and not dataset-clear” — an unlabeled apply-clear key
+fails closed at import. Execution-clear stays local on the Data page
+(D-1 does not own that list).
 """
 
 from __future__ import annotations
@@ -281,12 +283,86 @@ _WIDGET_SOURCE: tuple[str, ...] = (
     "backtest_entry_window_timezone",
 )
 
+# Explicit apply-only members. A new apply-clear key must be added here or
+# to ``_DATASET_CLEAR_SOURCE`` — omitting both fails closed at import.
+_STICKY_APPLY_SOURCE: tuple[str, ...] = (
+    "backtest_config",
+    "backtest_execution_costs",
+    "backtest_session_exit_policy",
+    "base_interval",
+    "cache_provenance",
+    "confluence_by_exact_combo",
+    "confluence_by_level_count",
+    "confluence_by_membership",
+    "confluence_by_pairs",
+    "confluence_combo_summary",
+    "data",
+    "data_identity",
+    "dataset_id",
+    "direction_collision_diagnostic",
+    "entry_window",
+    "entry_window_armed",
+    "entry_window_promote_provenance",
+    "exchange_timezone",
+    "execution_origin",
+    "experiment_identity",
+    "exposure_policy",
+    "grid_entry_window",
+    "instrument",
+    "levels_identity",
+    "otf_validation_config",
+    "otf_validation_matrix",
+    "otf_validation_summary",
+    "skipped_signals",
+    "source_timezone",
+)
+
+
+def _require_unique(keys: tuple[str, ...], name: str) -> None:
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for key in keys:
+        if key in seen:
+            duplicates.append(key)
+        seen.add(key)
+    if duplicates:
+        raise ValueError(f"{name} has duplicate keys: {duplicates}")
+
+
+def validate_apply_sticky(
+    apply_set: set[str],
+    dataset_set: set[str],
+    sticky_set: set[str],
+) -> None:
+    """Fail closed: every apply-clear key is dataset-clear XOR explicitly sticky."""
+    overlap = sorted(sticky_set & dataset_set)
+    if overlap:
+        raise ValueError(f"sticky keys cannot also be dataset-clear: {overlap}")
+    missing_apply = sorted(sticky_set - apply_set)
+    if missing_apply:
+        raise ValueError(f"sticky keys must be apply-clear: {missing_apply}")
+    unlabeled = sorted(apply_set - dataset_set - sticky_set)
+    if unlabeled:
+        raise ValueError(
+            f"apply-clear keys must be dataset-clear or explicitly sticky: {unlabeled}"
+        )
+
 
 def _build_registry() -> tuple[ResearchKeySpec, ...]:
+    for source, name in (
+        (_DATASET_CLEAR_SOURCE, "_DATASET_CLEAR_SOURCE"),
+        (_APPLY_CLEAR_SOURCE, "_APPLY_CLEAR_SOURCE"),
+        (_THESIS_CLEAR_SOURCE, "_THESIS_CLEAR_SOURCE"),
+        (_WIDGET_SOURCE, "_WIDGET_SOURCE"),
+        (_STICKY_APPLY_SOURCE, "_STICKY_APPLY_SOURCE"),
+    ):
+        _require_unique(source, name)
     apply_set = set(_APPLY_CLEAR_SOURCE)
     dataset_set = set(_DATASET_CLEAR_SOURCE)
     thesis_set = set(_THESIS_CLEAR_SOURCE)
     widget_set = set(_WIDGET_SOURCE)
+    sticky_set = set(_STICKY_APPLY_SOURCE)
+    validate_apply_sticky(apply_set, dataset_set, sticky_set)
     ordered: list[str] = []
     seen: set[str] = set()
     for key in _DATASET_CLEAR_SOURCE + _APPLY_CLEAR_SOURCE + _THESIS_CLEAR_SOURCE + _WIDGET_SOURCE:
@@ -305,7 +381,7 @@ def _build_registry() -> tuple[ResearchKeySpec, ...]:
                 apply_clear=apply_clear,
                 thesis_clear=key in thesis_set,
                 widget=key in widget_set,
-                sticky=apply_clear and not dataset_clear,
+                sticky=key in sticky_set,
             )
         )
     return tuple(specs)
