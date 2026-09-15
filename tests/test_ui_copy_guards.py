@@ -2080,6 +2080,23 @@ def test_user_guide_purpose_h2_names_classic_headless_omit_means_on():
         raise AssertionError("Notes-only needles must not bind as Purpose and honesty H2")
 
 
+def test_user_guide_assistant_h2_names_draft_min_valid_ao1_zero():
+    """QI-09-11 / E-5: Assistant H2 names Draft min_valid=0; stay under soft budget."""
+    body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_ASSISTANT_H2)
+    missing = [
+        n
+        for n in (
+            "Draft **Minimum valid confluences**",
+            "`0` is legal (AO1 / empty rules)",
+        )
+        if n not in body
+    ]
+    assert missing == [], f"Research Assistant H2 missing E-5 needles {missing}"
+    assert len(body) <= _USER_GUIDE_H2_SOFT_BUDGET, (
+        f"Research Assistant H2 exceeds USER_GUIDE soft budget: {len(body)}"
+    )
+
+
 def test_user_guide_assistant_h2_names_confirm_run_omit_means_on():
     """USER_GUIDE Assistant H2 names confirm-run omit-means-on; Notes-only must not bind."""
     body = _md_h2_body(_read(REPO_ROOT / "docs" / "USER_GUIDE.md"), _H8_ASSISTANT_H2)
