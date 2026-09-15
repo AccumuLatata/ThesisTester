@@ -13,6 +13,7 @@ from thesistester.levels.defaults import (
     DEFAULT_LEVELS_SETTINGS,
     canonicalize_levels_list_fields,
 )
+from thesistester.levels.tick_requirements import product_tick_family_preflight
 from thesistester.setup import is_setup_eligible_level_column
 from thesistester.persistence import (
     clear_active_levels_hash,
@@ -157,6 +158,18 @@ def _levels_data_fingerprint(df, instrument: str) -> dict:
         "source_timezone": st.session_state.get("source_timezone"),
         "exchange_timezone": st.session_state.get("exchange_timezone"),
     }
+
+
+def _product_tick_family_refuse_message(
+    settings: dict,
+    tick_paths=None,
+) -> str:
+    """E-1 / QI-02-03: same product tick-family refuse as ``api.compute_levels``.
+
+    Classic Calculate does not read Data-page ``tick_paths``; pass ticks only
+    when a caller explicitly supplies them. Empty string means proceed.
+    """
+    return product_tick_family_preflight(settings, tick_paths=tick_paths)
 
 
 def _calculate_levels_transaction(
@@ -741,6 +754,9 @@ if calculate_levels:
     with st.spinner("Calculating levels..."):
 
         def _calculate() -> tuple[pd.DataFrame, pd.DataFrame]:
+            refuse = _product_tick_family_refuse_message(current_settings)
+            if refuse:
+                raise ValueError(refuse)
             base_df = st.session_state["data"]
             if "session" not in base_df.columns:
                 base_df = tag_session(base_df, instrument)

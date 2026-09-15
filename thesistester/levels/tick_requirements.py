@@ -1,9 +1,9 @@
 """Shared tick-input gates for VA / APOC / rolling POC.
 
 Named-VA refuse stays ``VA requires ticks``. APOC and rolling POC use the same
-fail-closed layer (study schema / ``run_experiment`` / product ``compute_levels``)
-with ``requires ticks`` in the reason. A prior-VA parquet is not APOC or
-rolling-POC input.
+fail-closed layer (study schema / ``run_experiment`` / product ``compute_levels``
+/ page Calculate via ``product_tick_family_preflight``) with ``requires ticks``
+in the reason. A prior-VA parquet is not APOC or rolling-POC input.
 """
 
 from __future__ import annotations
@@ -99,12 +99,34 @@ def settings_require_rolling_poc_ticks(
 
 def product_tick_family_message(*, apoc: bool, rolling: bool) -> str:
     """Reason text for product/library compute paths (no named-token list)."""
-    families = [name for flag, name in ((apoc, "APOC"), (rolling, "rolling POC")) if flag]
+    families = [
+        name
+        for flag, name in (
+            (apoc, APOC_REQUIRES_TICKS),
+            (rolling, ROLLING_POC_REQUIRES_TICKS),
+        )
+        if flag
+    ]
     if not families:
         return ""
-    if len(families) == 1:
-        return f"{families[0]} requires ticks: tick_paths is missing or empty"
-    return "APOC requires ticks and rolling POC requires ticks: tick_paths is missing or empty"
+    return f"{' and '.join(families)}: tick_paths is missing or empty"
+
+
+def product_tick_family_preflight(
+    settings: Mapping[str, Any] | None,
+    tick_paths: Sequence[str | Path] | str | Path | None = None,
+) -> str:
+    """Shared UI / API refuse text when APOC or rolling POC is on without ticks.
+
+    Empty string means the product path may proceed. Never invents a typical
+    fallback (AP/RP). Study validate still uses named-token messages; those
+    share ``APOC requires ticks`` / ``rolling POC requires ticks``.
+    """
+    need_apoc = settings_require_apoc_ticks(settings)
+    need_rolling = settings_require_rolling_poc_ticks(settings)
+    if (need_apoc or need_rolling) and not tick_paths_present(tick_paths):
+        return product_tick_family_message(apoc=need_apoc, rolling=need_rolling)
+    return ""
 
 
 def disable_unneeded_tick_families(

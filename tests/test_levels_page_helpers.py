@@ -64,6 +64,7 @@ def _import_levels_helpers():
         mod._sync_levels_widget_state,
         mod._levels_settings_are_stale,
         mod._calculate_levels_transaction,
+        mod._product_tick_family_refuse_message,
         mod._LEVELS_CALCULATION_STATUS_KEY,
         mod._SMA_TIMEFRAMES_KEY,
         mod._EMA_TIMEFRAMES_KEY,
@@ -80,6 +81,7 @@ def _import_levels_helpers():
     _sync_levels_widget_state,
     _levels_settings_are_stale,
     _calculate_levels_transaction,
+    _product_tick_family_refuse_message,
     _LEVELS_CALCULATION_STATUS_KEY,
     _SMA_TIMEFRAMES_KEY,
     _EMA_TIMEFRAMES_KEY,
@@ -235,3 +237,39 @@ def test_loading_saved_levels_clears_stale_calculation_status(monkeypatch):
     assert _st_stub.session_state["levels"] is levels
     assert _st_stub.session_state["session_levels"] is session_levels
     assert _LEVELS_CALCULATION_STATUS_KEY not in _st_stub.session_state
+
+
+def test_product_tick_family_refuse_helper_matches_preflight():
+    """E-1 / QI-02-03: page helper is the shared product refuse, no typical escape."""
+    from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+    from thesistester.levels.tick_requirements import (
+        APOC_REQUIRES_TICKS,
+        ROLLING_POC_REQUIRES_TICKS,
+        product_tick_family_preflight,
+    )
+
+    msg = _product_tick_family_refuse_message(DEFAULT_LEVELS_SETTINGS)
+    assert msg == product_tick_family_preflight(DEFAULT_LEVELS_SETTINGS)
+    assert APOC_REQUIRES_TICKS in msg
+    assert ROLLING_POC_REQUIRES_TICKS in msg
+    assert "typical" not in msg.lower()
+    assert (
+        _product_tick_family_refuse_message(
+            {**DEFAULT_LEVELS_SETTINGS, "apoc_enabled": False, "poc_windows": []}
+        )
+        == ""
+    )
+
+
+def test_calculate_routes_tick_family_preflight_before_compute():
+    """Calculate must raise the shared refuse before ``compute_all_levels``."""
+    source = (
+        pathlib.Path(__file__)
+        .parent.parent.joinpath("pages", "2_Levels.py")
+        .read_text(encoding="utf-8")
+    )
+    start = source.index("def _calculate()")
+    helper = source.index("_product_tick_family_refuse_message(current_settings)", start)
+    raise_at = source.index("raise ValueError(refuse)", start)
+    compute = source.index("compute_all_levels(", start)
+    assert helper < raise_at < compute

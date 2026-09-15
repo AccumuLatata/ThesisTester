@@ -90,10 +90,7 @@ from thesistester.levels.tick_requirements import (
     named_apoc_requires_ticks_message,
     named_rolling_poc_requires_ticks_message,
     named_va_requires_ticks_message,
-    product_tick_family_message,
-    settings_require_apoc_ticks,
-    settings_require_rolling_poc_ticks,
-    tick_paths_present,
+    product_tick_family_preflight,
 )
 from thesistester.levels.tick_vap import (
     LEVELS_TICK_IDENTITY_KEYS,
@@ -1712,10 +1709,9 @@ def compute_levels(
     """
     _instrument(instrument)
     settings = normalize_levels_config(config, instrument=instrument)
-    need_apoc = settings_require_apoc_ticks(settings)
-    need_rolling = settings_require_rolling_poc_ticks(settings)
-    if (need_apoc or need_rolling) and not tick_paths_present(tick_paths):
-        raise ValueError(product_tick_family_message(apoc=need_apoc, rolling=need_rolling))
+    refuse = product_tick_family_preflight(settings, tick_paths=tick_paths)
+    if refuse:
+        raise ValueError(refuse)
     table, resolved_tick_source_id = _resolve_prior_profile_table(
         instrument=instrument,
         settings=settings,
