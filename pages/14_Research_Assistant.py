@@ -242,7 +242,8 @@ def _sidecar_base_url(session_state: dict | None = None) -> str:
     try:
         return sidecar_public_base_url(host, port_i)
     except SidecarError:
-        return f"http://{DEFAULT_SIDECAR_HOST}:{DEFAULT_SIDECAR_PORT}"
+        # Host already fail-closed to loopback; keep the resolved port (not 8765).
+        return f"http://{DEFAULT_SIDECAR_HOST}:{port_i}"
 
 
 def _client_url_is_localhost(client_url: str) -> bool:
