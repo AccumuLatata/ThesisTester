@@ -128,7 +128,10 @@ def test_c19_p7_walk_lives_in_sim_core():
     assert "compute_session_close_cap" in calls
     assert "walk_trade_exit" in calls
     walk_calls = _called_names(_function(tree, "walk_trade_exit"))
-    assert "resolve_trade_bar" in walk_calls
+    assert "_walk_trade_exit_serial" in walk_calls
+    assert "_walk_trade_exit_sl_first_vectorized" in walk_calls
+    serial_calls = _called_names(_function(tree, "_walk_trade_exit_serial"))
+    assert "resolve_trade_bar" in serial_calls
 
 
 def test_c19_sim_core_holds_no_admission_or_pnl():

@@ -8,12 +8,18 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from thesistester.engine.intrabar import SubtimeframeContext, resolve_ohlc_bar
+from thesistester.engine.exit_management import initial_exit_management_state
 from thesistester.engine.sim_core import (
     BarData,
+    _can_vectorize_fixed_sl_first_walk,
+    _exit_walk_bounds,
+    _fixed_bracket_prices,
+    _walk_trade_exit_serial,
     compute_session_close_cap,
     resolve_trade_bar,
     walk_trade_exit,
 )
+from tests.benchmarks.fixtures import benchmark_ohlcv
 
 
 def _bars() -> pd.DataFrame:
@@ -220,3 +226,175 @@ def test_walk_trade_exit_hits_fixed_stop_on_entry_bar():
     assert walk.resolution.exit_kind == "SL"
     assert walk.stop_price == 99.0
     assert walk.target_price == 110.0
+
+
+def _serial_walk_from_public_kwargs(bars: BarData, **kwargs):
+    """Replay the C-19 loop with the same brackets/bounds as ``walk_trade_exit``."""
+    stop_price, target_price = _fixed_bracket_prices(
+        direction=kwargs["direction"],
+        entry_price=kwargs["entry_price"],
+        sl_pts=kwargs["sl_pts"],
+        tp_pts=kwargs["tp_pts"],
+    )
+    stop_state = initial_exit_management_state(
+        initial_stop=stop_price,
+        entry_price=kwargs["entry_price"],
+        direction=kwargs["direction"],
+    )
+    start_bar, max_bar, time_cap_bar = _exit_walk_bounds(
+        n_bars=kwargs["n_bars"],
+        entry_bar_index=kwargs["entry_bar_index"],
+        allow_same_bar_exit=kwargs["allow_same_bar_exit"],
+        max_holding_bars=kwargs["max_holding_bars"],
+        session_cap_bar=kwargs["session_cap_bar"],
+    )
+    return _walk_trade_exit_serial(
+        bars,
+        direction=kwargs["direction"],
+        entry_price=kwargs["entry_price"],
+        theoretical_entry_price=kwargs["theoretical_entry_price"],
+        entry_bar_index=kwargs["entry_bar_index"],
+        entry_model=kwargs["entry_model"],
+        trigger=kwargs["trigger"],
+        stop_price=stop_price,
+        target_price=target_price,
+        stop_state=stop_state,
+        start_bar=start_bar,
+        max_bar=max_bar,
+        time_cap_bar=time_cap_bar,
+        exit_management_active=kwargs["exit_management_active"],
+        tick_size=kwargs["tick_size"],
+        sl_pts=kwargs["sl_pts"],
+        breakeven_after_r=kwargs["breakeven_after_r"],
+        trailing_after_r=kwargs["trailing_after_r"],
+        trailing_distance_ticks=kwargs["trailing_distance_ticks"],
+        intrabar_model=kwargs["intrabar_model"],
+        subtimeframe_context=kwargs["subtimeframe_context"],
+    )
+
+
+def _assert_walks_equal(actual, expected) -> None:
+    assert actual.stop_price == expected.stop_price
+    assert actual.target_price == expected.target_price
+    assert actual.stop_state == expected.stop_state
+    assert actual.exit_bar_index == expected.exit_bar_index
+    assert actual.theoretical_exit_price == expected.theoretical_exit_price
+    assert actual.resolution == expected.resolution
+    assert actual.mae_pts == expected.mae_pts
+    assert actual.mfe_pts == expected.mfe_pts
+    assert actual.pending_intrabar_ambiguity == expected.pending_intrabar_ambiguity
+    assert actual.start_bar == expected.start_bar
+    assert actual.max_bar == expected.max_bar
+    assert actual.time_cap_bar == expected.time_cap_bar
+    assert actual.bracket_exit == expected.bracket_exit
+    assert actual.parent_both_hit == expected.parent_both_hit
+    assert actual.bracket_ambiguous == expected.bracket_ambiguous
+    assert actual.proximity_tie == expected.proximity_tie
+    assert actual.subtimeframe_resolved == expected.subtimeframe_resolved
+    assert actual.subtimeframe_fallback == expected.subtimeframe_fallback
+
+
+def test_fixed_sl_first_walk_is_eligible_for_e10_vectorization():
+    assert (
+        _can_vectorize_fixed_sl_first_walk(
+            intrabar_model="sl_first",
+            exit_management_active=False,
+            trigger="touch",
+            start_bar=0,
+            entry_bar_index=0,
+        )
+        is True
+    )
+    assert (
+        _can_vectorize_fixed_sl_first_walk(
+            intrabar_model="sl_first",
+            exit_management_active=False,
+            trigger="3c",
+            start_bar=0,
+            entry_bar_index=0,
+        )
+        is False
+    )
+    assert (
+        _can_vectorize_fixed_sl_first_walk(
+            intrabar_model="path_open_proximity",
+            exit_management_active=False,
+            trigger="touch",
+            start_bar=0,
+            entry_bar_index=0,
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    "sl_pts,tp_pts,direction,allow_same_bar_exit,max_holding_bars",
+    [
+        (1.0, 10.0, "long", True, None),
+        (10.0, 1.0, "long", True, None),
+        (1.0, 1.0, "long", True, None),
+        (1.0, 10.0, "short", True, None),
+        (25.0, 25.0, "long", True, 50),
+        (25.0, 25.0, "short", False, 50),
+    ],
+)
+def test_vectorized_sl_first_walk_matches_serial_reference(
+    sl_pts, tp_pts, direction, allow_same_bar_exit, max_holding_bars
+):
+    bars = BarData.from_frame(benchmark_ohlcv(bars=80))
+    kwargs = dict(
+        direction=direction,
+        entry_price=100.0,
+        theoretical_entry_price=100.0,
+        entry_bar_index=0,
+        entry_model="next_bar_open",
+        trigger="touch",
+        sl_pts=sl_pts,
+        tp_pts=tp_pts,
+        n_bars=80,
+        allow_same_bar_exit=allow_same_bar_exit,
+        max_holding_bars=max_holding_bars,
+        session_cap_bar=None,
+        exit_management_active=False,
+        tick_size=0.25,
+        breakeven_after_r=None,
+        trailing_after_r=None,
+        trailing_distance_ticks=None,
+        intrabar_model="sl_first",
+        subtimeframe_context=None,
+    )
+    _assert_walks_equal(
+        walk_trade_exit(bars, **kwargs), _serial_walk_from_public_kwargs(bars, **kwargs)
+    )
+
+
+def test_r22_holding_cap_walk_matches_serial_on_benchmark_fixture():
+    """QI-14-03: R22 ruler path stays serial-equal after E-10 vectorization."""
+    frame = benchmark_ohlcv(bars=500)
+    bars = BarData.from_frame(frame)
+    kwargs = dict(
+        direction="long",
+        entry_price=float(frame["open"].iloc[1]),
+        theoretical_entry_price=float(frame["open"].iloc[1]),
+        entry_bar_index=1,
+        entry_model="next_bar_open",
+        trigger="touch",
+        sl_pts=25.0,
+        tp_pts=25.0,
+        n_bars=500,
+        allow_same_bar_exit=True,
+        max_holding_bars=50,
+        session_cap_bar=None,
+        exit_management_active=False,
+        tick_size=0.25,
+        breakeven_after_r=None,
+        trailing_after_r=None,
+        trailing_distance_ticks=None,
+        intrabar_model="sl_first",
+        subtimeframe_context=None,
+    )
+    actual = walk_trade_exit(bars, **kwargs)
+    expected = _serial_walk_from_public_kwargs(bars, **kwargs)
+    _assert_walks_equal(actual, expected)
+    assert actual.bracket_exit is False
+    assert actual.max_bar == 50

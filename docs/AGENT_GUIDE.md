@@ -170,9 +170,12 @@ three integrity bars on pages 12/14 (QI-09-10). E-7
 Signals zone-level any/all help on Setup Builder naked controls
 (QI-03-09). E-8
 ([#590](https://github.com/AccumuLatata/ThesisTester/pull/590)) adds optional
-HTF/3c columns to the Signals preview when non-null (QI-03-11). E-9 (this PR)
-vectorizes on-grid 15s→1m derive under locked
-``observed_aligned_15s_to_1m_v2`` (QI-14-06). Next: E-10.
+HTF/3c columns to the Signals preview when non-null (QI-03-11). E-9
+([#591](https://github.com/AccumuLatata/ThesisTester/pull/591)) vectorizes
+on-grid 15s→1m derive under locked ``observed_aligned_15s_to_1m_v2``
+(QI-14-06). E-10 (this PR) vectorizes the fixed-bracket ``sl_first`` P7
+walk inside ``sim_core`` (QI-14-03). Next: E-11 (parked; CTO request
+only).
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -425,8 +428,12 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    (QI-03-09). E-8
    ([#590](https://github.com/AccumuLatata/ThesisTester/pull/590)) adds
    optional HTF/3c columns to the Signals preview when non-null (QI-03-11).
-   E-9 (this PR) vectorizes on-grid 15s→1m derive under locked
-   ``observed_aligned_15s_to_1m_v2`` (QI-14-06). Next: E-10.
+   E-9
+   ([#591](https://github.com/AccumuLatata/ThesisTester/pull/591))
+   vectorizes on-grid 15s→1m derive under locked
+   ``observed_aligned_15s_to_1m_v2`` (QI-14-06). E-10 (this PR)
+   vectorizes the fixed-bracket ``sl_first`` P7 walk inside
+   ``sim_core`` (QI-14-03). Next: E-11 (parked; CTO request only).
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
@@ -1310,20 +1317,21 @@ are B-1; H10/H11 lock tests are B-2.
 
 ## R22 simulation performance safety
 
-- Treat `docs/SIMULATE_PERF.md` as the informational serial baseline; do not
+- Treat `docs/SIMULATE_PERF.md` as the informational R22 ruler; do not
   claim a speedup without rerunning its exact benchmark scenarios.
 - Keep all public `simulate_trades` behavior unchanged through core refactors.
-  Any accelerated path must be opt-in and exactly equal to serial golden and
-  feature-path outputs.
-- Keep optimization work inside `engine.sim_core`. C-19 placed the serial
-  P7 walk (`walk_trade_exit`, which calls `resolve_trade_bar`) and AH1
-  flatten-cap math (`compute_session_close_cap`) on the R22 boundary. Admission
+  E-10 vectorizes the fixed-bracket `sl_first` P7 walk inside
+  `walk_trade_exit`; outputs must stay exactly equal to the C-19 serial
+  reference on golden and B-3 fixtures. R13 / path / subtf / 3c entry-bar
+  stay serial. Admission is never parallelized.
+- Keep optimization work inside `engine.sim_core`. C-19 placed the P7 walk
+  (`walk_trade_exit`, which calls `resolve_trade_bar`) and AH1 flatten-cap
+  math (`compute_session_close_cap`) on the R22 boundary. Admission
   (window / cutoff / exposure / 3c-void), skip-row schema, costs, P&L,
   trade records, and diagnostics remain orchestrated by `backtest.py`.
   Do not widen `sim_core` into those concerns. C-20 stores `BarData` as
   write-protected `float64` arrays (`at()` still Python floats; non-numpy
-  dtypes keep C-19 ``float()`` fail-closed). E-10 may accelerate only
-  inside this boundary.
+  dtypes keep C-19 ``float()`` fail-closed).
 - Run `pytest -q tests/benchmarks/test_simulate_baseline.py tests/test_golden_master.py tests/test_intrabar.py tests/test_exit_management.py tests/test_phase5_backtest.py`
   after R22 changes.
 

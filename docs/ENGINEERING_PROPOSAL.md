@@ -348,7 +348,14 @@ composition parity without treating nondeterministic ZIP bytes as stable.
 - **Scope (baseline first, optimize second):**
   1. **Instrument, don't optimize yet.** Add timers and microbenchmarks under `tests/benchmarks/` measuring `simulate_trades` and `run_sl_tp_grid` wall-time on fixed fixtures (varying signal counts and bars-held); record results in a committed `docs/SIMULATE_PERF.md` baseline. Any later acceleration PR must state its measured improvement against this baseline.
   2. **Narrow the core surface.** Refactor `simulate_trades` internals so the per-trade decision logic is isolated behind a clear, small core API — such that any later optimization (vectorization, Numba on the hot exit-walk loop, or parallel grid cells via R18) touches only the core implementation, never the semantics. No behavior change; the §4.1 golden-masters must stay byte-identical through this refactor.
-  3. **Acceleration (only if the baseline justifies it):** vectorized/Numba hot loop, or `multiprocessing`/joblib across independent grid cells and Monte Carlo replicas exposed through the R18 API. Acceleration that changes *any* numeric output is out of scope — parallel/vectorized paths must reproduce the serial golden outputs exactly.
+  3. **Acceleration (QR E-10 / QI-14-03, landed):** vectorized fixed-bracket
+     `sl_first` P7 walk inside `sim_core.walk_trade_exit`. R13,
+     `path_open_proximity`, subtimeframe, and 3c/confirm_3bar entry-bar
+     clipping stay on the C-19 serial loop. Admission is never parallelized.
+     Numba and `multiprocessing`/joblib across grid cells or Monte Carlo
+     replicas remain future work. Acceleration that changes *any* numeric
+     output is out of scope — the vectorized path must reproduce the serial
+     golden outputs exactly (CI: goldens + B-3 + `tests/test_sim_core.py`).
 - **Regression-safety:** Baseline instrumentation and the core-surface refactor are internal-only; golden-masters gate byte-identical behavior. Any accelerated execution path must produce outputs identical to the serial reference on the golden fixtures (asserted in CI).
 - **Acceptance:** `docs/SIMULATE_PERF.md` exists with reproducible baseline timings; the refactored core passes the full suite and golden tests unchanged; if an accelerated path is added, a CI test asserts its outputs equal the serial path on fixtures, and `SIMULATE_PERF.md` records the measured speedup.
 
