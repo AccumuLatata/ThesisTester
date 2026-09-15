@@ -509,16 +509,30 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "ASSISTANT_MODE_DISCUSS" in source
     assert 'st.expander("Help / how it works"' not in source
     assert 'st.subheader("Help / how it works")' in source
-    # Movement map: Discuss/Explain before Advanced; LLM explain stays in Advanced.
+    # Movement map: Discuss/Help/Draft then page-level chat_input, then the
+    # Advanced *call* (helper body is defined earlier), then Debug.
+    # Explain run stays in Discuss; LLM explain stays inside Advanced.
     discuss_mode_pos = source.index("if mode == ASSISTANT_MODE_DISCUSS:")
     help_mode_pos = source.index("elif mode == ASSISTANT_MODE_HELP:")
     draft_mode_pos = source.index("elif mode == ASSISTANT_MODE_DRAFT:")
     chat_input_pos = source.index("st.chat_input(")
-    advanced_pos = source.index('with st.expander(\n    "Advanced: draft, runs & compare"')
+    advanced_def_pos = source.index("def _render_advanced_block")
+    advanced_call_pos = source.index("\n_render_advanced_block()")
+    debug_pos = source.index(
+        'with st.expander("Debug: raw JSON & conversation audit", expanded=False)'
+    )
     explain_pos = source.index('st.button("Explain run"')
     llm_explain_pos = source.index("Generate evidence-only AI explanation")
-    assert discuss_mode_pos < help_mode_pos < draft_mode_pos < chat_input_pos < advanced_pos
-    assert discuss_mode_pos < explain_pos < advanced_pos < llm_explain_pos
+    assert (
+        discuss_mode_pos
+        < help_mode_pos
+        < draft_mode_pos
+        < chat_input_pos
+        < advanced_call_pos
+        < debug_pos
+    )
+    assert discuss_mode_pos < explain_pos < advanced_call_pos
+    assert advanced_def_pos < llm_explain_pos < advanced_call_pos
     assert source.count('key=f"explain-{run.run_id}"') == 1
     assert source.count('key=f"llm-explain-{run.run_id}"') == 1
     assert "Raw transcripts and JSON for audit only" in source
