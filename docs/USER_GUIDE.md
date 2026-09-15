@@ -932,11 +932,9 @@ the run preselected for **Discuss results**. Discuss Q&A lives in that mode, not
 - Help does not invent run metrics or undocumented settings.
 - Linked runs list **thesis-recorded** runs only — classic exploration without
   research mode is never listed.
-- **Open exact** is hash-fail-closed restore into Backtest (open-exact), not
-  page-12 schema-only.
+- **Open exact**: open-exact/hash-fail-closed, not page-12 schema-only.
 
-**Related pages.** Classic research mode (record/discuss); USER_GUIDE how-tos
-via Help.
+**Related pages.** Classic research mode; USER_GUIDE how-tos via Help.
 
 ## Research mode on classic pages
 

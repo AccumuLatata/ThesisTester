@@ -2156,7 +2156,9 @@ def _assert_page_12_three_bar_title_chrome(source: str) -> None:
         if (text := _first_arg_text(call)) is not None and _caption_has_three_distinct_bars(text)
     ]
     if not matching:
-        raise AssertionError("page 12 title-chrome st.caption missing distinct three-bar vocabulary")
+        raise AssertionError(
+            "page 12 title-chrome st.caption missing distinct three-bar vocabulary"
+        )
     if "does not hash-gate" not in matching[0]:
         raise AssertionError("page 12 three-bar caption must say this page does not hash-gate")
     if "canonical_bundle_hash" in source:
