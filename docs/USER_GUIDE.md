@@ -263,8 +263,9 @@ developing partners, H14, signal table, signal runs
   saved setup, missing required fields). Those show as warnings above the
   button — generate does not run.
 - Engine or validate refusals (invalid trigger/direction, missing level
-  columns, unsupported confluence mode, failed OTF hash) show as a typed
-  error line. The page does not print a traceback.
+  columns, unsupported confluence mode) show as a typed error line. The
+  page does not print a traceback. Generate does not keep partial zone
+  or naked-flag artifacts when that refusal happens.
 - Chart render failures show a typed error; signal tables above the chart
   stay available.
 - Invalid OTF cannot be hashed: an error appears before generate or save.

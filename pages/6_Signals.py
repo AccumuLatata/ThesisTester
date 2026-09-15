@@ -702,7 +702,10 @@ def _controls_changed_warning_for_view(
         or not stored_hash
     ):
         return _SIGNAL_CONTROLS_CHANGED_WARNING
-    if stored_settings is not None and helper_hash != stored_hash:
+    # Helper returns (None, None) when stored settings are missing or
+    # unnormalizable. Compare the recomputed helper hash to the session hash
+    # so a tampered/stale stored hash cannot stay unflagged.
+    if stored_settings is None or helper_hash != stored_hash:
         return _SIGNAL_CONTROLS_CHANGED_WARNING
     normalized_current, _err = _try_normalize_signal_settings_for_hash(current_settings)
     if normalized_current is None:
@@ -798,7 +801,12 @@ def _get_current_signal_artifacts() -> tuple[object, object, object]:
 def _get_stored_signal_settings(
     session_state: dict | None = None,
 ) -> tuple[dict | None, str | None]:
-    """Return normalized stored signal settings and hash, or ``(None, None)``."""
+    """Return normalized stored settings and their recomputed hash, or ``(None, None)``.
+
+    The hash is always recomputed from the normalized payload so callers can
+    compare it to ``signal_settings_hash``. A present-but-stale session hash
+    must not be echoed back as if it were trusted.
+    """
     state = st.session_state if session_state is None else session_state
     settings = state.get("signal_settings")
     if not isinstance(settings, dict):
@@ -808,10 +816,10 @@ def _get_stored_signal_settings(
     if normalized_settings is None:
         return None, None  # malformed stored OTF state — unavailable
 
-    settings_hash = state.get("signal_settings_hash")
-    if not isinstance(settings_hash, str) or not settings_hash:
-        settings_hash = compute_signal_settings_hash(normalized_settings)
-    return normalized_settings, settings_hash
+    try:
+        return normalized_settings, compute_signal_settings_hash(normalized_settings)
+    except ValueError:
+        return None, None
 
 
 _SAVED_SETUPS_CACHE_KEY = "_signals_saved_setups_cache"
@@ -942,7 +950,11 @@ def _run_signal_generation(
     signal_settings: dict | None,
     session_state: dict | None = None,
 ) -> None:
-    """Engine generate + session writes (sync). Caller renders typed errors."""
+    """Engine generate + session writes (sync). Caller renders typed errors.
+
+    Session keys are committed only after every engine step succeeds so a
+    typed ``ValueError`` cannot leave new zones/flags beside stale signals.
+    """
     state = st.session_state if session_state is None else session_state
     admission = _signal_generation_admission_error(
         confluence_mode=confluence_mode,
@@ -954,6 +966,10 @@ def _run_signal_generation(
     )
     if admission:
         raise ValueError(admission)
+
+    settings_hash: str | None = None
+    if signal_settings is not None:
+        settings_hash = compute_signal_settings_hash(signal_settings)
 
     levels_for_naked_flags = selected_levels
     if confluence_mode == "anchor_rules":
@@ -981,7 +997,6 @@ def _run_signal_generation(
             )
         else:
             raise ValueError(f"Unsupported confluence mode: {confluence_mode}")
-        state["confluence_zones"] = zones
 
     with st.spinner("Flagging naked levels…"):
         naked_flags = flag_naked_levels(
@@ -990,7 +1005,6 @@ def _run_signal_generation(
             tick_size=tick_size,
             touch_tolerance_ticks=0,
         )
-        state["naked_flags"] = naked_flags
 
     with st.spinner("Generating signals…"):
         if trigger == "3c":
@@ -1011,25 +1025,33 @@ def _run_signal_generation(
         if use_saved_setup and saved_setup is not None:
             signals = signals.copy()
             signals["setup_name"] = saved_setup.get("name", "Untitled setup")
-            state["last_signal_setup"] = saved_setup
-            state["signal_context"] = {
+            last_setup = saved_setup
+            signal_context = {
                 "setup_name": saved_setup.get("name", "Untitled setup"),
                 "confluence_mode": confluence_mode,
                 "setup_caption": _saved_setup_caption(saved_setup),
             }
         else:
-            state.pop("last_signal_setup", None)
-            state["signal_context"] = {
+            last_setup = None
+            signal_context = {
                 "setup_name": None,
                 "confluence_mode": confluence_mode,
                 "setup_caption": None,
             }
-        state["signals"] = signals
-        if signal_settings is not None:
-            state[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_TRUSTED
-            state.pop(_SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY, None)
-            state["signal_settings"] = signal_settings
-            state["signal_settings_hash"] = compute_signal_settings_hash(signal_settings)
+
+    if last_setup is not None:
+        state["last_signal_setup"] = last_setup
+    else:
+        state.pop("last_signal_setup", None)
+    state["signal_context"] = signal_context
+    state["confluence_zones"] = zones
+    state["naked_flags"] = naked_flags
+    state["signals"] = signals
+    if signal_settings is not None:
+        state[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_TRUSTED
+        state.pop(_SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY, None)
+        state["signal_settings"] = signal_settings
+        state["signal_settings_hash"] = settings_hash
 
 
 def _render_signals_chart(
@@ -1049,10 +1071,9 @@ def _render_signals_chart(
             confluence_zones=confluence_zones,
             show_confluence_zones=show_confluence_zones,
         )
+        st.plotly_chart(fig, width="stretch")
     except ValueError as exc:
         st.error(_typed_signals_error_message(exc, surface="chart"))
-        return
-    st.plotly_chart(fig, width="stretch")
 
 
 # ── Require levels ────────────────────────────────────────────────────────────
