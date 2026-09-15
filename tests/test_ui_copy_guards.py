@@ -2495,6 +2495,7 @@ def _selectbox_options(source: str, call: ast.Call) -> list:
     """Literal ``options=`` list, or the last assigned list bound to a Name.
 
     First-assignment wins would false-green a later drifted Name (A-11 class).
+    Shared by Direction ``st.selectbox`` and Naked requirement ``st.radio``.
     """
     node: ast.AST | None = call.args[1] if len(call.args) > 1 else None
     for kw in call.keywords:
