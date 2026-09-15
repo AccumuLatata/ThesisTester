@@ -1799,6 +1799,43 @@ def test_signal_table_display_cols_includes_htf_3c_when_non_null():
     assert cols.index("timestamp") < cols.index("trigger_timestamp")
 
 
+def test_signal_table_display_cols_includes_each_optional_col_independently():
+    """Each HTF/3c name is opted in on its own non-null values (QI-03-11)."""
+    ts = pd.Timestamp("2026-06-02 09:35:00", tz=TZ)
+    only_ts = _signal_table_display_cols(_preview_frame(trigger_timestamp=[ts]))
+    only_tf = _signal_table_display_cols(_preview_frame(trigger_timeframe=["5min"]))
+    only_price = _signal_table_display_cols(_preview_frame(tested_level_price=[5200.125]))
+    assert only_ts.count("trigger_timestamp") == 1
+    assert "trigger_timeframe" not in only_ts
+    assert "tested_level_price" not in only_ts
+    assert only_tf.count("trigger_timeframe") == 1
+    assert "trigger_timestamp" not in only_tf
+    assert "tested_level_price" not in only_tf
+    assert only_price.count("tested_level_price") == 1
+    assert "trigger_timestamp" not in only_price
+    assert "trigger_timeframe" not in only_price
+    assert "approach_side" not in only_ts + only_tf + only_price
+
+
+def test_signal_table_display_cols_includes_when_some_rows_non_null():
+    ts = pd.Timestamp("2026-06-02 09:35:00", tz=TZ)
+    frame = pd.DataFrame(
+        {
+            "signal_id": ["s1", "s2"],
+            "timestamp": [pd.Timestamp("2026-06-02 09:31:00", tz=TZ)] * 2,
+            "trigger_timestamp": [pd.NaT, ts],
+            "trigger_timeframe": [None, "5min"],
+            "tested_level_price": [float("nan"), 5200.125],
+            "approach_side": ["above", "below"],
+        }
+    )
+    cols = _signal_table_display_cols(frame)
+    assert "trigger_timestamp" in cols
+    assert "trigger_timeframe" in cols
+    assert "tested_level_price" in cols
+    assert "approach_side" not in cols
+
+
 def test_signal_table_display_cols_omits_all_null_htf_3c_columns():
     frame = _preview_frame(
         trigger_timestamp=[pd.NaT],
@@ -1821,8 +1858,52 @@ def test_signal_table_display_cols_omits_absent_htf_3c_columns():
     assert "timestamp" in cols
 
 
+def test_signal_table_display_cols_never_includes_approach_side():
+    cols = _signal_table_display_cols(_preview_frame(approach_side=["above"]))
+    assert "approach_side" not in cols
+
+
+def test_signal_table_display_cols_duplicate_optional_column_is_safe():
+    """Duplicate labels must not raise (pandas ``bool(Series)`` is ambiguous)."""
+    ts = pd.Timestamp("2026-06-02 09:35:00", tz=TZ)
+    frame = pd.DataFrame(
+        [["s1", ts, ts]],
+        columns=["signal_id", "trigger_timestamp", "trigger_timestamp"],
+    )
+    cols = _signal_table_display_cols(frame)
+    assert cols.count("trigger_timestamp") == 1
+    assert "approach_side" not in cols
+
+
+def test_signal_table_display_cols_engine_shaped_touch_omits_null_price():
+    """Base/touch contract rows: Decision T + TF show; tested price and DA4 stay out."""
+    from thesistester.engine.signals import _SIGNAL_COLUMNS
+
+    ts = pd.Timestamp("2026-06-02 09:31:00", tz=TZ)
+    row = {name: None for name in _SIGNAL_COLUMNS}
+    row.update(
+        {
+            "signal_id": 1,
+            "timestamp": ts,
+            "bar_index": 1,
+            "trigger": "touch",
+            "direction": "long",
+            "trigger_timeframe": "base",
+            "trigger_timestamp": ts,
+            "tested_level_price": float("nan"),
+        }
+    )
+    frame = pd.DataFrame([row])
+    frame["approach_side"] = ["above"]
+    cols = _signal_table_display_cols(frame)
+    assert "trigger_timestamp" in cols
+    assert "trigger_timeframe" in cols
+    assert "tested_level_price" not in cols
+    assert "approach_side" not in cols
+
+
 def test_signal_table_display_cols_does_not_mutate_engine_signal_columns():
-    """E-8 exit: `_SIGNAL_COLUMNS` stays the engine contract (DA4)."""
+    """E-8 exit: `_SIGNAL_COLUMNS` stays the 51-name DA4 contract."""
     from thesistester.engine.signals import _SIGNAL_COLUMNS
 
     before = list(_SIGNAL_COLUMNS)
@@ -1833,9 +1914,13 @@ def test_signal_table_display_cols_does_not_mutate_engine_signal_columns():
         )
     )
     assert list(_SIGNAL_COLUMNS) == before
+    assert len(_SIGNAL_COLUMNS) == 51
     assert "approach_side" not in _SIGNAL_COLUMNS
-    assert "trigger_timestamp" in _SIGNAL_COLUMNS
-    assert "trigger_timeframe" in _SIGNAL_COLUMNS
+    assert _SIGNAL_COLUMNS[4:7] == [
+        "trigger_timeframe",
+        "trigger_timestamp",
+        "trigger",
+    ]
     assert "tested_level_price" in _SIGNAL_COLUMNS
 
 

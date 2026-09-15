@@ -505,9 +505,17 @@ _SIGNAL_TABLE_OPTIONAL_HTF_3C_COLS = (
 
 
 def _column_has_non_null(frame: pd.DataFrame, name: str) -> bool:
+    """True when ``name`` exists and at least one cell is non-null.
+
+    Duplicate column labels return a DataFrame; use the first series so
+    ``bool(...)`` cannot raise on an ambiguous Series (QI-03-11 helper).
+    """
     if name not in frame.columns:
         return False
-    return bool(frame[name].notna().any())
+    values = frame[name]
+    if isinstance(values, pd.DataFrame):
+        values = values.iloc[:, 0]
+    return bool(values.notna().to_numpy().any())
 
 
 def _signal_table_display_cols(signals: pd.DataFrame) -> list[str]:
