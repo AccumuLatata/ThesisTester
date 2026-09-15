@@ -938,7 +938,11 @@ rather than being stored as executable assumptions.
 `dispatch()` remains the only compute router for registry capabilities. Workspace
 façade methods wrap thesis/spec/run/conversation/comparison lifecycle,
 validate/confirm, explain/compare/export/portfolio, and bundle handoff so the
-Research Assistant page stays presentation-only. Default open surface is
+Research Assistant page stays presentation-only. D-10 / QI-09-03 extracts
+Discuss/Help voice+sidecar and the Advanced expander into
+`_render_discuss_voice_sidecar` / `_render_help_voice` /
+`_render_advanced_block`; widget keys and RUX layout are unchanged.
+Default open surface is
 **discuss-first**: active thesis identity, Manage thesis (collapsed), and a mode
 selector (`Discuss runs` / `Help` / `Draft thesis`) with Discuss as the default.
 Classic Streamlit navigation remains the primary research path; the page does
@@ -1622,6 +1626,11 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 ## `st.session_state` contract (current)
 
 Path citations only (no line numbers). Line anchors drift across page renumbers and edits; treat producing/consuming paths as the contract, not offsets.
+
+Research Assistant (D-10 / QI-09-03) keeps the same `assistant_*` staging keys
+and voice sidecar widget keys (`assistant_voice_sidecar_host` /
+`assistant_voice_sidecar_port`, `assistant_voice_realtime_{run_id}`); the
+voice/sidecar and Advanced blocks are helper extracts only.
 
 Studies Build (SB2–SB3) adds `studies_builder_draft` and `studies_builder_pending_sync`
 on `pages/15_Studies.py` only (TV4 adds `_study_builder_tick_paths` among the

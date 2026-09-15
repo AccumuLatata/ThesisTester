@@ -509,16 +509,30 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "ASSISTANT_MODE_DISCUSS" in source
     assert 'st.expander("Help / how it works"' not in source
     assert 'st.subheader("Help / how it works")' in source
-    # Movement map: Discuss/Explain before Advanced; LLM explain stays in Advanced.
+    # Movement map: Discuss/Help/Draft then page-level chat_input, then the
+    # Advanced *call* (helper body is defined earlier), then Debug.
+    # Explain run stays in Discuss; LLM explain stays inside Advanced.
     discuss_mode_pos = source.index("if mode == ASSISTANT_MODE_DISCUSS:")
     help_mode_pos = source.index("elif mode == ASSISTANT_MODE_HELP:")
     draft_mode_pos = source.index("elif mode == ASSISTANT_MODE_DRAFT:")
     chat_input_pos = source.index("st.chat_input(")
-    advanced_pos = source.index('with st.expander(\n    "Advanced: draft, runs & compare"')
+    advanced_def_pos = source.index("def _render_advanced_block")
+    advanced_call_pos = source.index("\n_render_advanced_block()")
+    debug_pos = source.index(
+        'with st.expander("Debug: raw JSON & conversation audit", expanded=False)'
+    )
     explain_pos = source.index('st.button("Explain run"')
     llm_explain_pos = source.index("Generate evidence-only AI explanation")
-    assert discuss_mode_pos < help_mode_pos < draft_mode_pos < chat_input_pos < advanced_pos
-    assert discuss_mode_pos < explain_pos < advanced_pos < llm_explain_pos
+    assert (
+        discuss_mode_pos
+        < help_mode_pos
+        < draft_mode_pos
+        < chat_input_pos
+        < advanced_call_pos
+        < debug_pos
+    )
+    assert discuss_mode_pos < explain_pos < advanced_call_pos
+    assert advanced_def_pos < llm_explain_pos < advanced_call_pos
     assert source.count('key=f"explain-{run.run_id}"') == 1
     assert source.count('key=f"llm-explain-{run.run_id}"') == 1
     assert "Raw transcripts and JSON for audit only" in source
@@ -554,8 +568,8 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "set_assistant_flash(" in validate_chunk
     assert "st.rerun()" in validate_chunk
     assert "Executable RunSpec is valid." in validate_chunk
-    cancel_idx = source.index('st.button("Cancel run"')
-    cancel_chunk = source[cancel_idx : cancel_idx + 1200]
+    cancel_idx = source.index('"Cancel run", key=f"cancel-{run.run_id}"')
+    cancel_chunk = source[cancel_idx : cancel_idx + 1600]
     assert "set_assistant_flash(" in cancel_chunk
     assert 'message="Research run cancelled."' in cancel_chunk
     assert "st.rerun()" in cancel_chunk
@@ -566,7 +580,7 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "set_assistant_flash(" in draft_error
     assert "st.rerun()" in draft_error
     compare_idx = source.index('if st.button("Compare runs")')
-    compare_chunk = source[compare_idx : compare_idx + 2200]
+    compare_chunk = source[compare_idx : compare_idx + 2800]
     assert "set_assistant_flash(" in compare_chunk
     assert "st.rerun()" in compare_chunk
     assert 'st.error(result.payload.get("error"' not in compare_chunk
