@@ -29,9 +29,7 @@ STALE_AIA0_STREAMLIT_FREE = "does not execute research, import streamlit"
 # Path + line (optional range). Covers the QI-13-06 .py/.md cites plus other
 # living-doc extensions used as path cites. Does not match clock times or
 # ``eth_start=18:00``.
-FILE_LINE = re.compile(
-    r"[A-Za-z0-9_./-]+\.(?:py|md|yml|yaml|toml|txt|json|ini):\d+(?:-\d+)?"
-)
+FILE_LINE = re.compile(r"[A-Za-z0-9_./-]+\.(?:py|md|yml|yaml|toml|txt|json|ini):\d+(?:-\d+)?")
 
 CITED_DOCS = (AGENT_GUIDE, ARCHITECTURE)
 
@@ -148,9 +146,7 @@ def test_aia0_later_paragraph_st_secrets_does_not_bind_opening() -> None:
         _assert_aia0_opening_names_fallback(fake)
     except AssertionError:
         return
-    raise AssertionError(
-        "later AIA-0 paragraph st.secrets must not bind the opening paragraph"
-    )
+    raise AssertionError("later AIA-0 paragraph st.secrets must not bind the opening paragraph")
 
 
 def test_aia0_stale_streamlit_free_sentence_in_later_paragraph_fails() -> None:
@@ -165,6 +161,4 @@ def test_aia0_stale_streamlit_free_sentence_in_later_paragraph_fails() -> None:
         _assert_aia0_opening_names_fallback(fake)
     except AssertionError:
         return
-    raise AssertionError(
-        "stale Streamlit-free sentence in a later AIA-0 paragraph must fail"
-    )
+    raise AssertionError("stale Streamlit-free sentence in a later AIA-0 paragraph must fail")
