@@ -129,8 +129,10 @@ Setup Builder widget sync from ``build_setup_config`` /
 ``validate_setup_config`` and splits render vs sync (QI-03-04). D-8
 ([#580](https://github.com/AccumuLatata/ThesisTester/pull/580)) maps
 Signals generate/chart ``ValueError`` to ``st.error`` and splits render vs
-sync (QI-03-05). D-9 (this PR) extracts Studies Build section collectors /
-renderers (QI-07-01). Next: D-10.
+sync (QI-03-05). D-9
+([#581](https://github.com/AccumuLatata/ThesisTester/pull/581)) extracts
+Studies Build section collectors / renderers (QI-07-01). D-10 (this PR)
+extracts Assistant voice/sidecar and Advanced blocks (QI-09-03). Next: D-11.
 Stage-first example:
 `examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells, 15s-primary; full 800 is phase-2).
 
@@ -356,8 +358,10 @@ The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
    ``validate_setup_config`` and splits render vs sync (QI-03-04). D-8
    ([#580](https://github.com/AccumuLatata/ThesisTester/pull/580)) maps
    Signals generate/chart ``ValueError`` to ``st.error`` and splits
-   render vs sync (QI-03-05). D-9 (this PR) extracts Studies Build
-   section collectors / renderers (QI-07-01). Next: D-10.
+   render vs sync (QI-03-05). D-9
+   ([#581](https://github.com/AccumuLatata/ThesisTester/pull/581)) extracts
+   Studies Build section collectors / renderers (QI-07-01). D-10 (this PR)
+   extracts Assistant voice/sidecar and Advanced blocks (QI-09-03). Next: D-11.
 4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
    signals, and deterministic settings identity. Engine orchestration
    is the C-14 helpers; C-15 is the `iterrows` replacement behind them;
