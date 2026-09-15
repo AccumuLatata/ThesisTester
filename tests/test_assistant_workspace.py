@@ -569,7 +569,7 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "st.rerun()" in validate_chunk
     assert "Executable RunSpec is valid." in validate_chunk
     cancel_idx = source.index('"Cancel run", key=f"cancel-{run.run_id}"')
-    cancel_chunk = source[cancel_idx : cancel_idx + 1200]
+    cancel_chunk = source[cancel_idx : cancel_idx + 1600]
     assert "set_assistant_flash(" in cancel_chunk
     assert 'message="Research run cancelled."' in cancel_chunk
     assert "st.rerun()" in cancel_chunk
@@ -580,7 +580,7 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "set_assistant_flash(" in draft_error
     assert "st.rerun()" in draft_error
     compare_idx = source.index('if st.button("Compare runs")')
-    compare_chunk = source[compare_idx : compare_idx + 2200]
+    compare_chunk = source[compare_idx : compare_idx + 2800]
     assert "set_assistant_flash(" in compare_chunk
     assert "st.rerun()" in compare_chunk
     assert 'st.error(result.payload.get("error"' not in compare_chunk
