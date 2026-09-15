@@ -506,3 +506,116 @@ def test_backtest_and_grid_pages_describe_live_otf_admission():
         assert "metadata only" not in text
     assert "before** trade simulation" in backtest or "before trade simulation" in backtest
     assert "before the SL/TP grid" in grid
+
+
+_QI0312_SIGNAL_KEYS = (
+    "signals",
+    "signal_settings",
+    "signal_settings_hash",
+    "signal_artifact_identity_status",
+    "signal_artifact_identity_error",
+    "last_signal_setup",
+    "signal_context",
+)
+_QI0312_SETUP_BUTTONS = frozenset({"Save setup", "Set active", "Clear active setup", "Delete"})
+
+
+def _qi0312_setup_mutation_literals() -> set[str]:
+    """String literals on ``SETUP_MUTATION_SIGNAL_KEYS``. Comment needles fail-closed."""
+    import ast
+
+    tree = ast.parse(pathlib.Path("thesistester/research_keys.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not isinstance(node.target, ast.Name) or node.target.id != "SETUP_MUTATION_SIGNAL_KEYS":
+            continue
+        if not isinstance(node.value, (ast.Tuple, ast.List)):
+            raise AssertionError("SETUP_MUTATION_SIGNAL_KEYS must be a list/tuple of literals")
+        return {
+            elt.value
+            for elt in node.value.elts
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+        }
+    raise AssertionError("missing SETUP_MUTATION_SIGNAL_KEYS")
+
+
+def test_qi0312_setup_mutation_pops_session_signals():
+    """QI-10 stale-state row: setup save/set-active × Signals/Backtest."""
+    session = {
+        "setup_config": {"name": "new"},
+        "trades": pd.DataFrame({"trade_id": [1]}),
+        "confluence_zones": pd.DataFrame({"zone_id": [1]}),
+        "signals": pd.DataFrame({"signal_id": [99]}),
+        "signal_settings": {"trigger": "touch"},
+        "signal_settings_hash": "leftover-hash",
+        "signal_artifact_identity_status": "trusted",
+        "signal_artifact_identity_error": None,
+        "last_signal_setup": {"name": "old"},
+        "signal_context": {"setup_name": "old"},
+    }
+    setup_builder._invalidate_session_signals_after_setup_mutation(session)
+    assert session["setup_config"]["name"] == "new"
+    assert "trade_id" in session["trades"].columns
+    assert "zone_id" in session["confluence_zones"].columns
+    for key in _QI0312_SIGNAL_KEYS:
+        assert key not in session, f"{key} leftover after setup mutation"
+    # Backtest page 7 guards on ``"signals" not in session_state`` then st.stop().
+    assert "signals" not in session
+
+
+def test_qi0312_setup_config_mutations_call_invalidate():
+    """AST-bind setup_config writers to the invalidate helper. Comment needles fail-closed."""
+    import ast
+
+    literals = _qi0312_setup_mutation_literals()
+    missing = [key for key in _QI0312_SIGNAL_KEYS if key not in literals]
+    assert missing == [], f"SETUP_MUTATION_SIGNAL_KEYS missing {missing}"
+
+    wrapper = None
+    source = pathlib.Path("pages/3_Setup_Builder.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == (
+            "_invalidate_session_signals_after_setup_mutation"
+        ):
+            wrapper = node
+            break
+    if wrapper is None:
+        raise AssertionError("page 3 must wrap pop_setup_mutation_signal_keys")
+    if not any(
+        isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Name)
+        and child.func.id == "pop_setup_mutation_signal_keys"
+        for child in ast.walk(wrapper)
+    ):
+        raise AssertionError("wrapper must call pop_setup_mutation_signal_keys")
+
+    def _button_label(call: ast.AST) -> str | None:
+        if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
+            return None
+        if call.func.attr != "button" or not call.args:
+            return None
+        arg0 = call.args[0]
+        if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
+            return arg0.value
+        return None
+
+    def _calls_invalidate(node: ast.AST) -> bool:
+        for child in ast.walk(node):
+            if (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Name)
+                and child.func.id == "_invalidate_session_signals_after_setup_mutation"
+            ):
+                return True
+        return False
+
+    bound = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If) or not isinstance(node.test, ast.Call):
+            continue
+        label = _button_label(node.test)
+        if label in _QI0312_SETUP_BUTTONS and _calls_invalidate(node):
+            bound.add(label)
+    assert bound == _QI0312_SETUP_BUTTONS, bound

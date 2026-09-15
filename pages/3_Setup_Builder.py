@@ -35,6 +35,7 @@ from thesistester.classic_context import render_classic_thesis_chrome
 from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.classic_proposal import render_classic_proposal_card
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
+from thesistester.research_keys import pop_setup_mutation_signal_keys
 
 ENTRY_WINDOW_MODE_OPTIONS = ("rth_segments", "clock_range")
 
@@ -299,6 +300,15 @@ def _dataset_relation_label(setup_dataset_id: object, current_dataset_id: str | 
     ):
         return "current dataset"
     return "other dataset"
+
+
+# QI-03-12 / D-2: setup save / set-active / clear / delete-active pops the
+# in-session candidate cluster so leftover ``signals`` cannot reach Backtest
+# unflagged. Shared pop list lives on ``research_keys`` (same siblings
+# dataset-clear pops) so a leftover hash cannot look like a match.
+def _invalidate_session_signals_after_setup_mutation(session_state: Any) -> None:
+    """Pop leftover candidates after a setup_config mutation (QI-03-12)."""
+    pop_setup_mutation_signal_keys(session_state)
 
 
 def _saved_setup_label(meta: dict[str, Any], current_dataset_id: str | None) -> str:
@@ -859,6 +869,7 @@ if saved_setup_options:
     if action_cols[2].button("Set active", width="stretch"):
         loaded_meta = load_setup(selected_saved_setup_id)
         st.session_state["setup_config"] = dict(loaded_meta.get("setup_config", {}))
+        _invalidate_session_signals_after_setup_mutation(st.session_state)
         st.success(f"Active setup set to '{loaded_meta.get('name', 'setup')}'.")
 
     if action_cols[3].button("Delete", width="stretch"):
@@ -866,6 +877,7 @@ if saved_setup_options:
         active = st.session_state.get("setup_config")
         if isinstance(active, dict) and active.get("setup_id") == selected_saved_setup_id:
             st.session_state.pop("setup_config", None)
+            _invalidate_session_signals_after_setup_mutation(st.session_state)
         if (
             isinstance(st.session_state.get(EDITOR_STATE_KEY), dict)
             and st.session_state[EDITOR_STATE_KEY].get("setup_id") == selected_saved_setup_id
@@ -1438,6 +1450,7 @@ if st.button("Save setup", type="primary"):
             persisted_config = dict(saved_meta["setup_config"])
             st.session_state["setup_config"] = persisted_config
             st.session_state[EDITOR_STATE_KEY] = persisted_config
+            _invalidate_session_signals_after_setup_mutation(st.session_state)
             existing = st.session_state.get("setup_configs", [])
             replaced = any(item.get("name") == persisted_config["name"] for item in existing)
             updated = [item for item in existing if item.get("name") != persisted_config["name"]]
@@ -1455,4 +1468,5 @@ if active_setup:
 
     if st.button("Clear active setup"):
         st.session_state.pop("setup_config", None)
+        _invalidate_session_signals_after_setup_mutation(st.session_state)
         st.success("Active setup cleared.")

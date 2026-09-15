@@ -47,6 +47,7 @@ from thesistester.setup import (
     validate_setup_config,
 )
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
+from thesistester.research_keys import pop_setup_mutation_signal_keys
 from thesistester.visualization import (
     buffered_rows_window,
     build_signals_chart,
@@ -679,6 +680,38 @@ def _validate_signal_artifact_identity_for_save(
         return False, _SIGNAL_CONTROLS_CHANGED_WARNING
 
     return True, None
+
+
+def _controls_changed_warning_for_view(
+    session_state: dict,
+    current_settings: dict | None,
+) -> str | None:
+    """Return the save-path controls-changed warning for page view (QI-03-12).
+
+    Setup save/set-active pops ``signals``. This surfaces the same warning when
+    leftover artifacts remain and current controls no longer match the stored
+    identity — viewing, not only Save. Missing or unhashable identity is treated
+    as a mismatch so leftovers cannot reach Backtest unflagged.
+    """
+    if session_state.get("signals") is None:
+        return None
+    stored_hash = session_state.get("signal_settings_hash")
+    if (
+        not isinstance(current_settings, dict)
+        or not isinstance(stored_hash, str)
+        or not stored_hash
+    ):
+        return _SIGNAL_CONTROLS_CHANGED_WARNING
+    normalized_current, _err = _try_normalize_signal_settings_for_hash(current_settings)
+    if normalized_current is None:
+        return _SIGNAL_CONTROLS_CHANGED_WARNING
+    try:
+        current_hash = compute_signal_settings_hash(normalized_current)
+    except ValueError:
+        return _SIGNAL_CONTROLS_CHANGED_WARNING
+    if current_hash != stored_hash:
+        return _SIGNAL_CONTROLS_CHANGED_WARNING
+    return None
 
 
 def _build_signal_settings(
@@ -1433,6 +1466,10 @@ if generate_btn:
         st.exception(exc)
         st.stop()
 
+_view_controls_warning = _controls_changed_warning_for_view(st.session_state, signal_settings)
+if _view_controls_warning:
+    st.warning(_view_controls_warning)
+
 saved_signal_runs: list[dict] = []
 matching_saved_signal_run: dict | None = None
 
@@ -1587,6 +1624,7 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
             else:
                 st.session_state["setup_config"] = dict(setup_snapshot)
                 st.session_state["_setup_builder_editor_config"] = dict(setup_snapshot)
+                pop_setup_mutation_signal_keys(st.session_state)
                 st.success(
                     "Copied setup snapshot to Setup Builder. Open Setup Builder to review, edit, and save."
                 )

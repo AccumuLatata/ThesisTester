@@ -9,11 +9,14 @@ keys that must survive dataset switch are listed on ``_STICKY_APPLY_SOURCE``
 (identity + A-7 residuals and other apply-only members). Sticky is never
 derived from “apply and not dataset-clear” — an unlabeled apply-clear key
 fails closed at import. Execution-clear stays local on the Data page
-(D-1 does not own that list).
+(D-1 does not own that list). D-2 (QI-03-12) adds
+``SETUP_MUTATION_SIGNAL_KEYS`` / ``pop_setup_mutation_signal_keys`` for
+setup-save invalidation; that subset is not a new registry flag.
 """
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import NamedTuple
 
 
@@ -409,3 +412,24 @@ STICKY_APPLY_KEYS: tuple[str, ...] = tuple(
 BACKTEST_ENTRY_WINDOW_WIDGET_KEYS: tuple[str, ...] = tuple(
     key for key in WIDGET_KEYS if key.startswith("backtest_entry_window_")
 )
+
+# QI-03-12 / D-2: setup save / set-active / clear / delete-active / copy-to-builder
+# pop the in-session candidate cluster the way dataset-clear pops ``signals``.
+# Identity siblings go too so a leftover hash cannot look like a match.
+# Zones stay; regenerate rebuilds candidates. Artifact-identity keys are
+# page-6 session fields (not registry rows).
+SETUP_MUTATION_SIGNAL_KEYS: tuple[str, ...] = (
+    "signals",
+    "signal_settings",
+    "signal_settings_hash",
+    "signal_artifact_identity_status",
+    "signal_artifact_identity_error",
+    "last_signal_setup",
+    "signal_context",
+)
+
+
+def pop_setup_mutation_signal_keys(session_state: MutableMapping[str, object]) -> None:
+    """Pop leftover candidates after a setup_config mutation (QI-03-12)."""
+    for key in SETUP_MUTATION_SIGNAL_KEYS:
+        session_state.pop(key, None)
