@@ -1325,14 +1325,15 @@ are B-1; H10/H11 lock tests are B-2.
   reference on golden and B-3 fixtures. R13 / path / subtf / 3c entry-bar
   stay serial. Admission is never parallelized.
 - Keep optimization work inside `engine.sim_core`. C-19 placed the P7 walk
-  (`walk_trade_exit`, which calls `resolve_trade_bar`) and AH1 flatten-cap
-  math (`compute_session_close_cap`) on the R22 boundary. Admission
+  (`walk_trade_exit`; the serial helper still calls `resolve_trade_bar`)
+  and AH1 flatten-cap math (`compute_session_close_cap`) on the R22
+  boundary. Admission
   (window / cutoff / exposure / 3c-void), skip-row schema, costs, P&L,
   trade records, and diagnostics remain orchestrated by `backtest.py`.
   Do not widen `sim_core` into those concerns. C-20 stores `BarData` as
   write-protected `float64` arrays (`at()` still Python floats; non-numpy
   dtypes keep C-19 ``float()`` fail-closed).
-- Run `pytest -q tests/benchmarks/test_simulate_baseline.py tests/test_golden_master.py tests/test_intrabar.py tests/test_exit_management.py tests/test_phase5_backtest.py`
+- Run `pytest -q tests/benchmarks/test_simulate_baseline.py tests/test_golden_master.py tests/test_default_on_golden.py tests/test_sim_core.py tests/test_intrabar.py tests/test_exit_management.py tests/test_phase5_backtest.py`
   after R22 changes.
 
 ## Repository conventions (verified)

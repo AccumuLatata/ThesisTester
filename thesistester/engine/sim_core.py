@@ -306,6 +306,18 @@ def _exit_walk_bounds(
     return start_bar, max_bar, time_cap_bar
 
 
+def _max_excursion(values: np.ndarray) -> float:
+    """Peak excursion matching serial ``max(0.0, …)`` starting at 0.0.
+
+    Python ``max(running, nan)`` keeps ``running`` because NaN comparisons
+    are false. ``np.max`` would return NaN and then ``max(0.0, nan)`` is 0.0.
+    """
+    clean = values[~np.isnan(values)]
+    if clean.size == 0:
+        return 0.0
+    return max(0.0, float(np.max(clean)))
+
+
 def _can_vectorize_fixed_sl_first_walk(
     *,
     intrabar_model: str,
@@ -404,8 +416,8 @@ def _walk_trade_exit_sl_first_vectorized(
             ambiguous=both_hit,
         )
         window = slice(0, offset + 1)
-        mae_pts = max(0.0, float(np.max(adverse[window])))
-        mfe_pts = max(0.0, float(np.max(favorable[window])))
+        mae_pts = _max_excursion(adverse[window])
+        mfe_pts = _max_excursion(favorable[window])
         return TradeExitWalk(
             stop_price=stop_price,
             target_price=target_price,
@@ -433,8 +445,8 @@ def _walk_trade_exit_sl_first_vectorized(
         exit_bar_index=None,
         theoretical_exit_price=None,
         resolution=None,
-        mae_pts=max(0.0, float(np.max(adverse))),
-        mfe_pts=max(0.0, float(np.max(favorable))),
+        mae_pts=_max_excursion(adverse),
+        mfe_pts=_max_excursion(favorable),
         pending_intrabar_ambiguity=False,
         start_bar=start_bar,
         max_bar=max_bar,
