@@ -281,7 +281,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return os.EX_NOINPUT
     except ValueError as exc:
+        # load_experiment_file wraps OSError (missing / unreadable file) as
+        # ValueError. Keep sysexits EX_NOINPUT for that I/O cause.
         print(str(exc), file=sys.stderr)
+        if isinstance(exc.__cause__, OSError):
+            return os.EX_NOINPUT
         return os.EX_DATAERR
     print(f"Completed {len(index)} run(s) with {workers} worker(s).")
     print(f"Results index: {(output / 'results_index.csv').resolve()}")

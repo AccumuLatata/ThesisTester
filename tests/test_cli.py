@@ -617,12 +617,12 @@ def test_module_cli_help_exits_zero():
     assert "--output-dir" in run_help.stdout
 
 
-def test_module_cli_run_error_paths_exit_one(tmp_path):
-    """QI-06-07 / E-3: missing file / invalid YAML / empty runs → rc ≠ 0, no traceback."""
+def test_module_cli_run_error_paths_typed_exit(tmp_path):
+    """QI-06-07 / E-3: missing file / empty runs → rc ≠ 0, no traceback."""
     missing = tmp_path / "missing.yaml"
     missing_proc = _module_cli("run", str(missing))
     assert missing_proc.returncode != 0
-    assert missing_proc.returncode == os.EX_DATAERR
+    assert missing_proc.returncode == os.EX_NOINPUT
     assert "Traceback" not in missing_proc.stderr
     assert "Unable to load experiment file" in missing_proc.stderr
 
@@ -643,23 +643,46 @@ def test_module_cli_run_error_paths_exit_one(tmp_path):
     assert "Experiment file must define a non-empty runs list" in empty_proc.stderr
 
 
-def test_cli_main_error_paths_return_ex_dataerr(tmp_path, capsys):
-    """QI-06-07 / E-3: ``cli.main`` prints ``str(exc)`` and returns ``EX_DATAERR``."""
-    missing = tmp_path / "missing.yaml"
-    assert main(["run", str(missing)]) == os.EX_DATAERR
-    missing_err = capsys.readouterr().err
-    assert "Unable to load experiment file" in missing_err
-    assert "Traceback" not in missing_err
+def test_module_cli_study_and_journal_verbs_unchanged(tmp_path):
+    """E-3 exit gate: study / journal keep their own printers (not EX_DATAERR)."""
+    study = _module_cli("study", "report", str(tmp_path / "missing-study"))
+    assert study.returncode == 2
+    assert study.returncode != os.EX_DATAERR
+    assert study.returncode != os.EX_NOINPUT
+    assert "Traceback" not in study.stderr
+    assert "Study report error" in study.stderr
 
+    journal = _module_cli(
+        "journal",
+        "report",
+        "--journal-dir",
+        str(tmp_path / "missing-journal"),
+        "--output-dir",
+        str(tmp_path / "journal-out"),
+    )
+    assert journal.returncode == 2
+    assert journal.returncode != os.EX_DATAERR
+    assert journal.returncode != os.EX_NOINPUT
+    journal_text = journal.stderr + journal.stdout
+    assert "Traceback" not in journal_text
+    assert "journal report failed" in journal_text
+
+
+def test_cli_main_error_paths_return_ex_dataerr(tmp_path, capsys):
+    """QI-06-07 / E-3: schema / YAML ``ValueError`` is ``EX_DATAERR``, no traceback."""
     not_mapping = tmp_path / "list.yaml"
     not_mapping.write_text("- just a list\n", encoding="utf-8")
     assert main(["run", str(not_mapping)]) == os.EX_DATAERR
-    assert "YAML mapping" in capsys.readouterr().err
+    mapping_err = capsys.readouterr().err
+    assert "YAML mapping" in mapping_err
+    assert "Traceback" not in mapping_err
 
     empty = tmp_path / "empty-runs.yaml"
     empty.write_text("schema_version: 1\nruns: []\n", encoding="utf-8")
     assert main(["run", str(empty)]) == os.EX_DATAERR
-    assert "non-empty runs list" in capsys.readouterr().err
+    empty_err = capsys.readouterr().err
+    assert "non-empty runs list" in empty_err
+    assert "Traceback" not in empty_err
 
     unknown = tmp_path / "unknown-key.yaml"
     unknown.write_text(
@@ -667,11 +690,19 @@ def test_cli_main_error_paths_return_ex_dataerr(tmp_path, capsys):
         encoding="utf-8",
     )
     assert main(["run", str(unknown)]) == os.EX_DATAERR
-    assert "Unknown experiment configuration keys" in capsys.readouterr().err
+    unknown_err = capsys.readouterr().err
+    assert "Unknown experiment configuration keys" in unknown_err
+    assert "Traceback" not in unknown_err
 
 
 def test_cli_main_oserror_returns_ex_noinput(tmp_path, monkeypatch, capsys):
-    """QI-06-07 / E-3: unwrapped ``OSError`` on ``run`` is ``EX_NOINPUT``."""
+    """QI-06-07 / E-3: missing file (wrapped OSError) and unwrapped ``OSError`` → ``EX_NOINPUT``."""
+    missing = tmp_path / "missing.yaml"
+    assert main(["run", str(missing)]) == os.EX_NOINPUT
+    missing_err = capsys.readouterr().err
+    assert "Unable to load experiment file" in missing_err
+    assert "Traceback" not in missing_err
+
     yaml_path = tmp_path / "experiment.yaml"
     yaml_path.write_text("schema_version: 1\nruns: []\n", encoding="utf-8")
 

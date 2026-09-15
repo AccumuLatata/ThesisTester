@@ -1,7 +1,9 @@
 """Module entry point for ``python -m thesistester``.
 
-Run-verb ``ValueError`` / ``OSError`` map to ``EX_DATAERR`` / ``EX_NOINPUT``
-in ``cli.main`` (QI-06-07 / E-3). ``study`` / ``journal`` dispatch is unchanged.
+Run-verb ``OSError`` (including ``ValueError`` whose ``__cause__`` is
+``OSError``, e.g. missing experiment file) maps to ``EX_NOINPUT``.
+Other ``ValueError`` maps to ``EX_DATAERR`` (QI-06-07 / E-3).
+``study`` / ``journal`` dispatch is unchanged.
 """
 
 from __future__ import annotations

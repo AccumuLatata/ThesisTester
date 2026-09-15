@@ -44,10 +44,18 @@ python -m thesistester run experiment.yaml --workers 4
 ### CLI errors (`run` verb)
 
 `python -m thesistester run` catches `ValueError` / `OSError` in `cli.main`
-(QI-06-07 / E-3), prints `str(exc)` to stderr, and returns `os.EX_DATAERR`
-(65) / `os.EX_NOINPUT` (66). No traceback for those typed refusals
-(missing file, invalid YAML, empty `runs`). `study` and `journal` dispatch
-is unchanged — each verb keeps its own error printer.
+(QI-06-07 / E-3) and prints `str(exc)` to stderr. No traceback for those
+typed refusals.
+
+- `OSError`, and `ValueError` whose `__cause__` is `OSError` (missing /
+  unreadable experiment file — `load_experiment_file` wraps the I/O
+  error): `os.EX_NOINPUT` (66)
+- other `ValueError` (invalid YAML, empty `runs`, unknown keys):
+  `os.EX_DATAERR` (65)
+
+`study` and `journal` dispatch is unchanged — each verb keeps its own
+error printer (`study report` missing dir → rc 2; journal typed failures
+→ rc 2).
 
 ### Research Study Runner (RS1–RS5 + post-MVP through RS-D9)
 
@@ -988,9 +996,11 @@ Every request must first parse as an `AssistantRequest`, then pass
 - **Untestable-by-design (B-7 / QI-11-01).** Do not chase line coverage on
   these modules (QI-11 §2.3 debt map). Test the contracts named here; do
   not spawn a live sidecar or a provider socket:
-  - `thesistester/__main__.py` — `if __name__` guard only. `cli.main()` is
-    exercised from journal/study CLI tests; `test_cli.py` covers
-    argparse / `run_batch`, not the `__main__` wrapper.
+  - `thesistester/__main__.py` — `if __name__` guard only (`SystemExit(main())`).
+    `cli.main()` is exercised from journal/study CLI tests. `test_cli.py`
+    `_module_cli` process-invokes `python -m thesistester` for `--help` and
+    run-verb typed errors (QI-06-07 / E-3); it does not re-test the
+    two-line wrapper in isolation.
   - `thesistester/assistant/voice/sidecar.py` — subprocess / network
     lifecycle. Voice tests cover bind/redact, not launch or the health loop.
   - `thesistester/assistant/voice/xai_realtime.py` — provider I/O. Evals
