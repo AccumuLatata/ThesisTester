@@ -249,6 +249,7 @@ developing partners, H14, signal table, signal runs
 | Manual confluence + trigger controls | Same concepts as Setup Builder | Easy to drift from the saved setup |
 | `3c` + `Trigger timeframe` | Arrival / reversal on HTF candles when non-base | Developing partners (dVWAP / SMA / rolling VWAP) keep the early-window value vs completed HTF OHLC (H14; decision T is HTF close). Not a snap of those prices to `base_end` |
 | **Generate signals** | Build zones + candidate entries | Does **not** apply OTF admission |
+| **Signal table** | Preview subset of candidates | HTF/3c columns (`trigger_timestamp`, `trigger_timeframe`, `tested_level_price`) appear when those fields are non-null. `approach_side` is not shown (DA4) |
 | Saved signal runs | Load/save/delete generated artifacts | Needs trusted dataset + levels identity |
 
 **How to use.**

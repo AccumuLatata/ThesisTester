@@ -139,6 +139,7 @@ def _import_page_helpers():
         mod._signal_generation_admission_error,
         mod._run_signal_generation,
         mod._render_signals_chart,
+        mod._signal_table_display_cols,
     )
 
 
@@ -178,6 +179,7 @@ def _import_page_helpers():
     _signal_generation_admission_error,
     _run_signal_generation,
     _render_signals_chart,
+    _signal_table_display_cols,
 ) = _import_page_helpers()
 
 
@@ -1767,3 +1769,79 @@ def test_page6_has_no_st_exception_and_splits_render_vs_sync():
     assert "_typed_signals_error_message" in called
     assert "_get_stored_signal_settings" in called
     assert "_signal_generation_admission_error" in called
+
+
+def _preview_frame(**extra: object) -> pd.DataFrame:
+    base = {
+        "signal_id": ["s1"],
+        "timestamp": [pd.Timestamp("2026-06-02 09:31:00", tz=TZ)],
+        "bar_index": [1],
+        "trigger": ["touch"],
+        "direction": ["long"],
+    }
+    base.update(extra)
+    return pd.DataFrame(base)
+
+
+def test_signal_table_display_cols_includes_htf_3c_when_non_null():
+    """QI-03-11 / E-8: preview shows Decision T + tested price when present."""
+    frame = _preview_frame(
+        trigger_timestamp=[pd.Timestamp("2026-06-02 09:35:00", tz=TZ)],
+        trigger_timeframe=["5min"],
+        tested_level_price=[5200.125],
+        approach_side=["above"],
+    )
+    cols = _signal_table_display_cols(frame)
+    assert "trigger_timestamp" in cols
+    assert "trigger_timeframe" in cols
+    assert "tested_level_price" in cols
+    assert "approach_side" not in cols
+    assert cols.index("timestamp") < cols.index("trigger_timestamp")
+
+
+def test_signal_table_display_cols_omits_all_null_htf_3c_columns():
+    frame = _preview_frame(
+        trigger_timestamp=[pd.NaT],
+        trigger_timeframe=[None],
+        tested_level_price=[float("nan")],
+    )
+    cols = _signal_table_display_cols(frame)
+    assert "trigger_timestamp" not in cols
+    assert "trigger_timeframe" not in cols
+    assert "tested_level_price" not in cols
+
+
+def test_signal_table_display_cols_omits_absent_htf_3c_columns():
+    cols = _signal_table_display_cols(_preview_frame())
+    assert "trigger_timestamp" not in cols
+    assert "trigger_timeframe" not in cols
+    assert "tested_level_price" not in cols
+    assert "approach_side" not in cols
+    assert "signal_id" in cols
+    assert "timestamp" in cols
+
+
+def test_signal_table_display_cols_does_not_mutate_engine_signal_columns():
+    """E-8 exit: `_SIGNAL_COLUMNS` stays the engine contract (DA4)."""
+    from thesistester.engine.signals import _SIGNAL_COLUMNS
+
+    before = list(_SIGNAL_COLUMNS)
+    _signal_table_display_cols(
+        _preview_frame(
+            trigger_timestamp=[pd.Timestamp("2026-06-02 09:35:00", tz=TZ)],
+            approach_side=["above"],
+        )
+    )
+    assert list(_SIGNAL_COLUMNS) == before
+    assert "approach_side" not in _SIGNAL_COLUMNS
+    assert "trigger_timestamp" in _SIGNAL_COLUMNS
+    assert "trigger_timeframe" in _SIGNAL_COLUMNS
+    assert "tested_level_price" in _SIGNAL_COLUMNS
+
+
+def test_page6_signal_table_uses_display_cols_helper():
+    from pathlib import Path
+
+    source = Path("pages/6_Signals.py").read_text(encoding="utf-8")
+    assert "display_cols = _signal_table_display_cols(signals)" in source
+    assert "_SIGNAL_TABLE_OPTIONAL_HTF_3C_COLS" in source

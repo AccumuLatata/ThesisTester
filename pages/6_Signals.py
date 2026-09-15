@@ -475,6 +475,50 @@ def _no_zones_message(confluence_mode: str) -> str:
     )
 
 
+_SIGNAL_TABLE_PREVIEW_COLS = (
+    "signal_id",
+    "timestamp",
+    "bar_index",
+    "trigger",
+    "direction",
+    "zone_low",
+    "zone_high",
+    "zone_mid",
+    "level_count",
+    "level_names",
+    "entry_reference_price",
+    "entry_model",
+    "status",
+    "trigger_variant",
+    "level_source_mode",
+    "setup_name",
+    "naked_level_count",
+    "notes",
+)
+# QI-03-11 / E-8: Decision T + tested developing-level price on HTF/3c runs.
+# `approach_side` stays out (DA4 — not on `_SIGNAL_COLUMNS`).
+_SIGNAL_TABLE_OPTIONAL_HTF_3C_COLS = (
+    "trigger_timestamp",
+    "trigger_timeframe",
+    "tested_level_price",
+)
+
+
+def _column_has_non_null(frame: pd.DataFrame, name: str) -> bool:
+    if name not in frame.columns:
+        return False
+    return bool(frame[name].notna().any())
+
+
+def _signal_table_display_cols(signals: pd.DataFrame) -> list[str]:
+    """Preview subset for the Signals table (not the engine contract)."""
+    cols = [name for name in _SIGNAL_TABLE_PREVIEW_COLS if name in signals.columns]
+    for name in _SIGNAL_TABLE_OPTIONAL_HTF_3C_COLS:
+        if name not in cols and _column_has_non_null(signals, name):
+            cols.append(name)
+    return cols
+
+
 def _selected_anchor_levels(
     anchor_level: str | None, confluence_rules: list[dict], available_columns: list[str]
 ) -> list[str]:
@@ -1815,30 +1859,7 @@ if signals is not None and not signals.empty:
         )
 
     st.subheader("Signal table")
-    display_cols = [
-        c
-        for c in [
-            "signal_id",
-            "timestamp",
-            "bar_index",
-            "trigger",
-            "direction",
-            "zone_low",
-            "zone_high",
-            "zone_mid",
-            "level_count",
-            "level_names",
-            "entry_reference_price",
-            "entry_model",
-            "status",
-            "trigger_variant",
-            "level_source_mode",
-            "setup_name",
-            "naked_level_count",
-            "notes",
-        ]
-        if c in signals.columns
-    ]
+    display_cols = _signal_table_display_cols(signals)
     st.dataframe(signals[display_cols], width="stretch", hide_index=True)
 else:
     st.info("No signals generated with the current settings.")
