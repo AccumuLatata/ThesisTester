@@ -25,9 +25,7 @@ SMALL_HEADING = "### Small fixture (60 bars, no rolling POC)"
 REALISTIC_HEADING = "### Realistic fixture (780 bars; tick-gated `poc_windows=[]`)"
 CAI10_HEADING = "## CAI-10 warm-path measurement and signal-cache decision"
 CAI10_DECISION = "do **not** add a second signal-artifact cache layer yet"
-FIXTURE_BOTH_CMD = (
-    "python3 -m tests.benchmarks.cai_cold_path --fixture both --repeats 5"
-)
+FIXTURE_BOTH_CMD = "python3 -m tests.benchmarks.cai_cold_path --fixture both --repeats 5"
 STALE_F10_FUTURE = "F-10 re-records them"
 E2E_STAGE = "run_experiment_end_to_end"
 
@@ -125,9 +123,7 @@ def _assert_realistic_signal_dominated(rows: list[dict[str, str]]) -> None:
             continue
         expected = round(100.0 * float(row["median"]) / e2e, 1)
         got = _share_pct(row)
-        assert got == expected, (
-            f"{row['stage']}: share {got} != {expected} from median/e2e"
-        )
+        assert got == expected, f"{row['stage']}: share {got} != {expected} from median/e2e"
     sig = _share_pct(by_stage["generate_signals"])
     lvl = _share_pct(by_stage["compute_levels"])
     assert sig > lvl, f"expected signal-dominated live table; got {sig=} {lvl=}"
@@ -246,9 +242,7 @@ def test_later_h2_signal_share_does_not_bind_live_table() -> None:
 """
     fake = _doc(
         realistic_table=levels_dominated,
-        extra_after_recorded=(
-            "## Interpretation for later milestones\n\n" + _SAMPLE_REALISTIC
-        ),
+        extra_after_recorded=("## Interpretation for later milestones\n\n" + _SAMPLE_REALISTIC),
     )
     try:
         _assert_live_recorded_tables(fake)
