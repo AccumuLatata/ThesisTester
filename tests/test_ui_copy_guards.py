@@ -590,6 +590,58 @@ def _assert_wfa_m10_copy(source: str) -> None:
     assert "🏆" not in source, "page 10 must not restore OTF contest trophy chrome"
 
 
+def _assert_wfa_m10_heatmap_caption(source: str) -> None:
+    """D-4: RdYlGn caption after heatmap lives on the WFA helper."""
+    tree = ast.parse(source)
+    rdylgn_lines = [
+        node.lineno
+        for node in ast.walk(tree)
+        if _is_go_heatmap(node) and _heatmap_colorscale(node) == "RdYlGn"
+    ]
+    assert rdylgn_lines, "missing go.Heatmap colorscale='RdYlGn' (WFA matrix)"
+
+    plotly_after = [
+        call.lineno for call in _st_calls(tree, "plotly_chart") if call.lineno >= min(rdylgn_lines)
+    ]
+    assert plotly_after, "missing st.plotly_chart after WFA RdYlGn heatmap"
+    wfa_plotly = min(plotly_after)
+
+    matching: list[str] = []
+    caption_lines: list[int] = []
+    for call in _st_calls(tree, "caption"):
+        text = _first_arg_text(call)
+        if text is None or not all(n in text for n in _WFA_HEATMAP_CAPTION_NEEDLES):
+            continue
+        matching.append(text)
+        caption_lines.append(call.lineno)
+    assert matching, (
+        f"WFA st.caption missing greenest-cell needles {list(_WFA_HEATMAP_CAPTION_NEEDLES)}"
+    )
+    assert min(caption_lines) > wfa_plotly, "WFA st.caption must follow RdYlGn st.plotly_chart"
+
+
+def _assert_wfa_m10_otf_info(source: str) -> None:
+    """D-4: OTF train-selected info lives on the OTF helper."""
+    tree = ast.parse(source)
+    otf_start = _subheader_lineno(tree, _OTF_MATRIX_SUBHEADER)
+    assert otf_start is not None, f"missing st.subheader({_OTF_MATRIX_SUBHEADER!r})"
+    otf_infos = [
+        text
+        for call in _st_calls(tree, "info")
+        if call.lineno >= otf_start
+        for text in (_first_arg_text(call),)
+        if text is not None and _OTF_INFO_LABEL in text
+    ]
+    assert otf_infos, f"OTF st.info missing {_OTF_INFO_LABEL!r} after {_OTF_MATRIX_SUBHEADER!r}"
+    missing_contest = [t for t in otf_infos if _OTF_NOT_CONTEST not in t]
+    assert missing_contest == [], (
+        f"OTF Train-selected st.info must pair {_OTF_NOT_CONTEST!r}: {missing_contest!r}"
+    )
+    trophy_infos = [t for t in otf_infos if "🏆" in t]
+    assert trophy_infos == [], f"OTF Train-selected st.info must not use 🏆: {trophy_infos!r}"
+    assert "🏆" not in source, "OTF helper must not restore contest trophy chrome"
+
+
 def test_grid_ranking_help_is_diagnostic_not_contest():
     """QI-05-08 / M10: Ranking metric help is in-sample sort, not a proven best."""
     _assert_grid_ranking_m10_help(_read(PAGES / "8_Grid_Search.py"))
@@ -597,7 +649,19 @@ def test_grid_ranking_help_is_diagnostic_not_contest():
 
 def test_wfa_heatmap_caption_and_otf_trophy_are_not_contest():
     """QI-05-08 / M10: WFA heatmap caption + no OTF trophy prefix."""
-    _assert_wfa_m10_copy(_read(PAGES / "10_Validation.py"))
+    wfa = _read(REPO_ROOT / "thesistester" / "validation_wfa_page_helpers.py")
+    otf = _read(REPO_ROOT / "thesistester" / "validation_otf_page_helpers.py")
+    _assert_wfa_m10_heatmap_caption(wfa)
+    _assert_wfa_m10_otf_info(otf)
+    for rel in (
+        "pages/10_Validation.py",
+        "thesistester/validation_wfa_page_helpers.py",
+        "thesistester/validation_otf_page_helpers.py",
+        "thesistester/validation_display_page_helpers.py",
+        "thesistester/validation_batteries_page_helpers.py",
+        "thesistester/validation_sidebar_page_helpers.py",
+    ):
+        assert "🏆" not in _read(REPO_ROOT / rel), f"{rel} restored OTF contest trophy chrome"
 
 
 def test_grid_ranking_help_guard_ignores_comment_and_file_needles():
@@ -747,7 +811,7 @@ def test_user_guide_validation_h2_names_m10_greenest_cell():
 
 def test_wfa_overlap_help_and_aggregate_caption_name_fold_sum():
     """QI-05-07 / M9: overlap help + caption name fold-sum, not stitch-only."""
-    _assert_wfa_m9_copy(_read(PAGES / "10_Validation.py"))
+    _assert_wfa_m9_copy(_read(REPO_ROOT / "thesistester" / "validation_wfa_page_helpers.py"))
 
 
 def test_wfa_aggregate_caption_guard_requires_st_caption_not_help_text():
@@ -860,7 +924,9 @@ def test_metrics_glossary_wfa_h2_names_m9_fold_sum():
 
 def test_phase8_permutation_copy_is_diagnostic_not_confirmatory():
     """QI-05-05 / H13: no success chrome on permutation p; no confirmatory P(mean R > 0)."""
-    _assert_phase8_permutation_copy(_read(PAGES / "10_Validation.py"))
+    _assert_phase8_permutation_copy(
+        _read(REPO_ROOT / "thesistester" / "validation_display_page_helpers.py")
+    )
     _assert_validation_diagnostics_banner(_read(REPO_ROOT / "thesistester" / "reporting.py"))
 
 
@@ -1000,7 +1066,7 @@ def test_validation_diagnostics_banner_guard_ignores_decoy_list_outside_md_valid
 
 
 def test_validation_has_no_stale_r22_parallel_claim():
-    text = _read(PAGES / "10_Validation.py")
+    text = _read(REPO_ROOT / "thesistester" / "validation_batteries_page_helpers.py")
     assert "R22 parallel acceleration is not yet available" not in text
     assert "no parallel acceleration is available" in text
     assert "Overfitting-detection battery" in text

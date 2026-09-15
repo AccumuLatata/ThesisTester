@@ -286,6 +286,11 @@ def test_architecture_session_key_table_covers_measured_research_keys():
         REPO_ROOT / "thesistester" / "classic_nav.py",
         REPO_ROOT / "thesistester" / "timezone_display.py",
         *sorted((REPO_ROOT / "pages").glob("*.py")),
+        REPO_ROOT / "thesistester" / "validation_wfa_page_helpers.py",
+        REPO_ROOT / "thesistester" / "validation_batteries_page_helpers.py",
+        REPO_ROOT / "thesistester" / "validation_otf_page_helpers.py",
+        REPO_ROOT / "thesistester" / "validation_display_page_helpers.py",
+        REPO_ROOT / "thesistester" / "validation_sidebar_page_helpers.py",
     ]
     measured: set[str] = set()
     by_file: dict[str, set[str]] = {}
@@ -311,9 +316,9 @@ def test_architecture_session_key_table_covers_measured_research_keys():
     )
 
     for key, label, path in (
-        ("data", "Validation", "pages/10_Validation.py"),
-        ("levels", "Validation", "pages/10_Validation.py"),
-        ("signals", "Validation", "pages/10_Validation.py"),
+        ("data", "Validation", "thesistester/validation_wfa_page_helpers.py"),
+        ("levels", "Validation", "thesistester/validation_wfa_page_helpers.py"),
+        ("signals", "Validation", "thesistester/validation_wfa_page_helpers.py"),
         ("trades", "Portfolio", "pages/13_Portfolio.py"),
     ):
         assert key in by_file[path], f"{path} must read {key}"
