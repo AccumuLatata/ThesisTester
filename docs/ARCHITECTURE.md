@@ -1508,6 +1508,7 @@ Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 `pages/10_Validation.py`, `pages/11_Report_Export.py`,
 `pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`,
 `pages/14_Research_Assistant.py`, `pages/15_Studies.py` (RS-D2 inspect + RS-D8 preview + RS-D9 CLI spawn + SB2/SB3 Build tab;
+D-9 / QI-07-01 Build section collectors/renderers; launch/inspect helpers stay on-page;
 not part of the classic research mutate path),
 `pages/16_Study_Observatory.py` (SO2 corpus readout + Inspect drill; not
 classic mutate),
@@ -1624,7 +1625,10 @@ Path citations only (no line numbers). Line anchors drift across page renumbers 
 
 Studies Build (SB2–SB3) adds `studies_builder_draft` and `studies_builder_pending_sync`
 on `pages/15_Studies.py` only (TV4 adds `_study_builder_tick_paths` among the
-`_study_builder_*` widget keys). Those keys are not classic research state and
+`_study_builder_*` widget keys). D-9 / QI-07-01 splits Build collect into
+`_collect_builder_*` section helpers and Build render into `_render_build_*`
+section helpers; widget key names and producers/consumers are unchanged.
+Those keys are not classic research state and
 must not be read from Data / Levels / Setup Builder. Study Viewer SV1–SV5 add
 `studies_catalog_entries`, `studies_catalog_roots_key`,
 `studies_viewer_pending_path`, `studies_viewer_catalog_select`, and

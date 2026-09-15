@@ -86,6 +86,16 @@ DOPEN_EXAMPLE = Path("examples/studies/dopen_ma_3c_mnq.yaml")
 PRTH_OPEN_MA_EXAMPLE = Path("examples/studies/pRTH_open_ma.yaml")
 
 
+def _page15_collect_span(page: str) -> str:
+    """Build-tab collectors + ``_draft_from_builder_widgets`` (QI-07-01 / D-9)."""
+    return page[page.index("def _collect_builder_identity") : page.index("def _write_preview_yaml")]
+
+
+def _page15_build_render_span(page: str) -> str:
+    """Build-tab section renderers through ``_render_build`` (QI-07-01 / D-9)."""
+    return page[page.index("def _render_build_identity") : page.index("with inspect_tab:")]
+
+
 def _roundtrip_hash(path: Path) -> tuple[str, str]:
     loaded = load_study_spec(path)
     roundtrip = emit_study_spec(hydrate_study_draft(loaded))
@@ -728,10 +738,7 @@ def test_pages_studies_build_tab_source_contract():
     assert "def normalize_builder_format_profile" in page
     assert "Download StudySpec YAML" in page
     assert "Delete selected rows" in page
-    assert (
-        "spawn_launch"
-        not in page.split("def _render_build() -> None:")[1].split("with inspect_tab:")[0]
-    )
+    assert "spawn_launch" not in _page15_build_render_span(page)
     assert 'key="_study_builder_copy_spec"' in page
     assert "WIDGET_KEY_INGESTION_MODE" in page
     assert "Recommended: 15-second primary — derive one-minute canonical" in page
@@ -760,7 +767,7 @@ def test_tick_paths_widget_is_studies_scoped():
     assert "rolling POC remain 1m typical" not in page
     assert "APOC remains" not in page
     sync_body = page.split("def _sync_builder_widgets")[1].split("\ndef ")[0]
-    collect_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
+    collect_body = _page15_collect_span(page)
     assert "WIDGET_KEY_TICK_PATHS" in sync_body
     assert "WIDGET_KEY_TICK_PATHS" in collect_body
 
@@ -787,7 +794,7 @@ def test_pages_studies_ingest_radio_source_contract():
     sync_body = page.split("def _sync_builder_widgets")[1].split("\ndef ")[0]
     assert "WIDGET_KEY_INGESTION_MODE" in sync_body
     assert "_draft_ingestion_mode(draft)" in sync_body
-    read_body = page.split("def _draft_from_builder_widgets")[1].split("\ndef ")[0]
+    read_body = _page15_collect_span(page)
     assert "WIDGET_KEY_INGESTION_MODE" in read_body
     assert "_apply_builder_ingestion_mode(" in read_body
     assert "WIDGET_KEY_FORMAT_PROFILE" in read_body
@@ -815,7 +822,7 @@ def test_pages_studies_ingest_radio_source_contract():
             radios.append(node)
     assert len(radios) == 1
     assert not any(keyword.arg == "on_change" for keyword in radios[0].keywords)
-    build = page.split("def _render_build() -> None:")[1].split("with inspect_tab:")[0]
+    build = _page15_build_render_span(page)
     assert "run_study" not in build
     assert "spawn_launch" not in build
     assert "_draft_ingestion_mode(base)" in build
@@ -1226,3 +1233,167 @@ def test_c24_builder_hydrate_emit_stay_on_facade():
         imported = _imported_module_names(ast.parse(path.read_text(encoding="utf-8")), module_name)
         assert not any(_hits_ban(name, "streamlit") for name in imported), path
         assert not any(_hits_ban(name, "thesistester.study.execute") for name in imported), path
+
+
+def _page15_function_cc(fn: ast.FunctionDef) -> int:
+    """McCabe CC (radon-style: if/for/while/except/assert/boolop/ifexp/comp)."""
+
+    class _Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.cc = 1
+
+        def visit_If(self, node: ast.If) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_For(self, node: ast.For) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_While(self, node: ast.While) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_Assert(self, node: ast.Assert) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_BoolOp(self, node: ast.BoolOp) -> None:
+            self.cc += max(len(node.values) - 1, 0)
+            self.generic_visit(node)
+
+        def visit_IfExp(self, node: ast.IfExp) -> None:
+            self.cc += 1
+            self.generic_visit(node)
+
+        def visit_comprehension(self, node: ast.comprehension) -> None:
+            self.cc += 1 + len(node.ifs)
+            self.generic_visit(node)
+
+    visitor = _Visitor()
+    for child in fn.body:
+        visitor.visit(child)
+    return visitor.cc
+
+
+def test_page15_run_study_call_is_false():
+    """QI-07-01 / RS-D9 exit: page 15 never calls ``run_study`` or imports execute."""
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    assert "run_study" not in page
+    tree = ast.parse(page)
+    imported = _imported_module_names(tree, "pages.15_Studies")
+    assert not any(_hits_ban(name, "thesistester.study.execute") for name in imported)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name):
+            assert func.id != "run_study"
+        elif isinstance(func, ast.Attribute):
+            assert func.attr != "run_study"
+
+
+def test_page15_build_section_collectors_and_renderers_exist():
+    """D-9 extract: Build collect/render are section helpers; inspect/launch stay."""
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    tree = ast.parse(page)
+    defined = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+    for name in (
+        "_collect_builder_identity",
+        "_collect_builder_dataset",
+        "_collect_builder_levels",
+        "_collect_builder_factors",
+        "_collect_builder_batteries",
+        "_collect_builder_stage_report",
+        "_draft_from_builder_widgets",
+        "_render_build_identity",
+        "_render_build_dataset",
+        "_render_build_levels",
+        "_render_build_factors",
+        "_render_build_constants",
+        "_render_build_persist_and_strip",
+        "_render_build_actions",
+        "_render_build",
+        "_render_inspect",
+        "_render_launch_controls",
+    ):
+        assert name in defined
+    draft_src = page[
+        page.index("def _draft_from_builder_widgets") : page.index("def _write_preview_yaml")
+    ]
+    assert "_collect_builder_identity(" in draft_src
+    assert "_collect_builder_dataset(" in draft_src
+    assert "_collect_builder_levels(" in draft_src
+    assert "_collect_builder_factors(" in draft_src
+    assert "_collect_builder_batteries(" in draft_src
+    assert "_collect_builder_stage_report(" in draft_src
+    build_src = page[page.index("def _render_build() -> None:") : page.index("with inspect_tab:")]
+    assert "_render_build_identity(" in build_src
+    assert "_render_build_dataset(" in build_src
+    assert "_render_build_levels(" in build_src
+    assert "_render_build_factors(" in build_src
+    assert "_render_build_constants(" in build_src
+    assert "_render_build_persist_and_strip(" in build_src
+    assert "_render_build_actions(" in build_src
+    assert "spawn_launch" not in _page15_build_render_span(page)
+
+
+def test_page15_build_section_cc_at_most_30():
+    """QI-07-01 / D-9 exit: Build collect/render CC 73/59 → ≤ 30."""
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    tree = ast.parse(page)
+    measured: dict[str, int] = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            measured[node.name] = _page15_function_cc(node)
+    assert measured["_draft_from_builder_widgets"] <= 30
+    assert measured["_render_build"] <= 30
+    helpers = (
+        "_collect_builder_identity",
+        "_collect_builder_dataset",
+        "_collect_builder_levels",
+        "_collect_builder_factors",
+        "_collect_builder_batteries",
+        "_collect_builder_stage_report",
+        "_render_build_identity",
+        "_render_build_dataset",
+        "_render_build_levels",
+        "_render_build_factors",
+        "_render_build_constants",
+        "_render_build_persist_and_strip",
+        "_render_build_actions",
+    )
+    over = {name: measured[name] for name in helpers if measured[name] > 30}
+    assert over == {}, over
+
+
+def test_page15_build_levels_catalog_is_token_tuple():
+    """D-9: live catalog stays ``builder_token_catalog``'s tuple (not a list)."""
+    page = Path("pages/15_Studies.py").read_text(encoding="utf-8")
+    tree = ast.parse(page)
+    returns: dict[str, ast.expr | None] = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in {
+            "_render_build_levels",
+            "_render_build_factors",
+        }:
+            returns[node.name] = node.returns
+    levels_ann = returns["_render_build_levels"]
+    factors = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_render_build_factors"
+    )
+    catalog_ann = next(arg.annotation for arg in factors.args.args if arg.arg == "catalog")
+    for annotation in (levels_ann, catalog_ann):
+        assert annotation is not None
+        text = ast.unparse(annotation)
+        assert text == "tuple[str, ...]", text
