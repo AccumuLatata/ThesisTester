@@ -8,8 +8,9 @@ import os
 import shutil
 import tempfile
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 import pandas as pd
 
@@ -66,11 +67,20 @@ def read_bundle_trade_summary(bundle: Path) -> dict[str, Any]:
     return dict(payload)
 
 
-def isolate_store(root: Path) -> Path:
+@contextmanager
+def isolate_store(root: Path) -> Iterator[Path]:
+    """Point ``THESISTESTER_STORE_DIR`` at a private store; restore on exit."""
     store = Path(root) / "store"
     store.mkdir(parents=True, exist_ok=True)
+    previous = os.environ.get(STORE_ENV)
     os.environ[STORE_ENV] = str(store.resolve())
-    return store
+    try:
+        yield store
+    finally:
+        if previous is None:
+            os.environ.pop(STORE_ENV, None)
+        else:
+            os.environ[STORE_ENV] = previous
 
 
 def locate_full_spec() -> Path:
@@ -174,7 +184,6 @@ def _capture_study_cell_in_work(
     run_study: Any,
     canonical_bundle_hash: Any,
 ) -> Path:
-    isolate_store(work)
     study_out = work / "study"
     study_out.mkdir(parents=True, exist_ok=True)
 
@@ -190,7 +199,7 @@ def _capture_study_cell_in_work(
         )
         yaml_path = write_study_yaml(work / "study.yaml", mapping)
 
-    with replica_expectancies_hook() as sink:
+    with isolate_store(work), replica_expectancies_hook() as sink:
         result = run_study(
             yaml_path,
             output_dir=study_out,
@@ -238,6 +247,11 @@ def _capture_study_cell_in_work(
             summary[key] = summary_bundle.get(key)
         else:
             summary[key] = _nullable_index_value(index_row, key)
+    if summary.get("trade_count") is None:
+        raise CaptureAbort(
+            f"{spec.cell_id} missing trade_count in bundle and results_index. "
+            "Stop and report; do not record a partial capture."
+        )
     da5 = {key: _nullable_index_value(index_row, key) for key in DA5_KEYS}
     digest = canonical_bundle_hash(bundle_path.read_bytes())
     replicas = sink.last

@@ -67,6 +67,16 @@ grid / validation / walk-forward off, `n_replicas=50`, `random_state=42`,
 Cell 6 must produce 0 trades. If it does not, the slice is wrong; do not
 record it.
 
+## CI git gates (fail-closed)
+
+`tests/test_memory_parity.py` audits hook names at `59a4652` and asserts
+`thesistester/` plus `tests/fixtures/golden/` are untouched versus
+`origin/main`. Shallow CI clones often lack those objects. The helpers in
+`gitref.py` fetch `origin/main` and the full farm SHA
+(`59a4652cdb96ac86da6675633fd57f3e31f803e0`). If a fetch cannot run, the
+test **fails** with `STOP AND REPORT`. It does not skip. A stale local
+`main` is never used for the untouched-package gate.
+
 ## Hook points (current main and `59a4652`)
 
 Verified by reading `59a4652` (farm production, ~255 commits behind main).
@@ -150,8 +160,10 @@ reference is non-null), ledger `status`/`error`/`bundle_path`, and
 ### 4. §8 stage trace (Linux, after the pre-step passes)
 
 Reset is **after the load-time prepare returns**, not after `R_load`
-(owner addition). `R_pre_prepare.hwm` is taken immediately before that
-prepare call. `R_load.hwm` and every later `hwm` start from the reset.
+(owner addition). The wrapper drops the discarded map and `gc.collect()`s
+**before** writing `5` to `/proc/self/clear_refs`, so VmHWM excludes that
+map. `R_pre_prepare.hwm` is taken immediately before that prepare call.
+`R_load.hwm` and every later `hwm` start from the reset.
 
 ```bash
 python -m tests.fixtures.memory_parity.stage_trace \

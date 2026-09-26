@@ -72,30 +72,28 @@ def main(argv: list[str] | None = None) -> int:
     slice_dir = output / "slices"
     slices: dict[str, Path] = {}
     slice_stats: dict[str, object] = {}
-    if any(spec.csv_role == "short" for spec in cells):
-        dest = slice_dir / SHORT_SLICE_NAME
-        if not dest.is_file():
+    captured: list[str] = []
+    try:
+        if any(spec.csv_role == "short" for spec in cells):
+            dest = slice_dir / SHORT_SLICE_NAME
             slice_stats["short"] = slice_quantower_csv_utc(
                 csv,
                 dest,
                 start_utc=SHORT_WINDOW_START_UTC,
                 end_utc=SHORT_WINDOW_END_UTC,
             )
-        slices["short"] = dest
-    if any(spec.csv_role == "cell6" for spec in cells):
-        source = slices.get("short", csv)
-        dest = slice_dir / CELL6_SLICE_NAME
-        if not dest.is_file():
+            slices["short"] = dest
+        if any(spec.csv_role == "cell6" for spec in cells):
+            source = slices.get("short", csv)
+            dest = slice_dir / CELL6_SLICE_NAME
             slice_stats["cell6"] = slice_quantower_csv_utc(
                 source,
                 dest,
                 start_utc=CELL6_WINDOW_START_UTC,
                 end_utc=CELL6_WINDOW_END_UTC,
             )
-        slices["cell6"] = dest
+            slices["cell6"] = dest
 
-    captured: list[str] = []
-    try:
         for spec in cells:
             cell_csv = _csv_for_cell(spec, csv=csv, slices=slices)
             print(f"capturing {spec.cell_id} from {cell_csv}", flush=True)
@@ -108,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             captured.append(str(dest))
             print(f"wrote {dest}", flush=True)
-    except CaptureAbort as exc:
+    except (CaptureAbort, ValueError) as exc:
         print(f"STOP AND REPORT: {exc}", file=sys.stderr)
         return 2
 

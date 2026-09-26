@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -17,15 +18,16 @@ from tests.fixtures.memory_parity.cells import (
     SHORT_CELLS,
     parse_cell_selector,
 )
-from tests.fixtures.memory_parity.compat import (
-    FARM_PRODUCTION_COMMIT,
-    HOOK_POINTS,
-    resolve_all_hooks,
-)
+from tests.fixtures.memory_parity.compat import HOOK_POINTS, resolve_all_hooks
 from tests.fixtures.memory_parity.compare import compare_captures, compare_trades, format_report
 from tests.fixtures.memory_parity.generate_synthetic import (
     default_synthetic_path,
     write_synthetic_csv,
+)
+from tests.fixtures.memory_parity.gitref import (
+    GitRefError,
+    diff_vs_main,
+    show_at_farm,
 )
 from tests.fixtures.memory_parity.io import cell_dir, write_capture
 from tests.fixtures.memory_parity.slice_csv import (
@@ -49,36 +51,33 @@ def test_hook_points_resolve_on_imported_package() -> None:
 def test_hook_points_exist_at_farm_production_commit() -> None:
     """Every capture/trace hook name exists at 59a4652 (read-only git show)."""
     missing: list[str] = []
-    for module_name, attr in HOOK_POINTS:
-        rel = module_name.replace(".", "/") + ".py"
-        source = subprocess.check_output(
-            ["git", "show", f"{FARM_PRODUCTION_COMMIT}:{rel}"],
-            cwd=REPO,
-            text=True,
-        )
-        needle = f"def {attr}("
-        if needle not in source and f"{attr} =" not in source:
-            # Module-level re-export (from x import attr) is also a hit.
-            if f"import {attr}" not in source and f" {attr}," not in source:
-                missing.append(f"{rel} {attr}")
+    try:
+        for module_name, attr in HOOK_POINTS:
+            rel = module_name.replace(".", "/") + ".py"
+            source = show_at_farm(rel)
+            needle = f"def {attr}("
+            if needle not in source and f"{attr} =" not in source:
+                # Module-level re-export (from x import attr) is also a hit.
+                if f"import {attr}" not in source and f" {attr}," not in source:
+                    missing.append(f"{rel} {attr}")
+    except GitRefError as exc:
+        pytest.fail(str(exc))
     assert missing == []
 
 
 def test_thesistester_package_untouched_vs_main() -> None:
-    diff = subprocess.check_output(
-        ["git", "diff", "main", "--", "thesistester/"],
-        cwd=REPO,
-        text=True,
-    )
+    try:
+        diff = diff_vs_main("thesistester/")
+    except GitRefError as exc:
+        pytest.fail(str(exc))
     assert diff == ""
 
 
 def test_legacy_golden_readme_not_touched() -> None:
-    diff = subprocess.check_output(
-        ["git", "diff", "main", "--", "tests/fixtures/golden/"],
-        cwd=REPO,
-        text=True,
-    )
+    try:
+        diff = diff_vs_main("tests/fixtures/golden/")
+    except GitRefError as exc:
+        pytest.fail(str(exc))
     assert diff == ""
 
 
@@ -264,8 +263,12 @@ def test_stage_trace_rule_table() -> None:
     assert compute_b(r_pre_prepare_hwm_gib=2.0, r_signals_hwm_gib=1.5) == 2.0
 
 
-@pytest.mark.skipif(not GOLDEN.is_dir(), reason="synthetic golden not recorded yet")
 def test_synthetic_golden_matches_live_capture(tmp_path: Path) -> None:
+    if not GOLDEN.is_dir():
+        pytest.fail(
+            "STOP AND REPORT: synthetic golden is missing; "
+            "do not skip — re-run with --regenerate only at the MW0 base commit"
+        )
     from tests.fixtures.memory_parity.record_memory_parity import record_synthetic
 
     candidate = record_synthetic(tmp_path / "live", run_label="ci-live")
@@ -279,8 +282,12 @@ def test_synthetic_golden_matches_live_capture(tmp_path: Path) -> None:
     assert int(zero["trade_count"]) == 0
 
 
-@pytest.mark.skipif(not GOLDEN.is_dir(), reason="synthetic golden not recorded yet")
 def test_synthetic_two_runs_canonical_hash_equal(tmp_path: Path) -> None:
+    if not GOLDEN.is_dir():
+        pytest.fail(
+            "STOP AND REPORT: synthetic golden is missing; "
+            "do not skip — re-run with --regenerate only at the MW0 base commit"
+        )
     from tests.fixtures.memory_parity.record_memory_parity import record_synthetic
 
     first = record_synthetic(tmp_path / "a", run_label="det-a")
@@ -298,3 +305,106 @@ def test_synthetic_generator_is_deterministic(tmp_path: Path) -> None:
     committed = default_synthetic_path()
     if committed.is_file():
         assert committed.read_bytes() == first.read_bytes()
+
+
+def test_resolve_main_ref_prefers_origin_main_over_local_main(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.fixtures.memory_parity import gitref
+
+    monkeypatch.setattr(
+        gitref, "ref_exists", lambda ref, *, cwd=None: ref in {"origin/main", "main"}
+    )
+    assert gitref.resolve_main_ref() == "origin/main"
+
+
+def test_resolve_main_ref_fetches_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.fixtures.memory_parity import gitref
+
+    fetched = {"done": False}
+
+    def exists(ref: str, *, cwd: Path | None = None) -> bool:
+        return fetched["done"] and ref == "origin/main"
+
+    def git_ok(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+        fetched["done"] = True
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(gitref, "ref_exists", exists)
+    monkeypatch.setattr(gitref, "_git_ok", git_ok)
+    assert gitref.resolve_main_ref() == "origin/main"
+
+
+def test_resolve_main_ref_fails_closed_when_unresolvable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.fixtures.memory_parity import gitref
+
+    monkeypatch.setattr(gitref, "ref_exists", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        gitref,
+        "_git_ok",
+        lambda args, *, cwd=None: subprocess.CompletedProcess(
+            args, 128, "", "not a valid object name"
+        ),
+    )
+    with pytest.raises(GitRefError, match="STOP AND REPORT"):
+        gitref.resolve_main_ref()
+
+
+def test_resolve_farm_commit_fails_closed_when_unresolvable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.fixtures.memory_parity import gitref
+
+    monkeypatch.setattr(gitref, "ref_exists", lambda *args, **kwargs: False)
+    monkeypatch.setattr(gitref, "_is_shallow", lambda *, cwd=None: False)
+    monkeypatch.setattr(
+        gitref,
+        "_git_ok",
+        lambda args, *, cwd=None: subprocess.CompletedProcess(args, 128, "", "missing"),
+    )
+    with pytest.raises(GitRefError, match="STOP AND REPORT"):
+        gitref.resolve_farm_production_commit()
+
+
+def test_isolate_store_restores_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.fixtures.memory_parity.capture import STORE_ENV, isolate_store
+
+    monkeypatch.delenv(STORE_ENV, raising=False)
+    with isolate_store(tmp_path):
+        assert Path(os.environ[STORE_ENV]) == (tmp_path / "store").resolve()
+    assert STORE_ENV not in os.environ
+
+
+def test_load_time_prepare_resets_vmhwm_after_map_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import weakref
+
+    from tests.fixtures.memory_parity.stage_trace import (
+        TraceState,
+        make_prepare_wrapper,
+    )
+
+    held_at_reset: list[bool] = []
+    refs: list[weakref.ref[dict[str, str]]] = []
+
+    def fake_prepare(*args: object, **kwargs: object) -> dict[str, str]:
+        payload = {"map": "alive"}
+        refs.append(weakref.ref(payload))
+        return payload
+
+    def fake_reset() -> None:
+        held_at_reset.append(refs[-1]() is not None)
+
+    monkeypatch.setattr(
+        "tests.fixtures.memory_parity.stage_trace.collect_and_reset_vmhwm", fake_reset
+    )
+    monkeypatch.setattr(
+        "tests.fixtures.memory_parity.stage_trace.sample",
+        lambda *args, **kwargs: None,
+    )
+    wrapped = make_prepare_wrapper(fake_prepare, TraceState())
+    assert wrapped() is None
+    assert held_at_reset == [False]

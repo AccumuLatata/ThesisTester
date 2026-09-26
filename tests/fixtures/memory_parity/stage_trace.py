@@ -4,8 +4,10 @@ Owner addition (binding, not in the plan text): reset ``VmHWM`` by writing
 ``5`` to ``/proc/self/clear_refs`` immediately after the load-time
 ``prepare_subtimeframe_conservative_context`` call inside
 ``_load_15s_primary_experiment_data`` returns — not after ``R_load``.
-``R_pre_prepare.hwm`` is taken immediately before that prepare call.
-Consequently ``R_load.hwm`` and every later ``hwm`` start from that reset.
+The wrapper drops the discarded map and runs ``gc.collect()`` before
+``clear_refs``, so the reset excludes that map. ``R_pre_prepare.hwm`` is
+taken immediately before that prepare call. Consequently ``R_load.hwm``
+and every later ``hwm`` start from that reset.
 
 Does not run the 50 replicas (stop after ``R_done``). Non-invasive hooks only.
 """
@@ -68,7 +70,10 @@ def read_vm() -> tuple[float, float]:
     """Return (VmRSS, VmHWM) in KiB from ``/proc/self/status``."""
     rss: float | None = None
     hwm: float | None = None
-    text = STATUS_PATH.read_text(encoding="utf-8")
+    try:
+        text = STATUS_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise StageTraceError(f"failed to read {STATUS_PATH}: {exc}") from exc
     for line in text.splitlines():
         if line.startswith("VmRSS:"):
             rss = float(line.split()[1])
@@ -83,7 +88,16 @@ def reset_vmhwm() -> None:
     """Write ``5`` to ``/proc/self/clear_refs`` (sets VmHWM back to current RSS)."""
     if not CLEAR_REFS.is_file():
         raise StageTraceError(f"{CLEAR_REFS} is not available (Linux-only trace)")
-    CLEAR_REFS.write_text("5", encoding="ascii")
+    try:
+        CLEAR_REFS.write_text("5", encoding="ascii")
+    except OSError as exc:
+        raise StageTraceError(f"failed to reset VmHWM via {CLEAR_REFS}: {exc}") from exc
+
+
+def collect_and_reset_vmhwm() -> None:
+    """gc the discarded load-time map, then reset VmHWM to current RSS."""
+    gc.collect()
+    reset_vmhwm()
 
 
 def sample(name: str, state: TraceState, *, collect: bool, rss: bool) -> Sample:
@@ -153,25 +167,37 @@ def compute_b(*, r_pre_prepare_hwm_gib: float, r_signals_hwm_gib: float) -> floa
     return max(r_pre_prepare_hwm_gib, r_signals_hwm_gib)
 
 
+def make_prepare_wrapper(
+    original: Callable[..., Any], state: TraceState
+) -> Callable[..., Any]:
+    """Wrap load-time prepare: sample, drop the map, then reset VmHWM."""
+
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        load_time = state.prepare_calls == 0
+        if load_time:
+            sample("R_pre_prepare", state, collect=False, rss=False)
+        result = original(*args, **kwargs)
+        state.prepare_calls += 1
+        if load_time:
+            # Caller discards this return. Drop our reference *before*
+            # clear_refs so VmHWM excludes the load-time map.
+            result = None
+            collect_and_reset_vmhwm()
+            state.reset_after_load_prepare = True
+            return None
+        if state.prepare_calls == 2:
+            # First simulate_trades context is alive (we hold ``result``).
+            sample("R_ctx", state, collect=True, rss=True)
+        return result
+
+    return wrapped
+
+
 def _install_trace_hooks(state: TraceState) -> list[Any]:
     undo: list[Any] = []
 
     def prepare_factory(original: Callable[..., Any]) -> Callable[..., Any]:
-        def wrapped(*args: Any, **kwargs: Any) -> Any:
-            load_time = state.prepare_calls == 0
-            if load_time:
-                sample("R_pre_prepare", state, collect=False, rss=False)
-            result = original(*args, **kwargs)
-            state.prepare_calls += 1
-            if load_time:
-                reset_vmhwm()
-                state.reset_after_load_prepare = True
-            elif state.prepare_calls == 2:
-                # First simulate_trades context is alive (we hold ``result``).
-                sample("R_ctx", state, collect=True, rss=True)
-            return result
-
-        return wrapped
+        return make_prepare_wrapper(original, state)
 
     def load_factory(original: Callable[..., Any]) -> Callable[..., Any]:
         def wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -220,7 +246,6 @@ def run_stage_trace(
 
     work = Path(output_json).resolve().parent / f"stage_trace_work_{run_label}"
     work.mkdir(parents=True, exist_ok=True)
-    isolate_store(work)
     study_out = work / "study"
     source = Path(full_spec_path) if full_spec_path is not None else locate_full_spec()
     yaml_path = rewrite_full_spec_dataset(source, work / "study.yaml", csv_path)
@@ -228,14 +253,15 @@ def run_stage_trace(
     state = TraceState()
     undo = _install_trace_hooks(state)
     try:
-        with skip_replica_loop():
-            run_study(
-                yaml_path,
-                output_dir=study_out,
-                workers=1,
-                confirm=False,
-                force=True,
-            )
+        with isolate_store(work):
+            with skip_replica_loop():
+                run_study(
+                    yaml_path,
+                    output_dir=study_out,
+                    workers=1,
+                    confirm=False,
+                    force=True,
+                )
     finally:
         restore_aliases(undo)
 

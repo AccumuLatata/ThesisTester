@@ -17,11 +17,10 @@ from .capture import CaptureAbort, capture_study_cell
 from .cells import CI_CELL6_SHAPE, CI_PREPARE_REPLICA
 from .compare import compare_captures, format_report
 from .compat import package_identity, resolve_all_hooks
-from .generate_synthetic import write_synthetic_csv
+from .generate_synthetic import default_synthetic_path, write_synthetic_csv
 
 FIXTURE_ROOT = Path(__file__).resolve().parent
 GOLDEN_ROOT = FIXTURE_ROOT / "synthetic_golden"
-SYNTHETIC_CSV = FIXTURE_ROOT / "synthetic_mnq_15s.csv"
 CI_CELLS = (CI_PREPARE_REPLICA, CI_CELL6_SHAPE)
 
 
@@ -30,7 +29,14 @@ def record_synthetic(dest: Path, *, run_label: str) -> Path:
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)
-    csv_path = write_synthetic_csv(SYNTHETIC_CSV)
+    # Write under dest. Never overwrite the committed fixture from a compare run.
+    csv_path = write_synthetic_csv(dest / "synthetic_mnq_15s.csv")
+    committed = default_synthetic_path()
+    if committed.is_file() and committed.read_bytes() != csv_path.read_bytes():
+        raise CaptureAbort(
+            "committed synthetic_mnq_15s.csv differs from the generator; "
+            "stop and report — do not record from a drifted fixture"
+        )
     for spec in CI_CELLS:
         capture_study_cell(
             spec,

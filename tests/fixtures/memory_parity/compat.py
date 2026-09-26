@@ -13,7 +13,9 @@ from types import ModuleType
 from typing import Any, Callable
 
 # Farm production commit the §9 pre-step must also run against.
+# Short SHA is the plan's pin; the full SHA is what a shallow CI clone can fetch.
 FARM_PRODUCTION_COMMIT = "59a4652"
+FARM_PRODUCTION_COMMIT_FULL = "59a4652cdb96ac86da6675633fd57f3e31f803e0"
 
 # Every hook used by capture / stage-trace. Confirmed present at 59a4652
 # via ``git show 59a4652:<path>`` (function names, not line numbers).
