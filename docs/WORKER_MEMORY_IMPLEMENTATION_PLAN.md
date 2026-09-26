@@ -197,40 +197,61 @@ Why MW3 cannot change a result: the memmap is float64, opened read-only, and acc
 
 No MW1 (and no MW-L, and no MW2) code is written until this trace has been run on the **farm CSV** at the exact commit MW1 will branch from, flag off, one process. That is the same commit as MW0 (§9), after the §9 pre-step has matched `59a4652`. A short synthetic prefix cannot see a loader buffer that scales with the real file. The trace is an operator measurement. It is not a product change and it is not required to land in git before the numbers exist. Record the numbers in the MW1 PR body so the order decision is reviewable.
 
-Stop points, **full file**, `VmRSS` after `gc.collect()`:
+Stop points, **full file**. At every stop record two numbers. `rss` is `VmRSS` after `gc.collect()`, except at `R_bundle`, where the full-width frames are still reachable and must not be collected away. `hwm` is `VmHWM` at the same moment. `VmHWM` is the process high-water mark. It does not fall after `gc.collect()`, so a post-gc `rss` sample misses the peak the process already reached.
 
 | Name | When |
 |---|---|
-| `R_load` | Immediately after `_load_15s_primary_experiment_data` returns. The discarded context has been freed |
-| `R_signals` | After `generate_signals` returns |
-| `R_ctx` | While the first `simulate_trades` context is alive |
-| `R_done` | After that call returns and `gc.collect()` |
+| `R_load` | Immediately after `_load_15s_primary_experiment_data` returns. The discarded context has been freed. Then `gc.collect()` |
+| `R_signals` | After `generate_signals` returns. Then `gc.collect()` |
+| `R_ctx` | While the first `simulate_trades` context is alive. `gc.collect()` only drops unreachable objects; the context stays reachable |
+| `R_bundle` | Inside `build_research_bundle`, before it returns, while levels, naked flags, signals, and the trades frame are all still reachable. Do not drop those references before the sample |
+| `R_done` | After that first `simulate_trades` returns and `gc.collect()` |
 
-`map_step = R_ctx − R_signals`.
+`map_step = R_ctx.rss − R_signals.rss`. §8.1's `R_load`, `map_step`, and `R_ctx` thresholds use these post-gc `rss` numbers. The §8.1 capacity check uses `R_signals.rss`. §8.2 does not. It uses `hwm`.
 
 Do not run all 50 replicas for this split. The synthetic rebuild test showed a second map does not raise RSS once the first map's arena exists. One live context plus the held frames is the peak shape. The 50-replica **timing** is a separate measurement in §14.
 
 ### 8.1 Decision rule
 
-Apply the first matching rule. The rules are mutually exclusive. `R_load ≥ 4.0 GiB` together with `map_step ≥ 1.5 GiB` is rule 2, not rule 1: the map is still a large step, so MW1 stays first.
+Apply the first matching rule. The rules are mutually exclusive. In this section `R_load`, `R_signals`, `R_ctx`, and `map_step` are the post-gc `rss` values from the stop table. `R_load ≥ 4.0 GiB` together with `map_step ≥ 1.5 GiB` is rule 2, not rule 1: the map is still a large step, so MW1 stays first.
 
 1. **Loader is the peak.** `R_load ≥ 4.0 GiB` and `map_step < 0.5 GiB`. Do MW-L before MW1. Do not treat MW1 → MW2 as the order. After MW-L, rerun this trace and apply this section again. The peak is the loader. Removing the map would not move it.
 2. **Loader still resident, map still large.** `R_load ≥ 2.0 GiB` and `map_step ≥ 1.5 GiB`, and rule 1 did not match. This includes `R_load ≥ 4.0 GiB` when the map step is also large. MW1 first, then MW-L, then MW2. The Quantower parse or the `StringIO` re-read is still resident after load returns. MW-L is specified in §12. The post-MW-L trace re-enters this section before MW2.
 3. **Planned split.** All three hold: `R_load ≤ 1.2 GiB`, `map_step` between 1.5 and 3.5 GiB, and `R_ctx` between 5.5 and 8.0 GiB. Keep MW1 → MW2. No MW-L. Then apply the capacity check in the next paragraph.
 4. **Anything else stops the series.** Examples: `R_load` between 1.2 and 2.0 GiB, `map_step` between 0.5 and 1.5 GiB while `R_load ≥ 2.0 GiB`, or `R_ctx` outside 5.5–8.0 GiB on a split that otherwise looks planned. Write the four numbers down and revise this plan before coding. Do not guess.
 
-**Capacity check, rule 3 only.** MW2's stated removal is about 0.8–1.2 GiB of full-width copies on top of `R_signals`. If `R_signals > 4.5 GiB`, then `R_signals − 1.2 GiB > 3.3 GiB`: the copies can leave and the worker still cannot fit 16-wide. Stop and revise this plan before MW1. Do not spend MW1 and MW2 on a path that cannot hit §1. Rule 2 does not use this check until the post-MW-L trace comes back through rule 3.
+**Capacity check, rule 3 only.** MW2's stated removal is about 0.8–1.2 GiB of full-width copies on top of `R_signals`. If `R_signals.rss > 4.5 GiB`, then `R_signals.rss − 1.2 GiB > 3.3 GiB`: the copies can leave and the worker still cannot fit 16-wide. Stop and revise this plan before MW1. Do not spend MW1 and MW2 on a path that cannot hit §1. Rule 2 does not use this check until the post-MW-L trace comes back through rule 3.
 
 ### 8.2 Ranges the farm confirms or rejects
 
-The §6 bands **3.4–4.6 GiB** (after MW1) and **2.4–3.4 GiB** (after MW2) are planning estimates for the synthetic split. They are not the reject threshold. Under rule 3, `R_signals = R_ctx − map_step` can sit anywhere from 2.0 to 6.5 GiB, so a fixed 3.4–4.6 band would reject a correct MW1 when `R_signals` is 2.2 GiB and accept nothing useful when `R_signals` is 6.0 GiB. Gate on the trace.
+The §6 bands **3.4–4.6 GiB** (after MW1) and **2.4–3.4 GiB** (after MW2) are planning estimates for the synthetic split. They are not the gate. The gate quantity is `VmHWM`, not post-gc `VmRSS`.
 
-| Point | Accept | Reject the savings claim |
-|---|---|---|
-| After MW1 (map gone, full-width copies still held) | peak in `[R_signals, R_signals + 0.4 GiB]` | below `R_signals − 0.3 GiB` or above `R_signals + 1.0 GiB` |
-| After MW2 (those copies released, `hash_dataframe` unchanged) | peak ≤ 3.3 GiB, and at least 0.4 GiB under `R_signals` | above `R_signals − 0.4 GiB` (the copies did not leave), or above 3.6 GiB |
+`B` is the flag-off trace `hwm` at `R_signals`: the process high-water mark before `simulate_trades` builds the per-minute map. `H` is the flag-on cell `hwm` at `R_done`: the high-water mark of that whole process. `VmHWM` never falls, so `H` is not a post-gc sample and it is not `R_bundle.rss`. On the flag-off trace, `R_bundle.hwm` still includes the earlier map peak. It is recorded so the trace shows when the high-water was last raised. It is not `B`.
 
-A MW1 peak inside its band may still be above 3.3 GiB. That does not fail MW1. It keeps the 16-worker gate closed until MW2. Sixteen workers stay blocked until a flag-on smoke peak is ≤ 3.3 GiB. See §14. A peak above 3.6 GiB after MW2 blocks that gate even if the copies did leave.
+Every measured `H` falls in exactly one row. Boundaries belong to the row that names them.
+
+**After MW1** (map gone, full-width copies still held):
+
+| `H` | Outcome |
+|---|---|
+| `H < B − 0.3 GiB` | Reject. The run is not the full cell, or the savings claim is false |
+| `B − 0.3 GiB ≤ H < B` | Stop. Revise this plan before MW2. Do not call MW1 accepted or rejected |
+| `B ≤ H ≤ B + 0.4 GiB` | Accept |
+| `B + 0.4 GiB < H ≤ B + 1.0 GiB` | Stop. The map is not fully gone. Revise before MW2 |
+| `H > B + 1.0 GiB` | Reject. The map did not leave |
+
+An MW1 accept may still be above 3.3 GiB. That does not fail MW1. It keeps the 16-worker gate closed until MW2.
+
+**After MW2** (those copies released, `hash_dataframe` unchanged). Apply the first matching row:
+
+| `H` | Outcome |
+|---|---|
+| `H > 3.6 GiB` | Reject. Blocks 16 workers |
+| `H > B − 0.4 GiB` | Reject. The copies did not leave |
+| `3.3 GiB < H ≤ 3.6 GiB` | Stop. Copies left, and the worker is still above the 16-worker cap. Revise before opening the gate |
+| `H ≤ 3.3 GiB` | Accept |
+
+Sixteen workers stay blocked until a flag-on smoke `hwm` is ≤ 3.3 GiB. See §14. Only an accept row passes the savings claim. A stop revises this plan. A reject blocks the claim.
 
 ---
 
@@ -269,17 +290,25 @@ All six use MNQ, `15s_primary_derive_1m`, `subtimeframe_conservative`, `toleranc
 
 | Cells | Policy | Why |
 |---|---|---|
-| 1–4 and 6 | `raise` | The reference cell's policy. If a short-window cell raises, stop and report. Do not switch the policy to obtain trades |
-| 5 | `legacy` | Engine default. `3c` can emit two directions on one bar; `raise` aborts the cell and then it does not exercise fills |
+| 1, 3, 4, and 6 | `raise` | These four cannot emit a same-bar opposite pair, so `raise` does not abort them. If one of them raises anyway, stop and report. Do not switch the policy to obtain trades |
+| 2 and 5 | `legacy` | Engine default. Both can emit a long and a short at the same entry bar; `raise` aborts in `_order_candidates_and_da3` and the cell never fills |
+
+Cell 2 stays `direction: both`. Locking it to one side would also avoid the abort, and it would stop exercising touch: `_check_touch` ignores direction, and `_dispatch_simple_triggers` loops long and short only when direction is `both`. `legacy` still emits that pair and still fills, because `_order_candidates_and_da3` returns before the raise when the policy is `legacy`. `single_position` then keeps one candidate. That is the same reason cell 5 is `legacy`.
+
+Cells 1, 3, 4, and 6 cannot produce a same-bar opposite pair under `raise`:
+
+- Cells 1 and 6 are `fade`. They go through `_dispatch_approach_side_triggers`, which does not loop directions. `_check_approach_side_trigger` emits one implied direction from `_implied_approach_direction`. `detect_anchor_confluence_zones` appends at most one zone per bar. One zone, one direction, so `_same_bar_collision_groups` has no long-and-short group. Cell 6 also emits no zone: `SMA_200_30min` stays NaN on that slice, `generate_signals` returns empty, and `raise` is never reached.
+- Cell 3 is `break`. It does go through `_dispatch_simple_triggers`, which loops both directions. `_check_break` still cannot pass both: long needs `close > zone_high`, short needs `close < zone_low`, and `zone_low <= zone_high`. One anchor zone per bar, so at most one of the two checks returns a signal.
+- Cell 4 is `continuation`. Same dispatcher and one-direction checker as fade. One anchor zone per bar, one direction.
 
 | # | Entry | Anchor × partner | Stop/target | Why it is here |
 |---|---|---|---|---|
-| 1 | `fade` @ 1min | `ONH` × `SMA_50_5min` | 80/80 | The reference configuration, short window |
-| 2 | `touch` | `pdHigh` × `EMA_9_1min` | 40/80 | Other entry, other bracket |
-| 3 | `break` | `OR_High` × `VWAP_rolling_30min` | 20/60 | Other anchor family |
-| 4 | `continuation` | `LondonHigh` × `Pivot_5m_High` | 80/40 | Approach-side twin of fade, asymmetric bracket |
+| 1 | `fade` @ 1min | `ONH` × `SMA_50_5min` | 80/80 | The reference configuration, short window. Policy `raise` |
+| 2 | `touch` | `pdHigh` × `EMA_9_1min` | 40/80 | Other entry, other bracket. Policy `legacy` |
+| 3 | `break` | `OR_High` × `VWAP_rolling_30min` | 20/60 | Other anchor family. Policy `raise` |
+| 4 | `continuation` | `LondonHigh` × `Pivot_5m_High` | 80/40 | Approach-side twin of fade, asymmetric bracket. Policy `raise` |
 | 5 | `3c` | `ONL` × `SMA_200_1min` | 60/60 | Different signal machinery. Policy `legacy` |
-| 6 | `fade`, UTC `[2024-08-01, 2024-08-04)` | `ONH` × `SMA_200_30min` | 80/80 | 0 trades. Three UTC days are fewer than 200 thirty-minute bars, so `SMA_200_30min` stays NaN and `anchor_rules` emits no candidate. Random fields stay null |
+| 6 | `fade`, UTC `[2024-08-01, 2024-08-04)` | `ONH` × `SMA_200_30min` | 80/80 | 0 trades. Three UTC days are fewer than 200 thirty-minute bars, so `SMA_200_30min` stays NaN and `anchor_rules` emits no candidate. Random fields stay null. Policy `raise` |
 
 If cell 6 produces any trade, the slice is wrong. Do not record it as the 0-trade golden. Do not change tolerance, the pair, or the policy to force a zero.
 
@@ -319,10 +348,10 @@ When the flag is on, every caller of those two functions uses the array storage 
 - Prepare validates with the same predicates (duplicate timestamps, monotonicity, expected sub-bar count, alignment, finite OHLC, parent/sub reconcile within `tick_size * 1e-6`). The same errors are raised. The same fallback reasons are stored for the conservative model. `_REQUIRED_OHLC` is `timestamp`, `open`, `high`, `low`, `close`. Prepare does not read `volume` or `session`.
 - Storage is three pieces, and not a float64 OHLC block alone:
   - `open` / `high` / `low` / `close` as one `float64` array, shape `(n_sub_bars, 4)`, same bits as the source frame.
-  - `timestamp` as a timezone-aware `datetime64[ns]` array, same timezone and values as the source column. `resolve_subtimeframe_bar` reads `sub_bar["timestamp"]` and the trade column `exit_subbar_timestamp` is `pd.Timestamp` of that value. Omitting it changes the trade frame and `canonical_bundle_hash`.
+  - `timestamp` with the same dtype, unit (`ns` or `us`), and timezone as the source frame's `timestamp` column. `derive.py` keeps the loader unit (`_timestamps_matching_source_dtype`, `_normalize_source_frame`); pandas 3 may be `us` and pandas 2 `ns`. Do not force `datetime64[ns]`. `resolve_subtimeframe_bar` reads `sub_bar["timestamp"]` and the trade column `exit_subbar_timestamp` is `pd.Timestamp` of that value. Omitting it, or changing the unit, changes the trade frame and `canonical_bundle_hash`.
   - An `int64` start offset and an `int32` count per parent bar. Fallback parent indexes are absent from the mapping. This file's offsets fit in `int32`; the contract is still `int64` so a longer source cannot wrap.
 - Do not cache `volume` or `session`. The current `.copy()` keeps them because it slices the whole source row. The walker never reads them. A per-sub-bar string `session` column would put back the RSS this PR removes.
-- `SubtimeframeContext.groups` remains a mapping. `__getitem__` and `.get` build **one** frame for that parent index and the caller discards it after `resolve_subtimeframe_bar` returns. The frame is not stored. Its columns are exactly `timestamp`, `open`, `high`, `low`, `close`. OHLC dtypes are `float64`. The timestamp dtype matches the source, including timezone. The index is a `RangeIndex` starting at 0 with length equal to the count (4 on a complete 15-second minute). Missing keys raise `KeyError` on `__getitem__` and return `None` on `.get`, same as `dict`. `__len__` and iteration follow the parent indexes that have a group.
+- `SubtimeframeContext.groups` remains a mapping. `__getitem__` and `.get` build **one** frame for that parent index and the caller discards it after `resolve_subtimeframe_bar` returns. The frame is not stored. Its columns are exactly `timestamp`, `open`, `high`, `low`, `close`. OHLC dtypes are `float64`. The timestamp dtype, unit (`ns` or `us`), and timezone match the source column. The index is a `RangeIndex` starting at 0 with length equal to the count (4 on a complete 15-second minute). Missing keys raise `KeyError` on `__getitem__` and return `None` on `.get`, same as `dict`. `__len__` and iteration follow the parent indexes that have a group.
 - Flag-on parity against flag-off is timestamp, OHLC, that index, those dtypes, and the fallback reason strings. It is not "every column of the old copy".
 - The strict model (`prepare_subtimeframe_context`) uses the same storage behind the same flag, so a later `intrabar_model: subtimeframe` cell does not keep the old map. Program B uses conservative. Both are in this PR because they share the dict-of-frames shape.
 
@@ -336,7 +365,7 @@ A worker runs more than one cell (§5). The slot is therefore not keyed by `id()
 
 - Order-sensitive digest of the parent columns `timestamp`, `open`, `high`, `low`, `close`, in row order, including `str(dtype)`. Do not sort first.
 - Order-sensitive digest of the same five columns on the subtimeframe frame, in row order. Do not include `volume`. Prepare does not read it. The 15-second frame is not inside `DataIdentity`. A parent-only key is wrong.
-- `str(parent_interval)`, `str(sub_interval)`, `repr(float(tick_size))` using the same float that prepare already uses, and the model name: `subtimeframe` or `subtimeframe_conservative`.
+- The resolved parent interval and the resolved sub interval, each as an integer nanosecond count: `int(resolved.value)` on the `Timedelta` that `_resolve_bar_intervals` returns (`parse_interval` in `thesistester/data/loader.py`). Do not key `str(parent_interval)` or `str(sub_interval)` of the argument prepare received. `repr(float(tick_size))` uses the same float that prepare already uses. Model name: `subtimeframe` or `subtimeframe_conservative`.
 
 `LevelsIdentity` is not part of the key. The context does not read level columns.
 
@@ -345,7 +374,9 @@ Do **not** use `DataIdentity.dataset_id()` or `hash_dataframe` as this key.
 - `dataset_id()` hashes the whole frame through `hash_dataframe`, then mixes in instrument, base interval, and the two timezones. The load-time parent is OHLCV plus `session`. The backtest parent is the levels frame: `compute_all_levels` joins level columns onto the copy `compute_session_levels` sorts by timestamp. Those two dataset ids differ, so a `dataset_id` key misses on the real backtest and the 50 replicas rebuild or, worse, share a context built for a different column set. The earlier sentence that said this key makes the backtest hit the load-time slot was wrong.
 - `hash_dataframe` sorts by timestamp before hashing (`_canonicalize_dataframe` in `thesistester/persistence/local_store.py`). Groups are indexed by row position (`groups[bar_index]` in `sim_core.py`). An order-insensitive hash can hit across a permuted frame and attach the wrong sub-bars to a parent index. That changes fills and `exit_subbar_timestamp`.
 
-A hit requires the order-sensitive digests to match. The load-time parent and the levels frame hit only when timestamp and OHLC bits and row order match. Prepare already rejects a non-monotonic parent, and `compute_session_levels` sorts by timestamp, so a levels frame built from that parent matches when the OHLC bits match. A mismatch misses and rebuilds. That rebuild is correct. Do not force the hit. Publish the slot only after prepare returns. A raise must not leave a partial entry.
+A hit requires the order-sensitive digests to match and the resolved interval nanoseconds to match. The load-time call passes `DerivedParentResult.parent_interval` and `source_interval` (`pd.Timedelta` from `derive_complete_parent_ohlcv`: `str` of those is `0 days 00:01:00` and `0 days 00:00:15`). The backtest passes provenance strings from `format_interval` (`derived_parent_interval` `"1min"`, `source_interval` `"15s"`), through `run_experiment` into `run_backtest` and through `_cell_execution_kwargs` into the replicas. `parse_interval` turns both spellings into the same `Timedelta`. The nanosecond key therefore matches. The raw `str` of the argument does not, so a key that uses that string misses and the backtest does not reuse the load-time slot.
+
+The backtest reuses the load-time slot only when those digests match and those nanosecond counts match. Same bars are not enough if the OHLC bits differ. A digest miss rebuilds. That rebuild is correct. Do not force the hit. Prepare already rejects a non-monotonic parent, and `compute_session_levels` sorts by timestamp, so a levels frame built from that parent matches the load-time parent when the OHLC bits match. Publish the slot only after prepare returns. A raise must not leave a partial entry.
 
 **Lifetime:** `execute_study_cell` enters the slot at the start of the `try` and clears it in `finally`, including on exception, before the function returns. That is the latest legal clear. The next task in that process starts empty. The load-time prepare, `simulate_trades`, and the 50 replicas all run inside that one call, so they share the slot.
 
@@ -353,7 +384,7 @@ A hit requires the order-sensitive digests to match. The load-time parent and th
 
 **Lookup.** Every prepare call while the slot is active computes this content key and compares it to the key stored in the slot. That is the load-time call, the `simulate_trades` call, and all 50 replica calls. A hit reuses the array. A miss replaces the slot. There is no second lookup and no "already filled, skip the hash" path.
 
-Object identity is rejected. `id(df)`, the `id` of a column, a cached pointer, and any address are not the key and are not a hint that skips the hash. The parent object used at load time and the levels frame are different objects. An identity check misses. The order-sensitive OHLC digest is what makes the backtest and the replicas hit the slot built during load, and only when the bits match. Load is inside `execute_study_cell`, so the slot is active for that first build.
+Object identity is rejected. `id(df)`, the `id` of a column, a cached pointer, and any address are not the key and are not a hint that skips the hash. The parent object used at load time and the levels frame are different objects. An identity check misses. Load is inside `execute_study_cell`, so the slot is active for that first build. The backtest and the replicas reuse that entry only under the hit rule above. They are not guaranteed to reuse it merely because the slot is active.
 
 **Hash cost, measured on a different function.** `hash_dataframe` on synthetic 7-column frames (timestamp, OHLC, volume, session), real function, this investigation machine: **0.133 µs/row** at 725,880 rows (0.096 s) and **0.130 µs/row** at 1,451,760 rows. The slope is flat from 20k rows up. That function is **not** the slot key. It sorts, it hashes every column, and on the levels frame it would hash about 70 columns, so the old "0.5 s per prepare, 25 s per cell" figure is neither the key's cost nor a safe thing to call here. The slot digest is five columns, unsorted. Treat 25 s as a loose upper bound only. One dict-of-frames rebuild is minutes (~475 µs per complete minute). Re-time the real key on the farm only if the §14 wall-clock gate (≤ 105% of flag off) is within a minute of failing. On a 3.2–4.2 h cell, even the loose bound is inside that margin.
 
@@ -368,7 +399,7 @@ Do not edit `thesistester/engine/sim_core.py`, `resolve_subtimeframe_bar`, `thes
 
 ### 10.4 Tests
 
-1. **Group parity.** On a synthetic multi-day 15-second frame with some complete minutes and some sparse minutes, every group's `timestamp`, `open`, `high`, `low`, `close`, index, and dtypes of those columns from the flag-on mapping equal the flag-off prepare. Fallback reason strings equal. The same OHLC mismatch still raises, with the same error type. `volume` and `session` are not part of this equality. A second frame with the same rows in a different order must not reuse the first frame's groups.
+1. **Group parity.** On a synthetic multi-day 15-second frame with some complete minutes and some sparse minutes, every group's `timestamp`, `open`, `high`, `low`, `close`, index, and dtypes of those columns from the flag-on mapping equal the flag-off prepare. Fallback reason strings equal. The same OHLC mismatch still raises, with the same error type. `volume` and `session` are not part of this equality. A second frame, already sorted, with the same timestamps and different OHLC values, must produce a different key and must not reuse the first frame's groups. Prepare raises on unsorted timestamps before a lookup (`timestamps.is_monotonic_increasing` in both prepare functions), so a permuted frame never reaches the slot.
 2. **Trade parity.** `simulate_trades` on that frame, flag on vs flag off, bit-identical trades, including a `subtimeframe_conservative` run with slippage, commission, and flatten 16:00 `America/New_York`.
 3. **Replica parity.** `vs_random_benchmark` with `n_replicas=50` and `random_state=42`, flag on vs flag off: `replica_expectancies` bit-identical and in the same order. This is the proof the slot did not consume or reorder draws.
 4. **Two cells, one process.** Call `execute_study_cell` for cell A, then cell B, flag on, in one process. A and B use different OHLC (different prices, same shape) so a stale context changes fills. In a fresh process, run only B. B's trades, ordered `replica_expectancies`, and `canonical_bundle_hash` are bit-identical to the fresh run. This is the test that fails if the slot is keyed by `id()` or is not cleared.
@@ -381,7 +412,7 @@ The walker reads the same timestamp and OHLC in the same order, so `exit_subbar_
 
 ### 10.6 Savings and acceptance
 
-- Expected RSS: the §8.2 MW1 band, `[R_signals, R_signals + 0.4 GiB]`. The 3.4–4.6 GiB figure is only the §6 planning estimate. Reject MW1's savings claim outside the §8.2 reject rule.
+- Expected RSS: the §8.2 MW1 partition on flag-on `VmHWM`. The 3.4–4.6 GiB figure is only the §6 planning estimate. Only the accept row passes.
 - Expected speed: a large drop, because the 52 map builds are most of the 4 h. The acceptance bar is only "not more than 5% slower." A slower result blocks the flag.
 - Existing tests green. MW0 synthetic compare green with the flag on and with it off.
 - Revert: unset the variable. The new code remains, unused.
@@ -426,7 +457,7 @@ Flag on:
 
 - `flag_naked_levels` still **returns** a frame that `hash_dataframe`s equal to today's return (all original columns, same dtypes, plus the naked bools). It must not keep a second full-width copy alive for the rest of the cell if the bundle writer can receive the frame and then drop it. If the only way to build that frame is one temporary copy, the copy ends when `build_research_bundle` returns.
 - `_prepare_trigger_dataframe`, for a trigger timeframe that does not resample (the smoke cell's `1min` on a 1-minute parent), must not deep-copy every level column into a long-lived object. The signal frame that is actually written still `hash_dataframe`s equal to the flag-off signals frame.
-- After `build_research_bundle` returns inside `execute_study_cell`, and after `build_index_row_from_state` has hashed those zip bytes, release `naked_flags`, confluence zones, signals, and the wide levels frame **before** `random_baseline_fields`. Do not drop `trades` or `subtimeframe_data`. `_cell_bars` today prefers `levels`, and the cell backtest used that frame. The flag-on path passes a projection of **that** frame, not a different object, with columns `timestamp`, `open`, `high`, `low`, `close` only. Same length, same row order, same timestamp values, and the same OHLC bits. `random_entry_signals` draws bar indexes from `len(df) - 1`, so a shorter frame changes `replica_expectancies` even when the remaining prices match. `simulate_trades` reads `timestamp` for the flatten clock and prepare reads it as a required column. Without it, prepare raises, `random_baseline_fields` swallows the exception and returns null DA5, and bit parity fails. Do not substitute `state["data"]` unless its timestamp and OHLC bits equal the levels frame. `volume` and the level columns are not passed. The 15-second frame is passed unchanged. Because the MW1 key is the order-sensitive timestamp-plus-OHLC digest, the replica prepares hit the slot built for the backtest. Do this only after the bundle bytes are in hand, so the zip is already fixed.
+- After `build_research_bundle` returns inside `execute_study_cell`, and after `build_index_row_from_state` has hashed those zip bytes, release `naked_flags`, confluence zones, signals, and the wide levels frame **before** `random_baseline_fields`. Do not drop `trades` or `subtimeframe_data`. `_cell_bars` today prefers `levels`, and the cell backtest used that frame. The flag-on path passes a projection of **that** frame, not a different object, with columns `timestamp`, `open`, `high`, `low`, `close` only. Same length, same row order, same timestamp values, and the same OHLC bits. `random_entry_signals` draws bar indexes from `len(df) - 1`, so a shorter frame changes `replica_expectancies` even when the remaining prices match. `simulate_trades` reads `timestamp` for the flatten clock and prepare reads it as a required column. Without it, prepare raises, `random_baseline_fields` swallows the exception and returns null DA5, and bit parity fails. Do not substitute `state["data"]` unless its timestamp and OHLC bits equal the levels frame. `volume` and the level columns are not passed. The 15-second frame is passed unchanged. The replica prepares reuse the backtest's slot only when their key matches that entry, including the resolved interval nanoseconds. They are not guaranteed to reuse it from the projection alone. Do this only after the bundle bytes are in hand, so the zip is already fixed.
 - Do not delete or rewrite an existing zip during resume. `cells_to_run` already skips `ok` cells whose file exists. MW2 does not touch that function's predicate.
 
 ### 11.3 Files
@@ -459,7 +490,7 @@ The written frames hash the same, so the canonical bundle hash, journal check, a
 
 ### 11.6 Savings and acceptance
 
-- Expected RSS: the §8.2 MW2 rule. The 2.4–3.4 GiB figure is only the §6 planning estimate. A farm peak above **3.6 GiB**, or a peak that did not fall at least 0.4 GiB under `R_signals`, rejects the claim and blocks 16 workers.
+- Expected RSS: the §8.2 MW2 partition on flag-on `VmHWM`. The 2.4–3.4 GiB figure is only the §6 planning estimate. Only the accept row passes. Reject blocks 16 workers. Stop revises this plan before the gate opens.
 - Sixteen workers become legal only after §14, and only if the smoke peak is ≤ 3.3 GiB.
 - Speed still ≤ 105% of flag off.
 - Revert: unset the variable.
@@ -531,7 +562,7 @@ The gate script is **not in this repository**. Change it only after the measurem
 Order:
 
 1. **§9 pre-step**, on the commit MW1 will branch from, flag off, Linux, one process. The full reference cell equals the `59a4652` trades and `replica_expectancies` bits (59 trades, E=0.0805). A miss stops the series. Do not record MW0 and do not run the §8 trace as a substitute for this step.
-2. **§8 trace and MW0**, both on that same commit, only after step 1 passes. The trace is flag off, full CSV, one process. Record `R_load`, `R_signals`, `R_ctx`, `R_done`, and `map_step` in the MW1 PR. MW0 may be recorded in parallel with the trace. The trace does not block MW0. MW0 does not block the trace. Both block MW1.
+2. **§8 trace and MW0**, both on that same commit, only after step 1 passes. The trace is flag off, full CSV, one process. Record `rss` and `hwm` at `R_load`, `R_signals`, `R_ctx`, `R_bundle`, and `R_done`, plus `map_step`, in the MW1 PR. MW0 may be recorded in parallel with the trace. The trace does not block MW0. MW0 does not block the trace. Both block MW1.
 3. **MW1** (or MW-L first if §8.1 rule 1 says so). Parity: short suite, flag off vs on, Linux then macOS. Exact equality, including `canonical_bundle_hash` and `exit_subbar_timestamp`. Then the full reference cell, both machines, both flag states. Only a match allows `THESISTESTER_MEMORY_PATH=array` on the farm. The farm RSS must sit in the §8.2 MW1 band.
 4. **Speed**, same full cell, both flags. Wall time ≤ 105% of flag off. Expect a large drop. A slower result blocks the flag.
 5. **MW-L between MW1 and MW2** only if §8.1 rule 2 inserted it. Rule 1 already ran it before MW1, at step 3. Re-trace, then re-apply §8.1 before MW2.
