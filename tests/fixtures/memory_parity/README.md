@@ -142,6 +142,12 @@ PYTHONPATH=/path/to/thesistester-59a4652:/path/to/mw0-checkout \
 `PYTHONPATH` puts `59a4652` first so `import thesistester` is that commit,
 then the MW0 checkout so `tests.fixtures.memory_parity` is this tooling.
 
+`python -m` from this checkout would otherwise put cwd at `sys.path[0]`
+and shadow that worktree (silent main-vs-main capture). The operator
+lifts the first `PYTHONPATH` tree that contains `thesistester/` ahead of
+cwd, records the imported root on `meta.json`, and **stops** if the
+imported package is not that tree.
+
 ### 3. Compare (pre-step subset)
 
 ```bash
@@ -171,7 +177,14 @@ reference is non-null), ledger `status`/`error`/`bundle_path`, and the
 portable `canonical_bundle_hash`. Ledger wall-clock timestamps are
 excluded. The hash gate stays bit-strict on values; only the pandas
 major datetime-unit (and all-string `str` vs `object`) label is
-canonicalized before hashing.
+canonicalized before hashing. Last-bit float differences (the farm
+Mac/Linux `EMA_*` split in `levels.parquet` / `naked_flags.parquet`)
+**fail** the hash. Comparisons are same-machine against that machine's
+own baseline. Identity JSON strings
+(`data_content_hash` / `dataset_id` / `source_content_hash`) are
+rewritten only inside `research_identity.json`, `dataset_meta.json`,
+and `subtimeframe_meta.json`; the same key in any other member is a
+real field and still fails.
 
 ### 4. §8 stage trace (Linux, after the pre-step passes)
 

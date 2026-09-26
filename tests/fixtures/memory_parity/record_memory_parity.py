@@ -16,7 +16,7 @@ from pathlib import Path
 from .capture import CaptureAbort, capture_study_cell
 from .cells import CI_CELL6_SHAPE, CI_PREPARE_REPLICA
 from .compare import compare_captures, format_report
-from .compat import package_identity, resolve_all_hooks
+from .compat import ensure_thesistester_import_path, package_identity, resolve_all_hooks
 from .generate_synthetic import default_synthetic_path, write_synthetic_csv
 
 FIXTURE_ROOT = Path(__file__).resolve().parent
@@ -107,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Candidate capture dir for compare-only (default: a temp run under /tmp)",
     )
     args = parser.parse_args(argv)
+    ensure_thesistester_import_path()
     resolve_all_hooks()
     try:
         if args.regenerate:

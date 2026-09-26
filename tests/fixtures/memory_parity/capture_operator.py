@@ -3,7 +3,9 @@
 Flag-free, one process. Works against current main and, via PYTHONPATH, the
 farm production commit ``59a4652`` (bundles there do not persist
 ``replica_expectancies``; this script hooks ``vs_random_benchmark`` at import
-time).
+time). ``python -m`` from this checkout would otherwise shadow a
+``59a4652`` worktree with cwd; the operator lifts that worktree to
+``sys.path[0]`` and aborts if the imported package is not that tree.
 
 Invocations are documented in ``tests/fixtures/memory_parity/README.md``.
 """
@@ -17,7 +19,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .cells import FULL_CELL, parse_cell_selector
-from .compat import FARM_PRODUCTION_COMMIT, package_identity, resolve_all_hooks
+from .compat import (
+    FARM_PRODUCTION_COMMIT,
+    ensure_thesistester_import_path,
+    package_identity,
+    resolve_all_hooks,
+)
 from .capture import CaptureAbort, capture_study_cell
 from .slice_csv import (
     CELL6_SLICE_NAME,
@@ -61,6 +68,7 @@ def _csv_for_cell(spec, *, csv: Path, slices: dict[str, Path]) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    ensure_thesistester_import_path()
     resolve_all_hooks()
     cells = parse_cell_selector(args.cells)
     output = Path(args.output_dir).resolve()

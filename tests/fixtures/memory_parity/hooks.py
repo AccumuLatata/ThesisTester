@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator
 
-from .compat import patch_aliases, resolve_hook, restore_aliases
+from .compat import CompatError, import_optional, patch_aliases, resolve_hook, restore_aliases
 
 VS_RANDOM_ALIASES: tuple[tuple[str, str], ...] = (
     ("thesistester.analytics.overfitting", "vs_random_benchmark"),
@@ -78,6 +78,17 @@ def replica_expectancies_hook() -> Iterator[ReplicaSink]:
         return result
 
     undo = patch_aliases(original=original, wrapper=wrapped, aliases=VS_RANDOM_ALIASES)
+    execute_mod = import_optional("thesistester.study.execute")
+    if execute_mod is not None and hasattr(execute_mod, "vs_random_benchmark"):
+        patched = {id(module) for module, _attr, _prev in undo}
+        if id(execute_mod) not in patched:
+            restore_aliases(undo)
+            raise CompatError(
+                "STOP AND REPORT: thesistester.study.execute.vs_random_benchmark "
+                "exists but was not wrapped (object identity differs from "
+                "analytics.overfitting). replica_expectancies would be missed "
+                "on 59a4652, whose bundles do not persist this list."
+            )
     try:
         yield sink
     finally:
