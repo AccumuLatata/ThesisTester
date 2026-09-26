@@ -9,7 +9,7 @@
   ],
   "csv": "synthetic_mnq_15s.csv",
   "farm_production_commit": "59a4652",
-  "recorded_at_utc": "2026-09-26T13:31:17.826066+00:00",
+  "recorded_at_utc": "2026-09-26T13:46:25.539506+00:00",
   "run_label": "mw0-synthetic-golden",
   "suite": "mw0_synthetic",
   "thesistester_version": "0.2.0"
