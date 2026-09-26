@@ -20,7 +20,8 @@ This document supersedes the investigation notes. These locks are the contract, 
 Non-negotiable. §3 does not weaken this section. MW0 records the reference, flag off, before the flag exists. The PR that only adds this file ships no path and does not run these checks. From MW1 on, including MW-L, MW2, MW3, and any later path change:
 
 - Every such PR must pass with `THESISTESTER_MEMORY_PATH=array` and with the flag off. On every MW0 cell, versus the MW0 reference: identical trade frames (every column, including `exit_subbar_timestamp`, same dtypes, units, and timezone), identical random-baseline fields (DA5 non-null where the reference is non-null), identical `replica_expectancies`, and identical `canonical_bundle_hash`. Any single difference means the PR is not merged. No tolerance. References are not regenerated.
-- The flag-off path must stay byte-identical to `main` before the PR. Unset, empty, or any value other than `array` is that pre-PR path. Its trades, DA5 fields, `replica_expectancies`, and `canonical_bundle_hash` match that `main`. Raw zip bytes are not the check.
+- Flag-off outputs are identical to `main` on every MW0 cell. Unset, empty, or any value other than `array` is the flag-off path. Its trades, DA5 fields, `replica_expectancies`, and `canonical_bundle_hash` match `main` on every MW0 cell. Raw zip bytes are not the check.
+- Every MW PR reruns the full real-CSV reference cell on both paths. That cell is about 3–4 h, and the cost is planned.
 - Before the farm switches paths, one full real-CSV Program B cell must be run on the farm PC with both paths and produce identical outputs. The switch happens only between studies.
 - If any of these checks cannot be run, the series stops and reports instead of proceeding.
 
@@ -173,7 +174,7 @@ The Quantower path in `load_ohlcv` (`format_profile != "canonical"`) reads the f
 
 | Order | Change | PR | Private RSS removed | After this step (planned split) |
 |---|---|---|---:|---|
-| 1 | One array-backed context, built once per cell, reused by the load-time check, the backtest, and all 50 replicas. Cleared at cell end | MW1 | 2.2–3.0 GiB, and most of the 3–4 h | Planning estimate **3.4–4.6 GiB**. Not enough for 16 workers. Farm gate is §8.2, relative to `R_signals` |
+| 1 | One array-backed context, built once per cell, reused by the load-time check, the backtest, and all 50 replicas. Cleared at cell end | MW1 | 2.2–3.0 GiB, and most of the 3–4 h | Planning estimate **3.4–4.6 GiB**. Not enough for 16 workers. Farm gate is §8.2, relative to `B` |
 | 2 | Stop holding full-width copies in naked flags and 1-minute trigger prep. Drop those objects after the bundle is built, before the replica loop. `hash_dataframe` unchanged | MW2 | ~0.8–1.2 GiB | Planning estimate **2.4–3.4 GiB**. Clears 3.3 GiB only when §8.1's capacity check passed. Farm gate is §8.2 |
 | 3 | Read-only `.npy` memmap of parent, source, and levels | MW3, optional | Per-process RSS barely moves. Unique machine RAM drops by the shared pages | Only if unique RAM is still tight after MW2, or CSV re-parse dominates startup |
 
@@ -204,19 +205,22 @@ Why MW3 cannot change a result: the memmap is float64, opened read-only, and acc
 
 ## 8. Hard gate before MW1 — full-CSV stage trace
 
-No MW1 (and no MW-L, and no MW2) code is written until this trace has been run on the **farm CSV** at the exact commit MW1 will branch from, flag off, one process. That is the same commit as MW0 (§9), after the §9 pre-step has matched `59a4652`. A short synthetic prefix cannot see a loader buffer that scales with the real file. The trace is an operator measurement. It is not a product change and it is not required to land in git before the numbers exist. Record the numbers in the MW1 PR body so the order decision is reviewable.
+No MW1 (and no MW-L, and no MW2) code is written until this trace has been run on the **farm CSV** at the exact commit MW1 will branch from, flag off, one process. That is the same commit as MW0 (§9), after the §9 pre-step has matched `59a4652`. A short synthetic prefix cannot see a loader buffer that scales with the real file. The trace is an operator measurement. It is not a product change and it is not required to land in git before the numbers exist. Record the numbers in the MW1 PR body so the order decision is reviewable. The trace is Linux-only: after `R_load` it resets `VmHWM` through `/proc/self/clear_refs`. macOS still runs output parity. It does not run this trace.
 
-Stop points, **full file**. At every stop record two numbers. `rss` is `VmRSS` after `gc.collect()`, except at `R_bundle`, where the full-width frames are still reachable and must not be collected away. `hwm` is `VmHWM` at the same moment. `VmHWM` is the process high-water mark. It does not fall after `gc.collect()`, so a post-gc `rss` sample misses the peak the process already reached.
+Stop points, **full file**. At every stop except `R_pre_prepare` record two numbers. At `R_pre_prepare` record `hwm`. `rss` is `VmRSS` after `gc.collect()`, except at `R_bundle`, where the full-width frames are still reachable and must not be collected away. `hwm` is `VmHWM` at the same moment. `VmHWM` is the process high-water mark. It does not fall after `gc.collect()`, so a post-gc `rss` sample misses the peak the process already reached. The only reset is the `clear_refs` write below.
 
 | Name | When |
 |---|---|
+| `R_pre_prepare` | Immediately before the load-time `prepare_subtimeframe_conservative_context` call inside `_load_15s_primary_experiment_data`. Record `hwm`. The raw, derived, and tagged frames are alive. The map does not exist yet |
 | `R_load` | Immediately after `_load_15s_primary_experiment_data` returns. The discarded context has been freed. Then `gc.collect()` |
-| `R_signals` | After `generate_signals` returns. Then `gc.collect()` |
+| `R_signals` | After `generate_signals` returns. Then `gc.collect()`. This `hwm` is taken after the reset below |
 | `R_ctx` | While the first `simulate_trades` context is alive. `gc.collect()` only drops unreachable objects; the context stays reachable |
 | `R_bundle` | Inside `build_research_bundle`, before it returns, while levels, naked flags, signals, and the trades frame are all still reachable. Do not drop those references before the sample |
 | `R_done` | After that first `simulate_trades` returns and `gc.collect()` |
 
-`map_step = R_ctx.rss − R_signals.rss`. §8.1's `R_load`, `map_step`, and `R_ctx` thresholds use these post-gc `rss` numbers. The §8.1 capacity check uses `R_signals.rss`. §8.2 does not. It uses `hwm`.
+After `R_load` is recorded, reset the high-water mark by writing `5` to `/proc/self/clear_refs`. That Linux code sets `VmHWM` back to the current resident set. Later `hwm` samples, including `R_signals.hwm`, start from that reset. The write does not change `rss`.
+
+`map_step = R_ctx.rss − R_signals.rss`. §8.1's `R_load`, `map_step`, and `R_ctx` thresholds use these post-gc `rss` numbers. The §8.1 capacity check uses `R_signals.rss`. §8.2 does not. It uses `hwm`. Those `rss` rules stay as they are.
 
 Do not run all 50 replicas for this split. The synthetic rebuild test showed a second map does not raise RSS once the first map's arena exists. One live context plus the held frames is the peak shape. The 50-replica **timing** is a separate measurement in §14.
 
@@ -235,7 +239,9 @@ Apply the first matching rule. The rules are mutually exclusive. In this section
 
 The §6 bands **3.4–4.6 GiB** (after MW1) and **2.4–3.4 GiB** (after MW2) are planning estimates for the synthetic split. They are not the gate. The gate quantity is `VmHWM`, not post-gc `VmRSS`.
 
-`B` is the flag-off trace `hwm` at `R_signals`: the process high-water mark before `simulate_trades` builds the per-minute map. `H` is the flag-on cell `hwm` at `R_done`: the high-water mark of that whole process. `VmHWM` never falls, so `H` is not a post-gc sample and it is not `R_bundle.rss`. On the flag-off trace, `R_bundle.hwm` still includes the earlier map peak. It is recorded so the trace shows when the high-water was last raised. It is not `B`.
+`_load_15s_primary_experiment_data` already calls `prepare_subtimeframe_conservative_context` and discards the map while the raw, derived, and tagged frames are alive. `VmHWM` does not fall when that map is freed, so an unreset flag-off `hwm` at `R_signals` already contains a full map peak. MW1 reuses the array slot for that load-time prepare (§6 row 1), so flag-on `H` does not contain that discarded map. Using the unreset sample as `B` can place a correct MW1 in `H < B − 0.3 GiB` (reject) or in a stop row, and it lifts the MW2 bar `H > B − 0.4 GiB`.
+
+`B = max(R_pre_prepare.hwm, R_signals.hwm)`, with `R_signals.hwm` taken after the reset. That is the flag-off peak before `simulate_trades` builds its map, and it excludes the discarded load-time map. `H` is the flag-on cell `hwm` at `R_done`: the high-water mark of that whole process. `H` is not a post-gc sample and it is not `R_bundle.rss`. `R_load.hwm` is recorded before the reset, so it still includes the discarded map. It is not `B`. After the reset, `R_bundle.hwm` includes the live `simulate_trades` map when that map raises the mark. It is not `B`.
 
 Every measured `H` falls in exactly one row. Boundaries belong to the row that names them.
 
@@ -261,6 +267,8 @@ An MW1 accept may still be above 3.3 GiB. That does not fail MW1. It keeps the 1
 | `H ≤ 3.3 GiB` | Accept |
 
 Sixteen workers stay blocked until a flag-on smoke `hwm` is ≤ 3.3 GiB. See §14. Only an accept row passes the savings claim. A stop revises this plan. A reject blocks the claim.
+
+The row bounds are unchanged. They still assign every finite pair `(H, B)` to exactly one outcome. The five MW1 rows partition the line. The MW2 rows are first-match and cover every `H`.
 
 ---
 
@@ -518,7 +526,7 @@ The written frames hash the same, so the canonical bundle hash, journal check, a
 
 The current non-canonical branch builds `canonical_input`, stringifies timestamps, and calls `load_ohlcv` on `io.StringIO(canonical_input.to_csv(...))`. MW-L removes that text round-trip only behind the MW flag, unless a flag-off implementation is proven `hash_dataframe`-identical on the MW0 parent and source frames, in which case it may be unconditional. Prefer the flag if the proof is only on MNQ 15-second files.
 
-`hash_dataframe` of the returned canonical parent, and of the 15-second source after `prepare_15s_source_for_derivation`, must match the flag-off frames on the MW0 short window and on the synthetic fixture.
+`hash_dataframe` of the returned canonical parent, and of the 15-second source after `prepare_15s_source_for_derivation`, must match the flag-off frames on the MW0 short window and on the synthetic fixture. The Acceptance contract (every MW0 cell) overrides this weaker short-window and synthetic `hash_dataframe` proof.
 
 ### 12.2 Files
 
@@ -571,11 +579,11 @@ The gate script is **not in this repository**. Change it only after the measurem
 Order:
 
 1. **§9 pre-step**, on the commit MW1 will branch from, flag off, Linux, one process. The full reference cell equals the `59a4652` trades and `replica_expectancies` bits (59 trades, E=0.0805). A miss stops the series. Do not record MW0 and do not run the §8 trace as a substitute for this step.
-2. **§8 trace and MW0**, both on that same commit, only after step 1 passes. The trace is flag off, full CSV, one process. Record `rss` and `hwm` at `R_load`, `R_signals`, `R_ctx`, `R_bundle`, and `R_done`, plus `map_step`, in the MW1 PR. MW0 may be recorded in parallel with the trace. The trace does not block MW0. MW0 does not block the trace. Both block MW1.
+2. **§8 trace and MW0**, both on that same commit, only after step 1 passes. The trace is flag off, full CSV, one process, and Linux-only. Record `hwm` at `R_pre_prepare`, then `rss` and `hwm` at `R_load`, write `5` to `/proc/self/clear_refs`, then record `rss` and `hwm` at `R_signals`, `R_ctx`, `R_bundle`, and `R_done`, plus `map_step`, in the MW1 PR. MW0 may be recorded in parallel with the trace. The trace does not block MW0. MW0 does not block the trace. Both block MW1.
 3. **MW1** (or MW-L first if §8.1 rule 1 says so). Parity: short suite, flag off vs on, Linux then macOS. Exact equality, including `canonical_bundle_hash` and `exit_subbar_timestamp`. Then the full reference cell, both machines, both flag states. Only a match allows `THESISTESTER_MEMORY_PATH=array` on the farm. The farm RSS must sit in the §8.2 MW1 band.
 4. **Speed**, same full cell, both flags. Wall time ≤ 105% of flag off. Expect a large drop. A slower result blocks the flag.
 5. **MW-L between MW1 and MW2** only if §8.1 rule 2 inserted it. Rule 1 already ran it before MW1, at step 3. Re-trace, then re-apply §8.1 before MW2.
-6. **MW2.** Repeat the short-suite parity and the resume test on the farm. Then the full reference cell again if MW2 could touch OHLC bytes passed into `simulate_trades` (it can). Both machines.
+6. **MW2.** Repeat the short-suite parity and the resume test on the farm. Then the full reference cell on both paths, both machines. The Acceptance contract requires that rerun on every MW PR, including MW-L and MW3. About 3–4 h, planned.
 7. **Capacity**, flag on, after parity. One smoke cell, then a real multi-cell study, at **6, 12, and 16** workers. Record per-worker peak RSS, minimum `MemAvailable`, and cells/hour.
    - Pass: minimum `MemAvailable` during the 16-worker run stays above **4 GiB**, and no worker RSS exceeds **3.3 GiB**. Sixteen workers at that cap are `16 × 3.3 GiB = 52.8 GiB`, inside ~59 GiB usable.
    - If worker RSS is over 3.3 GiB, keep the gate at the measured fit. Do not turn on MW3 just to satisfy an `N × RSS` formula.
@@ -591,7 +599,7 @@ Use the **flag-on** smoke peak. Leave at least 4 GiB for the OS. Sixteen workers
 
 After MW3, if mappings are shared, stop using `N × smoke RSS` as the capacity ceiling. Use idle `MemAvailable` minus 4 GiB, divided by the **private** RSS (smoke RSS minus the mapped file's resident size, measured once). If that private number cannot be measured cleanly, stay on the MW2 formula. A shared mapping that is still counted 16 times will refuse a run that actually fits.
 
-**Farm commit.** The farm may move off `59a4652` onto the MW1 branch commit only between studies, or after the §9 equality pre-step has been shown. It must not move in the middle of a study, and it must not move before that equality is on record.
+**Farm commit.** The farm may move off `59a4652` onto the MW1 branch commit only between studies, and after the §9 equality pre-step has been shown. It must not move in the middle of a study, and it must not move before that equality is on record.
 
 ---
 
