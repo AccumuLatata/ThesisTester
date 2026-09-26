@@ -51,6 +51,7 @@ Engine / data contracts:
 
 - [SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md](SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md) (SW C1–C9)
 - [15s_primary_derived_1m_implementation_plan.md](15s_primary_derived_1m_implementation_plan.md)
+- [WORKER_MEMORY_IMPLEMENTATION_PLAN.md](WORKER_MEMORY_IMPLEMENTATION_PLAN.md) (MW — cut per-worker RSS so 16 study workers fit in 64 GB; **plan only**, no runtime change in the plan PR; MW0–MW2 required, MW-L conditional, MW3 optional; flag default off)
 - [PREV30M_VWAP_IMPLEMENTATION_PLAN.md](PREV30M_VWAP_IMPLEMENTATION_PLAN.md)
 - [STUDY_RUNNER_IMPLEMENTATION_PLAN.md](STUDY_RUNNER_IMPLEMENTATION_PLAN.md) (RS — MVP RS1–RS5 ✅; §12 through RS-D9 ✅; parked D1/D3/D6)
 - [STUDY_RUNNER.md](STUDY_RUNNER.md) (RS operator contract; RS1–RS5 + post-MVP through RS-D9)
