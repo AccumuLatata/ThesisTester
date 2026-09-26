@@ -24,6 +24,11 @@ from .cells import (
     rewrite_full_spec_dataset,
     write_study_yaml,
 )
+from .canonical import (
+    CanonicalizeError,
+    canonicalize_frame_datetimes,
+    portable_canonical_bundle_hash,
+)
 from .compat import package_identity, resolve_hook
 from .hooks import replica_expectancies_hook
 from .io import cell_dir, write_capture
@@ -228,7 +233,13 @@ def _capture_study_cell_in_work(
     if not bundle_path.is_file():
         raise CaptureAbort(f"{spec.cell_id} bundle missing on disk: {bundle_path}")
 
-    trades = read_bundle_trades(bundle_path)
+    try:
+        trades = canonicalize_frame_datetimes(read_bundle_trades(bundle_path))
+    except CanonicalizeError as exc:
+        raise CaptureAbort(
+            f"{spec.cell_id} datetime canonicalize failed: {exc}. "
+            "Stop and report; do not loosen unit or tz compare."
+        ) from exc
     if spec.expect_zero_trades and len(trades) != 0:
         raise CaptureAbort(
             f"{spec.cell_id} was specified as the 0-trade cell but produced "
@@ -253,7 +264,15 @@ def _capture_study_cell_in_work(
             "Stop and report; do not record a partial capture."
         )
     da5 = {key: _nullable_index_value(index_row, key) for key in DA5_KEYS}
-    digest = canonical_bundle_hash(bundle_path.read_bytes())
+    bundle_bytes = bundle_path.read_bytes()
+    product_digest = canonical_bundle_hash(bundle_bytes)
+    try:
+        digest = portable_canonical_bundle_hash(bundle_bytes)
+    except CanonicalizeError as exc:
+        raise CaptureAbort(
+            f"{spec.cell_id} portable bundle hash failed: {exc}. "
+            "Stop and report; do not skip the hash gate."
+        ) from exc
     replicas = sink.last
     if spec.expect_zero_trades and replicas:
         raise CaptureAbort(
@@ -305,6 +324,8 @@ def _capture_study_cell_in_work(
             "replica_hook_calls": len(sink.calls),
             "thesistester_version": identity.get("thesistester_version"),
             "farm_production_commit": identity.get("farm_production_commit"),
+            "canonical_hash_kind": "portable_datetime_ns",
+            "product_canonical_bundle_hash": str(product_digest),
         },
     )
     return dest

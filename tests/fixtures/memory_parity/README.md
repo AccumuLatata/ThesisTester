@@ -29,8 +29,10 @@ bits).
 
 For every cell the operator / recorder writes:
 
-- `trades.parquet` — every column; dtypes, units, and timezone preserved
-- `trades_dtypes.json` — column dtype/unit/tz sidecar
+- `trades.parquet` — every column; numeric dtypes and timezone preserved.
+  Datetime columns are stored as `datetime64[ns, tz]` (pandas 2 ns /
+  pandas 3 us are normalized; conversion that loses an instant aborts)
+- `trades_dtypes.json` — column dtype/unit/tz sidecar (after ns canonicalize)
 - `replica_expectancies.json` — ordered in-memory list from
   `vs_random_benchmark`, float64 bits as hex. **Not persisted in product
   bundles.** Captured by an import-time wrap of `vs_random_benchmark`
@@ -42,10 +44,15 @@ For every cell the operator / recorder writes:
   `random_p_value_ge`, `expectancy_minus_null_r`
 - `ledger.json` — `status`, `error`, `bundle_path`, plus wall-clock
   `started_at` / `finished_at` (stored; **not** part of equality)
-- `canonical_bundle_hash.txt`
+- `canonical_bundle_hash.txt` — portable digest: the product zip walk with
+  parquet members datetime-unit-normalized to ns (and `str`/`object`
+  labels collapsed only when every non-null value is a Python `str`).
+  The raw product `canonical_bundle_hash` is stored on `meta.json` as
+  `product_canonical_bundle_hash` (pandas-major-specific; not the gate).
 
 Equality is bit-identical. Float64 compared as bits. `NaN` equals `NaN`.
-No tolerance. References are not regenerated to make a check pass.
+Datetime instants and tz must match after ns canonicalize. No tolerance.
+References are not regenerated to make a check pass.
 
 ## Short cells (§9.2)
 
@@ -140,10 +147,11 @@ python -m tests.fixtures.memory_parity.compare \
 ```
 
 `--pre-step` **gates** trades (every column including
-`exit_subbar_timestamp`, dtypes, units, tz), `replica_expectancies` bits
-(order, `NaN==NaN`), `trade_count`, and `expectancy_r`. Known result:
-59 trades, E=0.0805. DA5 and `canonical_bundle_hash` are printed as
-`INFO` and do not fail the pre-step.
+`exit_subbar_timestamp`, dtypes, tz, datetime unit after ns
+canonicalize), `replica_expectancies` bits (order, `NaN==NaN`),
+`trade_count`, and `expectancy_r`. Known result: 59 trades, E=0.0805.
+DA5 and `canonical_bundle_hash` are printed as `INFO` and do not fail
+the pre-step.
 
 Full MW equality (later MW0 record, same commit, both sides current-main):
 
@@ -154,8 +162,11 @@ python -m tests.fixtures.memory_parity.compare \
 ```
 
 That gates trades, replica bits, summary, DA5 (non-null where the
-reference is non-null), ledger `status`/`error`/`bundle_path`, and
-`canonical_bundle_hash`. Ledger wall-clock timestamps are excluded.
+reference is non-null), ledger `status`/`error`/`bundle_path`, and the
+portable `canonical_bundle_hash`. Ledger wall-clock timestamps are
+excluded. The hash gate stays bit-strict on values; only the pandas
+major datetime-unit (and all-string `str` vs `object`) label is
+canonicalized before hashing.
 
 ### 4. §8 stage trace (Linux, after the pre-step passes)
 

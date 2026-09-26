@@ -29,14 +29,30 @@ def record_synthetic(dest: Path, *, run_label: str) -> Path:
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)
-    # Write under dest. Never overwrite the committed fixture from a compare run.
-    csv_path = write_synthetic_csv(dest / "synthetic_mnq_15s.csv")
     committed = default_synthetic_path()
-    if committed.is_file() and committed.read_bytes() != csv_path.read_bytes():
-        raise CaptureAbort(
-            "committed synthetic_mnq_15s.csv differs from the generator; "
-            "stop and report — do not record from a drifted fixture"
-        )
+    if dest.resolve() == GOLDEN_ROOT.resolve():
+        # Golden regen uses the committed fixture. Do not copy the CSV
+        # into synthetic_golden/ (that path is not the CI input).
+        generated = write_synthetic_csv(dest / "_regen_synthetic_mnq_15s.csv")
+        if committed.is_file() and committed.read_bytes() != generated.read_bytes():
+            generated.unlink(missing_ok=True)
+            raise CaptureAbort(
+                "committed synthetic_mnq_15s.csv differs from the generator; "
+                "stop and report — do not record from a drifted fixture"
+            )
+        if not committed.is_file():
+            shutil.move(str(generated), committed)
+        else:
+            generated.unlink(missing_ok=True)
+        csv_path = committed
+    else:
+        # Compare/live runs write under dest. Never overwrite the committed fixture.
+        csv_path = write_synthetic_csv(dest / "synthetic_mnq_15s.csv")
+        if committed.is_file() and committed.read_bytes() != csv_path.read_bytes():
+            raise CaptureAbort(
+                "committed synthetic_mnq_15s.csv differs from the generator; "
+                "stop and report — do not record from a drifted fixture"
+            )
     for spec in CI_CELLS:
         capture_study_cell(
             spec,

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +21,15 @@ from tests.fixtures.memory_parity.cells import (
     parse_cell_selector,
 )
 from tests.fixtures.memory_parity.compat import HOOK_POINTS, resolve_all_hooks
+from tests.fixtures.memory_parity.canonical import (
+    CANONICAL_DATETIME_UNIT,
+    CanonicalizeError,
+    canonicalize_datetime_series,
+    canonicalize_frame_datetimes,
+    portable_canonical_bundle_hash,
+    portable_dtype_label,
+    portable_hash_dataframe,
+)
 from tests.fixtures.memory_parity.compare import compare_captures, compare_trades, format_report
 from tests.fixtures.memory_parity.generate_synthetic import (
     default_synthetic_path,
@@ -29,7 +40,7 @@ from tests.fixtures.memory_parity.gitref import (
     diff_vs_main,
     show_at_farm,
 )
-from tests.fixtures.memory_parity.io import cell_dir, write_capture
+from tests.fixtures.memory_parity.io import cell_dir, describe_series_dtype, write_capture
 from tests.fixtures.memory_parity.slice_csv import (
     SHORT_WINDOW_END_UTC,
     SHORT_WINDOW_START_UTC,
@@ -221,6 +232,88 @@ def test_compare_trades_requires_exit_subbar_timestamp_tz() -> None:
     )
     diffs = compare_trades(left, right)
     assert any("exit_subbar_timestamp" in item for item in diffs)
+
+
+def _ny_stamps(*, unit: str) -> pd.Series:
+    values = pd.to_datetime(
+        ["2024-08-01T14:00:00.123456", "2024-08-01T15:30:00.000000"],
+        format="%Y-%m-%dT%H:%M:%S.%f",
+    ).tz_localize("America/New_York")
+    return pd.Series(values.astype(pd.DatetimeTZDtype(unit=unit, tz="America/New_York")))
+
+
+def test_compare_trades_normalizes_datetime_unit() -> None:
+    left = pd.DataFrame(
+        {
+            "trade_id": [1, 2],
+            "r_multiple": np.array([0.5, -0.25], dtype="float64"),
+            "entry_timestamp": _ny_stamps(unit="us"),
+        }
+    )
+    right = left.copy()
+    right["entry_timestamp"] = _ny_stamps(unit="ns")
+    assert str(left["entry_timestamp"].dtype) != str(right["entry_timestamp"].dtype)
+    assert compare_trades(left, right) == []
+    canonical = canonicalize_frame_datetimes(left)
+    assert describe_series_dtype(canonical["entry_timestamp"])["unit"] == CANONICAL_DATETIME_UNIT
+
+
+def test_canonicalize_datetime_rejects_precision_loss() -> None:
+    series = pd.Series(pd.to_datetime(["2024-08-01T14:00:00.000000001Z"], utc=True)).astype(
+        pd.DatetimeTZDtype(unit="ns", tz="UTC")
+    )
+    with pytest.raises(CanonicalizeError, match="precision|not invertible"):
+        canonicalize_datetime_series(series, unit="us", column="entry_timestamp")
+
+
+def test_portable_hash_ignores_datetime_unit_and_string_label() -> None:
+    from thesistester.persistence.local_store import hash_dataframe
+
+    us_frame = pd.DataFrame(
+        {
+            "entry_timestamp": _ny_stamps(unit="us"),
+            "direction": pd.Series(["long", "short"], dtype="string"),
+            "r_multiple": np.array([0.5, -0.25], dtype="float64"),
+        }
+    )
+    ns_frame = us_frame.copy()
+    ns_frame["entry_timestamp"] = _ny_stamps(unit="ns")
+    ns_frame["direction"] = pd.Series(["long", "short"], dtype=object)
+    assert hash_dataframe(us_frame) != hash_dataframe(ns_frame)
+    assert portable_hash_dataframe(us_frame) == portable_hash_dataframe(ns_frame)
+    assert portable_dtype_label(us_frame["entry_timestamp"]) == portable_dtype_label(
+        ns_frame["entry_timestamp"]
+    )
+    moved = ns_frame.copy()
+    moved.loc[0, "entry_timestamp"] = moved.loc[0, "entry_timestamp"] + pd.Timedelta(microseconds=1)
+    assert portable_hash_dataframe(us_frame) != portable_hash_dataframe(moved)
+
+
+def test_portable_bundle_hash_matches_across_datetime_units() -> None:
+    us_frame = pd.DataFrame({"entry_timestamp": _ny_stamps(unit="us"), "x": [1, 2]})
+    ns_frame = pd.DataFrame({"entry_timestamp": _ny_stamps(unit="ns"), "x": [1, 2]})
+
+    def _zip_bytes(frame: pd.DataFrame, *, created_at: str) -> bytes:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            inner = io.BytesIO()
+            frame.to_parquet(inner, index=False)
+            archive.writestr("trades.parquet", inner.getvalue())
+            archive.writestr(
+                "manifest.json",
+                json.dumps({"created_at": created_at, "ok": True}),
+            )
+            archive.writestr("notes.txt", b"hello")
+        return buffer.getvalue()
+
+    left = _zip_bytes(us_frame, created_at="2026-01-01T00:00:00+00:00")
+    right = _zip_bytes(ns_frame, created_at="2099-01-01T00:00:00+00:00")
+    assert portable_canonical_bundle_hash(left) == portable_canonical_bundle_hash(right)
+    changed = ns_frame.copy()
+    changed.loc[0, "x"] = 99
+    assert portable_canonical_bundle_hash(left) != portable_canonical_bundle_hash(
+        _zip_bytes(changed, created_at="2026-01-01T00:00:00+00:00")
+    )
 
 
 def test_stage_trace_rule_table() -> None:

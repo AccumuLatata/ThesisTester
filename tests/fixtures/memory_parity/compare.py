@@ -1,9 +1,14 @@
 """Bit-identical compare of two MW0 capture directories.
 
-Full mode gates trades (every column, dtypes/unit/tz), replica bits, summary
-metrics, DA5 (non-null where the reference is non-null), ledger equality
-fields, and ``canonical_bundle_hash``. Ledger wall-clock timestamps are stored
-but never compared.
+Full mode gates trades (every column, dtypes/tz, datetime unit after
+nanosecond canonicalization), replica bits, summary metrics, DA5 (non-null
+where the reference is non-null), ledger equality fields, and the portable
+``canonical_bundle_hash``. Ledger wall-clock timestamps are stored but never
+compared.
+
+Datetime columns are converted to ``datetime64[ns, tz]`` before dtype and
+value compare. Conversion that drops tz or loses an instant is a gate
+failure, not a skip.
 
 ``--pre-step`` gates only the §9 equality subset (trades + replica bits +
 trade_count + expectancy_r). DA5 and canonical hash are reported but do not
@@ -28,6 +33,7 @@ from .bits import (
     SUMMARY_METRIC_KEYS,
     decode_optional_float,
 )
+from .canonical import CanonicalizeError, canonicalize_frame_datetimes
 from .io import describe_series_dtype, list_cell_ids, load_capture
 
 
@@ -156,6 +162,11 @@ def compare_series_values(column: str, left: pd.Series, right: pd.Series) -> lis
 
 def compare_trades(left: pd.DataFrame, right: pd.DataFrame) -> list[str]:
     diffs: list[str] = []
+    try:
+        left = canonicalize_frame_datetimes(left)
+        right = canonicalize_frame_datetimes(right)
+    except CanonicalizeError as exc:
+        return [f"datetime canonicalize failed: {exc}"]
     if list(left.columns) != list(right.columns):
         diffs.append(f"columns {list(left.columns)} != {list(right.columns)}")
     if len(left) != len(right):

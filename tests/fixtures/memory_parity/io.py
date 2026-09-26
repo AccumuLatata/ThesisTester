@@ -15,6 +15,7 @@ from .bits import (
     encode_optional_float,
     replica_hex_list,
 )
+from .canonical import canonicalize_frame_datetimes
 
 TRADES_NAME = "trades.parquet"
 REPLICA_NAME = "replica_expectancies.json"
@@ -81,6 +82,7 @@ def describe_series_dtype(series: pd.Series) -> dict[str, Any]:
 
 def write_trades(path: Path, trades: pd.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    trades = canonicalize_frame_datetimes(trades)
     trades.to_parquet(path, index=False)
     _dump_json(
         path.with_name(DTYPES_NAME),
@@ -93,7 +95,7 @@ def write_trades(path: Path, trades: pd.DataFrame) -> None:
 
 
 def read_trades(path: Path) -> pd.DataFrame:
-    return pd.read_parquet(path)
+    return canonicalize_frame_datetimes(pd.read_parquet(path))
 
 
 def write_capture(
