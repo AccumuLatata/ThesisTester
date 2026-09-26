@@ -387,11 +387,14 @@ def test_load_time_prepare_resets_vmhwm_after_map_is_unreachable(
         make_prepare_wrapper,
     )
 
-    held_at_reset: list[bool] = []
-    refs: list[weakref.ref[dict[str, str]]] = []
+    class Probe:
+        pass
 
-    def fake_prepare(*args: object, **kwargs: object) -> dict[str, str]:
-        payload = {"map": "alive"}
+    held_at_reset: list[bool] = []
+    refs: list[weakref.ref[Probe]] = []
+
+    def fake_prepare(*args: object, **kwargs: object) -> Probe:
+        payload = Probe()
         refs.append(weakref.ref(payload))
         return payload
 
