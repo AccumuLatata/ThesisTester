@@ -316,6 +316,113 @@ def test_portable_bundle_hash_matches_across_datetime_units() -> None:
     )
 
 
+def test_portable_hash_empty_frame_ignores_ghost_dtypes() -> None:
+    typed = pd.DataFrame(
+        {
+            "trade_id": pd.Series(dtype="int64"),
+            "entry_timestamp": pd.Series(dtype="datetime64[ns, UTC]"),
+            "direction": pd.Series(dtype="string"),
+        }
+    )
+    ghost = pd.DataFrame(
+        {
+            "trade_id": pd.Series(dtype=object),
+            "entry_timestamp": pd.Series(dtype=object),
+            "direction": pd.Series(dtype=object),
+        }
+    )
+    assert list(typed.columns) == list(ghost.columns)
+    assert portable_hash_dataframe(typed) == portable_hash_dataframe(ghost)
+    extra = ghost.copy()
+    extra["extra"] = pd.Series(dtype=object)
+    assert portable_hash_dataframe(typed) != portable_hash_dataframe(extra)
+
+
+def test_portable_bundle_hash_rewrites_product_identity_json() -> None:
+    frame = pd.DataFrame(
+        {
+            "timestamp": _ny_stamps(unit="us"),
+            "close": np.array([1.0, 2.0], dtype="float64"),
+        }
+    )
+    source = pd.DataFrame(
+        {
+            "timestamp": _ny_stamps(unit="ns"),
+            "close": np.array([1.0, 2.0], dtype="float64"),
+        }
+    )
+
+    def _zip_bytes(*, data_hash: str, dataset_id: str, source_hash: str) -> bytes:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            for name, payload_frame in (
+                ("dataset.parquet", frame),
+                ("subtimeframe_data.parquet", source),
+            ):
+                inner = io.BytesIO()
+                payload_frame.to_parquet(inner, index=False)
+                archive.writestr(name, inner.getvalue())
+            archive.writestr(
+                "dataset_meta.json",
+                json.dumps(
+                    {
+                        "instrument": "MNQ",
+                        "base_interval": "1min",
+                        "source_timezone": "UTC",
+                        "exchange_timezone": "America/New_York",
+                        "dataset_id": dataset_id,
+                    }
+                ),
+            )
+            archive.writestr(
+                "research_identity.json",
+                json.dumps(
+                    {
+                        "data_identity": {
+                            "data_content_hash": data_hash,
+                            "dataset_id": dataset_id,
+                            "instrument": "MNQ",
+                            "base_interval": "1min",
+                            "source_timezone": "UTC",
+                            "exchange_timezone": "America/New_York",
+                        }
+                    }
+                ),
+            )
+            archive.writestr(
+                "subtimeframe_meta.json",
+                json.dumps({"ingestion_provenance": {"source_content_hash": source_hash}}),
+            )
+        return buffer.getvalue()
+
+    left = _zip_bytes(data_hash="aa" * 32, dataset_id="bb" * 32, source_hash="cc" * 32)
+    right = _zip_bytes(data_hash="dd" * 32, dataset_id="ee" * 32, source_hash="ff" * 32)
+    assert portable_canonical_bundle_hash(left) == portable_canonical_bundle_hash(right)
+    mutated = frame.copy()
+    mutated.loc[0, "close"] = 99.0
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        inner = io.BytesIO()
+        mutated.to_parquet(inner, index=False)
+        archive.writestr("dataset.parquet", inner.getvalue())
+        inner = io.BytesIO()
+        source.to_parquet(inner, index=False)
+        archive.writestr("subtimeframe_data.parquet", inner.getvalue())
+        archive.writestr(
+            "dataset_meta.json",
+            json.dumps(
+                {
+                    "instrument": "MNQ",
+                    "base_interval": "1min",
+                    "source_timezone": "UTC",
+                    "exchange_timezone": "America/New_York",
+                    "dataset_id": "aa" * 32,
+                }
+            ),
+        )
+    assert portable_canonical_bundle_hash(left) != portable_canonical_bundle_hash(buffer.getvalue())
+
+
 def test_stage_trace_rule_table() -> None:
     rule1 = evaluate_rule_8_1(
         r_load_rss_gib=4.2,

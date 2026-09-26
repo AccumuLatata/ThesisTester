@@ -44,10 +44,15 @@ For every cell the operator / recorder writes:
   `random_p_value_ge`, `expectancy_minus_null_r`
 - `ledger.json` — `status`, `error`, `bundle_path`, plus wall-clock
   `started_at` / `finished_at` (stored; **not** part of equality)
-- `canonical_bundle_hash.txt` — portable digest: the product zip walk with
-  parquet members datetime-unit-normalized to ns (and `str`/`object`
-  labels collapsed only when every non-null value is a Python `str`).
-  The raw product `canonical_bundle_hash` is stored on `meta.json` as
+- `canonical_bundle_hash.txt` — portable digest: the product zip walk
+  after parquet datetime units are normalized to ns (`str`/`object`
+  labels collapsed when every non-null value is a Python `str`; 0-row
+  frames hash column names only). Product identity strings that
+  `hash_dataframe` / `hash_source_frame` embed in JSON
+  (`data_content_hash`, `dataset_id`, `source_content_hash`) are
+  rewritten from those portable parquet digests — they are the same
+  pandas-major leak, not a second source of truth. The raw product
+  `canonical_bundle_hash` is stored on `meta.json` as
   `product_canonical_bundle_hash` (pandas-major-specific; not the gate).
 
 Equality is bit-identical. Float64 compared as bits. `NaN` equals `NaN`.
