@@ -7,9 +7,12 @@ the CI matrix even when instants, tz, and numeric bits match.
 
 This module is tooling-only. It does not loosen equality: instants must
 survive unit conversion or capture/compare abort. Numeric dtypes, tz, and
-float64 bits stay bit-identical. Farm same-commit MW equality still
-compares every gated field; the stored digest is the product zip walk
-after parquet datetime units are normalized to nanoseconds.
+float64 bits stay bit-identical. A last-bit difference in any hashed
+parquet column (including the farm EMA_* Mac/Linux split) changes the
+digest. There is no tolerance and no float rounding. Farm same-commit MW
+equality still compares every gated field; the stored digest is the
+product zip walk after parquet datetime units are normalized to
+nanoseconds.
 """
 
 from __future__ import annotations
@@ -24,6 +27,17 @@ import numpy as np
 import pandas as pd
 
 CANONICAL_DATETIME_UNIT = "ns"
+
+# Product identity strings that embed hash_dataframe / hash_source_frame.
+# Rewrite only these zip members — a dataset_id (or sibling) in any other
+# JSON file is a real field and must still move the digest.
+IDENTITY_HASH_JSON_FILES: frozenset[str] = frozenset(
+    {
+        "dataset_meta.json",
+        "research_identity.json",
+        "subtimeframe_meta.json",
+    }
+)
 
 
 class CanonicalizeError(ValueError):
@@ -353,12 +367,14 @@ def portable_canonical_bundle_hash(bundle_bytes: bytes) -> str:
         if name in parquet_frames:
             digest = portable_hash_dataframe(parquet_frames[name])
         elif name in json_members:
-            value = _rewrite_identity_hashes(
-                json_members[name],
-                data_content_hash=portable_data_hash,
-                dataset_id=portable_id,
-                source_content_hash=portable_source_hash,
-            )
+            value = json_members[name]
+            if name in IDENTITY_HASH_JSON_FILES:
+                value = _rewrite_identity_hashes(
+                    value,
+                    data_content_hash=portable_data_hash,
+                    dataset_id=portable_id,
+                    source_content_hash=portable_source_hash,
+                )
             if name == MANIFEST_FILENAME and isinstance(value, dict):
                 value = _manifest_projection(value)
             normalized = json.dumps(
