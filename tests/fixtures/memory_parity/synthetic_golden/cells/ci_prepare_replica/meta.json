@@ -1,0 +1,12 @@
+{
+  "cell_id": "ci_prepare_replica",
+  "csv_name": "synthetic_mnq_15s.csv",
+  "expect_zero_trades": false,
+  "farm_production_commit": "59a4652",
+  "n_replicas": 1,
+  "replica_hook_calls": 1,
+  "run_label": "mw0-synthetic-golden",
+  "run_name": "mw0_ci_prepare_replica_c0000_global_cluster_touch_base_RTH_Open_otfOff_3be899c23b",
+  "same_bar_opposite_direction": "legacy",
+  "thesistester_version": "0.2.0"
+}

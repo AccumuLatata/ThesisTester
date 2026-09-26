@@ -1,0 +1,299 @@
+{
+  "columns": [
+    "trade_id",
+    "signal_id",
+    "trigger",
+    "direction",
+    "entry_timestamp",
+    "entry_bar_index",
+    "theoretical_entry_price",
+    "entry_price",
+    "entry_model",
+    "exit_timestamp",
+    "exit_bar_index",
+    "theoretical_exit_price",
+    "exit_price",
+    "exit_reason",
+    "stop_price",
+    "target_price",
+    "stop_loss_ticks",
+    "take_profit_ticks",
+    "gross_pnl_points",
+    "gross_pnl_currency",
+    "commission_cost",
+    "slippage_cost",
+    "net_pnl_currency",
+    "pnl_points",
+    "pnl_currency",
+    "r_multiple",
+    "bars_held",
+    "zone_low",
+    "zone_high",
+    "zone_mid",
+    "level_count",
+    "level_names",
+    "trigger_variant",
+    "is_muted",
+    "is_sfp",
+    "inside_candle_count",
+    "level_source_mode",
+    "mae_points",
+    "mfe_points",
+    "exposure_policy",
+    "exposure_group_key",
+    "cooldown_bars_after_exit",
+    "status",
+    "intrabar_model",
+    "intrabar_resolution",
+    "intrabar_parent_both_hit",
+    "intrabar_ambiguous",
+    "exit_subbar_timestamp"
+  ],
+  "dtypes": {
+    "bars_held": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "commission_cost": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "cooldown_bars_after_exit": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "direction": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "entry_bar_index": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "entry_model": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "entry_price": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "entry_timestamp": {
+      "family": "datetime-tz",
+      "kind": "M",
+      "name": "datetime64[us, America/New_York]",
+      "tz": "America/New_York",
+      "unit": "us"
+    },
+    "exit_bar_index": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "exit_price": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "exit_reason": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "exit_subbar_timestamp": {
+      "family": "other",
+      "kind": "O",
+      "name": "object"
+    },
+    "exit_timestamp": {
+      "family": "datetime-tz",
+      "kind": "M",
+      "name": "datetime64[us, America/New_York]",
+      "tz": "America/New_York",
+      "unit": "us"
+    },
+    "exposure_group_key": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "exposure_policy": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "gross_pnl_currency": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "gross_pnl_points": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "inside_candle_count": {
+      "family": "other",
+      "kind": "O",
+      "name": "object"
+    },
+    "intrabar_ambiguous": {
+      "family": "boolean",
+      "kind": "b",
+      "name": "bool"
+    },
+    "intrabar_model": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "intrabar_parent_both_hit": {
+      "family": "boolean",
+      "kind": "b",
+      "name": "bool"
+    },
+    "intrabar_resolution": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "is_muted": {
+      "family": "other",
+      "kind": "O",
+      "name": "object"
+    },
+    "is_sfp": {
+      "family": "other",
+      "kind": "O",
+      "name": "object"
+    },
+    "level_count": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "level_names": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "level_source_mode": {
+      "family": "other",
+      "kind": "O",
+      "name": "object"
+    },
+    "mae_points": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "mfe_points": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "net_pnl_currency": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "pnl_currency": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "pnl_points": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "r_multiple": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "signal_id": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "slippage_cost": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "status": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "stop_loss_ticks": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "stop_price": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "take_profit_ticks": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "target_price": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "theoretical_entry_price": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "theoretical_exit_price": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "trade_id": {
+      "family": "integer",
+      "kind": "i",
+      "name": "int64"
+    },
+    "trigger": {
+      "family": "other",
+      "kind": "O",
+      "name": "str"
+    },
+    "trigger_variant": {
+      "family": "other",
+      "kind": "O",
+      "name": "object"
+    },
+    "zone_high": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "zone_low": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    },
+    "zone_mid": {
+      "family": "float",
+      "kind": "f",
+      "name": "float64"
+    }
+  },
+  "row_count": 2
+}
