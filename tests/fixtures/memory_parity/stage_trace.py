@@ -64,6 +64,8 @@ class TraceState:
     prepare_calls: int = 0
     samples: dict[str, Sample] = field(default_factory=dict)
     reset_after_load_prepare: bool = False
+    inside_load: bool = False
+    load_prepare_seen: bool = False
 
 
 def read_vm() -> tuple[float, float]:
@@ -168,10 +170,15 @@ def compute_b(*, r_pre_prepare_hwm_gib: float, r_signals_hwm_gib: float) -> floa
 
 
 def make_prepare_wrapper(original: Callable[..., Any], state: TraceState) -> Callable[..., Any]:
-    """Wrap load-time prepare: sample, drop the map, then reset VmHWM."""
+    """Wrap load-time prepare: sample, drop the map, then reset VmHWM.
+
+    Load-time is ``inside _load_15s_primary_experiment_data``, not "the
+    first prepare call in the process". A first-call heuristic would
+    return ``None`` to ``simulate_trades`` if load never ran.
+    """
 
     def wrapped(*args: Any, **kwargs: Any) -> Any:
-        load_time = state.prepare_calls == 0
+        load_time = state.inside_load and not state.load_prepare_seen
         if load_time:
             sample("R_pre_prepare", state, collect=False, rss=False)
         result = original(*args, **kwargs)
@@ -179,11 +186,12 @@ def make_prepare_wrapper(original: Callable[..., Any], state: TraceState) -> Cal
         if load_time:
             # Caller discards this return. Drop our reference *before*
             # clear_refs so VmHWM excludes the load-time map.
+            state.load_prepare_seen = True
             result = None
             collect_and_reset_vmhwm()
             state.reset_after_load_prepare = True
             return None
-        if state.prepare_calls == 2:
+        if state.prepare_calls >= 1 and "R_ctx" not in state.samples and not state.inside_load:
             # First simulate_trades context is alive (we hold ``result``).
             sample("R_ctx", state, collect=True, rss=True)
         return result
@@ -199,7 +207,11 @@ def _install_trace_hooks(state: TraceState) -> list[Any]:
 
     def load_factory(original: Callable[..., Any]) -> Callable[..., Any]:
         def wrapped(*args: Any, **kwargs: Any) -> Any:
-            result = original(*args, **kwargs)
+            state.inside_load = True
+            try:
+                result = original(*args, **kwargs)
+            finally:
+                state.inside_load = False
             sample("R_load", state, collect=True, rss=True)
             return result
 
@@ -239,6 +251,9 @@ def run_stage_trace(
     _require_linux()
     if sys.platform != "linux":
         raise StageTraceError("§8 stage trace is Linux-only")
+    from .compat import ensure_thesistester_import_path
+
+    ensure_thesistester_import_path()
     resolve_all_hooks()
     run_study = resolve_hook("thesistester.study.execute", "run_study").value
 
