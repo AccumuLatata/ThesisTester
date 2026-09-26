@@ -242,7 +242,7 @@ six==1.17.0
     # via python-dateutil
 sortedcontainers==2.4.0
     # via cyclonedx-python-lib
-starlette==1.6.0
+starlette==1.7.0
     # via streamlit
 stevedore==5.8.0 ; python_full_version < '3.11'
     # via bandit
