@@ -5,7 +5,7 @@
 **Status:** **Plan only.** No runtime change ships in the PR that adds this document. Implementation has not started.
 **Series code:** **MW** (worker memory). Not WMV (`wVWAP` / `mVWAP`).
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 and §4.2, plus the stricter locks in §3 of this file. Where they differ, this file wins for the MW series.
-**Farm code the measurements describe:** commit `59a4652`. The same memory shape was confirmed on `9cd53af` (spawn, discarded load-time context, sequential replica loop, per-minute DataFrame map). Re-check call sites if `main` moves; the contracts below are the behavior, not the line numbers.
+**Farm code the measurements describe:** commit `59a4652`. The same memory shape was confirmed on `9cd53af` (spawn, discarded load-time context, sequential replica loop, per-minute DataFrame map). Re-check call sites if `main` moves; the contracts below are the behavior, not the line numbers. **MW0 is not recorded at `59a4652`.** It is recorded, flag off, at the exact commit MW1 branches from. That commit must first reproduce the `59a4652` reference-cell result (§9). `main` has moved since `59a4652`, including QR E-9 (vectorized 15s→1m derive) and QR E-10 (vectorized `sl_first` walk).
 
 This document supersedes the investigation notes. Three locks from review are part of the contract, not optional commentary:
 
@@ -21,7 +21,7 @@ Cut private per-worker RSS far enough that **16 study workers** fit on the farm 
 
 Today a Program B Run 2 cell uses about **6.5 GiB** RSS alone and about **7.58 GB** under six workers. Six workers peaked at **41.3 GB** total. The worker-count gate, which is not in this repo, therefore stops around 6–8 workers and leaves cores idle. A cell takes about **3.2–4.2 h**. The same cell on one Apple M1 Pro core took 14,518 s versus 11,042 s on one farm core (**1.31×**), so the workload may also be memory-bound.
 
-**Target:** per-worker peak RSS **≤ 3.3 GB** so `16 × 3.3 = 52.8 GB` fits in ~59 GiB, with a preferred landing near **2.5 GB**. Wall time of a cell may not exceed **105%** of the flag-off run. Faster is acceptable.
+**Target:** per-worker peak RSS **≤ 3.3 GiB** so `16 × 3.3 GiB = 52.8 GiB` fits in ~59 GiB usable, with a preferred landing near **2.5 GiB**. Wall time of a cell may not exceed **105%** of the flag-off run. Faster is acceptable. Thresholds and the 16-worker budget in this file are GiB, the same unit as `MemAvailable`.
 
 **Reference cell (known result, identical on macOS and Linux):**
 
@@ -163,10 +163,10 @@ The Quantower path in `load_ohlcv` (`format_profile != "canonical"`) reads the f
 | Order | Change | PR | Private RSS removed | After this step (planned split) |
 |---|---|---|---:|---|
 | 1 | One array-backed context, built once per cell, reused by the load-time check, the backtest, and all 50 replicas. Cleared at cell end | MW1 | 2.2–3.0 GiB, and most of the 3–4 h | **3.4–4.6 GiB**. Not enough for 16 workers |
-| 2 | Stop holding full-width copies in naked flags and 1-minute trigger prep. Drop those objects after the bundle is built, before the replica loop. `hash_dataframe` unchanged | MW2 | ~0.8–1.2 GiB | **2.4–3.4 GiB**. This is the PR that can clear 3.3 GB |
+| 2 | Stop holding full-width copies in naked flags and 1-minute trigger prep. Drop those objects after the bundle is built, before the replica loop. `hash_dataframe` unchanged | MW2 | ~0.8–1.2 GiB | **2.4–3.4 GiB**. This is the PR that can clear 3.3 GiB |
 | 3 | Read-only `.npy` memmap of parent, source, and levels | MW3, optional | Per-process RSS barely moves. Unique machine RAM drops by the shared pages | Only if unique RAM is still tight after MW2, or CSV re-parse dominates startup |
 
-MW1 is required. MW2 is required before the gate may go to 16. MW1 alone leaves a worker near 4 GB, and `16 × 4 GB` does not fit in 59 GiB. MW-L (loader) is inserted by the §8 rule, not by default.
+MW1 is required. MW2 is required before the gate may go to 16. MW1 alone leaves a worker near 4 GiB, and `16 × 4 GiB = 64 GiB` does not fit in 59 GiB usable. MW-L (loader) is inserted by the §8 rule, not by default.
 
 Why MW1 cannot change a result: `resolve_subtimeframe_bar` is untouched and still receives a frame whose `open` / `high` / `low` / `close`, index, and dtypes match today's `.copy().reset_index(drop=True)`. Prepare still raises on the same OHLC mismatches and still records the same fallback reasons. The replica loop and `SeedSequence.spawn` are untouched. The context is read-only after prepare. Building it once is valid because the build does not consume the RNG.
 
@@ -193,7 +193,7 @@ Why MW3 cannot change a result: the memmap is float64, opened read-only, and acc
 
 ## 8. Hard gate before MW1 — full-CSV stage trace
 
-No MW1 (and no MW-L, and no MW2) code is written until this trace has been run on the **farm CSV** at commit `59a4652`, flag off, one process. A short synthetic prefix cannot see a loader buffer that scales with the real file. The trace is an operator measurement. It is not a product change and it is not required to land in git before the numbers exist. Record the numbers in the MW1 PR body so the order decision is reviewable.
+No MW1 (and no MW-L, and no MW2) code is written until this trace has been run on the **farm CSV** at the exact commit MW1 will branch from, flag off, one process. That is the same commit as MW0 (§9), after the §9 pre-step has matched `59a4652`. A short synthetic prefix cannot see a loader buffer that scales with the real file. The trace is an operator measurement. It is not a product change and it is not required to land in git before the numbers exist. Record the numbers in the MW1 PR body so the order decision is reviewable.
 
 Stop points, **full file**, `VmRSS` after `gc.collect()`:
 
@@ -237,7 +237,11 @@ Sixteen workers stay blocked until a flag-on smoke peak is ≤ 3.3 GiB. See §14
 
 ## 9. MW0 — Golden capture
 
-**Depends on:** nothing. May run in parallel with the §8 trace. Must be recorded at commit `59a4652` with the flag off (the flag does not exist yet). Later MW PRs match these outputs. They do not regenerate them.
+**Depends on:** the equality pre-step below. The §8 trace may run in parallel only after that pre-step passes, and only on this same commit. Recorded with the flag off (the flag does not exist yet) at the **exact commit MW1 branches from**. Later MW PRs match these outputs. They do not regenerate them. They do not move the pin.
+
+The numbers in §5 and §6 were measured at `59a4652`. MW PRs branch from current `main`, which has moved (QR E-9, QR E-10). The golden follows the branch commit. The known result stays the `59a4652` result.
+
+**Mandatory pre-step, before MW0 is recorded.** On that commit, flag off, Linux, one process, the full reference cell must reproduce the `59a4652` result: **59 trades, E=0.0805**, and the same trade rows and the same `replica_expectancies` bits as the `59a4652` run. If it does not, **stop the series and report**. Do not record MW0. Do not start MW1, MW-L, or MW2. A short-window match is not this pre-step.
 
 **Goal:** a reference suite that fails on any bit difference.
 
@@ -281,7 +285,8 @@ Plus the full reference cell named in §1, on the full CSV. Known **59 trades, E
 
 ### 9.4 Acceptance
 
-- Recorder at `59a4652` is deterministic on the synthetic fixture across two runs (canonical hash equal).
+- The §9 pre-step passed on Linux: the full reference cell on the MW1 branch commit matches the `59a4652` trades and `replica_expectancies` bits (59 trades, E=0.0805).
+- Recorder at that same commit is deterministic on the synthetic fixture across two runs (canonical hash equal).
 - Compare mode fails if any trade field, replica float, DA5 field, or canonical hash differs.
 - Existing pytest suite stays green. No product behavior change, so no new runtime flag in MW0.
 
@@ -324,7 +329,11 @@ A worker runs more than one cell (§5). The slot is therefore not keyed by `id()
 
 `run_experiment` and CLI `_execute_run` do **not** enter the slot. They keep today's per-call build. That is deliberate: a module-global cache that is always on would leak across CLI batch tasks. The lookup inside prepare is a no-op unless the slot is active.
 
-Within one cell the parent object used at load time and the OHLC columns inside the levels frame are different objects with the same values. The content key is what makes the backtest and the replicas hit the slot built during load (or built on first `simulate_trades` if load ran outside the slot — it does not, because load is inside `execute_study_cell`). Hashing the frames once per cell is acceptable. Do not hash on every replica after the slot is filled.
+**Lookup.** Every prepare call while the slot is active computes this content key and compares it to the key stored in the slot. That is the load-time call, the `simulate_trades` call, and all 50 replica calls. A hit reuses the array. A miss replaces the slot. There is no second lookup and no "already filled, skip the hash" path.
+
+Object identity is rejected. `id(df)`, the `id` of a column, a cached pointer, and any address are not the key and are not a hint that skips the hash. The parent object used at load time and the OHLC columns inside the levels frame are different objects with the same values. An identity check misses and rebuilds the map. The content key is what makes the backtest and the replicas hit the slot built during load. Load is inside `execute_study_cell`, so the slot is active for that first build.
+
+**Hash cost, measured.** `hash_dataframe` on synthetic 7-column frames (timestamp, OHLC, volume, session), real function, this investigation machine: **0.133 µs/row** at 725,880 rows (0.096 s) and **0.130 µs/row** at 1,451,760 rows. The slope is flat from 20k rows up, so the full parent (~726k rows) is about **0.10 s** and the 15-second frame (~2.9M rows, four times the parent) is about **0.38 s**. One prepare call is about **0.5 s** for both hashes plus the short JSON digest. Fifty-two calls are about **25 s** per cell. One dict-of-frames rebuild is minutes (~475 µs per complete minute). The hashes replace those rebuilds. Re-time on the farm only if the §14 wall-clock gate (≤ 105% of flag off) is within a minute of failing. On a 3.2–4.2 h cell, 25 s is inside that margin.
 
 ### 10.3 Files
 
@@ -500,14 +509,14 @@ The gate script is **not in this repository**. Change it only after the measurem
 Order:
 
 1. **§8 trace**, flag off, full CSV, before MW1. Record `R_load`, `R_signals`, `R_ctx`, `R_done`, and `map_step` in the MW1 PR.
-2. **MW0** recorded at `59a4652`.
+2. **§9 pre-step**, then **MW0**, both on the commit MW1 branches from. The pre-step is the full reference cell, flag off, Linux, equal to the `59a4652` trades and `replica_expectancies` bits. A miss stops the series.
 3. **MW1** (or MW-L first if §8.1 says so). Parity: short suite, flag off vs on, Linux then macOS. Exact equality, including `canonical_bundle_hash`. Then the full reference cell, both machines, both flag states. Only a match allows `THESISTESTER_MEMORY_PATH=array` on the farm.
 4. **Speed**, same full cell, both flags. Wall time ≤ 105% of flag off. Expect a large drop. A slower result blocks the flag.
 5. **MW-L** only if §8.1 inserts it. Re-trace.
 6. **MW2.** Repeat the short-suite parity and the resume test on the farm. Then the full reference cell again if MW2 could touch OHLC bytes passed into `simulate_trades` (it can). Both machines.
 7. **Capacity**, flag on, after parity. One smoke cell, then a real multi-cell study, at **6, 12, and 16** workers. Record per-worker peak RSS, minimum `MemAvailable`, and cells/hour.
-   - Pass: minimum `MemAvailable` during the 16-worker run stays above **4 GiB**, and no worker RSS exceeds **3.3 GB**.
-   - If worker RSS is over 3.3 GB, keep the gate at the measured fit. Do not turn on MW3 just to satisfy an `N × RSS` formula.
+   - Pass: minimum `MemAvailable` during the 16-worker run stays above **4 GiB**, and no worker RSS exceeds **3.3 GiB**. Sixteen workers at that cap are `16 × 3.3 GiB = 52.8 GiB`, inside ~59 GiB usable.
+   - If worker RSS is over 3.3 GiB, keep the gate at the measured fit. Do not turn on MW3 just to satisfy an `N × RSS` formula.
 8. **MW3** only under §13. Repeat the 16-worker run. Budget with the drop in `MemAvailable`. Quote per-worker RSS as a leak check, not as the capacity number.
 
 **Gate formula** after MW2, before MW3:
@@ -519,6 +528,8 @@ workers = min(16, floor((MemAvailable_at_idle_GiB − 4) / smoke_peak_RSS_GiB))
 Use the **flag-on** smoke peak. Leave at least 4 GiB for the OS. Sixteen workers is one process per core. SMT is not required; each cell is single-threaded.
 
 After MW3, if mappings are shared, stop using `N × smoke RSS` as the capacity ceiling. Use idle `MemAvailable` minus 4 GiB, divided by the **private** RSS (smoke RSS minus the mapped file's resident size, measured once). If that private number cannot be measured cleanly, stay on the MW2 formula. A shared mapping that is still counted 16 times will refuse a run that actually fits.
+
+**Farm commit.** The farm may move off `59a4652` onto the MW1 branch commit only between studies, or after the §9 equality pre-step has been shown. It must not move in the middle of a study, and it must not move before that equality is on record.
 
 ---
 
