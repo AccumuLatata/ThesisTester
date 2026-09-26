@@ -46,8 +46,7 @@ def git_output(*args: str, cwd: Path | None = None) -> str:
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip() or "no output"
         raise GitRefError(
-            f"STOP AND REPORT: git {' '.join(args)} failed "
-            f"(exit {proc.returncode}): {detail}"
+            f"STOP AND REPORT: git {' '.join(args)} failed (exit {proc.returncode}): {detail}"
         )
     return proc.stdout
 

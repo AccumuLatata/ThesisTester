@@ -167,9 +167,7 @@ def compute_b(*, r_pre_prepare_hwm_gib: float, r_signals_hwm_gib: float) -> floa
     return max(r_pre_prepare_hwm_gib, r_signals_hwm_gib)
 
 
-def make_prepare_wrapper(
-    original: Callable[..., Any], state: TraceState
-) -> Callable[..., Any]:
+def make_prepare_wrapper(original: Callable[..., Any], state: TraceState) -> Callable[..., Any]:
     """Wrap load-time prepare: sample, drop the map, then reset VmHWM."""
 
     def wrapped(*args: Any, **kwargs: Any) -> Any:
