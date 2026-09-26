@@ -88,9 +88,9 @@
     "entry_timestamp": {
       "family": "datetime-tz",
       "kind": "M",
-      "name": "datetime64[us, America/New_York]",
+      "name": "datetime64[ns, America/New_York]",
       "tz": "America/New_York",
-      "unit": "us"
+      "unit": "ns"
     },
     "exit_bar_index": {
       "family": "integer",
@@ -115,9 +115,9 @@
     "exit_timestamp": {
       "family": "datetime-tz",
       "kind": "M",
-      "name": "datetime64[us, America/New_York]",
+      "name": "datetime64[ns, America/New_York]",
       "tz": "America/New_York",
-      "unit": "us"
+      "unit": "ns"
     },
     "exposure_group_key": {
       "family": "other",
