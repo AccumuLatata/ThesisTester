@@ -22,5 +22,7 @@ dist/
 *.parquet
 # Golden-master fixtures are committed on purpose (see tests/fixtures/golden/README.md).
 !tests/fixtures/golden/*.parquet
+# MW0 memory-parity synthetic golden (see tests/fixtures/memory_parity/README.md).
+!tests/fixtures/memory_parity/**/*.parquet
 .thesistester_store/
 .DS_Store
