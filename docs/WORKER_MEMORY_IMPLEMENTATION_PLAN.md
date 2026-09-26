@@ -15,6 +15,15 @@ This document supersedes the investigation notes. These locks are the contract, 
 4. The lazy group frame carries `timestamp` plus OHLC. `resolve_subtimeframe_bar` writes `exit_subbar_timestamp` from `sub_bar["timestamp"]`. A float64 OHLC array alone changes trades.
 5. MW0 does not edit `tests/fixtures/golden/README.md`. That file is byte-locked. The pointer lives under `tests/fixtures/memory_parity/` and in `ENGINEERING_PROPOSAL.md` §4.1.
 
+## Acceptance contract
+
+Non-negotiable. §3 does not weaken this section. MW0 records the reference, flag off, before the flag exists. The PR that only adds this file ships no path and does not run these checks. From MW1 on, including MW-L, MW2, MW3, and any later path change:
+
+- Every such PR must pass with `THESISTESTER_MEMORY_PATH=array` and with the flag off. On every MW0 cell, versus the MW0 reference: identical trade frames (every column, including `exit_subbar_timestamp`, same dtypes, units, and timezone), identical random-baseline fields (DA5 non-null where the reference is non-null), identical `replica_expectancies`, and identical `canonical_bundle_hash`. Any single difference means the PR is not merged. No tolerance. References are not regenerated.
+- The flag-off path must stay byte-identical to `main` before the PR. Unset, empty, or any value other than `array` is that pre-PR path. Its trades, DA5 fields, `replica_expectancies`, and `canonical_bundle_hash` match that `main`. Raw zip bytes are not the check.
+- Before the farm switches paths, one full real-CSV Program B cell must be run on the farm PC with both paths and produce identical outputs. The switch happens only between studies.
+- If any of these checks cannot be run, the series stops and reports instead of proceeding.
+
 ---
 
 ## 1. Purpose
@@ -55,7 +64,7 @@ This is a resource refactor. The engine, the research logic, and the app's scope
 | Flag is invisible | The variable is not written into `cache_provenance`, the hashed bundle, the ledger, the study identity, or the index, except where the index already stores values that are themselves unchanged. |
 | RNG | `SeedSequence.spawn` order and `random_entry_signals` are not edited. The context build does not draw. |
 | Walker | `resolve_subtimeframe_bar` is not edited. |
-| Equality | Trades (every column), ordered `replica_expectancies`, summary metrics, DA5 index fields, and `canonical_bundle_hash` are bit-identical. Float64 compared as bits. `NaN` equals `NaN`. No tolerance. |
+| Equality | Trades (every column, including `exit_subbar_timestamp`, same dtypes, units, and timezone), ordered `replica_expectancies`, summary metrics, DA5 index fields (non-null where the MW0 reference is non-null), and `canonical_bundle_hash` are bit-identical versus the MW0 reference, flag on and flag off, on every MW0 cell. Float64 compared as bits. `NaN` equals `NaN`. No tolerance. No regenerating references. The Acceptance contract is the merge rule. |
 | Platforms | The golden suite passes on Linux and macOS before the operator default may flip. |
 | Speed | Per-cell wall time ≤ 105% of the flag-off run on the same machine. |
 | Resume | A half-finished flag-off study resumes flag-on. Finished cells are not recomputed. Pending cells are not skipped. Ledger records of finished cells are not rewritten. |
