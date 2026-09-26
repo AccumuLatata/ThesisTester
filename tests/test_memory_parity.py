@@ -6,8 +6,10 @@ import io
 import json
 import os
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -29,6 +31,12 @@ from tests.fixtures.memory_parity.canonical import (
     portable_canonical_bundle_hash,
     portable_dtype_label,
     portable_hash_dataframe,
+)
+from tests.fixtures.memory_parity.compat import (
+    CompatError,
+    assert_imported_thesistester_follows_pythonpath,
+    prefer_pythonpath_thesistester,
+    pythonpath_thesistester_roots,
 )
 from tests.fixtures.memory_parity.compare import compare_captures, compare_trades, format_report
 from tests.fixtures.memory_parity.generate_synthetic import (
@@ -608,6 +616,348 @@ def test_load_time_prepare_resets_vmhwm_after_map_is_unreachable(
         "tests.fixtures.memory_parity.stage_trace.sample",
         lambda *args, **kwargs: None,
     )
-    wrapped = make_prepare_wrapper(fake_prepare, TraceState())
+    state = TraceState()
+    wrapped = make_prepare_wrapper(fake_prepare, state)
+    outside = wrapped()
+    assert outside is not None
+    assert held_at_reset == []
+    assert state.reset_after_load_prepare is False
+    state.inside_load = True
     assert wrapped() is None
     assert held_at_reset == [False]
+    assert state.reset_after_load_prepare is True
+    assert state.load_prepare_seen is True
+
+
+def _flip_float64_ulp(value: float) -> float:
+    bits = np.float64(value).view(np.uint64)
+    return float((bits + np.uint64(1)).view(np.float64))
+
+
+def _member_zip(
+    *,
+    dataset: pd.DataFrame | None = None,
+    source: pd.DataFrame | None = None,
+    levels: pd.DataFrame | None = None,
+    naked: pd.DataFrame | None = None,
+    trades: pd.DataFrame | None = None,
+    extra_json: dict[str, Any] | None = None,
+    extra_bytes: dict[str, bytes] | None = None,
+    identity_hashes: tuple[str, str, str] = ("aa" * 32, "bb" * 32, "cc" * 32),
+) -> bytes:
+    stamps = _ny_stamps(unit="ns")
+    if dataset is None:
+        dataset = pd.DataFrame(
+            {"timestamp": stamps, "close": np.array([100.0, 101.0], dtype="float64")}
+        )
+    if source is None:
+        source = pd.DataFrame(
+            {"timestamp": stamps, "close": np.array([100.0, 101.0], dtype="float64")}
+        )
+    if levels is None:
+        levels = pd.DataFrame(
+            {
+                "timestamp": stamps,
+                "EMA_9_1min": np.array([1.23456789012345, 2.5], dtype="float64"),
+            }
+        )
+    if naked is None:
+        naked = pd.DataFrame(
+            {
+                "timestamp": stamps,
+                "EMA_21_5min": np.array([3.14159265358979, 4.0], dtype="float64"),
+            }
+        )
+    if trades is None:
+        trades = pd.DataFrame(
+            {
+                "trade_id": [1, 2],
+                "r_multiple": np.array([0.5, -0.25], dtype="float64"),
+                "exit_subbar_timestamp": stamps,
+            }
+        )
+    data_hash, dataset_id, source_hash = identity_hashes
+    members: dict[str, bytes] = {}
+    for name, frame in (
+        ("dataset.parquet", dataset),
+        ("subtimeframe_data.parquet", source),
+        ("levels.parquet", levels),
+        ("naked_flags.parquet", naked),
+        ("trades.parquet", trades),
+    ):
+        inner = io.BytesIO()
+        frame.to_parquet(inner, index=False)
+        members[name] = inner.getvalue()
+    members["dataset_meta.json"] = json.dumps(
+        {
+            "instrument": "MNQ",
+            "base_interval": "1min",
+            "source_timezone": "UTC",
+            "exchange_timezone": "America/New_York",
+            "dataset_id": dataset_id,
+        }
+    ).encode("utf-8")
+    members["research_identity.json"] = json.dumps(
+        {
+            "data_identity": {
+                "data_content_hash": data_hash,
+                "dataset_id": dataset_id,
+                "instrument": "MNQ",
+            }
+        }
+    ).encode("utf-8")
+    members["subtimeframe_meta.json"] = json.dumps(
+        {"ingestion_provenance": {"source_content_hash": source_hash}}
+    ).encode("utf-8")
+    members["trade_summary.json"] = json.dumps({"trade_count": 2, "expectancy_r": 0.0805}).encode(
+        "utf-8"
+    )
+    members["signals_meta.json"] = json.dumps({"signal_settings_hash": "sig"}).encode("utf-8")
+    members["manifest.json"] = json.dumps(
+        {"created_at": "2026-01-01T00:00:00+00:00", "ok": True}
+    ).encode("utf-8")
+    members["notes.txt"] = b"hello"
+    for name, payload in (extra_json or {}).items():
+        members[name] = json.dumps(payload).encode("utf-8")
+    for name, payload in (extra_bytes or {}).items():
+        members[name] = payload
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, payload in members.items():
+            archive.writestr(name, payload)
+    return buffer.getvalue()
+
+
+def test_portable_hash_last_bit_ema_fails() -> None:
+    """Farm Mac/Linux last-bit EMA split must fail; do not paper over it."""
+    left = pd.DataFrame(
+        {
+            "timestamp": _ny_stamps(unit="ns"),
+            "EMA_9_1min": np.array([1.23456789012345, 2.5], dtype="float64"),
+        }
+    )
+    right = left.copy()
+    right.loc[0, "EMA_9_1min"] = _flip_float64_ulp(float(left.loc[0, "EMA_9_1min"]))
+    assert portable_hash_dataframe(left) != portable_hash_dataframe(right)
+    left_hash = portable_canonical_bundle_hash(_member_zip(levels=left))
+    right_hash = portable_canonical_bundle_hash(_member_zip(levels=right))
+    assert left_hash != right_hash
+
+
+def test_portable_hash_fails_on_each_member_type() -> None:
+    baseline = _member_zip()
+    baseline_hash = portable_canonical_bundle_hash(baseline)
+
+    dataset = pd.DataFrame(
+        {"timestamp": _ny_stamps(unit="ns"), "close": np.array([100.0, 101.0], dtype="float64")}
+    )
+    dataset.loc[0, "close"] = 99.5
+    assert portable_canonical_bundle_hash(_member_zip(dataset=dataset)) != baseline_hash
+
+    source = pd.DataFrame(
+        {"timestamp": _ny_stamps(unit="ns"), "close": np.array([100.0, 101.0], dtype="float64")}
+    )
+    source.loc[1, "close"] = 102.0
+    assert portable_canonical_bundle_hash(_member_zip(source=source)) != baseline_hash
+
+    levels = pd.DataFrame(
+        {
+            "timestamp": _ny_stamps(unit="ns"),
+            "EMA_9_1min": np.array([1.23456789012345, 2.5], dtype="float64"),
+        }
+    )
+    levels.loc[0, "EMA_9_1min"] = _flip_float64_ulp(1.23456789012345)
+    assert portable_canonical_bundle_hash(_member_zip(levels=levels)) != baseline_hash
+
+    naked = pd.DataFrame(
+        {
+            "timestamp": _ny_stamps(unit="ns"),
+            "EMA_21_5min": np.array([3.14159265358979, 4.0], dtype="float64"),
+        }
+    )
+    naked.loc[0, "EMA_21_5min"] = _flip_float64_ulp(3.14159265358979)
+    assert portable_canonical_bundle_hash(_member_zip(naked=naked)) != baseline_hash
+
+    trades = pd.DataFrame(
+        {
+            "trade_id": [1, 2],
+            "r_multiple": np.array([0.5, -0.25], dtype="float64"),
+            "exit_subbar_timestamp": _ny_stamps(unit="ns"),
+        }
+    )
+    trades.loc[0, "r_multiple"] = _flip_float64_ulp(0.5)
+    assert portable_canonical_bundle_hash(_member_zip(trades=trades)) != baseline_hash
+
+    mutated_summary = _member_zip(extra_json={"trade_summary.json": {"trade_count": 3}})
+    assert portable_canonical_bundle_hash(mutated_summary) != baseline_hash
+
+    mutated_signals = _member_zip(
+        extra_json={"signals_meta.json": {"signal_settings_hash": "nope"}}
+    )
+    assert portable_canonical_bundle_hash(mutated_signals) != baseline_hash
+
+    mutated_notes = _member_zip(extra_bytes={"notes.txt": b"hello!"})
+    assert portable_canonical_bundle_hash(mutated_notes) != baseline_hash
+
+    mutated_instrument = json.loads(
+        zipfile.ZipFile(io.BytesIO(baseline)).read("dataset_meta.json").decode("utf-8")
+    )
+    mutated_instrument["instrument"] = "NQ"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(baseline), "r") as src, zipfile.ZipFile(buffer, "w") as dest:
+        for name in src.namelist():
+            payload = src.read(name)
+            if name == "dataset_meta.json":
+                payload = json.dumps(mutated_instrument).encode("utf-8")
+            dest.writestr(name, payload)
+    assert portable_canonical_bundle_hash(buffer.getvalue()) != baseline_hash
+
+
+def test_portable_hash_identity_strings_are_not_a_second_source() -> None:
+    left = _member_zip(identity_hashes=("aa" * 32, "bb" * 32, "cc" * 32))
+    right = _member_zip(identity_hashes=("dd" * 32, "ee" * 32, "ff" * 32))
+    assert portable_canonical_bundle_hash(left) == portable_canonical_bundle_hash(right)
+
+
+def test_portable_hash_does_not_rewrite_dataset_id_outside_identity_files() -> None:
+    baseline = _member_zip()
+    mutated = _member_zip(
+        extra_json={"trade_summary.json": {"trade_count": 2, "dataset_id": "other" * 8}}
+    )
+    assert portable_canonical_bundle_hash(baseline) != portable_canonical_bundle_hash(mutated)
+
+
+def test_compare_fails_on_isolated_replica_bit(tmp_path: Path) -> None:
+    left = tmp_path / "left"
+    right = tmp_path / "right"
+    _write_tiny_capture(left, "full_reference", extra=0.0, hash_text="aaa")
+    _write_tiny_capture(right, "full_reference", extra=0.0, hash_text="aaa")
+    replica_path = cell_dir(right, "full_reference") / "replica_expectancies.json"
+    payload = json.loads(replica_path.read_text(encoding="utf-8"))
+    payload["hex_bits"][0] = f"{int(payload['hex_bits'][0], 16) ^ 1:016x}"
+    replica_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    report = compare_captures(left, right, pre_step=False)
+    assert report.ok is False
+    assert {diff.field for diff in report.gate_failures} == {"replica_expectancies"}
+
+
+def test_compare_fails_on_isolated_da5_bit(tmp_path: Path) -> None:
+    left = tmp_path / "left"
+    right = tmp_path / "right"
+    _write_tiny_capture(left, "full_reference", extra=0.0, hash_text="aaa")
+    _write_tiny_capture(right, "full_reference", extra=0.0, hash_text="aaa")
+    da5_path = cell_dir(right, "full_reference") / "da5.json"
+    payload = json.loads(da5_path.read_text(encoding="utf-8"))
+    payload["random_p_value_ge"]["hex"] = f"{int(payload['random_p_value_ge']['hex'], 16) ^ 1:016x}"
+    da5_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    full = compare_captures(left, right, pre_step=False)
+    assert full.ok is False
+    assert {diff.field for diff in full.gate_failures} == {"random_p_value_ge"}
+    pre = compare_captures(left, right, pre_step=True)
+    assert pre.ok is True
+    assert any(diff.field == "random_p_value_ge" and not diff.gate for diff in pre.diffs)
+
+
+def test_compare_fails_on_isolated_summary_and_ledger(tmp_path: Path) -> None:
+    left = tmp_path / "left"
+    right = tmp_path / "right"
+    _write_tiny_capture(left, "full_reference", extra=0.0, hash_text="aaa")
+    _write_tiny_capture(right, "full_reference", extra=0.0, hash_text="aaa")
+    summary_path = cell_dir(right, "full_reference") / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["win_rate"]["hex"] = f"{int(summary['win_rate']['hex'], 16) ^ 1:016x}"
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    report = compare_captures(left, right, pre_step=False)
+    assert report.ok is False
+    assert "win_rate" in {diff.field for diff in report.gate_failures}
+
+    _write_tiny_capture(right, "full_reference", extra=0.0, hash_text="aaa")
+    ledger_path = cell_dir(right, "full_reference") / "ledger.json"
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    ledger["status"] = "failed"
+    ledger_path.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+    ledger_report = compare_captures(left, right, pre_step=False)
+    assert ledger_report.ok is False
+    assert "ledger.status" in {diff.field for diff in ledger_report.gate_failures}
+
+
+def test_replica_hook_records_without_changing_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    import thesistester.analytics.overfitting as ov
+    import thesistester.study.execute as ex
+
+    from tests.fixtures.memory_parity.hooks import replica_expectancies_hook
+
+    def fake(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {"available": True, "replica_expectancies": [0.0805, 0.1]}
+
+    monkeypatch.setattr(ov, "vs_random_benchmark", fake)
+    monkeypatch.setattr(ex, "vs_random_benchmark", fake)
+    with replica_expectancies_hook() as sink:
+        result = ex.vs_random_benchmark()
+        assert result == {"available": True, "replica_expectancies": [0.0805, 0.1]}
+        assert sink.last == [0.0805, 0.1]
+        assert sink.calls == [[0.0805, 0.1]]
+    assert ex.vs_random_benchmark is fake
+    assert ov.vs_random_benchmark is fake
+
+
+def test_prefer_pythonpath_thesistester_beats_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    farm = tmp_path / "farm59"
+    mw0 = tmp_path / "mw0"
+    (farm / "thesistester").mkdir(parents=True)
+    (mw0 / "thesistester").mkdir(parents=True)
+    (farm / "thesistester" / "__init__.py").write_text("NAME = 'farm59'\n", encoding="utf-8")
+    (mw0 / "thesistester" / "__init__.py").write_text("NAME = 'mw0'\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(farm), str(mw0)]))
+    original = list(sys.path)
+    try:
+        sys.path[:] = [str(mw0), str(farm), str(mw0)] + original
+        chosen = prefer_pythonpath_thesistester()
+        assert chosen == farm.resolve()
+        assert Path(sys.path[0]).resolve() == farm.resolve()
+        assert pythonpath_thesistester_roots()[0] == farm.resolve()
+    finally:
+        sys.path[:] = original
+
+
+def test_pythonpath_mismatch_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    farm = tmp_path / "farm59"
+    (farm / "thesistester").mkdir(parents=True)
+    (farm / "thesistester" / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(farm))
+    with pytest.raises(CompatError, match="STOP AND REPORT"):
+        assert_imported_thesistester_follows_pythonpath()
+
+
+def test_python_dash_m_from_checkout_uses_pythonpath_thesistester(tmp_path: Path) -> None:
+    """Farm invocation: cwd is MW0; PYTHONPATH lists 59a4652 first."""
+    farm = tmp_path / "farm59"
+    mw0 = tmp_path / "mw0"
+    (farm / "thesistester").mkdir(parents=True)
+    (mw0 / "thesistester").mkdir(parents=True)
+    (farm / "thesistester" / "__init__.py").write_text("NAME = 'farm59'\n", encoding="utf-8")
+    (mw0 / "thesistester" / "__init__.py").write_text("NAME = 'mw0'\n", encoding="utf-8")
+    probe = (
+        "import sys\n"
+        "from tests.fixtures.memory_parity.compat import prefer_pythonpath_thesistester\n"
+        "prefer_pythonpath_thesistester()\n"
+        "import thesistester\n"
+        "print(getattr(thesistester, 'NAME', 'missing'))\n"
+        "print(thesistester.__file__)\n"
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join([str(farm), str(mw0), str(REPO)])
+    proc = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=str(mw0),
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    assert lines[0] == "farm59"
+    assert str(farm) in lines[1]
