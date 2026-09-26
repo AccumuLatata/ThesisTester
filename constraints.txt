@@ -234,7 +234,7 @@ rpds-py==2026.6.3 ; python_full_version >= '3.11'
     # via
     #   jsonschema
     #   referencing
-ruff==0.16.7
+ruff==0.16.8
     # via thesistester (pyproject.toml)
 simplejson==4.1.2
     # via choreographer
