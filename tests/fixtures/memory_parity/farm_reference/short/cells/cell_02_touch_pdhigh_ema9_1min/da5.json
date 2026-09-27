@@ -1,0 +1,18 @@
+{
+  "expectancy_minus_null_r": {
+    "hex": "bfc25d359fbf5938",
+    "is_null": false
+  },
+  "random_null_expectancy_r": {
+    "hex": "bfb76e8a8310a9ce",
+    "is_null": false
+  },
+  "random_null_std_r": {
+    "hex": "3fc81567d569be75",
+    "is_null": false
+  },
+  "random_p_value_ge": {
+    "hex": "3fe7373737373737",
+    "is_null": false
+  }
+}

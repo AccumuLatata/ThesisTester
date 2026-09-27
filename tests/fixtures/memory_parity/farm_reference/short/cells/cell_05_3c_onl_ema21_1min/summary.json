@@ -1,0 +1,23 @@
+{
+  "expectancy_r": {
+    "hex": "bfa9999999999998",
+    "is_null": false
+  },
+  "max_drawdown_r": {
+    "hex": "401d666666666666",
+    "is_null": false
+  },
+  "profit_factor": {
+    "hex": "3fecf3cf3cf3cf3e",
+    "is_null": false
+  },
+  "total_r": {
+    "hex": "bfe6666666666664",
+    "is_null": false
+  },
+  "trade_count": 14,
+  "win_rate": {
+    "hex": "3fe0000000000000",
+    "is_null": false
+  }
+}

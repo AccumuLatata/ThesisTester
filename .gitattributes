@@ -1,0 +1,3 @@
+# Parquet is binary. Do not apply text or CRLF conversion to golden or
+# MW0 farm_reference frames (Git's heuristic is not a contract).
+*.parquet binary

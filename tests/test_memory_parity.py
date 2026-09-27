@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -15,10 +17,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.fixtures.memory_parity.bits import float64_hex, replica_hex_list
+from tests.fixtures.memory_parity.bits import (
+    DA5_KEYS,
+    float64_hex,
+    hex_to_float64,
+    replica_hex_list,
+)
 from tests.fixtures.memory_parity.cells import (
     CI_CELL6_SHAPE,
     CI_PREPARE_REPLICA,
+    FULL_CELL,
+    FULL_CELL_KNOWN_TRADE_COUNT,
     SHORT_CELLS,
     parse_cell_selector,
 )
@@ -48,7 +57,21 @@ from tests.fixtures.memory_parity.gitref import (
     diff_vs_main,
     show_at_farm,
 )
-from tests.fixtures.memory_parity.io import cell_dir, describe_series_dtype, write_capture
+from tests.fixtures.memory_parity.io import (
+    DA5_NAME,
+    DTYPES_NAME,
+    HASH_NAME,
+    LEDGER_NAME,
+    META_NAME,
+    REPLICA_NAME,
+    SUMMARY_NAME,
+    TRADES_NAME,
+    cell_dir,
+    describe_series_dtype,
+    list_cell_ids,
+    load_capture,
+    write_capture,
+)
 from tests.fixtures.memory_parity.slice_csv import (
     SHORT_WINDOW_END_UTC,
     SHORT_WINDOW_START_UTC,
@@ -60,6 +83,161 @@ from tests.fixtures.memory_parity.stage_trace import compute_b, evaluate_rule_8_
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "tests" / "fixtures" / "memory_parity"
 GOLDEN = FIXTURE / "synthetic_golden"
+FARM_REF = FIXTURE / "farm_reference"
+FARM_FULL = FARM_REF / "full"
+FARM_SHORT = FARM_REF / "short"
+
+# §9.1 files every official cell must have. Missing sidecar (e.g. dtypes)
+# is a gate failure even though load_capture treats some as optional.
+FARM_REQUIRED_CELL_FILES: tuple[str, ...] = (
+    TRADES_NAME,
+    DTYPES_NAME,
+    REPLICA_NAME,
+    SUMMARY_NAME,
+    DA5_NAME,
+    LEDGER_NAME,
+    HASH_NAME,
+    META_NAME,
+)
+
+# Documented farm results (README / §9). Not derived from the files at
+# compare time — compare_captures(dir, dir) is tautological.
+FARM_FULL_EXPECTANCY_HEX = "3fb49c34115b1e60"
+FARM_FULL_EXPECTANCY = 0.0805084745762712
+FARM_FULL_PORTABLE_HASH = "b8ff79824c686b1ad16010ff9fbd682d005cd0275b3fc3b16bc3c30e24ec5be7"
+FARM_SHORT_TRADE_COUNTS: dict[str, int] = {
+    "cell_01_fade_onh_sma50_5min": 17,
+    "cell_02_touch_pdhigh_ema9_1min": 75,
+    "cell_03_break_orhigh_rvwap30": 21,
+    "cell_04_continuation_london_pivot5m": 16,
+    "cell_05_3c_onl_ema21_1min": 14,
+    "cell_06_fade_onh_sma200_30min_zero": 0,
+}
+
+# GNU sha256sum lockfile (paths relative to farm_reference/). Outside the
+# official capture tree. Pandas-independent. A missing, extra, or altered
+# fixture (including parquet / manifest) fails.
+FARM_REFERENCE_SHA256_PATH = FIXTURE / "farm_reference.sha256"
+
+
+def _manifest_cell_ids(root: Path) -> list[str]:
+    payload = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    cells = payload.get("cells")
+    if not isinstance(cells, list):
+        raise AssertionError(f"{root}/manifest.json missing cells list")
+    return [str(item) for item in cells]
+
+
+def _expected_farm_reference_paths() -> set[str]:
+    paths = {"full/manifest.json", "short/manifest.json"}
+    for name in FARM_REQUIRED_CELL_FILES:
+        paths.add(f"full/cells/{FULL_CELL.cell_id}/{name}")
+    for spec in SHORT_CELLS:
+        for name in FARM_REQUIRED_CELL_FILES:
+            paths.add(f"short/cells/{spec.cell_id}/{name}")
+    return paths
+
+
+def _farm_reference_file_sha256s(root: Path) -> dict[str, str]:
+    files = {
+        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+    return dict(sorted(files.items()))
+
+
+def _load_farm_reference_sha256_lock(path: Path = FARM_REFERENCE_SHA256_PATH) -> dict[str, str]:
+    """Parse GNU sha256sum text (``digest  path`` or ``digest *path``)."""
+    if not path.is_file():
+        raise AssertionError(f"missing farm_reference sha256 lock: {path}")
+    mapping: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        digest, rel = line.split(None, 1)
+        if rel.startswith("*"):
+            rel = rel[1:]
+        mapping[rel] = digest
+    if not mapping:
+        raise AssertionError(f"empty farm_reference sha256 lock: {path}")
+    return mapping
+
+
+def test_farm_reference_bytes_match_official_pins() -> None:
+    """Cheap CI: official farm bytes, manifests, and documented results.
+
+    No CSV. No replay. SHA-256 is pandas-independent (py3.10/3.11/3.12).
+    Self-compare is not the gate — it cannot see an altered fixture.
+    """
+    assert FARM_FULL.is_dir() and FARM_SHORT.is_dir()
+    csv_files = list(FARM_REF.rglob("*.csv"))
+    assert csv_files == [], csv_files
+
+    expected_paths = _expected_farm_reference_paths()
+    pinned = _load_farm_reference_sha256_lock()
+    assert set(pinned) == expected_paths
+    actual = _farm_reference_file_sha256s(FARM_REF)
+    missing = expected_paths - set(actual)
+    extra = set(actual) - expected_paths
+    assert missing == set(), f"missing farm_reference files: {sorted(missing)}"
+    assert extra == set(), f"unexpected farm_reference files: {sorted(extra)}"
+    assert actual == pinned
+
+    expected_full = [FULL_CELL.cell_id]
+    expected_short = [spec.cell_id for spec in SHORT_CELLS]
+    assert expected_short == list(FARM_SHORT_TRADE_COUNTS)
+    assert _manifest_cell_ids(FARM_FULL) == expected_full
+    assert _manifest_cell_ids(FARM_SHORT) == expected_short
+    assert list_cell_ids(FARM_FULL) == expected_full
+    assert list_cell_ids(FARM_SHORT) == expected_short
+
+    full = load_capture(cell_dir(FARM_FULL, FULL_CELL.cell_id))
+    assert int(full["summary"]["trade_count"]) == FULL_CELL_KNOWN_TRADE_COUNT
+    assert len(full["trades"]) == FULL_CELL_KNOWN_TRADE_COUNT
+    assert full["summary"]["expectancy_r"]["hex"] == FARM_FULL_EXPECTANCY_HEX
+    assert hex_to_float64(FARM_FULL_EXPECTANCY_HEX) == FARM_FULL_EXPECTANCY
+    assert full["canonical_bundle_hash"] == FARM_FULL_PORTABLE_HASH
+    assert full["replica"]["count"] == 50
+    assert full["ledger"]["status"] == "ok"
+
+    for spec in SHORT_CELLS:
+        loaded = load_capture(cell_dir(FARM_SHORT, spec.cell_id))
+        expected_n = FARM_SHORT_TRADE_COUNTS[spec.cell_id]
+        assert int(loaded["summary"]["trade_count"]) == expected_n
+        assert len(loaded["trades"]) == expected_n
+        assert loaded["cell_id"] == spec.cell_id
+        assert loaded["ledger"]["status"] == "ok"
+        if expected_n == 0:
+            assert loaded["replica"]["count"] == 0
+            assert loaded["replica"]["hex_bits"] == []
+            assert all(loaded["da5"][key].get("is_null") for key in DA5_KEYS)
+        else:
+            assert loaded["replica"]["count"] == 50
+            assert len(loaded["replica"]["hex_bits"]) == 50
+            assert not loaded["da5"]["random_null_expectancy_r"].get("is_null")
+
+
+def test_farm_reference_sha256_gate_catches_missing_or_altered_file(
+    tmp_path: Path,
+) -> None:
+    """Prove the CI pin is not a self-compare: one flipped byte or drop fails."""
+    pinned = _load_farm_reference_sha256_lock()
+    clone = tmp_path / "farm_reference"
+    shutil.copytree(FARM_REF, clone)
+    assert _farm_reference_file_sha256s(clone) == pinned
+
+    target = clone / "short" / "manifest.json"
+    target.write_bytes(target.read_bytes() + b"#")
+    altered = _farm_reference_file_sha256s(clone)
+    assert altered != pinned
+    assert altered["short/manifest.json"] != pinned["short/manifest.json"]
+
+    target.unlink()
+    dropped = _farm_reference_file_sha256s(clone)
+    assert "short/manifest.json" not in dropped
+    assert set(dropped) != set(pinned)
 
 
 def test_hook_points_resolve_on_imported_package() -> None:
@@ -100,9 +278,10 @@ def test_legacy_golden_readme_not_touched() -> None:
     assert diff == ""
 
 
-def test_plan_status_line_unchanged() -> None:
+def test_plan_status_line_records_mw0_fixtures() -> None:
     text = (REPO / "docs" / "WORKER_MEMORY_IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
-    assert "**Status:** **Plan only.**" in text
+    assert "**Status:** **MW0 fixtures landed.**" in text
+    assert "farm_reference/" in text
 
 
 def test_parse_cell_selector_short_and_full() -> None:
@@ -122,6 +301,12 @@ def test_short_cell_policies_match_plan() -> None:
     assert policies[1] == policies[3] == policies[4] == policies[6] == "raise"
     assert policies[2] == policies[5] == "legacy"
     assert SHORT_CELLS[5].expect_zero_trades is True
+    cell5 = SHORT_CELLS[4]
+    assert cell5.cell_id == "cell_05_3c_onl_ema21_1min"
+    assert cell5.partner_level == "EMA_21_1min"
+    assert cell5.core_level == "ONL"
+    assert cell5.trigger == "3c"
+    assert cell5.expect_zero_trades is False
 
 
 def test_slice_quantower_csv_keeps_utc_bounds(tmp_path: Path) -> None:

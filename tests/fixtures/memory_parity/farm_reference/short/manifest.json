@@ -1,0 +1,43 @@
+{
+  "captured": [
+    "/home/florian-richling/tt_mw/out/mw0_hooked_recap_short_main/cells/cell_01_fade_onh_sma50_5min",
+    "/home/florian-richling/tt_mw/out/mw0_hooked_recap_short_main/cells/cell_02_touch_pdhigh_ema9_1min",
+    "/home/florian-richling/tt_mw/out/mw0_hooked_recap_short_main/cells/cell_03_break_orhigh_rvwap30",
+    "/home/florian-richling/tt_mw/out/mw0_hooked_recap_short_main/cells/cell_04_continuation_london_pivot5m",
+    "/home/florian-richling/tt_mw/out/mw0_hooked_recap_short_main/cells/cell_05_3c_onl_ema21_1min",
+    "/home/florian-richling/tt_mw/out/mw0_hooked_recap_short_main/cells/cell_06_fade_onh_sma200_30min_zero"
+  ],
+  "cells": [
+    "cell_01_fade_onh_sma50_5min",
+    "cell_02_touch_pdhigh_ema9_1min",
+    "cell_03_break_orhigh_rvwap30",
+    "cell_04_continuation_london_pivot5m",
+    "cell_05_3c_onl_ema21_1min",
+    "cell_06_fade_onh_sma200_30min_zero"
+  ],
+  "csv": "/home/florian-richling/thesistester/data/MNQ AMP Futures (Rithmic), Time - Time - 15s, 8_1_2024 120000 AM-8_7_2026 120000 AM_72578ad9-eaad-41cc-a03e-cf056050cf77.csv",
+  "farm_production_commit": "59a4652",
+  "full_cell_id": "full_reference",
+  "pythonpath_thesistester_root": "/home/florian-richling/tt_mw/main",
+  "recorded_at_utc": "2026-09-27T12:05:11.074491+00:00",
+  "run_label": "farm-main-short",
+  "slice_stats": {
+    "cell6": {
+      "bytes": 1276878,
+      "kept": 10558,
+      "skipped": 225631
+    },
+    "short": {
+      "bytes": 28484878,
+      "kept": 236189,
+      "skipped": 2613434
+    }
+  },
+  "slices": {
+    "cell6": "/home/florian-richling/tt_mw/out/mw0_hooked_recap_short_main/slices/mnq_15s_utc_20240801_20240804.csv",
+    "short": "/home/florian-richling/tt_mw/out/mw0_hooked_recap_short_main/slices/mnq_15s_utc_20240801_20241001.csv"
+  },
+  "thesistester_file": "/home/florian-richling/tt_mw/main/thesistester/__init__.py",
+  "thesistester_root": "/home/florian-richling/tt_mw/main",
+  "thesistester_version": "0.2.0"
+}

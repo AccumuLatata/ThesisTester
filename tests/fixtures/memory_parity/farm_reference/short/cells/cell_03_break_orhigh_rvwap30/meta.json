@@ -1,0 +1,17 @@
+{
+  "canonical_hash_kind": "portable_datetime_ns",
+  "cell_id": "cell_03_break_orhigh_rvwap30",
+  "csv_name": "mnq_15s_utc_20240801_20241001.csv",
+  "expect_zero_trades": false,
+  "farm_production_commit": "59a4652",
+  "n_replicas": 50,
+  "product_canonical_bundle_hash": "d4359a88c0cbffb54f361d7405c3212e84152748c868ba0b9daf7e7fe6fac05f",
+  "pythonpath_thesistester_root": "/home/florian-richling/tt_mw/main",
+  "replica_hook_calls": 1,
+  "run_label": "farm-main-short",
+  "run_name": "mw0_cell_03_break_orhigh_rvwap30_c0000_anchor_rules_break_base_VWAP_rolling_30min_otfOff_804bb5e77b",
+  "same_bar_opposite_direction": "raise",
+  "thesistester_file": "/home/florian-richling/tt_mw/main/thesistester/__init__.py",
+  "thesistester_root": "/home/florian-richling/tt_mw/main",
+  "thesistester_version": "0.2.0"
+}
