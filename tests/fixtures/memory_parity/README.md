@@ -19,11 +19,64 @@ Plan: `docs/WORKER_MEMORY_IMPLEMENTATION_PLAN.md` §9. Pointer:
 | `record_memory_parity.py` | Synthetic-fixture recorder. Compare-only unless `--regenerate` |
 | `synthetic_mnq_15s.csv` | Committed multi-day 15s CI fixture |
 | `synthetic_golden/` | Recorded CI captures (prepare + one replica, plus cell-6 shape) |
+| `farm_reference/full/` | Official Linux-farm full reference cell (`cells/` + `manifest.json`) |
+| `farm_reference/short/` | Official Linux-farm six short cells (`cells/` + `manifest.json`) |
 
-Real-CSV MW0 fixture bytes are **not** recorded in the tooling-only PR.
-They are captured on the farm after the §9 equality pre-step matches
-`59a4652` (59 trades, E=0.0805, same trade rows, same `replica_expectancies`
-bits).
+## Official farm captures (`farm_reference/`)
+
+Linux-farm only. Captured with `capture_operator` (tooling `898beccf`)
+against `main` `ddf9fcbe`, flag off, one process, full MNQ 15s Quantower
+CSV. Layout is the compare root (`cells/` + `manifest.json`) so
+`compare.py` can take these directories directly.
+
+| Tree | When | Result |
+|---|---|---|
+| `full/` | 2026-09-26 | 59 trades, E=`0.0805084745762712`, portable hash `b8ff7982…`. Bit-identical to an independent `59a4652` rerun |
+| `short/` | 2026-09-27 | trade_count `17 / 75 / 21 / 16 / 0 / 0`. Cell 6 is zero, as required |
+
+These bytes are the Linux baseline. macOS must record and compare against
+**its own** baseline. Last-bit `EMA_*` splits in `levels.parquet` /
+`naked_flags.parquet` fail the portable hash across machines.
+
+Slice CSVs are **not** committed (~29 MB). Re-run
+`capture_operator --cells short` to regenerate them under
+`<output-dir>/slices/` (`slice_csv.py` is the helper; it is not a
+standalone CLI).
+
+Do not rewrite the legacy golden set under `tests/fixtures/golden/`.
+Do not edit `tests/fixtures/golden/README.md`.
+
+### Re-capture and compare (farm, Linux)
+
+```bash
+# full reference
+python -m tests.fixtures.memory_parity.capture_operator \
+  --csv /path/to/MNQ_15s_quantower.csv \
+  --output-dir /path/to/mw0_capture_full \
+  --cells full \
+  --run-label farm-main-full
+
+python -m tests.fixtures.memory_parity.compare \
+  tests/fixtures/memory_parity/farm_reference/full \
+  /path/to/mw0_capture_full
+
+# six short cells
+python -m tests.fixtures.memory_parity.capture_operator \
+  --csv /path/to/MNQ_15s_quantower.csv \
+  --output-dir /path/to/mw0_capture_short \
+  --cells short \
+  --run-label farm-main-short
+
+python -m tests.fixtures.memory_parity.compare \
+  tests/fixtures/memory_parity/farm_reference/short \
+  /path/to/mw0_capture_short
+```
+
+One process. Do not set `THESISTESTER_MEMORY_PATH` when recording the
+flag-off reference. Do not touch the farm production checkout
+`~/thesistester` at `59a4652`. If any field differs: **stop and report**.
+Do not loosen a tolerance or regenerate these fixtures to make a check
+pass.
 
 ## Capture contents (§9.1)
 

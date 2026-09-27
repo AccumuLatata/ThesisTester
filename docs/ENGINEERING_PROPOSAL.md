@@ -177,7 +177,11 @@ python -m tests.fixtures.golden.record_default_on_golden --confirm-regenerate
 
 MW0 worker-memory parity is a **new** suite under `tests/fixtures/memory_parity/`.
 It does not rewrite `tests/fixtures/golden/`, `trades_legacy.*`, or
-`legacy_bundle_hash.txt`. See `tests/fixtures/memory_parity/README.md` and
+`legacy_bundle_hash.txt`. Official Linux-farm real-CSV captures live under
+`tests/fixtures/memory_parity/farm_reference/` (`full/` and `short/`). Slice
+CSVs are not committed. macOS records its own baseline; do not compare a Mac
+capture to the Linux `farm_reference` hash. See
+`tests/fixtures/memory_parity/README.md` and
 `docs/WORKER_MEMORY_IMPLEMENTATION_PLAN.md` §9.
 
 AH1 (`test_ah1_*`) and AH5 (`test_ah5_*`) stay the live unit probes.
