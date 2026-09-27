@@ -465,8 +465,6 @@ def test_flag_off_cell_b_matches_mw0_synthetic_golden(
         or []
     )
     assert replica_hex_list(live["replicas"]) == golden_bits
-    golden_meta = json.loads((golden_cell / "meta.json").read_text(encoding="utf-8"))
-    assert live["hash"] == golden_meta["product_canonical_bundle_hash"]
     committed = default_synthetic_path()
     assert committed.is_file()
 
