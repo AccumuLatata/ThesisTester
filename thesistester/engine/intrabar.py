@@ -522,9 +522,7 @@ def _prepare_array_context(
                 f"expected {expected_count}, observed {len(group)}"
             )
         actual_timestamps = pd.to_datetime(group["timestamp"], utc=True).tolist()
-        expected_timestamps = [
-            start + offset * resolved_sub for offset in range(expected_count)
-        ]
+        expected_timestamps = [start + offset * resolved_sub for offset in range(expected_count)]
         if actual_timestamps != expected_timestamps:
             if conservative:
                 fallback_reasons[index] = "timestamps are not exactly aligned"

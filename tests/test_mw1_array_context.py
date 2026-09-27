@@ -18,7 +18,10 @@ from tests.fixtures.memory_parity.bits import replica_hex_list
 from tests.fixtures.memory_parity.capture import isolate_store
 from tests.fixtures.memory_parity.cells import CI_PREPARE_REPLICA, build_study_mapping
 from tests.fixtures.memory_parity.compare import compare_trades
-from tests.fixtures.memory_parity.generate_synthetic import default_synthetic_path, write_synthetic_csv
+from tests.fixtures.memory_parity.generate_synthetic import (
+    default_synthetic_path,
+    write_synthetic_csv,
+)
 from tests.fixtures.memory_parity.hooks import replica_expectancies_hook
 from thesistester.analytics.overfitting import vs_random_benchmark
 from thesistester.data.derive import derive_complete_parent_ohlcv
@@ -67,7 +70,9 @@ def _complete_minute(minute: str, *, open_price: float, session: str = "RTH") ->
     )
 
 
-def _multi_day_frames(*, price: float = 100.0, sparse: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _multi_day_frames(
+    *, price: float = 100.0, sparse: bool = True
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     minutes: list[pd.DataFrame] = []
     for day, base in (("2024-08-01", price), ("2024-08-02", price + 5.0)):
         for offset in range(8):
