@@ -1152,6 +1152,33 @@ path assumption, not an optimization dimension. R18 experiment schema version
 1 remains backward compatible and accepts optional
 `dataset.subtimeframe_path`.
 
+## Worker memory path (MW1)
+
+`THESISTESTER_MEMORY_PATH=array` opts in to an array-backed subtimeframe
+context. Unset, empty, or any other value is the existing dict-of-frames
+path (the default). The switch is an environment variable only: it is not a
+CLI flag, not a StudySpec key, and is not written into `cache_provenance`,
+the hashed bundle, the ledger, or the study identity.
+
+Flag on: `prepare_subtimeframe_context` and
+`prepare_subtimeframe_conservative_context` store one `float64` OHLC block,
+the source `timestamp` column (same dtype, unit, and timezone), and an
+`int64` start / `int32` count table. `SubtimeframeContext.groups` stays a
+mapping; `__getitem__` / `.get` build one five-column frame and discard it
+after `resolve_subtimeframe_bar`. `volume` and `session` are not cached.
+
+`execute_study_cell` enters a single content-addressed slot at the start of
+its `try` and clears it in `finally`. The load-time prepare inside
+`_load_15s_primary_experiment_data`, the cell backtest, and the replica
+prepares all compute that key and reuse the array on a hit. Callers outside
+`execute_study_cell` (`run_experiment`, CLI `_execute_run`, Data-page
+helpers) build one array context per call and do not keep it. The key is
+not `id()`, `DataIdentity.dataset_id()`, or `hash_dataframe`.
+
+Flag off leaves the current function bodies and a real `dict` of frames.
+`resolve_subtimeframe_bar` is not edited. Sixteen workers are not claimed
+on this flag; see `docs/WORKER_MEMORY_IMPLEMENTATION_PLAN.md` §14.
+
 ## Exit-management boundary (R13)
 
 R13 adds optional break-even and trailing stop management to

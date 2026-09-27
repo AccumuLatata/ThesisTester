@@ -113,6 +113,11 @@ Wave 0 `[[]]` + `min_valid: 0`, no VA/APOC cores, `apoc_enabled: false`,
 `ok`. If this fails, do not run. Do not launch `manifest_tick.yaml` on 15s-only.
 
 4. Start from the repo root. `workers: 1` first (Windows-safe).
+   Do **not** raise `workers` because `THESISTESTER_MEMORY_PATH=array` is
+   set. MW1 is default-off and does not open the 16-worker gate
+   (`docs/WORKER_MEMORY_IMPLEMENTATION_PLAN.md` §14). Unset the variable
+   to roll back to the dict path. The farm switch happens only between
+   studies, after Linux and macOS full-cell parity.
 
 ---
 

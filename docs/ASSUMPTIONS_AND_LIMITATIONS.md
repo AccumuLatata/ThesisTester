@@ -1618,6 +1618,18 @@ other than the last bar in the dataset.
   + `match.json`. It refuses `results/studies/` as an output directory
   and days that are not `reconciled` unless `--allow-unreconciled`.
 
+## Worker memory path (MW1)
+- `THESISTESTER_MEMORY_PATH=array` is an opt-in allocation path for the
+  subtimeframe context. The default is flag off (the existing per-minute
+  DataFrame map). Unsetting the variable is the rollback.
+- Flag on does not change fills, replica draws, or `canonical_bundle_hash`.
+  It is a resource refactor, not a trading-semantics change.
+- Sixteen workers are **not** claimed on this flag. Per-worker peak after
+  MW1 is still expected above the 3.3 GiB 16-wide budget until MW2 (and
+  only if the farm `VmHWM` lands in the accept row of
+  `docs/WORKER_MEMORY_IMPLEMENTATION_PLAN.md` §8.2). Do not treat a green
+  MW1 parity suite as a capacity claim.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.
