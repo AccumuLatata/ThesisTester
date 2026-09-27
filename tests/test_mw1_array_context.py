@@ -6,6 +6,7 @@ import io
 import json
 import multiprocessing
 import os
+import threading
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -87,6 +88,8 @@ def _multi_day_frames(
 
 def _assert_group_parity(flag_off: Any, flag_on: Any) -> None:
     assert flag_off.fallback_reasons == flag_on.fallback_reasons
+    assert flag_off.parent_interval == flag_on.parent_interval
+    assert flag_off.sub_interval == flag_on.sub_interval
     assert list(flag_off.groups) == list(flag_on.groups)
     assert len(flag_off.groups) == len(flag_on.groups)
     for index in flag_off.groups:
@@ -105,9 +108,7 @@ def _assert_group_parity(flag_off: Any, flag_on: Any) -> None:
                 left[column].to_numpy(dtype="float64"),
                 right[column].to_numpy(dtype="float64"),
             )
-        left_ts = pd.to_datetime(left["timestamp"], utc=True)
-        right_ts = pd.to_datetime(right["timestamp"], utc=True)
-        assert list(left_ts) == list(right_ts)
+        pd.testing.assert_series_equal(left["timestamp"], right["timestamp"], check_names=False)
 
 
 def _signal(bar_index: int = 1) -> pd.DataFrame:
@@ -313,6 +314,7 @@ def test_replica_parity_flag_on_vs_flag_off(monkeypatch: pytest.MonkeyPatch) -> 
         random_state=42,
     )
     monkeypatch.setenv(MEMORY_PATH_ENV, "array")
+    enter_context_slot()
     on = vs_random_benchmark(
         parent,
         reference,
@@ -328,6 +330,7 @@ def test_replica_parity_flag_on_vs_flag_off(monkeypatch: pytest.MonkeyPatch) -> 
         on["replica_expectancies"]
     )
     assert len(off["replica_expectancies"]) == 50
+    assert context_slot_is_active() is True
 
 
 def _shift_quantower_prices(source: Path, dest: Path, delta: float) -> Path:
@@ -420,6 +423,8 @@ def test_two_cells_one_process_slot_cleared(
     sequential = _run_execute_cell(csv_path=csv_a, work=tmp_path / "cell_a", flag_on=True)
     assert sequential["status"] == "ok"
     same_process_b = _run_execute_cell(csv_path=csv_b, work=tmp_path / "cell_b", flag_on=True)
+    assert compare_trades(sequential["trades"], same_process_b["trades"]) != []
+    assert sequential["hash"] != same_process_b["hash"]
     ctx = multiprocessing.get_context("spawn")
     with ctx.Pool(processes=1) as pool:
         fresh = pool.apply(
@@ -460,5 +465,139 @@ def test_flag_off_cell_b_matches_mw0_synthetic_golden(
         or []
     )
     assert replica_hex_list(live["replicas"]) == golden_bits
+    golden_meta = json.loads((golden_cell / "meta.json").read_text(encoding="utf-8"))
+    assert live["hash"] == golden_meta["product_canonical_bundle_hash"]
     committed = default_synthetic_path()
     assert committed.is_file()
+
+
+def test_flag_on_cell_matches_flag_off_product_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    csv_b = write_synthetic_csv(tmp_path / "b.csv")
+    monkeypatch.delenv(MEMORY_PATH_ENV, raising=False)
+    off = _run_execute_cell(csv_path=csv_b, work=tmp_path / "hash_off", flag_on=False)
+    monkeypatch.setenv(MEMORY_PATH_ENV, "array")
+    on = _run_execute_cell(csv_path=csv_b, work=tmp_path / "hash_on", flag_on=True)
+    diffs = compare_trades(off["trades"], on["trades"])
+    assert diffs == [], diffs
+    assert replica_hex_list(off["replicas"]) == replica_hex_list(on["replicas"])
+    assert off["hash"] == on["hash"]
+    assert str(off["trades"]["exit_subbar_timestamp"].dtype) == str(
+        on["trades"]["exit_subbar_timestamp"].dtype
+    )
+
+
+def test_packed_groups_key_contract_matches_dict(monkeypatch: pytest.MonkeyPatch) -> None:
+    parent, sub = _multi_day_frames(sparse=False)
+    monkeypatch.setenv(MEMORY_PATH_ENV, "array")
+    context = prepare_subtimeframe_conservative_context(
+        parent, sub, tick_size=0.25, parent_interval="1min", sub_interval="15s"
+    )
+    groups = context.groups
+    assert isinstance(groups, PackedSubtimeframeGroups)
+    first = next(iter(groups))
+    assert groups.get(first) is not None
+    assert groups.get("0") is None
+    assert "0" not in groups
+    assert groups.get(None) is None
+    assert None not in groups
+    with pytest.raises(KeyError):
+        groups["0"]  # type: ignore[index]
+    with pytest.raises(KeyError):
+        groups[None]  # type: ignore[index]
+    assert groups.get(np.int64(first)) is not None
+
+
+def test_slot_is_thread_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(MEMORY_PATH_ENV, "array")
+    parent_a, sub_a = _multi_day_frames(price=100.0, sparse=False)
+    parent_b, sub_b = _multi_day_frames(price=175.0, sparse=False)
+    barrier = threading.Barrier(2)
+    hits: dict[str, dict[str, Any]] = {}
+
+    def worker(name: str, parent: pd.DataFrame, sub: pd.DataFrame) -> None:
+        enter_context_slot()
+        try:
+            first = prepare_subtimeframe_conservative_context(
+                parent, sub, tick_size=0.25, parent_interval="1min", sub_interval="15s"
+            )
+            barrier.wait()
+            second = prepare_subtimeframe_conservative_context(
+                parent, sub, tick_size=0.25, parent_interval="1min", sub_interval="15s"
+            )
+            hits[name] = {
+                "same": first is second,
+                "close": float(first.groups[0]["close"].iloc[-1]),
+            }
+        finally:
+            clear_context_slot()
+
+    thread_a = threading.Thread(target=worker, args=("a", parent_a, sub_a))
+    thread_b = threading.Thread(target=worker, args=("b", parent_b, sub_b))
+    thread_a.start()
+    thread_b.start()
+    thread_a.join()
+    thread_b.join()
+    assert hits["a"]["same"] is True
+    assert hits["b"]["same"] is True
+    assert hits["a"]["close"] != hits["b"]["close"]
+    assert context_slot_is_active() is False
+
+
+def test_execute_study_cell_clears_slot_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(MEMORY_PATH_ENV, "array")
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        assert context_slot_is_active() is True
+        raise RuntimeError("cell exploded")
+
+    monkeypatch.setattr("thesistester.study.execute.run_experiment", boom)
+    payload = execute_study_cell(({"name": "boom"}, "."))
+    assert payload["status"] == "failed"
+    assert "RuntimeError" in str(payload.get("error"))
+    assert context_slot_is_active() is False
+
+
+def test_first_last_empty_and_missing_parent_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    source = pd.concat(
+        [
+            _complete_minute("2024-08-01 14:00:00", open_price=100.0),
+            _complete_minute("2024-08-01 14:01:00", open_price=101.0),
+            _complete_minute("2024-08-01 14:02:00", open_price=102.0).iloc[:1],
+        ],
+        ignore_index=True,
+    )
+    derived = derive_complete_parent_ohlcv(source)
+    monkeypatch.delenv(MEMORY_PATH_ENV, raising=False)
+    flag_off = prepare_subtimeframe_conservative_context(
+        derived.parent_data,
+        derived.source_data,
+        tick_size=0.25,
+        parent_interval="1min",
+        sub_interval="15s",
+    )
+    monkeypatch.setenv(MEMORY_PATH_ENV, "array")
+    flag_on = prepare_subtimeframe_conservative_context(
+        derived.parent_data,
+        derived.source_data,
+        tick_size=0.25,
+        parent_interval="1min",
+        sub_interval="15s",
+    )
+    _assert_group_parity(flag_off, flag_on)
+    last_parent = len(derived.parent_data) - 1
+    assert last_parent not in flag_on.groups
+    assert flag_on.groups.get(last_parent) is None
+    empty_sub = derived.source_data.iloc[0:0].copy()
+    empty_on = prepare_subtimeframe_conservative_context(
+        derived.parent_data,
+        empty_sub,
+        tick_size=0.25,
+        parent_interval="1min",
+        sub_interval="15s",
+    )
+    assert len(empty_on.groups) == 0
+    assert len(empty_on.fallback_reasons) == len(derived.parent_data)
