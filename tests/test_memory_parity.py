@@ -19,6 +19,7 @@ from tests.fixtures.memory_parity.bits import float64_hex, replica_hex_list
 from tests.fixtures.memory_parity.cells import (
     CI_CELL6_SHAPE,
     CI_PREPARE_REPLICA,
+    FULL_CELL,
     SHORT_CELLS,
     parse_cell_selector,
 )
@@ -48,7 +49,13 @@ from tests.fixtures.memory_parity.gitref import (
     diff_vs_main,
     show_at_farm,
 )
-from tests.fixtures.memory_parity.io import cell_dir, describe_series_dtype, write_capture
+from tests.fixtures.memory_parity.io import (
+    cell_dir,
+    describe_series_dtype,
+    list_cell_ids,
+    load_capture,
+    write_capture,
+)
 from tests.fixtures.memory_parity.slice_csv import (
     SHORT_WINDOW_END_UTC,
     SHORT_WINDOW_START_UTC,
@@ -60,6 +67,51 @@ from tests.fixtures.memory_parity.stage_trace import compute_b, evaluate_rule_8_
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "tests" / "fixtures" / "memory_parity"
 GOLDEN = FIXTURE / "synthetic_golden"
+FARM_REF = FIXTURE / "farm_reference"
+FARM_FULL = FARM_REF / "full"
+FARM_SHORT = FARM_REF / "short"
+
+
+def _manifest_cell_ids(root: Path) -> list[str]:
+    payload = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    cells = payload.get("cells")
+    if not isinstance(cells, list):
+        raise AssertionError(f"{root}/manifest.json missing cells list")
+    return [str(item) for item in cells]
+
+
+def test_farm_reference_loads_and_self_compares() -> None:
+    """Cheap CI: farm captures load, self-compare, and list the committed cells.
+
+    No CSV. No replay. Linux-farm bytes only.
+    """
+    assert FARM_FULL.is_dir() and FARM_SHORT.is_dir()
+    csv_files = list(FARM_REF.rglob("*.csv"))
+    assert csv_files == [], csv_files
+
+    expected_full = [FULL_CELL.cell_id]
+    expected_short = [spec.cell_id for spec in SHORT_CELLS]
+    assert _manifest_cell_ids(FARM_FULL) == expected_full
+    assert _manifest_cell_ids(FARM_SHORT) == expected_short
+    assert list_cell_ids(FARM_FULL) == expected_full
+    assert list_cell_ids(FARM_SHORT) == expected_short
+
+    full = load_capture(cell_dir(FARM_FULL, FULL_CELL.cell_id))
+    assert int(full["summary"]["trade_count"]) == 59
+    assert len(full["trades"]) == 59
+    assert full["canonical_bundle_hash"].startswith("b8ff7982")
+
+    cell6 = load_capture(cell_dir(FARM_SHORT, "cell_06_fade_onh_sma200_30min_zero"))
+    assert int(cell6["summary"]["trade_count"]) == 0
+    assert len(cell6["trades"]) == 0
+
+    for root in (FARM_FULL, FARM_SHORT):
+        for cell_id in list_cell_ids(root):
+            loaded = load_capture(cell_dir(root, cell_id))
+            assert loaded["cell_id"]
+            assert "hex_bits" in loaded["replica"]
+        report = compare_captures(root, root, pre_step=False)
+        assert report.ok, format_report(report)
 
 
 def test_hook_points_resolve_on_imported_package() -> None:
@@ -100,9 +152,10 @@ def test_legacy_golden_readme_not_touched() -> None:
     assert diff == ""
 
 
-def test_plan_status_line_unchanged() -> None:
+def test_plan_status_line_records_mw0_fixtures() -> None:
     text = (REPO / "docs" / "WORKER_MEMORY_IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
-    assert "**Status:** **Plan only.**" in text
+    assert "**Status:** **MW0 fixtures landed.**" in text
+    assert "farm_reference/" in text
 
 
 def test_parse_cell_selector_short_and_full() -> None:
