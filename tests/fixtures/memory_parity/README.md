@@ -21,13 +21,16 @@ Plan: `docs/WORKER_MEMORY_IMPLEMENTATION_PLAN.md` §9. Pointer:
 | `synthetic_golden/` | Recorded CI captures (prepare + one replica, plus cell-6 shape) |
 | `farm_reference/full/` | Official Linux-farm full reference cell (`cells/` + `manifest.json`) |
 | `farm_reference/short/` | Official Linux-farm six short cells (`cells/` + `manifest.json`) |
+| `farm_reference.sha256` | SHA-256 lock of official `farm_reference/` bytes (outside that tree) |
 
 ## Official farm captures (`farm_reference/`)
 
-Linux-farm only. Captured with `capture_operator` (tooling `898beccf`)
-against `main` `ddf9fcbe`, flag off, one process, full MNQ 15s Quantower
-CSV. Layout is the compare root (`cells/` + `manifest.json`) so
-`compare.py` can take these directories directly.
+Linux-farm only. Captured with `capture_operator` (tooling `898beccf`,
+the #601 tip; squash-merged to `main` as `a1ea25b2`) against `main`
+`ddf9fcbe`, flag off, one process, full MNQ 15s Quantower CSV. Layout is
+the compare root (`cells/` + `manifest.json`) so `compare.py` can take
+these directories directly. `*.parquet` is `binary` in `.gitattributes`
+so Git does not apply text/CRLF conversion to the official frames.
 
 | Tree | When | Result |
 |---|---|---|
@@ -38,8 +41,14 @@ These bytes are the Linux baseline. macOS must record and compare against
 **its own** baseline. Last-bit `EMA_*` splits in `levels.parquet` /
 `naked_flags.parquet` fail the portable hash across machines.
 
-Slice CSVs are **not** committed (~29 MB). Re-run
-`capture_operator --cells short` to regenerate them under
+Verify the committed tree (does not rewrite fixtures):
+
+```bash
+( cd tests/fixtures/memory_parity/farm_reference && sha256sum -c ../farm_reference.sha256 )
+```
+
+Slice CSVs are **not** committed (~29 MB). The `--cells short`
+invocation in the next section writes them under
 `<output-dir>/slices/` (`slice_csv.py` is the helper; it is not a
 standalone CLI).
 
