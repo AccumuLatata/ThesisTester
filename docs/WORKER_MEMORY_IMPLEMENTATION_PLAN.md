@@ -324,8 +324,10 @@ Cells 1, 3, 4, and 6 cannot produce a same-bar opposite pair under `raise`:
 | 2 | `touch` | `pdHigh` × `EMA_9_1min` | 40/80 | Other entry, other bracket. Policy `legacy` |
 | 3 | `break` | `OR_High` × `VWAP_rolling_30min` | 20/60 | Other anchor family. Policy `raise` |
 | 4 | `continuation` | `LondonHigh` × `Pivot_5m_High` | 80/40 | Approach-side twin of fade, asymmetric bracket. Policy `raise` |
-| 5 | `3c` | `ONL` × `SMA_200_1min` | 60/60 | Different signal machinery. Policy `legacy` |
+| 5 | `3c` | `ONL` × `EMA_21_1min` | 60/60 | Different signal machinery. Policy `legacy` |
 | 6 | `fade`, UTC `[2024-08-01, 2024-08-04)` | `ONH` × `SMA_200_30min` | 80/80 | 0 trades. Three UTC days are fewer than 200 thirty-minute bars, so `SMA_200_30min` stays NaN and `anchor_rules` emits no candidate. Random fields stay null. Policy `raise` |
+
+**Recorded §9.2 deviation (2026-09-27, approved by Accumu).** Short cell 5 is `3c`, `ONL` × `EMA_21_1min`, UTC `[2024-08-01, 2024-10-01)`, 60/60, `legacy`, `expect_zero_trades=False`. The original pair `ONL` × `SMA_200_1min` gave 0 trades on that slice: 118 raw ONL 3c signals, 0 after the required `SMA_200_1min` confluence within 10 ticks; only 190 zone bars and 3 3c arrivals, all failing the reversal step. On the full CSV the same pair gives 38 filtered signals and 16 trades, about 0.67 trades per month, so zero in two months is about a 27 percent chance. That is genuine sparsity, not a bug. Replacement `ONL` × `EMA_21_1min` gave 27 filled signals and 14 trades on the same slice in process.
 
 If cell 6 produces any trade, the slice is wrong. Do not record it as the 0-trade golden. Do not change tolerance, the pair, or the policy to force a zero.
 
