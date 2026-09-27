@@ -2,7 +2,7 @@
 
 **Document type:** Implementation plan (fully scoped PRs). This file is the review copy of the finished plan.
 **Date:** 2026-09-26
-**Status:** **MW0 fixtures landed.** Official Linux-farm real-CSV captures are under `tests/fixtures/memory_parity/farm_reference/` (`full/` + `short/`). Recorded flag off, one process, `capture_operator` tooling `898beccf` (#601 tip; squash-merged as `a1ea25b2`) against `main` `ddf9fcbe`. No runtime change. MW1 is a separate PR.
+**Status:** **MW1 shipping** (this PR). Array context sits behind `THESISTESTER_MEMORY_PATH=array`; unset / any other value is the existing dict path. MW0 tooling is on `main` (`a1ea25b2`). Official Linux-farm real-CSV captures are under `tests/fixtures/memory_parity/farm_reference/` (`full/` + `short/`; squash-merged as `3741182e` / #608). **§8 decision (owner-approved; deviation from §8.1 rule 1):** MW1 first; re-trace after MW1 and re-apply §8.1, including the `R_signals.rss > 4.5 GiB` capacity check; MW-L only if the post-MW1 trace still shows `R_load >= 2.0 GiB` with matching live data. Recorded numbers are in §8.1.
 **Series code:** **MW** (worker memory). Not WMV (`wVWAP` / `mVWAP`).
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 and §4.2, plus the stricter locks in §3 of this file. The MW locks add constraints. They do not weaken §4.1, the byte lock on `tests/fixtures/golden/README.md` (`test_existing_golden_files_byte_identical`), or the rule that legacy goldens are never regenerated without `GOLDEN_REGEN`.
 **Farm code the measurements describe:** commit `59a4652`. The same memory shape was confirmed on `9cd53af` (spawn, discarded load-time context, sequential replica loop, per-minute DataFrame map). Re-check call sites if `main` moves; the contracts below are the behavior, not the line numbers. **MW0 is not recorded at `59a4652`.** It is recorded, flag off, at the exact commit MW1 branches from. That commit must first reproduce the `59a4652` reference-cell result (§9). `main` has moved since `59a4652`, including QR E-9 (vectorized 15s→1m derive) and QR E-10 (vectorized `sl_first` walk).
@@ -234,6 +234,38 @@ Apply the first matching rule. The rules are mutually exclusive. In this section
 4. **Anything else stops the series.** Examples: `R_load` between 1.2 and 2.0 GiB, `map_step` between 0.5 and 1.5 GiB while `R_load ≥ 2.0 GiB`, or `R_ctx` outside 5.5–8.0 GiB on a split that otherwise looks planned. Write the four numbers down and revise this plan before coding. Do not guess.
 
 **Capacity check, rule 3 only.** MW2's stated removal is about 0.8–1.2 GiB of full-width copies on top of `R_signals`. If `R_signals.rss > 4.5 GiB`, then `R_signals.rss − 1.2 GiB > 3.3 GiB`: the copies can leave and the worker still cannot fit 16-wide. Stop and revise this plan before MW1. Do not spend MW1 and MW2 on a path that cannot hit §1. Rule 2 does not use this check until the post-MW-L trace comes back through rule 3.
+
+**Recorded §8 deviation (farm, 2026-09-26).** Official trace: flag off, one process, `main` `ddf9fcbe`, tool `898beccf`. `VmHWM` reset immediately after the load-time prepare returned. Values in GiB.
+
+| stop | rss | hwm |
+|---|---|---|
+| `R_pre_prepare` | – | 2.233 |
+| `R_load` | 4.202 | 4.202 |
+| `R_signals` | 4.735 | 5.398 |
+| `R_ctx` | 5.116 | 5.398 |
+| `R_bundle` | 4.896 | 5.398 |
+| `R_done` | 4.926 | 5.398 |
+
+`map_step = 0.381`, `B = 5.398`. Headline numbers match rule 1 (loader is the peak).
+
+Diagnostic trace, same setup, scratch script, no product change. Columns: rss, hwm, live pandas bytes (DataFrame/Series blocks, deduped), glibc in-use, glibc free-but-retained. Values in GiB.
+
+| point | rss | hwm | live pandas | glibc in-use | glibc free |
+|---|---|---|---|---|---|
+| before load-time prepare | 0.80 | 2.24 | 0.48 | 0.47 | 0.10 |
+| prepare returned, map alive (711,353 pandas objects) | 4.37 | 4.37 | 0.64 | 1.27 | 0.07 |
+| map dropped + `gc.collect` | 4.08 | 4.83 | 0.48 | 0.47 | 0.82 |
+| after `malloc_trim(0)` | 3.26 | 4.83 | – | 0.47 | 0.82 |
+| `R_load` | 3.76 | 3.76 | 0.20 | 0.19 | 1.12 |
+| `R_signals` | 4.68 | 5.28 | 1.14 | 1.11 | 0.76 |
+| `R_ctx` | 5.11 | 5.28 | 1.32 | 1.93 | 0.10 |
+| `R_bundle` / `R_done` | 4.86 / 4.92 | 5.55 | | | |
+
+`map_step = 0.43`.
+
+The loader holds under 1 GiB. The load-time dict map costs about 3.6 GiB as 711k pandas objects (above the §6 band of 2.2–3.0). That memory stays resident after the map is freed, most likely in pymalloc arenas; glibc trim returns only 0.82 GiB. The inflated `R_load` and the small `map_step` come from that retained map memory, not from the loader.
+
+**Decision (repo owner):** MW1 first. This is a recorded deviation from §8.1 rule 1. Re-trace after MW1 and re-apply §8.1, including the `R_signals.rss > 4.5 GiB` capacity check. MW-L comes in only if the post-MW1 trace still shows `R_load >= 2.0 GiB` with matching live data. MW1 therefore routes the load-time prepare through the slot (§6 row 1 / §10.2).
 
 ### 8.2 Ranges the farm confirms or rejects
 
