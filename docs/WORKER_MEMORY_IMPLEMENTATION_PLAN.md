@@ -9,7 +9,7 @@
 
 This document supersedes the investigation notes. These locks are the contract, not optional commentary:
 
-1. The process-local context cache is content-addressed and cleared at the end of `execute_study_cell`. It is not keyed by `id()` or any address. It is also not keyed by `DataIdentity.dataset_id()` or `hash_dataframe` (§10.2). The digest is order-sensitive and covers only the columns prepare reads.
+1. The thread-local context cache is content-addressed and cleared at the end of `execute_study_cell`. It is not keyed by `id()` or any address. It is also not keyed by `DataIdentity.dataset_id()` or `hash_dataframe` (§10.2). The digest is order-sensitive and covers only the columns prepare reads. The study worker pool is `spawn` processes; each process/thread has its own one-entry slot.
 2. `canonical_bundle_hash` is a fail-closed check. PR MW2 keeps `hash_dataframe` identical. Raw parquet bytes are not a study decision.
 3. A full-CSV stage trace on the farm is a hard gate before MW1. The §9 equality pre-step is recorded first. The trace picks the PR order. §8.1 rules are mutually exclusive; the first match wins.
 4. The lazy group frame carries `timestamp` plus OHLC. `resolve_subtimeframe_bar` writes `exit_subbar_timestamp` from `sub_bar["timestamp"]`. A float64 OHLC array alone changes trades.
@@ -429,7 +429,7 @@ A hit requires the order-sensitive digests to match and the resolved interval na
 
 The backtest reuses the load-time slot only when those digests match and those nanosecond counts match. Same bars are not enough if the OHLC bits differ. A digest miss rebuilds. That rebuild is correct. Do not force the hit. Prepare already rejects a non-monotonic parent, and `compute_session_levels` sorts by timestamp, so a levels frame built from that parent matches the load-time parent when the OHLC bits match. Publish the slot only after prepare returns. A raise must not leave a partial entry.
 
-**Lifetime:** `execute_study_cell` enters the slot at the start of the `try` and clears it in `finally`, including on exception, before the function returns. That is the latest legal clear. The next task in that process starts empty. The load-time prepare, `simulate_trades`, and the 50 replicas all run inside that one call, so they share the slot.
+**Lifetime:** `execute_study_cell` enters the slot at the start of the `try` and clears it in `finally`, including on exception, before the function returns. That is the latest legal clear. The next task in that process starts empty. The load-time prepare, `simulate_trades`, and the 50 replicas all run inside that one call, so they share the slot. The slot is thread-local: one entry per thread. The study worker pool is `spawn` processes, each with its own slot. Concurrent threads in one process cannot share or overwrite each other's entry.
 
 `run_experiment` and CLI `_execute_run` do **not** enter the slot. They keep a per-call build (the array build when the flag is on, the dict build when it is off). That is deliberate: a module-global cache that is always on would leak across CLI batch tasks. The lookup inside prepare is a no-op unless the slot is active.
 

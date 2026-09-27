@@ -1168,7 +1168,9 @@ mapping; `__getitem__` / `.get` build one five-column frame and discard it
 after `resolve_subtimeframe_bar`. `volume` and `session` are not cached.
 
 `execute_study_cell` enters a single content-addressed slot at the start of
-its `try` and clears it in `finally`. The load-time prepare inside
+its `try` and clears it in `finally`. The slot is thread-local (one entry
+per thread) so the spawn worker pool and any in-process threads cannot
+share or clobber it. The load-time prepare inside
 `_load_15s_primary_experiment_data`, the cell backtest, and the replica
 prepares all compute that key and reuse the array on a hit. Callers outside
 `execute_study_cell` (`run_experiment`, CLI `_execute_run`, Data-page

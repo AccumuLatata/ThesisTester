@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import math
+import numbers
 import os
+import threading
 from typing import Literal
 
 import numpy as np
@@ -71,7 +73,6 @@ class PackedSubtimeframeGroups(Mapping[int, pd.DataFrame]):
         parent_indexes: np.ndarray,
     ) -> None:
         self._timestamps = timestamps
-        self._ts_dtype = timestamps.dtype
         self._ohlc = ohlc
         self._starts = np.asarray(starts, dtype=np.int64)
         self._counts = np.asarray(counts, dtype=np.int32)
@@ -82,9 +83,7 @@ class PackedSubtimeframeGroups(Mapping[int, pd.DataFrame]):
         }
 
     def __getitem__(self, parent_index: int) -> pd.DataFrame:
-        position = self._by_parent.get(int(parent_index))
-        if position is None:
-            raise KeyError(parent_index)
+        position = self._position_for(parent_index)
         return self._materialize(position)
 
     def __iter__(self):
@@ -95,22 +94,32 @@ class PackedSubtimeframeGroups(Mapping[int, pd.DataFrame]):
 
     def __contains__(self, parent_index: object) -> bool:
         try:
-            return int(parent_index) in self._by_parent
-        except (TypeError, ValueError):
+            self._position_for(parent_index)
+        except KeyError:
             return False
+        return True
+
+    def _position_for(self, parent_index: object) -> int:
+        """Resolve a dict-compatible parent key. Non-integrals raise ``KeyError``."""
+        if not isinstance(parent_index, numbers.Integral):
+            raise KeyError(parent_index)
+        position = self._by_parent.get(int(parent_index))
+        if position is None:
+            raise KeyError(parent_index)
+        return position
 
     def _materialize(self, position: int) -> pd.DataFrame:
         start = int(self._starts[position])
         count = int(self._counts[position])
         index = pd.RangeIndex(count)
         sl = slice(start, start + count)
+        # Slice the stored series so dtype/unit/tz stay source-identical.
+        # Do not go through ``to_numpy()``: pandas 2 ``.values`` is UTC-naive
+        # datetime64[ns] and wrapping that with a tz dtype shifts wall time.
+        timestamp = self._timestamps.iloc[sl].reset_index(drop=True)
         return pd.DataFrame(
             {
-                "timestamp": pd.Series(
-                    self._timestamps.iloc[sl].to_numpy(),
-                    dtype=self._ts_dtype,
-                    index=index,
-                ),
+                "timestamp": timestamp,
                 "open": pd.Series(self._ohlc[sl, 0], dtype="float64", index=index),
                 "high": pd.Series(self._ohlc[sl, 1], dtype="float64", index=index),
                 "low": pd.Series(self._ohlc[sl, 2], dtype="float64", index=index),
@@ -339,7 +348,7 @@ def _resolve_bar_intervals(
 
 
 class _ContextSlot:
-    """Single process-local cache entry. Active only inside ``execute_study_cell``."""
+    """Single thread-local cache entry. Active only inside ``execute_study_cell``."""
 
     __slots__ = ("active", "key", "context")
 
@@ -349,25 +358,36 @@ class _ContextSlot:
         self.context: SubtimeframeContext | None = None
 
 
-_SLOT = _ContextSlot()
+_THREAD_SLOT = threading.local()
+
+
+def _slot() -> _ContextSlot:
+    """Return this thread's one-entry slot. Spawn workers each get a fresh one."""
+    slot = getattr(_THREAD_SLOT, "entry", None)
+    if slot is None:
+        slot = _ContextSlot()
+        _THREAD_SLOT.entry = slot
+    return slot
 
 
 def enter_context_slot() -> None:
-    """Activate the one-entry slot. Replaces any previous entry."""
-    _SLOT.active = True
-    _SLOT.key = None
-    _SLOT.context = None
+    """Activate the one-entry slot. Replaces any previous entry on this thread."""
+    slot = _slot()
+    slot.active = True
+    slot.key = None
+    slot.context = None
 
 
 def clear_context_slot() -> None:
-    """Deactivate and drop the slot. Safe to call when already empty."""
-    _SLOT.active = False
-    _SLOT.key = None
-    _SLOT.context = None
+    """Deactivate and drop this thread's slot. Safe to call when already empty."""
+    slot = _slot()
+    slot.active = False
+    slot.key = None
+    slot.context = None
 
 
 def context_slot_is_active() -> bool:
-    return bool(_SLOT.active)
+    return bool(_slot().active)
 
 
 def _series_order_bytes(series: pd.Series) -> bytes:
@@ -416,18 +436,20 @@ def compute_context_slot_key(
 
 
 def _slot_lookup(key: str) -> SubtimeframeContext | None:
-    if not _SLOT.active:
+    slot = _slot()
+    if not slot.active:
         return None
-    if _SLOT.key == key and _SLOT.context is not None:
-        return _SLOT.context
+    if slot.key == key and slot.context is not None:
+        return slot.context
     return None
 
 
 def _slot_publish(key: str, context: SubtimeframeContext) -> None:
-    if not _SLOT.active:
+    slot = _slot()
+    if not slot.active:
         return
-    _SLOT.key = key
-    _SLOT.context = context
+    slot.key = key
+    slot.context = context
 
 
 def _require_prepare_frames(
@@ -461,6 +483,19 @@ def _pack_sub_ohlc(sub_reset: pd.DataFrame) -> np.ndarray:
     return packed
 
 
+def _detach_timestamp_series(series: pd.Series) -> pd.Series:
+    """Copy timestamp values so the source frame (volume/session) can be collected.
+
+    ``series.array.copy()`` keeps dtype, unit, and timezone. Going through
+    ``to_numpy()`` is rejected: pandas 2 ``.values`` is UTC-naive datetime64[ns].
+    """
+    return pd.Series(
+        series.array.copy(),
+        dtype=series.dtype,
+        index=pd.RangeIndex(len(series)),
+    )
+
+
 def _prepare_array_context(
     parent: pd.DataFrame,
     subtimeframe: pd.DataFrame | None,
@@ -479,7 +514,7 @@ def _prepare_array_context(
         sub_interval=sub_interval,
     )
     slot_key: str | None = None
-    if _SLOT.active:
+    if _slot().active:
         slot_key = compute_context_slot_key(
             parent,
             subtimeframe,
@@ -564,7 +599,7 @@ def _prepare_array_context(
         resolved_parent,
         resolved_sub,
         PackedSubtimeframeGroups(
-            timestamps=sub_reset["timestamp"].reset_index(drop=True),
+            timestamps=_detach_timestamp_series(sub_reset["timestamp"]),
             ohlc=_pack_sub_ohlc(sub_reset),
             starts=np.asarray(starts, dtype=np.int64),
             counts=np.asarray(counts, dtype=np.int32),
