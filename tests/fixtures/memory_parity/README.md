@@ -35,7 +35,12 @@ so Git does not apply text/CRLF conversion to the official frames.
 | Tree | When | Result |
 |---|---|---|
 | `full/` | 2026-09-26 | 59 trades, E=`0.0805084745762712`, portable hash `b8ff7982…`. Bit-identical to an independent `59a4652` rerun |
-| `short/` | 2026-09-27 | trade_count `17 / 75 / 21 / 16 / 0 / 0` on the first capture (old cell 5 `ONL` × `SMA_200_1min` was the second zero). Cell 6 is zero, as required. Cell 5 is now `ONL` × `EMA_21_1min` (`cell_05_3c_onl_ema21_1min`); farm recapture of that cell is pending |
+| `short/` | 2026-09-27 | trade_count `17 / 75 / 21 / 16 / 14 / 0`. Cell 6 is zero, as required. Cell 5 is `ONL` × `EMA_21_1min` (`cell_05_3c_onl_ema21_1min`; official recapture after the Accumu §9.2 deviation) |
+
+Short cell 5 was recaptured the same day with `capture_operator` on the
+#608 checkout `75cf95fe` against `main` `ddf9fcbe`, flag off,
+`--cells short`, run-label `farm-main-short`. Cells 1–4 and 6 keep the
+first-capture bytes, including their ledgers.
 
 These bytes are the Linux baseline. macOS must record and compare against
 **its own** baseline. Last-bit `EMA_*` splits in `levels.parquet` /

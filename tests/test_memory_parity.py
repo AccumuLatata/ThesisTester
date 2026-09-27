@@ -102,10 +102,6 @@ FARM_REQUIRED_CELL_FILES: tuple[str, ...] = (
 
 # Documented farm results (README / §9). Not derived from the files at
 # compare time — compare_captures(dir, dir) is tautological.
-# Cell 5 farm trade_count is pending official recapture (2026-09-27
-# Accumu §9.2 deviation: ONL × EMA_21_1min). The integer below is not a
-# recorded pin for the new pair. SHA/path mismatch versus the committed
-# first-capture short tree is expected until the farm tarball lands.
 FARM_FULL_EXPECTANCY_HEX = "3fb49c34115b1e60"
 FARM_FULL_EXPECTANCY = 0.0805084745762712
 FARM_FULL_PORTABLE_HASH = "b8ff79824c686b1ad16010ff9fbd682d005cd0275b3fc3b16bc3c30e24ec5be7"
@@ -114,7 +110,7 @@ FARM_SHORT_TRADE_COUNTS: dict[str, int] = {
     "cell_02_touch_pdhigh_ema9_1min": 75,
     "cell_03_break_orhigh_rvwap30": 21,
     "cell_04_continuation_london_pivot5m": 16,
-    "cell_05_3c_onl_ema21_1min": 0,
+    "cell_05_3c_onl_ema21_1min": 14,
     "cell_06_fade_onh_sma200_30min_zero": 0,
 }
 
