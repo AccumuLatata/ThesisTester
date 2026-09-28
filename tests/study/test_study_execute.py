@@ -1627,9 +1627,7 @@ def test_dispatch_releases_finished_cell_futures_and_payloads(
         for future in real_as_completed(fs, timeout=timeout):
             gc.collect()
             if prev_future_ref is not None and prev_payload_ref is not None:
-                mid_loop_released.append(
-                    prev_future_ref() is None and prev_payload_ref() is None
-                )
+                mid_loop_released.append(prev_future_ref() is None and prev_payload_ref() is None)
             yield future
             assert future not in fs
             prev_future_ref = weakref.ref(future)
