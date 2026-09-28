@@ -2,7 +2,7 @@
 
 **Document type:** Implementation plan (fully scoped PRs). This file is the review copy of the finished plan.
 **Date:** 2026-09-26 (amended 2026-09-28: series closed after MW1, §17)
-**Status:** **Series closed after MW1.** See §17. Array context sits behind `THESISTESTER_MEMORY_PATH=array`; unset / any other value is the existing dict path. MW0 tooling is on `main` (`a1ea25b2`). Official Linux-farm real-CSV captures are under `tests/fixtures/memory_parity/farm_reference/` (`full/` + `short/`; squash-merged as `3741182e` / #608). MW1 is on `main` (`73265f66` / #607). **§8 decision (owner-approved; deviation from §8.1 rule 1):** MW1 first. Post-MW1 re-trace, re-apply, and close are in §17. Pre-MW1 numbers remain in §8.1.
+**Status:** **Series closed after MW1.** See §17. Array context sits behind `THESISTESTER_MEMORY_PATH=array`; unset / any other value is the existing dict path. MW0 tooling is on `main` (`a1ea25b2`). Official Linux-farm real-CSV captures are under `tests/fixtures/memory_parity/farm_reference/` (`full/` + `short/`; squash-merged as `3741182e` / #608). MW1 is on `main` (`73265f66` / #607). MW0 reference-cell full-run worker `VmHWM` is `3.73 GiB`. Production 12-worker `VmHWM` is `3.85`–`4.46 GiB` per worker; the farm stays at 12. **§8 decision (owner-approved; deviation from §8.1 rule 1):** MW1 first. Post-MW1 re-trace, re-apply, and close are in §17. Pre-MW1 numbers remain in §8.1.
 **Series code:** **MW** (worker memory). Not WMV (`wVWAP` / `mVWAP`).
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 and §4.2, plus the stricter locks in §3 of this file. The MW locks add constraints. They do not weaken §4.1, the byte lock on `tests/fixtures/golden/README.md` (`test_existing_golden_files_byte_identical`), or the rule that legacy goldens are never regenerated without `GOLDEN_REGEN`.
 **Farm code the measurements describe:** commit `59a4652`. The same memory shape was confirmed on `9cd53af` (spawn, discarded load-time context, sequential replica loop, per-minute DataFrame map). Re-check call sites if `main` moves; the contracts below are the behavior, not the line numbers. **MW0 is not recorded at `59a4652`.** It is recorded, flag off, at the exact commit MW1 branches from. That commit must first reproduce the `59a4652` reference-cell result (§9). `main` has moved since `59a4652`, including QR E-9 (vectorized 15s→1m derive) and QR E-10 (vectorized `sl_first` walk).
@@ -700,6 +700,14 @@ Accumu decision, 21:25 CEST. No plan revision. No further runtime code. MW2, MW-
 
 **§8 outcome.** First match is rule 4: `map_step` is not in 1.5–3.5 and `R_ctx` is not in 5.5–8.0, which orders stop and revise. The Accumu MW-L overlay (`R_load.rss ≥ 2.0`) fails (`1.095`). §8.2 with `B = 5.398` puts `H` below `B − 0.3` (`2.875 < 5.098`; the first MW1 row), because MW1 removed far more peak memory than the plan modelled.
 
-**MW1 parity and speed.** Farm and Mac, full and short, flag on and off, bit-identical. Farm wall `1006 s` on vs `12103 s` off. Mac `1394 s` vs `12924 s`. Farm full-run worker `VmHWM` `3.73 GiB` on vs `6.70 GiB` off.
+**MW1 parity and speed.** Farm and Mac, full and short, flag on and off, bit-identical. Farm wall `1006 s` on vs `12103 s` off. Mac `1394 s` vs `12924 s`. Farm full-run worker `VmHWM` `3.73 GiB` on vs `6.70 GiB` off (MW0 reference cell). Production MW1 at `73265f66`, 12 workers: per-worker `VmHWM` `3.85`–`4.46 GiB` (`progB_r2_w3_range_ma` `4.46`, `progB_r2_w2_open_pivot` `4.36`, `progB_r2_w2_open_rvwap` `3.87`). Production planning uses that range. The 13-worker condition (all workers at or below about `3.8 GiB`) is not met, so the farm stays at 12 workers.
+
+### Coordinator memory growth
+
+Observed on `progB_r2_w3_range_ma`: the study parent went from about `2.1 GiB` at 20:35 to `8.2 GiB` (peak `8.34`) by 21:40, and `VmHWM` `10.19 GiB` at 21:39 with 60 of 120 cells done.
+
+Diagnosis (read-only): `_dispatch_study_cells` in `thesistester/study/execute.py` submits every cell up front into `future_to_name`. `as_completed` drops its own reference after yielding, but `future_to_name` keeps every finished `Future`, and each `Future` holds its payload including the full research-bundle zip bytes (about 170 MB per cell here, 10.3 GB for 60 cells). `_apply_cell_result` writes them to disk but nothing releases them, so the parent grows about `0.16 GiB` per finished cell until the pool loop ends (projected about 18–20 GiB at 120 cells). It is freed when the study process exits.
+
+This is outside MW1 scope (MW1 reduced worker memory). Candidate fix, not implemented: pop the future from `future_to_name` and drop the payload after `_apply_cell_result`, optionally let the worker write the zip and return only its path. It needs a separate go from Accumu, since the MW series is closed.
 
 series closed after MW1; MW2/MW-L parked, reopen only if production RAM becomes the limit.
