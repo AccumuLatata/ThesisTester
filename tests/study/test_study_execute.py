@@ -1585,7 +1585,7 @@ def test_dispatch_releases_finished_cell_futures_and_payloads(
     captured: dict[str, object] = {}
 
     class Probe:
-        __slots__ = ()
+        pass
 
     def fake_execute(task):
         name = str(task[0]["name"])
@@ -1594,12 +1594,12 @@ def test_dispatch_releases_finished_cell_futures_and_payloads(
         payload = ok_factory(task)
         probe = Probe()
         payload["_probe"] = probe
-        payload_refs.append(weakref.ref(payload))
+        payload_refs.append(weakref.ref(probe))
         return payload
 
     class FakePool:
         def __init__(self, max_workers=None, mp_context=None):
-            return None
+            pass
 
         def submit(self, fn, task):
             future = Future()
@@ -1637,7 +1637,11 @@ def test_dispatch_releases_finished_cell_futures_and_payloads(
 
     def wrapped_apply(*args, **kwargs):
         payload = kwargs["payload"]
-        apply_payload_refs.append(weakref.ref(payload))
+        probe = payload.get("_probe")
+        if probe is None:
+            probe = Probe()
+            payload["_probe"] = probe
+        apply_payload_refs.append(weakref.ref(probe))
         return real_apply(*args, **kwargs)
 
     monkeypatch.setattr(execute_mod, "ProcessPoolExecutor", FakePool)
