@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+import hashlib
+import json
 import math
+import numbers
+import os
+import threading
 from typing import Literal
 
+import numpy as np
 import pandas as pd
 
 from thesistester.data.loader import infer_base_interval, parse_interval
@@ -35,13 +42,100 @@ class IntrabarResolution:
     subtimeframe_fallback: bool = False
 
 
+MEMORY_PATH_ENV = "THESISTESTER_MEMORY_PATH"
+MEMORY_PATH_ARRAY = "array"
+_SLOT_DIGEST_COLUMNS = ("timestamp", "open", "high", "low", "close")
+
+
+def memory_path_is_array() -> bool:
+    """Return True only when ``THESISTESTER_MEMORY_PATH=array``.
+
+    Unset, empty, or any other value is the flag-off path. Read at the call
+    site; do not cache. This is the single reader for the switch.
+    """
+    return os.environ.get(MEMORY_PATH_ENV) == MEMORY_PATH_ARRAY
+
+
+class PackedSubtimeframeGroups(Mapping[int, pd.DataFrame]):
+    """Lazy parent-index → one-frame mapping over packed OHLC + timestamps.
+
+    ``__getitem__`` / ``.get`` build one frame and do not store it. Columns
+    are exactly ``timestamp``, ``open``, ``high``, ``low``, ``close``.
+    """
+
+    def __init__(
+        self,
+        *,
+        timestamps: pd.Series,
+        ohlc: np.ndarray,
+        starts: np.ndarray,
+        counts: np.ndarray,
+        parent_indexes: np.ndarray,
+    ) -> None:
+        self._timestamps = timestamps
+        self._ohlc = ohlc
+        self._starts = np.asarray(starts, dtype=np.int64)
+        self._counts = np.asarray(counts, dtype=np.int32)
+        self._parent_indexes = np.asarray(parent_indexes, dtype=np.int64)
+        self._by_parent = {
+            int(parent_index): position
+            for position, parent_index in enumerate(self._parent_indexes)
+        }
+
+    def __getitem__(self, parent_index: int) -> pd.DataFrame:
+        position = self._position_for(parent_index)
+        return self._materialize(position)
+
+    def __iter__(self):
+        return (int(index) for index in self._parent_indexes)
+
+    def __len__(self) -> int:
+        return int(self._parent_indexes.size)
+
+    def __contains__(self, parent_index: object) -> bool:
+        try:
+            self._position_for(parent_index)
+        except KeyError:
+            return False
+        return True
+
+    def _position_for(self, parent_index: object) -> int:
+        """Resolve a dict-compatible parent key. Non-integrals raise ``KeyError``."""
+        if not isinstance(parent_index, numbers.Integral):
+            raise KeyError(parent_index)
+        position = self._by_parent.get(int(parent_index))
+        if position is None:
+            raise KeyError(parent_index)
+        return position
+
+    def _materialize(self, position: int) -> pd.DataFrame:
+        start = int(self._starts[position])
+        count = int(self._counts[position])
+        index = pd.RangeIndex(count)
+        sl = slice(start, start + count)
+        # Slice the stored series so dtype/unit/tz stay source-identical.
+        # Do not go through ``to_numpy()``: pandas 2 ``.values`` is UTC-naive
+        # datetime64[ns] and wrapping that with a tz dtype shifts wall time.
+        timestamp = self._timestamps.iloc[sl].reset_index(drop=True)
+        return pd.DataFrame(
+            {
+                "timestamp": timestamp,
+                "open": pd.Series(self._ohlc[sl, 0], dtype="float64", index=index),
+                "high": pd.Series(self._ohlc[sl, 1], dtype="float64", index=index),
+                "low": pd.Series(self._ohlc[sl, 2], dtype="float64", index=index),
+                "close": pd.Series(self._ohlc[sl, 3], dtype="float64", index=index),
+            },
+            index=index,
+        )
+
+
 @dataclass(frozen=True)
 class SubtimeframeContext:
     """Validated parent-to-sub-bar mapping."""
 
     parent_interval: pd.Timedelta
     sub_interval: pd.Timedelta
-    groups: dict[int, pd.DataFrame]
+    groups: Mapping[int, pd.DataFrame]
     fallback_reasons: dict[int, str] = field(default_factory=dict)
 
     def fallback_diagnostics(self, parent: pd.DataFrame) -> list[dict[str, object]]:
@@ -251,6 +345,271 @@ def _resolve_bar_intervals(
     if ratio != int(ratio):
         raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
     return resolved_parent, resolved_sub
+
+
+class _ContextSlot:
+    """Single thread-local cache entry. Active only inside ``execute_study_cell``."""
+
+    __slots__ = ("active", "key", "context")
+
+    def __init__(self) -> None:
+        self.active = False
+        self.key: str | None = None
+        self.context: SubtimeframeContext | None = None
+
+
+_THREAD_SLOT = threading.local()
+
+
+def _slot() -> _ContextSlot:
+    """Return this thread's one-entry slot. Spawn workers each get a fresh one."""
+    slot = getattr(_THREAD_SLOT, "entry", None)
+    if slot is None:
+        slot = _ContextSlot()
+        _THREAD_SLOT.entry = slot
+    return slot
+
+
+def enter_context_slot() -> None:
+    """Activate the one-entry slot. Replaces any previous entry on this thread."""
+    slot = _slot()
+    slot.active = True
+    slot.key = None
+    slot.context = None
+
+
+def clear_context_slot() -> None:
+    """Deactivate and drop this thread's slot. Safe to call when already empty."""
+    slot = _slot()
+    slot.active = False
+    slot.key = None
+    slot.context = None
+
+
+def context_slot_is_active() -> bool:
+    return bool(_slot().active)
+
+
+def _series_order_bytes(series: pd.Series) -> bytes:
+    values = series.to_numpy(copy=False)
+    if values.dtype == object:
+        hasher = hashlib.sha256()
+        for item in values:
+            hasher.update(repr(item).encode("utf-8"))
+            hasher.update(b"\0")
+        return hasher.digest()
+    return np.ascontiguousarray(values).tobytes()
+
+
+def _ohlc_order_digest(frame: pd.DataFrame) -> str:
+    hasher = hashlib.sha256()
+    for column in _SLOT_DIGEST_COLUMNS:
+        series = frame[column]
+        hasher.update(column.encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(str(series.dtype).encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(_series_order_bytes(series))
+    return hasher.hexdigest()
+
+
+def compute_context_slot_key(
+    parent: pd.DataFrame,
+    subtimeframe: pd.DataFrame,
+    *,
+    parent_interval: pd.Timedelta,
+    sub_interval: pd.Timedelta,
+    tick_size: float,
+    model: str,
+) -> str:
+    """SHA-256 of canonical JSON: order-sensitive OHLC digests + resolved ns + tick + model."""
+    payload = {
+        "model": model,
+        "parent_digest": _ohlc_order_digest(parent),
+        "parent_interval_ns": int(parent_interval.value),
+        "sub_digest": _ohlc_order_digest(subtimeframe),
+        "sub_interval_ns": int(sub_interval.value),
+        "tick_size": repr(float(tick_size)),
+    }
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
+def _slot_lookup(key: str) -> SubtimeframeContext | None:
+    slot = _slot()
+    if not slot.active:
+        return None
+    if slot.key == key and slot.context is not None:
+        return slot.context
+    return None
+
+
+def _slot_publish(key: str, context: SubtimeframeContext) -> None:
+    slot = _slot()
+    if not slot.active:
+        return
+    slot.key = key
+    slot.context = context
+
+
+def _require_prepare_frames(
+    parent: pd.DataFrame,
+    subtimeframe: pd.DataFrame | None,
+    *,
+    model: Literal["subtimeframe", "subtimeframe_conservative"],
+) -> pd.DataFrame:
+    if subtimeframe is None:
+        raise ValueError(f"intrabar_model={model!r} requires subtimeframe_data")
+    for label, frame in (("parent", parent), ("subtimeframe", subtimeframe)):
+        missing = [column for column in _REQUIRED_OHLC if column not in frame.columns]
+        if missing:
+            raise ValueError(f"{label} data missing required columns: {missing}")
+        timestamps = pd.to_datetime(frame["timestamp"], errors="coerce", utc=True)
+        if timestamps.isna().any():
+            raise ValueError(f"{label} data contains invalid timestamps")
+        if timestamps.duplicated().any():
+            raise ValueError(f"{label} data contains duplicate timestamps")
+        if not timestamps.is_monotonic_increasing:
+            raise ValueError(f"{label} data timestamps must be sorted")
+    return subtimeframe
+
+
+def _pack_sub_ohlc(sub_reset: pd.DataFrame) -> np.ndarray:
+    packed = np.empty((len(sub_reset), 4), dtype=np.float64)
+    packed[:, 0] = pd.to_numeric(sub_reset["open"], errors="coerce").to_numpy(dtype=np.float64)
+    packed[:, 1] = pd.to_numeric(sub_reset["high"], errors="coerce").to_numpy(dtype=np.float64)
+    packed[:, 2] = pd.to_numeric(sub_reset["low"], errors="coerce").to_numpy(dtype=np.float64)
+    packed[:, 3] = pd.to_numeric(sub_reset["close"], errors="coerce").to_numpy(dtype=np.float64)
+    return packed
+
+
+def _detach_timestamp_series(series: pd.Series) -> pd.Series:
+    """Copy timestamp values so the source frame (volume/session) can be collected.
+
+    ``series.array.copy()`` keeps dtype, unit, and timezone. Going through
+    ``to_numpy()`` is rejected: pandas 2 ``.values`` is UTC-naive datetime64[ns].
+    """
+    return pd.Series(
+        series.array.copy(),
+        dtype=series.dtype,
+        index=pd.RangeIndex(len(series)),
+    )
+
+
+def _prepare_array_context(
+    parent: pd.DataFrame,
+    subtimeframe: pd.DataFrame | None,
+    *,
+    tick_size: float,
+    parent_interval: pd.Timedelta | str | None,
+    sub_interval: pd.Timedelta | str | None,
+    model: Literal["subtimeframe", "subtimeframe_conservative"],
+) -> SubtimeframeContext:
+    """Flag-on path: same predicates, packed arrays, optional one-entry slot."""
+    subtimeframe = _require_prepare_frames(parent, subtimeframe, model=model)
+    resolved_parent, resolved_sub = _resolve_bar_intervals(
+        parent,
+        subtimeframe,
+        parent_interval=parent_interval,
+        sub_interval=sub_interval,
+    )
+    slot_key: str | None = None
+    if _slot().active:
+        slot_key = compute_context_slot_key(
+            parent,
+            subtimeframe,
+            parent_interval=resolved_parent,
+            sub_interval=resolved_sub,
+            tick_size=tick_size,
+            model=model,
+        )
+        hit = _slot_lookup(slot_key)
+        if hit is not None:
+            return hit
+
+    expected_count = int(resolved_parent / resolved_sub)
+    parent_reset = parent.reset_index(drop=True)
+    sub_reset = subtimeframe.reset_index(drop=True)
+    parent_utc = pd.to_datetime(parent_reset["timestamp"], utc=True)
+    sub_utc = pd.to_datetime(sub_reset["timestamp"], utc=True)
+    parent_finite, parent_invariant = _ohlc_validation_masks(parent_reset)
+    sub_finite, sub_invariant = _ohlc_validation_masks(sub_reset)
+    tolerance = float(tick_size) * 1e-6
+    conservative = model == "subtimeframe_conservative"
+    starts: list[int] = []
+    counts: list[int] = []
+    parent_indexes: list[int] = []
+    fallback_reasons: dict[int, str] = {}
+    for index, start in enumerate(parent_utc):
+        end = start + resolved_parent
+        group_start = int(sub_utc.searchsorted(start, side="left"))
+        group_end = int(sub_utc.searchsorted(end, side="left"))
+        group = sub_reset.iloc[group_start:group_end]
+        if len(group) != expected_count:
+            if conservative:
+                fallback_reasons[index] = (
+                    f"incomplete coverage: expected {expected_count}, observed {len(group)}"
+                )
+                continue
+            raise ValueError(
+                "incomplete subtimeframe coverage for parent timestamp "
+                f"{parent_reset['timestamp'].iloc[index]}: "
+                f"expected {expected_count}, observed {len(group)}"
+            )
+        actual_timestamps = pd.to_datetime(group["timestamp"], utc=True).tolist()
+        expected_timestamps = [start + offset * resolved_sub for offset in range(expected_count)]
+        if actual_timestamps != expected_timestamps:
+            if conservative:
+                fallback_reasons[index] = "timestamps are not exactly aligned"
+                continue
+            raise ValueError(
+                "subtimeframe timestamps are not exactly aligned for parent timestamp "
+                f"{parent_reset['timestamp'].iloc[index]}"
+            )
+        if not bool(parent_finite.iloc[index]):
+            raise ValueError("parent OHLC contains non-finite values")
+        if not bool(parent_invariant.iloc[index]):
+            raise ValueError("parent OHLC invariants are invalid")
+        if not bool(sub_finite.iloc[group_start:group_end].all()):
+            raise ValueError("subtimeframe OHLC contains non-finite values")
+        if not bool(sub_invariant.iloc[group_start:group_end].all()):
+            raise ValueError("subtimeframe OHLC invariants are invalid")
+        parent_row = parent_reset.iloc[index]
+        comparisons = {
+            "open": (float(group["open"].iloc[0]), float(parent_row["open"])),
+            "high": (float(group["high"].max()), float(parent_row["high"])),
+            "low": (float(group["low"].min()), float(parent_row["low"])),
+            "close": (float(group["close"].iloc[-1]), float(parent_row["close"])),
+        }
+        mismatches = [
+            key
+            for key, (actual, expected) in comparisons.items()
+            if abs(actual - expected) > tolerance
+        ]
+        if mismatches:
+            raise ValueError(
+                "subtimeframe OHLC does not reconcile for parent timestamp "
+                f"{parent_reset['timestamp'].iloc[index]}: {mismatches}"
+            )
+        parent_indexes.append(index)
+        starts.append(group_start)
+        counts.append(group_end - group_start)
+
+    context = SubtimeframeContext(
+        resolved_parent,
+        resolved_sub,
+        PackedSubtimeframeGroups(
+            timestamps=_detach_timestamp_series(sub_reset["timestamp"]),
+            ohlc=_pack_sub_ohlc(sub_reset),
+            starts=np.asarray(starts, dtype=np.int64),
+            counts=np.asarray(counts, dtype=np.int32),
+            parent_indexes=np.asarray(parent_indexes, dtype=np.int64),
+        ),
+        fallback_reasons=fallback_reasons,
+    )
+    if slot_key is not None:
+        _slot_publish(slot_key, context)
+    return context
 
 
 def inspect_subtimeframe_compatibility(
@@ -479,6 +838,15 @@ def prepare_subtimeframe_context(
     sub_interval: pd.Timedelta | str | None = None,
 ) -> SubtimeframeContext:
     """Validate strict lower-timeframe coverage and reconcile parent OHLC."""
+    if memory_path_is_array():
+        return _prepare_array_context(
+            parent,
+            subtimeframe,
+            tick_size=tick_size,
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
+            model="subtimeframe",
+        )
     if subtimeframe is None:
         raise ValueError("intrabar_model='subtimeframe' requires subtimeframe_data")
     for label, frame in (("parent", parent), ("subtimeframe", subtimeframe)):
@@ -574,6 +942,15 @@ def prepare_subtimeframe_conservative_context(
     compact labels like ``15s`` / ``1min``) are required for sparse 15s-primary
     sources where gap-mode inference would coarsen to the parent interval.
     """
+    if memory_path_is_array():
+        return _prepare_array_context(
+            parent,
+            subtimeframe,
+            tick_size=tick_size,
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
+            model="subtimeframe_conservative",
+        )
     if subtimeframe is None:
         raise ValueError("intrabar_model='subtimeframe_conservative' requires subtimeframe_data")
     for label, frame in (("parent", parent), ("subtimeframe", subtimeframe)):

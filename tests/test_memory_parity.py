@@ -262,12 +262,23 @@ def test_hook_points_exist_at_farm_production_commit() -> None:
     assert missing == []
 
 
-def test_thesistester_package_untouched_vs_main() -> None:
+def test_mw1_runtime_surface_is_limited_vs_main() -> None:
+    """MW1 may edit only the §10.3 runtime files under thesistester/."""
     try:
         diff = diff_vs_main("thesistester/")
     except GitRefError as exc:
         pytest.fail(str(exc))
-    assert diff == ""
+    allowed = {
+        "thesistester/engine/intrabar.py",
+        "thesistester/study/execute.py",
+    }
+    files: set[str] = set()
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            right = line.split()[-1]
+            files.add(right[2:] if right.startswith("b/") else right)
+    unexpected = files - allowed
+    assert unexpected == set(), sorted(unexpected)
 
 
 def test_legacy_golden_readme_not_touched() -> None:
@@ -278,9 +289,11 @@ def test_legacy_golden_readme_not_touched() -> None:
     assert diff == ""
 
 
-def test_plan_status_line_records_mw0_fixtures() -> None:
+def test_plan_status_line_records_mw1() -> None:
     text = (REPO / "docs" / "WORKER_MEMORY_IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
-    assert "**Status:** **MW0 fixtures landed.**" in text
+    assert "**Status:** **MW1 shipping**" in text
+    assert "deviation from §8.1 rule 1" in text
+    assert "MW1 first" in text
     assert "farm_reference/" in text
 
 
@@ -654,6 +667,23 @@ def test_stage_trace_rule_table() -> None:
     )
     assert rule4["rule"] == 4
     assert compute_b(r_pre_prepare_hwm_gib=2.0, r_signals_hwm_gib=1.5) == 2.0
+
+
+def test_synthetic_golden_matches_live_capture_flag_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§10.4 test 6 CI subset: flag on vs the recorded MW0 synthetic outputs."""
+    if not GOLDEN.is_dir():
+        pytest.fail(
+            "STOP AND REPORT: synthetic golden is missing; "
+            "do not skip — re-run with --regenerate only at the MW0 base commit"
+        )
+    monkeypatch.setenv("THESISTESTER_MEMORY_PATH", "array")
+    from tests.fixtures.memory_parity.record_memory_parity import record_synthetic
+
+    candidate = record_synthetic(tmp_path / "live-flag-on", run_label="ci-live-array")
+    report = compare_captures(GOLDEN, candidate, pre_step=False)
+    assert report.ok, format_report(report)
 
 
 def test_synthetic_golden_matches_live_capture(tmp_path: Path) -> None:

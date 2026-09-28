@@ -35,6 +35,7 @@ import pandas as pd
 from thesistester.analytics.metrics import direction_split_index_values
 from thesistester.analytics.overfitting import vs_random_benchmark
 from thesistester.api import _BACKTEST_DEFAULTS, run_experiment
+from thesistester.engine.intrabar import clear_context_slot, enter_context_slot
 from thesistester.config import INSTRUMENTS
 from thesistester.entry_window_policy import normalize_entry_window
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
@@ -731,6 +732,7 @@ def execute_study_cell(
     baseline_cfg = _random_baseline_cfg(run_spec.get(_DA5_RANDOM_BASELINE_KEY))
     engine_spec = {key: value for key, value in run_spec.items() if key != _DA5_RANDOM_BASELINE_KEY}
     try:
+        enter_context_slot()
         state = run_experiment(
             engine_spec,
             base_directory=base_directory,
@@ -773,6 +775,8 @@ def execute_study_cell(
             "index_row": _failed_index_row(name),
             "error": f"{type(exc).__name__}: {exc}",
         }
+    finally:
+        clear_context_slot()
 
 
 def cost_hint_lines(
