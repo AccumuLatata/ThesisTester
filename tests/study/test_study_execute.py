@@ -27,6 +27,7 @@ from thesistester.study.execute import (
     STUDY_INDEX_KEYS,
     _assert_study_identity,
     _cell_execution_kwargs,
+    _dispatch_study_cells,
     _failed_index_row,
     _finalize_running_cells,
     _index_row_from_existing_bundle,
@@ -1560,3 +1561,119 @@ def test_inprocess_dispatch_exception_marks_leftover_running_failed(tmp_path: Pa
         cell = ledger["cells"][name]
         assert cell["status"] == "failed"
         assert "WorkerInterrupted" in (cell["error"] or "")
+
+
+def test_dispatch_releases_finished_cell_futures_and_payloads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Pool dispatch must drop each finished Future + zip payload after apply."""
+    import gc
+    import weakref
+    from concurrent.futures import Future
+
+    import thesistester.study.execute as execute_mod
+    from thesistester.study.ledger import empty_ledger
+
+    names = ["cell_ok_a", "cell_ok_b", "cell_boom"]
+    out = tmp_path / "out"
+    out.mkdir()
+    save_ledger(out, empty_ledger(study_identity_hash="h", run_names=names))
+
+    ok_factory = _fake_executor_factory()
+    payload_refs: list[weakref.ref[object]] = []
+    apply_payload_refs: list[weakref.ref[object]] = []
+    captured: dict[str, object] = {}
+
+    class Probe:
+        pass
+
+    def fake_execute(task):
+        name = str(task[0]["name"])
+        if name == "cell_boom":
+            raise RuntimeError("worker boom")
+        payload = ok_factory(task)
+        probe = Probe()
+        payload["_probe"] = probe
+        payload_refs.append(weakref.ref(probe))
+        return payload
+
+    class FakePool:
+        def __init__(self, max_workers=None, mp_context=None):
+            pass
+
+        def submit(self, fn, task):
+            future = Future()
+            try:
+                future.set_result(fn(task))
+            except Exception as exc:  # noqa: BLE001 — match pool worker raise
+                future.set_exception(exc)
+            return future
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    real_as_completed = execute_mod.as_completed
+    real_apply = execute_mod._apply_cell_result
+    prev_future_ref: weakref.ref[Future] | None = None
+    prev_payload_ref: weakref.ref[object] | None = None
+    mid_loop_released: list[bool] = []
+
+    def tracking_as_completed(fs, timeout=None):
+        nonlocal prev_future_ref, prev_payload_ref
+        captured["map"] = fs
+        for future in real_as_completed(fs, timeout=timeout):
+            gc.collect()
+            if prev_future_ref is not None and prev_payload_ref is not None:
+                mid_loop_released.append(prev_future_ref() is None and prev_payload_ref() is None)
+            yield future
+            assert future not in fs
+            prev_future_ref = weakref.ref(future)
+            prev_payload_ref = apply_payload_refs[-1]
+
+    def wrapped_apply(*args, **kwargs):
+        payload = kwargs["payload"]
+        probe = payload.get("_probe")
+        if probe is None:
+            probe = Probe()
+            payload["_probe"] = probe
+        apply_payload_refs.append(weakref.ref(probe))
+        return real_apply(*args, **kwargs)
+
+    monkeypatch.setattr(execute_mod, "ProcessPoolExecutor", FakePool)
+    monkeypatch.setattr(execute_mod, "execute_study_cell", fake_execute)
+    monkeypatch.setattr(execute_mod, "as_completed", tracking_as_completed)
+    monkeypatch.setattr(execute_mod, "_apply_cell_result", wrapped_apply)
+
+    tasks = [({"name": name}, ".") for name in names]
+    index_by_name: dict[str, dict] = {}
+    _dispatch_study_cells(
+        out,
+        tasks=tasks,
+        todo=names,
+        run_names=names,
+        index_by_name=index_by_name,
+        workers_n=2,
+        cell_executor=None,
+    )
+
+    gc.collect()
+    assert captured["map"] == {}
+    assert mid_loop_released
+    assert all(mid_loop_released)
+    assert payload_refs
+    assert all(ref() is None for ref in payload_refs)
+    assert apply_payload_refs
+    assert all(ref() is None for ref in apply_payload_refs)
+
+    ledger = load_ledger(out)
+    assert ledger is not None
+    assert ledger["cells"]["cell_ok_a"]["status"] == "ok"
+    assert ledger["cells"]["cell_ok_b"]["status"] == "ok"
+    assert ledger["cells"]["cell_boom"]["status"] == "failed"
+    assert ledger["cells"]["cell_boom"]["error"] == "RuntimeError: worker boom"
+    assert (out / "cell_ok_a.research.zip").is_file()
+    assert (out / "cell_ok_b.research.zip").is_file()
+    assert not (out / "cell_boom.research.zip").is_file()

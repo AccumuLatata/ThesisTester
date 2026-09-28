@@ -1223,7 +1223,7 @@ def _dispatch_study_cells(
             pool.submit(execute_study_cell, task): todo[index] for index, task in enumerate(tasks)
         }
         for future in as_completed(future_to_name):
-            name = future_to_name[future]
+            name = future_to_name.pop(future)
             try:
                 payload = future.result()
             except Exception as exc:  # noqa: BLE001 — keep study loop alive
@@ -1240,6 +1240,9 @@ def _dispatch_study_cells(
                 index_by_name=index_by_name,
                 payload=payload,
             )
+            # Drop finished Future + zip payload so coordinator RSS cannot accumulate.
+            del payload
+            del future
 
 
 def _sync_study_index_row(
