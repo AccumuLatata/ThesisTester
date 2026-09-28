@@ -673,3 +673,30 @@ The PR that adds **this file** is not MW0. It adds the plan and one index row in
 | MW3 | Runbook gate formula. `ARCHITECTURE.md` one paragraph on the read-only files |
 
 `ENGINEERING_ROADMAP.md` gets a status row only when an implementation PR lands, not in the plan PR.
+
+---
+
+## 17. Series closed after MW1 (2026-09-28)
+
+Accumu decision, 21:25 CEST. No plan revision. No further runtime code. MW2, MW-L, and MW3 are parked.
+
+**Post-MW1 farm stage trace.** `main` `73265f66`, `THESISTESTER_MEMORY_PATH=array`, Linux, one process, `cpu15`, `clear_refs` after `R_load`, replicas skipped. The trace JSON field `flag` reads `off`; the wrapper env confirms `array`. That is a tooling label quirk, not a flag-off run. Values in GiB.
+
+| stop | rss | hwm |
+|---|---|---|
+| `R_pre_prepare` | – | 2.238 |
+| `R_load` | 1.095 | 1.216 |
+| `R_signals` | 1.798 | 2.875 |
+| `R_ctx` | 1.800 | 2.875 |
+| `R_bundle` | 1.821 | 2.875 |
+| `R_done` | 2.021 | 2.875 |
+
+`H = 2.875`, `map_step = 0.0014`. Diagnostic at `R_load`: pandas live `0.217`, malloc in-use `0.340`, malloc free retained `0.412`. No leftover map arenas.
+
+**Pre-MW1 flag-off trace** (recorded in §8.1): `B = 5.398`, `R_load = 4.202`, `map_step = 0.381`.
+
+**§8 outcome.** First match is rule 4: `map_step` is not in 1.5–3.5 and `R_ctx` is not in 5.5–8.0, which orders stop and revise. The Accumu MW-L overlay (`R_load.rss ≥ 2.0`) fails (`1.095`). §8.2 with `B = 5.398` puts `H` below `B − 0.3` (`2.875 < 5.098`), because MW1 removed far more peak memory than the plan modelled.
+
+**MW1 parity and speed.** Farm and Mac, full and short, flag on and off, bit-identical. Farm wall `1006 s` on vs `12103 s` off. Mac `1394 s` vs `12924 s`. Farm full-run worker `VmHWM` `3.73 GiB` on vs `6.70 GiB` off.
+
+series closed after MW1; MW2/MW-L parked, reopen only if production RAM becomes the limit.
