@@ -289,9 +289,9 @@ def test_legacy_golden_readme_not_touched() -> None:
     assert diff == ""
 
 
-def test_plan_status_line_records_mw1() -> None:
+def test_plan_status_line_records_series_closed() -> None:
     text = (REPO / "docs" / "WORKER_MEMORY_IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
-    assert "**Status:** **MW1 shipping**" in text
+    assert "**Status:** **Series closed after MW1.**" in text
     assert "deviation from §8.1 rule 1" in text
     assert "MW1 first" in text
     assert "farm_reference/" in text

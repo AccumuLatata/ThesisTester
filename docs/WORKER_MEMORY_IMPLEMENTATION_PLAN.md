@@ -708,4 +708,6 @@ Diagnosis (read-only, `main` `73265f66`): `_dispatch_study_cells` in `thesistest
 
 This is outside MW1 scope (MW1 reduced worker memory). Candidate fix, not implemented: `future_to_name.pop(future)` and drop the payload after `_apply_cell_result`, optionally let the worker write the zip and return only its path (`execute_study_cell` today receives `(run_spec, base_directory)` and does not see the study `output_dir`). It needs a separate go from Accumu, since the MW series is closed.
 
+Accumu approved the minimal fix on 2026-09-28 (pop finished futures from `future_to_name` and drop the result payload after `_apply_cell_result`); it ships as a separate follow-up runtime PR, and the worker-writes-zip variant stays parked.
+
 series closed after MW1; MW2/MW-L parked, reopen only if production RAM becomes the limit.
