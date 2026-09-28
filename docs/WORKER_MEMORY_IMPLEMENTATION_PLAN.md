@@ -1,8 +1,8 @@
 # Worker memory — implementation plan (MW)
 
 **Document type:** Implementation plan (fully scoped PRs). This file is the review copy of the finished plan.
-**Date:** 2026-09-26
-**Status:** **MW1 shipping** (this PR). Array context sits behind `THESISTESTER_MEMORY_PATH=array`; unset / any other value is the existing dict path. MW0 tooling is on `main` (`a1ea25b2`). Official Linux-farm real-CSV captures are under `tests/fixtures/memory_parity/farm_reference/` (`full/` + `short/`; squash-merged as `3741182e` / #608). **§8 decision (owner-approved; deviation from §8.1 rule 1):** MW1 first; re-trace after MW1 and re-apply §8.1, including the `R_signals.rss > 4.5 GiB` capacity check; MW-L only if the post-MW1 trace still shows `R_load >= 2.0 GiB` with matching live data. Recorded numbers are in §8.1.
+**Date:** 2026-09-26 (amended 2026-09-28: series closed after MW1, §17)
+**Status:** **Series closed after MW1.** See §17. Array context sits behind `THESISTESTER_MEMORY_PATH=array`; unset / any other value is the existing dict path. MW0 tooling is on `main` (`a1ea25b2`). Official Linux-farm real-CSV captures are under `tests/fixtures/memory_parity/farm_reference/` (`full/` + `short/`; squash-merged as `3741182e` / #608). MW1 is on `main` (`73265f66` / #607). **§8 decision (owner-approved; deviation from §8.1 rule 1):** MW1 first. Post-MW1 re-trace, re-apply, and close are in §17. Pre-MW1 numbers remain in §8.1.
 **Series code:** **MW** (worker memory). Not WMV (`wVWAP` / `mVWAP`).
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 and §4.2, plus the stricter locks in §3 of this file. The MW locks add constraints. They do not weaken §4.1, the byte lock on `tests/fixtures/golden/README.md` (`test_existing_golden_files_byte_identical`), or the rule that legacy goldens are never regenerated without `GOLDEN_REGEN`.
 **Farm code the measurements describe:** commit `59a4652`. The same memory shape was confirmed on `9cd53af` (spawn, discarded load-time context, sequential replica loop, per-minute DataFrame map). Re-check call sites if `main` moves; the contracts below are the behavior, not the line numbers. **MW0 is not recorded at `59a4652`.** It is recorded, flag off, at the exact commit MW1 branches from. That commit must first reproduce the `59a4652` reference-cell result (§9). `main` has moved since `59a4652`, including QR E-9 (vectorized 15s→1m derive) and QR E-10 (vectorized `sl_first` walk).
@@ -178,7 +178,7 @@ The Quantower path in `load_ohlcv` (`format_profile != "canonical"`) reads the f
 | 2 | Stop holding full-width copies in naked flags and 1-minute trigger prep. Drop those objects after the bundle is built, before the replica loop. `hash_dataframe` unchanged | MW2 | ~0.8–1.2 GiB | Planning estimate **2.4–3.4 GiB**. Clears 3.3 GiB only when §8.1's capacity check passed. Farm gate is §8.2 |
 | 3 | Read-only `.npy` memmap of parent, source, and levels | MW3, optional | Per-process RSS barely moves. Unique machine RAM drops by the shared pages | Only if unique RAM is still tight after MW2, or CSV re-parse dominates startup |
 
-MW1 is required. MW2 is required before the gate may go to 16. MW1 alone leaves a worker near 4 GiB, and `16 × 4 GiB = 64 GiB` does not fit in 59 GiB usable. MW-L (loader) is inserted by the §8 rule, not by default.
+MW1 is required. MW2 is required before the gate may go to 16. MW1 alone leaves a worker near 4 GiB, and `16 × 4 GiB = 64 GiB` does not fit in 59 GiB usable. MW-L (loader) is inserted by the §8 rule, not by default. Later MW steps are parked; see §17.
 
 Why MW1 cannot change a result: `resolve_subtimeframe_bar` is untouched and still receives a frame whose `timestamp`, `open`, `high`, `low`, `close`, index, and dtypes of those columns match today's group. `exit_subbar_timestamp` is that timestamp. Prepare still raises on the same OHLC mismatches and still records the same fallback reasons. The replica loop and `SeedSequence.spawn` are untouched. The context is read-only after prepare. Building it once is valid because the build does not consume the RNG.
 
@@ -265,7 +265,7 @@ Diagnostic trace, same setup, scratch script, no product change. Columns: rss, h
 
 The loader holds under 1 GiB. The load-time dict map costs about 3.6 GiB as 711k pandas objects (above the §6 band of 2.2–3.0). That memory stays resident after the map is freed, most likely in pymalloc arenas; glibc trim returns only 0.82 GiB. The inflated `R_load` and the small `map_step` come from that retained map memory, not from the loader.
 
-**Decision (repo owner):** MW1 first. This is a recorded deviation from §8.1 rule 1. Re-trace after MW1 and re-apply §8.1, including the `R_signals.rss > 4.5 GiB` capacity check. MW-L comes in only if the post-MW1 trace still shows `R_load >= 2.0 GiB` with matching live data. MW1 therefore routes the load-time prepare through the slot (§6 row 1 / §10.2).
+**Decision (repo owner):** MW1 first. This is a recorded deviation from §8.1 rule 1. Re-trace after MW1 and re-apply §8.1, including the `R_signals.rss > 4.5 GiB` capacity check. MW-L comes in only if the post-MW1 trace still shows `R_load >= 2.0 GiB` with matching live data. MW1 therefore routes the load-time prepare through the slot (§6 row 1 / §10.2). Post-MW1 re-trace and close: §17.
 
 ### 8.2 Ranges the farm confirms or rejects
 
@@ -616,6 +616,7 @@ Order:
 2. **§8 trace and MW0**, both on that same commit, only after step 1 passes. The trace is flag off, full CSV, one process, and Linux-only. Record `hwm` at `R_pre_prepare`, then `rss` and `hwm` at `R_load`, write `5` to `/proc/self/clear_refs`, then record `rss` and `hwm` at `R_signals`, `R_ctx`, `R_bundle`, and `R_done`, plus `map_step`, in the MW1 PR. MW0 may be recorded in parallel with the trace. The trace does not block MW0. MW0 does not block the trace. Both block MW1.
 3. **MW1** (or MW-L first if §8.1 rule 1 says so). Parity: short suite, flag off vs on, Linux then macOS. Exact equality, including `canonical_bundle_hash` and `exit_subbar_timestamp`. Then the full reference cell, both machines, both flag states. Only a match allows `THESISTESTER_MEMORY_PATH=array` on the farm. The farm RSS must sit in the §8.2 MW1 band.
 4. **Speed**, same full cell, both flags. Wall time ≤ 105% of flag off. Expect a large drop. A slower result blocks the flag.
+Later steps (5–8) are parked; see §17.
 5. **MW-L between MW1 and MW2** only if §8.1 rule 2 inserted it. Rule 1 already ran it before MW1, at step 3. Re-trace, then re-apply §8.1 before MW2.
 6. **MW2.** Repeat the short-suite parity and the resume test on the farm. Then the full reference cell on both paths, both machines. The Acceptance contract requires that rerun on every MW PR, including MW-L and MW3. About 3–4 h, planned.
 7. **Capacity**, flag on, after parity. One smoke cell, then a real multi-cell study, at **6, 12, and 16** workers. Record per-worker peak RSS, minimum `MemAvailable`, and cells/hour.
@@ -648,6 +649,8 @@ After MW3, if mappings are shared, stop using `N × smoke RSS` as the capacity c
 | Loader, only if §8.1 says so | MW-L | Yes | The next step named by §8.1 |
 | Full-width copies | MW2 | Yes, same flag | The 16-worker gate |
 | Memmap | MW3 | Yes, same flag, optional | Nothing, if §14 already passes |
+
+PR sequence after MW1 is parked; see §17.
 
 Each implementation PR:
 
@@ -691,11 +694,11 @@ Accumu decision, 21:25 CEST. No plan revision. No further runtime code. MW2, MW-
 | `R_bundle` | 1.821 | 2.875 |
 | `R_done` | 2.021 | 2.875 |
 
-`H = 2.875`, `map_step = 0.0014`. Diagnostic at `R_load`: pandas live `0.217`, malloc in-use `0.340`, malloc free retained `0.412`. No leftover map arenas.
+`H = 2.875`, `map_step = 0.0014` (unrounded `R_ctx.rss − R_signals.rss`; table rss is 3 d.p.). Diagnostic at `R_load`: pandas live `0.217`, malloc in-use `0.340`, malloc free retained `0.412`. No leftover map arenas.
 
 **Pre-MW1 flag-off trace** (recorded in §8.1): `B = 5.398`, `R_load = 4.202`, `map_step = 0.381`.
 
-**§8 outcome.** First match is rule 4: `map_step` is not in 1.5–3.5 and `R_ctx` is not in 5.5–8.0, which orders stop and revise. The Accumu MW-L overlay (`R_load.rss ≥ 2.0`) fails (`1.095`). §8.2 with `B = 5.398` puts `H` below `B − 0.3` (`2.875 < 5.098`), because MW1 removed far more peak memory than the plan modelled.
+**§8 outcome.** First match is rule 4: `map_step` is not in 1.5–3.5 and `R_ctx` is not in 5.5–8.0, which orders stop and revise. The Accumu MW-L overlay (`R_load.rss ≥ 2.0`) fails (`1.095`). §8.2 with `B = 5.398` puts `H` below `B − 0.3` (`2.875 < 5.098`; the first MW1 row), because MW1 removed far more peak memory than the plan modelled.
 
 **MW1 parity and speed.** Farm and Mac, full and short, flag on and off, bit-identical. Farm wall `1006 s` on vs `12103 s` off. Mac `1394 s` vs `12924 s`. Farm full-run worker `VmHWM` `3.73 GiB` on vs `6.70 GiB` off.
 
