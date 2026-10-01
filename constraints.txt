@@ -34,7 +34,7 @@ charset-normalizer==3.5.1
     # via
     #   pdfminer-six
     #   requests
-choreographer==1.3.0
+choreographer==1.4.0
     # via kaleido
 click==8.5.0
     # via
