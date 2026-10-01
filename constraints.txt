@@ -248,7 +248,7 @@ stevedore==5.8.0 ; python_full_version < '3.11'
     # via bandit
 stevedore==5.9.1 ; python_full_version >= '3.11'
     # via bandit
-streamlit==1.63.0
+streamlit==1.64.0
     # via thesistester (pyproject.toml)
 toml==0.10.2
     # via streamlit

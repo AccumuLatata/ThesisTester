@@ -31,7 +31,7 @@ dynamic = ["version"]
 # (pandas 3 requires Python >=3.11); py3.11/3.12 require pandas 3 — same
 # contract as the CI matrix assert (not merely "admit").
 dependencies = [
-    "streamlit>=1.56,<1.64",
+    "streamlit>=1.56,<1.65",
     "pandas>=2.2,<3; python_version < '3.11'",
     "pandas>=3,<4; python_version >= '3.11'",
     "numpy>=1.26,<3",
