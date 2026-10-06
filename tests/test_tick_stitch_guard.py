@@ -197,6 +197,271 @@ def test_1128_head_of_hour_after_1330_still_fails():
         guard_hourly_tick_holes(clipped, bars)
 
 
+def test_allowlist_excuses_empty_bars_not_whole_hole():
+    """Accumu option A: hole [18:00:54.037, 18:01:37.500) is not contained in
+    [18:00:45, 18:01:30), but its whole empty 15s bars are."""
+    ticks = _ticks("2025-11-07 18:00:54.037", "2025-11-07 18:01:37.500")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-07 18:00:45"),
+                _utc("2025-11-07 18:01:00"),
+                _utc("2025-11-07 18:01:15"),
+                _utc("2025-11-07 18:01:30"),
+            ],
+            "volume": [4.0, 4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+    guard_hourly_tick_holes(
+        clipped,
+        bars,
+        allowed_intervals=[(_utc("2025-11-07 18:00:45"), _utc("2025-11-07 18:01:30"))],
+    )
+
+
+def test_1128_whole_empty_bar_after_1330_still_fails():
+    """11-28 allowlist stays [02:00, 13:30): empty bar [13:30:00, 13:30:15) is not excused."""
+    ticks = _ticks("2025-11-28 13:29:50.100", "2025-11-28 13:30:20.050")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-28 13:29:45"),
+                _utc("2025-11-28 13:30:00"),
+                _utc("2025-11-28 13:30:15"),
+            ],
+            "volume": [4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+
+
+def test_bar_inside_only_if_half_open_span_fully_in_interval():
+    """[t, t+15s) ⊆ interval. Straddle start/end fail; exact edges pass."""
+    ticks = _ticks("2025-11-07 18:00:10.000", "2025-11-07 18:00:35.000")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-07 18:00:00"),
+                _utc("2025-11-07 18:00:15"),
+                _utc("2025-11-07 18:00:30"),
+            ],
+            "volume": [4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    # Sole empty whole bar is [18:00:15, 18:00:30). Interval starts at 18:00:20 → straddle.
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(
+            clipped,
+            bars,
+            allowed_intervals=[(_utc("2025-11-07 18:00:20"), _utc("2025-11-07 18:00:30"))],
+        )
+    # Interval ends at 18:00:20 → bar extends past the end.
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(
+            clipped,
+            bars,
+            allowed_intervals=[(_utc("2025-11-07 18:00:15"), _utc("2025-11-07 18:00:20"))],
+        )
+    # Exact [18:00:15, 18:00:30) is fully inside.
+    guard_hourly_tick_holes(
+        clipped,
+        bars,
+        allowed_intervals=[(_utc("2025-11-07 18:00:15"), _utc("2025-11-07 18:00:30"))],
+    )
+
+
+def test_partly_allowed_empty_bars_in_one_hole_fail():
+    """Same hole: [18:01:00, 18:01:15) inside X1 window, [18:01:30, 18:01:45) not."""
+    ticks = _ticks("2025-11-07 18:00:54.037", "2025-11-07 18:01:50.000")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-07 18:00:45"),
+                _utc("2025-11-07 18:01:00"),
+                _utc("2025-11-07 18:01:15"),
+                _utc("2025-11-07 18:01:30"),
+                _utc("2025-11-07 18:01:45"),
+            ],
+            "volume": [4.0, 4.0, 4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(
+            clipped,
+            bars,
+            allowed_intervals=[(_utc("2025-11-07 18:00:45"), _utc("2025-11-07 18:01:30"))],
+        )
+
+
+def test_several_allowed_intervals_excuse_only_when_every_empty_bar_fits():
+    ticks = _ticks("2025-11-07 18:00:10.000", "2025-11-07 18:01:40.000")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-07 18:00:00"),
+                _utc("2025-11-07 18:00:15"),
+                _utc("2025-11-07 18:00:30"),
+                _utc("2025-11-07 18:00:45"),
+                _utc("2025-11-07 18:01:00"),
+                _utc("2025-11-07 18:01:15"),
+                _utc("2025-11-07 18:01:30"),
+            ],
+            "volume": [4.0] * 7,
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    # Gap at [18:00:45, 18:01:00) is not in either interval.
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(
+            clipped,
+            bars,
+            allowed_intervals=[
+                (_utc("2025-11-07 18:00:15"), _utc("2025-11-07 18:00:45")),
+                (_utc("2025-11-07 18:01:00"), _utc("2025-11-07 18:01:30")),
+            ],
+        )
+    guard_hourly_tick_holes(
+        clipped,
+        bars,
+        allowed_intervals=[
+            (_utc("2025-11-07 18:00:15"), _utc("2025-11-07 18:00:45")),
+            (_utc("2025-11-07 18:00:45"), _utc("2025-11-07 18:01:30")),
+        ],
+    )
+
+
+def test_head_of_hour_and_session_start_use_per_bar_allowlist():
+    bars = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                _utc("2025-11-07 18:00:00"), _utc("2025-11-07 18:02:00"), freq="15s"
+            ),
+            "volume": 1.0,
+        }
+    )
+    ticks = _ticks(
+        "2025-11-07 18:01:30.100",
+        "2025-11-07 18:01:45.100",
+        "2025-11-07 18:02:00.100",
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="head-of-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+    with pytest.raises(TickStitchError, match="head-of-hour"):
+        guard_hourly_tick_holes(
+            clipped,
+            bars,
+            allowed_intervals=[(_utc("2025-11-07 18:00:00"), _utc("2025-11-07 18:01:00"))],
+        )
+    guard_hourly_tick_holes(
+        clipped,
+        bars,
+        allowed_intervals=[(_utc("2025-11-07 18:00:00"), _utc("2025-11-07 18:01:30"))],
+    )
+
+
+def test_zero_volume_bar_in_gap_is_not_a_whole_empty_volume_bar():
+    """TS3: a mid-hour gap with no volume>0 bar still passes (empty volume-bar set)."""
+    ticks = _ticks("2026-03-17 14:10:00", "2026-03-17 14:10:30")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2026-03-17 14:10:00"),
+                _utc("2026-03-17 14:10:15"),
+                _utc("2026-03-17 14:10:30"),
+            ],
+            "volume": [4.0, 0.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    guard_hourly_tick_holes(clipped, bars)
+
+
+def test_tz_aware_chicago_interval_and_naive_utc_match():
+    ticks = _ticks("2025-11-07 18:00:54.037", "2025-11-07 18:01:37.500")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-07 18:00:45"),
+                _utc("2025-11-07 18:01:00"),
+                _utc("2025-11-07 18:01:15"),
+                _utc("2025-11-07 18:01:30"),
+            ],
+            "volume": [4.0, 4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    chicago = (
+        pd.Timestamp("2025-11-07 12:00:45", tz="America/Chicago"),
+        pd.Timestamp("2025-11-07 12:01:30", tz="America/Chicago"),
+    )
+    guard_hourly_tick_holes(clipped, bars, allowed_intervals=[chicago])
+    naive = (
+        pd.Timestamp("2025-11-07 18:00:45"),
+        pd.Timestamp("2025-11-07 18:01:30"),
+    )
+    guard_hourly_tick_holes(clipped, bars, allowed_intervals=[naive])
+
+
+def test_exact_15s_tick_boundary_empty_bar_is_the_open_right_span():
+    """Tick at 18:01:00 is the left edge of that bar; [18:01:15, 18:01:30) is empty."""
+    ticks = _ticks(
+        "2025-11-07 18:00:50.000",
+        "2025-11-07 18:01:00.000",
+        "2025-11-07 18:01:30.000",
+    )
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-07 18:00:45"),
+                _utc("2025-11-07 18:01:00"),
+                _utc("2025-11-07 18:01:15"),
+                _utc("2025-11-07 18:01:30"),
+            ],
+            "volume": [4.0, 4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+    guard_hourly_tick_holes(
+        clipped,
+        bars,
+        allowed_intervals=[(_utc("2025-11-07 18:00:45"), _utc("2025-11-07 18:01:30"))],
+    )
+
+
+def test_1128_cut_short_last_bar_at_1330_fails_last_bar_before_passes():
+    """Whole empty bar [13:30:00, 13:30:15) is after the 11-28 end; 13:29:45 is not."""
+    ticks = _ticks("2025-11-28 13:20:00.000")
+    inside = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                _utc("2025-11-28 13:20:00"), _utc("2025-11-28 13:29:45"), freq="15s"
+            ),
+            "volume": 1.0,
+        }
+    )
+    guard_hourly_tick_holes(clip_ticks_to_15s_bars(ticks, inside["timestamp"]), inside)
+    past = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                _utc("2025-11-28 13:20:00"), _utc("2025-11-28 13:30:00"), freq="15s"
+            ),
+            "volume": 1.0,
+        }
+    )
+    with pytest.raises(TickStitchError, match="cut short"):
+        guard_hourly_tick_holes(clip_ticks_to_15s_bars(ticks, past["timestamp"]), past)
+
+
 def test_caller_inter_file_weekend_is_honored_and_not_invented():
     """§5 TS3 allowlist (4): caller supplies stitch-meta weekends; none are baked in."""
     bars = _bars("2026-03-21 10:00:00", "2026-03-21 10:59:45")

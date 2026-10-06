@@ -481,19 +481,25 @@ def test_burst_off_hole_outside_burst_interval_still_fails():
         )
 
 
-def test_shaped_1107_burst_off_exact_interval_does_not_contain_plus_75s_hole():
-    """11-07 hole is [18:00:54.037, 18:01:37.5); guard rule is unchanged."""
+def test_shaped_1107_burst_off_empty_bars_inside_interval_pass():
+    """Shaped hole [18:00:54.037, 18:01:37.500): empty 15s bars lie in X1_BURST_INTERVAL.
+
+    Accumu option A (2026-10-06): excuse when every whole empty 15s volume
+    bar is inside an allowed interval. Whole-hole containment no longer
+    required. Fails without the interval; passes with it.
+    """
     ticks, bars = _shaped_11_07_fixture()
     hour_bars = bars.loc[bars["timestamp"].dt.floor("h") == _utc("2025-11-07 18:00:00")]
     filled, quality = _fill(ticks, bars, burst=False)
     assert quality.x1_burst == X1_BURST_EXCLUDED
     clipped = clip_ticks_to_15s_bars(filled, hour_bars["timestamp"])
-    with pytest.raises(TickStitchError, match="18:01:37.500"):
-        guard_hourly_tick_holes(
-            clipped,
-            hour_bars,
-            allowed_intervals=quality.guard_allowed_intervals(),
-        )
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(clipped, hour_bars)
+    guard_hourly_tick_holes(
+        clipped,
+        hour_bars,
+        allowed_intervals=quality.guard_allowed_intervals(),
+    )
 
 
 def test_burst_on_still_passes_guard_with_no_interval():
