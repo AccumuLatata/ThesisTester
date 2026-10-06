@@ -1,0 +1,29 @@
+[
+  {
+    "filename": "early.csv",
+    "size_bytes": 107,
+    "effective_first_utc": "2026-01-15 10:00:00.000",
+    "effective_last_utc": "2026-01-15 10:00:01.000",
+    "file_first_utc": "2026-01-15 10:00:00.000",
+    "file_last_utc": "2026-01-15 10:00:01.000",
+    "mtime": 0
+  },
+  {
+    "filename": "MNQ Tick - Tick - Last, 1_1_2020 100000 AM-1_2_2020 100000 AM.csv",
+    "size_bytes": 175,
+    "effective_first_utc": "2026-01-15 11:00:00.000",
+    "effective_last_utc": "2026-01-15 11:00:01.000",
+    "file_first_utc": "2026-01-15 11:00:00.000",
+    "file_last_utc": "2026-01-15 12:00:01.000",
+    "mtime": 0
+  },
+  {
+    "filename": "MNQ Tick - Tick - Last, 1_1_2020 100000 AM-1_2_2020 100000 AM.csv",
+    "size_bytes": 175,
+    "effective_first_utc": "2026-01-15 12:00:00.000",
+    "effective_last_utc": "2026-01-15 12:00:01.000",
+    "file_first_utc": "2026-01-15 11:00:00.000",
+    "file_last_utc": "2026-01-15 12:00:01.000",
+    "mtime": 0
+  }
+]
