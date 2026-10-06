@@ -56,8 +56,11 @@ _SEEK_TAIL_BYTES: Final[int] = 1024 * 1024
 _STREAM_CHUNKSIZE: Final[int] = 100_000
 _BAR_INTERVAL: Final[pd.Timedelta] = pd.Timedelta(seconds=15)
 HOURLY_HOLE_TOLERANCE: Final[pd.Timedelta] = pd.Timedelta(seconds=5)
-# Locked §5 TS3 allowlist (1). X1 is not a member. Empty-in-both weekends
-# and daily-halt gaps (2)(4) do not fail the per-hour predicates.
+# Locked §5 TS3 allowlist (1). X1 is not a member. Empty-in-both
+# Thanksgiving / weekend / daily-halt gaps (2) do not fail: those hours
+# have no 15s bars, so the per-hour predicates never run. Inter-file
+# weekends listed in stitch meta (4) are not invented here — stitch meta
+# is not in the repo. Callers pass them as ``allowed_intervals``.
 _ALLOWLIST_UTC: Final[tuple[tuple[pd.Timestamp, pd.Timestamp], ...]] = (
     (
         pd.Timestamp("2025-11-28 02:00:00", tz="UTC"),
@@ -342,18 +345,31 @@ def clip_ticks_to_15s_bars(
     return ticks.loc[keep.to_numpy()].reset_index(drop=True)
 
 
-def guard_hourly_tick_holes(ticks: pd.DataFrame, bars: pd.DataFrame) -> None:
+def guard_hourly_tick_holes(
+    ticks: pd.DataFrame,
+    bars: pd.DataFrame,
+    *,
+    allowed_intervals: Sequence[tuple[object, object]] | None = None,
+) -> None:
     """Fail closed on unexpected ≥5s holes versus 15s bars with volume.
 
     Not an execute hook (TS3). X1 is not an allowlist bypass: an unfilled
-    X1 hour with 15s volume fails. The 2025-11-28 CME outage through
-    13:30:00 UTC is allowlisted. Hours with ticks but no 15s bars do not
-    fail.
+    X1 hour with 15s volume fails. The 2025-11-28 CME outage
+    ``[02:00, 13:30)`` UTC is allowlisted as a half-open interval, not as
+    whole clock hours — a cut-short after 13:30 still fails. Hours with
+    ticks but no 15s bars do not fail.
+
+    ``allowed_intervals`` is the §5 TS3 (4) hook: extra half-open UTC
+    ``(start, end)`` pairs supplied by the caller (stitch-meta inter-file
+    weekends). This function does not invent those dates. They merge with
+    the locked 11-28 interval. A hole fails unless ``[hole_start, hole_end)``
+    is contained in the merged allowlist.
     """
     if "timestamp" not in bars.columns or "volume" not in bars.columns:
         raise TickStitchError("guard_hourly_tick_holes requires bars timestamp and volume.")
     if bars.empty:
         return
+    allowed = _normalize_allowlist(allowed_intervals)
     bar_work = pd.DataFrame(
         {
             "timestamp": _as_utc_us_series(bars["timestamp"]),
@@ -373,11 +389,9 @@ def guard_hourly_tick_holes(ticks: pd.DataFrame, bars: pd.DataFrame) -> None:
         tick_stamps.dt.floor("h") if len(tick_stamps) else pd.Series(dtype="datetime64[us, UTC]")
     )
     for hour, hour_bars in bar_work.groupby("hour", sort=True):
-        hour_ts = pd.Timestamp(hour)
-        if _hour_allowlisted(hour_ts):
-            continue
+        hour_ts = _utc_us(hour, field="hour")
         hour_ticks = tick_stamps.loc[tick_hours == hour_ts] if len(tick_stamps) else tick_stamps
-        _guard_one_hour(hour_ts, hour_ticks, hour_bars)
+        _guard_one_hour(hour_ts, hour_ticks, hour_bars, allowed)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -522,13 +536,52 @@ def _as_utc_us_series(values: pd.Series) -> pd.Series:
     return parsed.dt.floor("us")
 
 
-def _hour_allowlisted(hour: pd.Timestamp) -> bool:
-    if hour.tzinfo is None:
-        hour = hour.tz_localize("UTC")
-    else:
-        hour = hour.tz_convert("UTC")
-    for start, end in _ALLOWLIST_UTC:
-        if start <= hour < end:
+def _normalize_allowlist(
+    extra: Sequence[tuple[object, object]] | None,
+) -> tuple[tuple[pd.Timestamp, pd.Timestamp], ...]:
+    """Locked 11-28 interval plus caller-supplied §5 TS3 (4) pairs."""
+    intervals: list[tuple[pd.Timestamp, pd.Timestamp]] = list(_ALLOWLIST_UTC)
+    if extra:
+        for index, item in enumerate(extra):
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                raise TickStitchError(
+                    f"allowed_intervals[{index}] must be a (start, end) pair."
+                )
+            start = _utc_us(item[0], field=f"allowed_intervals[{index}].start")
+            end = _utc_us(item[1], field=f"allowed_intervals[{index}].end")
+            if start >= end:
+                raise TickStitchError(
+                    f"allowed_intervals[{index}] is inverted or empty ({start} >= {end})."
+                )
+            intervals.append((start, end))
+    return _merge_utc_intervals(tuple(intervals))
+
+
+def _merge_utc_intervals(
+    intervals: Sequence[tuple[pd.Timestamp, pd.Timestamp]],
+) -> tuple[tuple[pd.Timestamp, pd.Timestamp], ...]:
+    if not intervals:
+        return ()
+    ordered = sorted(intervals, key=lambda pair: (pair[0], pair[1]))
+    merged: list[list[pd.Timestamp]] = [[ordered[0][0], ordered[0][1]]]
+    for start, end in ordered[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return tuple((start, end) for start, end in merged)
+
+
+def _interval_allowlisted(
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    allowed: Sequence[tuple[pd.Timestamp, pd.Timestamp]],
+) -> bool:
+    """True iff ``[start, end)`` is contained in one merged allowlist interval."""
+    if end <= start:
+        return True
+    for allow_start, allow_end in allowed:
+        if allow_start <= start and end <= allow_end:
             return True
     return False
 
@@ -537,8 +590,13 @@ def _guard_one_hour(
     hour: pd.Timestamp,
     hour_ticks: pd.Series,
     hour_bars: pd.DataFrame,
+    allowed: Sequence[tuple[pd.Timestamp, pd.Timestamp]],
 ) -> None:
     if hour_ticks.empty:
+        span_start = pd.Timestamp(hour_bars["timestamp"].min())
+        span_end = pd.Timestamp(hour_bars["timestamp"].max()) + _BAR_INTERVAL
+        if _interval_allowlisted(span_start, span_end, allowed):
+            return
         raise TickStitchError(
             f"Hour {hour.isoformat()} has 15s bars but no stitched+clipped ticks."
         )
@@ -547,19 +605,21 @@ def _guard_one_hour(
     last_tick = pd.Timestamp(hour_ticks.max())
     last_bar_ts = pd.Timestamp(last_bar["timestamp"])
     if float(last_bar["volume"] or 0) > 0 and (last_bar_ts - last_tick) >= HOURLY_HOLE_TOLERANCE:
-        raise TickStitchError(
-            f"Hour {hour.isoformat()} is cut short: last tick {last_tick.isoformat()} "
-            f"is ≥5s before last 15s bar {last_bar_ts.isoformat()}."
-        )
+        if not _interval_allowlisted(last_tick, last_bar_ts, allowed):
+            raise TickStitchError(
+                f"Hour {hour.isoformat()} is cut short: last tick {last_tick.isoformat()} "
+                f"is ≥5s before last 15s bar {last_bar_ts.isoformat()}."
+            )
     if not vol_bars.empty:
         first_vol = pd.Timestamp(vol_bars["timestamp"].iloc[0])
         first_tick = pd.Timestamp(hour_ticks.min())
         if first_tick - first_vol >= HOURLY_HOLE_TOLERANCE:
-            raise TickStitchError(
-                f"Hour {hour.isoformat()} has a head-of-hour hole: first tick "
-                f"{first_tick.isoformat()} is ≥5s after first 15s bar with volume "
-                f"{first_vol.isoformat()}."
-            )
+            if not _interval_allowlisted(first_vol, first_tick, allowed):
+                raise TickStitchError(
+                    f"Hour {hour.isoformat()} has a head-of-hour hole: first tick "
+                    f"{first_tick.isoformat()} is ≥5s after first 15s bar with volume "
+                    f"{first_vol.isoformat()}."
+                )
     ordered = hour_ticks.sort_values().reset_index(drop=True)
     if len(ordered) < 2:
         return
@@ -572,7 +632,7 @@ def _guard_one_hour(
         spanning = vol_bars.loc[
             (vol_bars["timestamp"] < next_ts) & (vol_bars["timestamp"] + _BAR_INTERVAL > prev_ts)
         ]
-        if not spanning.empty:
+        if not spanning.empty and not _interval_allowlisted(prev_ts, next_ts, allowed):
             raise TickStitchError(
                 f"Hour {hour.isoformat()} has a mid-hour tick gap ≥5s "
                 f"({prev_ts.isoformat()} → {next_ts.isoformat()}) spanning 15s bars "

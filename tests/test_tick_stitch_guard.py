@@ -36,6 +36,17 @@ def _bars(start: str, end: str, *, volume: float = 1.0) -> pd.DataFrame:
     return pd.DataFrame({"timestamp": stamps, "volume": [volume] * len(stamps)})
 
 
+def _dense_ticks(start: str, end: str, *, freq: str = "4s") -> pd.DataFrame:
+    stamps = pd.date_range(_utc(start), _utc(end), freq=freq)
+    return pd.DataFrame(
+        {
+            "timestamp": stamps,
+            "price": [100.0] * len(stamps),
+            "volume": [1.0] * len(stamps),
+        }
+    )
+
+
 def test_halt_one_lot_print_at_2200_is_clipped_away():
     ticks = _ticks("2026-03-17 21:59:45.010", "2026-03-17 22:00:00.050")
     bars = pd.DataFrame({"timestamp": [_utc("2026-03-17 21:59:45")], "volume": [10.0]})
@@ -103,6 +114,54 @@ def test_empty_in_both_weekend_hour_does_not_fail():
         pd.DataFrame(columns=["timestamp", "price", "volume"]),
         pd.DataFrame(columns=["timestamp", "volume"]),
     )
+
+
+def test_1128_cut_short_after_1330_still_fails():
+    """Allowlist (1) is [02:00, 13:30), not the whole 13:00 hour."""
+    ticks = _dense_ticks("2025-11-28 13:30:00", "2025-11-28 13:40:00")
+    bars = _bars("2025-11-28 13:30:00", "2025-11-28 13:59:45")
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="cut short"):
+        guard_hourly_tick_holes(clipped, bars)
+
+
+def test_1128_healthy_resume_after_1330_passes():
+    bars = _bars("2025-11-28 13:30:00", "2025-11-28 13:59:45")
+    ticks = _dense_ticks("2025-11-28 13:30:00", "2025-11-28 13:59:59")
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    guard_hourly_tick_holes(clipped, bars)
+
+
+def test_1128_head_of_hour_after_1330_still_fails():
+    bars = _bars("2025-11-28 13:30:00", "2025-11-28 13:59:45")
+    ticks = _dense_ticks("2025-11-28 13:30:05", "2025-11-28 13:59:59")
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="head-of-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+
+
+def test_caller_inter_file_weekend_is_honored_and_not_invented():
+    """§5 TS3 allowlist (4): caller supplies stitch-meta weekends; none are baked in."""
+    bars = _bars("2026-03-21 10:00:00", "2026-03-21 10:59:45")
+    empty = pd.DataFrame(columns=["timestamp", "price", "volume"])
+    with pytest.raises(TickStitchError, match="no stitched\\+clipped ticks"):
+        guard_hourly_tick_holes(empty, bars)
+    guard_hourly_tick_holes(
+        empty,
+        bars,
+        allowed_intervals=[(_utc("2026-03-21 10:00:00"), _utc("2026-03-21 11:00:00"))],
+    )
+
+
+def test_inverted_allowed_interval_fails_closed():
+    bars = _bars("2026-03-17 14:00:00", "2026-03-17 14:00:00")
+    ticks = _ticks("2026-03-17 14:00:00")
+    with pytest.raises(TickStitchError, match="inverted"):
+        guard_hourly_tick_holes(
+            ticks,
+            bars,
+            allowed_intervals=[(_utc("2026-03-21 11:00:00"), _utc("2026-03-21 10:00:00"))],
+        )
 
 
 def test_clip_and_guard_are_not_wired_into_execute_or_streamer():
