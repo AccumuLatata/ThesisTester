@@ -911,7 +911,9 @@ def _empty_volume_bars_allowlisted(
     if bars.empty:
         return True
     for raw in bars["timestamp"]:
-        start = pd.Timestamp(raw)
+        # Same UTC-µs SoT as the guard (`_utc_us`): naive → UTC, aware → UTC.
+        # `pd.Timestamp(raw)` alone can stay naive and then raise on tz compare.
+        start = _utc_us(raw, field="empty_volume_bar.timestamp")
         if not _interval_allowlisted(start, start + _BAR_INTERVAL, allowed):
             return False
     return True
