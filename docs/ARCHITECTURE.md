@@ -2046,9 +2046,15 @@ implicit `tick_last_volume_v1` (desk default). Identity always stamps
 The A-period tick table (`thesistester/levels/apoc_tick.py`) is not
 `PriorProfileTable`. Headless `run_experiment` still passes
 `dataset.tick_paths` into the A-period table when a prior-VA parquet is also
-attached. Named or product-default APOC / rolling POC refuse without
-`tick_paths` (`requires ticks`); they never fall back to typical and do not
-emit quiet all-NaN placeholders when those families are required.
+attached. Additive `dataset.tick_stitch_plan` (required bool
+`dataset.tick_stitch_x1_burst_included` when set) builds those tables on the
+parent and injects `prior_profile_table_path` / `apoc_tick_table_path` plus
+precomputed source ids; workers do not hold farm ticks and expanded stitch
+cells carry no farm CSV paths. Named or product-default APOC / rolling POC
+refuse without tick input (`requires ticks`); stitch plan or an injected
+A-period table satisfies VA/APOC, not rolling POC. They never fall back to
+typical and do not emit quiet all-NaN placeholders when those families are
+required.
 E-1 / QI-02-03: page Calculate (`_product_tick_family_refuse_message`) uses
 the same `product_tick_family_preflight` / `product_tick_family_message` as
 `api.compute_levels`. Study `validate_study_spec` still names tokens; all

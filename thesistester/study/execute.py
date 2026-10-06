@@ -34,12 +34,20 @@ import pandas as pd
 
 from thesistester.analytics.metrics import direction_split_index_values
 from thesistester.analytics.overfitting import vs_random_benchmark
-from thesistester.api import _BACKTEST_DEFAULTS, run_experiment
+from thesistester.api import _BACKTEST_DEFAULTS, apoc_tick_table_to_parquet, run_experiment
 from thesistester.engine.intrabar import clear_context_slot, enter_context_slot
 from thesistester.config import INSTRUMENTS
 from thesistester.entry_window_policy import normalize_entry_window
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.study.briefing import read_zip_parquet, resolve_cell_bundle
+from thesistester.data.loader import load_ohlcv
+from thesistester.data.tick_stitch import (
+    build_stitch_parent_tables,
+    compute_tick_stitch_source_id,
+    refuse_nas_trading_paths,
+    resolve_tick_stitch_root,
+)
+from thesistester.levels.tick_requirements import dataset_has_tick_stitch_plan
 from thesistester.levels.tick_vap import (
     build_prior_profile_table_from_paths,
     compute_tick_source_id,
@@ -148,6 +156,10 @@ _DA5_SIMULATION_KWARGS = frozenset(
     }
 )
 STUDY_PRIOR_PROFILE_PARQUET = "study.prior_profile.parquet"
+STUDY_APOC_TICK_PARQUET = "study.apoc_tick_profile.parquet"
+STUDY_TICK_STITCH_CACHE = "study.tick_stitch_cache.json"
+# Injected onto the cell task spec only; stripped before run_experiment.
+_STITCH_DATA_QUALITY_KEY = "_tick_stitch_data_quality"
 
 
 def _coerce_index_float(value: Any) -> float | None:
@@ -723,6 +735,154 @@ def _prepare_study_prior_profile(
         run["dataset"] = run_ds
 
 
+def _study_dataset(spec: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    study = spec.get("study")
+    if not isinstance(study, Mapping):
+        return None
+    dataset = study.get("dataset")
+    if not isinstance(dataset, Mapping):
+        return None
+    return dataset
+
+
+def _prepare_study_tick_stitch(
+    spec: Mapping[str, Any],
+    expansion: ExpansionResult,
+    *,
+    output_dir: Path,
+    base_directory: Path,
+) -> None:
+    """Verify/stream/reduce the stitch on the parent; inject tables onto cells."""
+    dataset = _study_dataset(spec)
+    if dataset is None or not dataset_has_tick_stitch_plan(dataset):
+        return
+    burst = dataset.get("tick_stitch_x1_burst_included")
+    if type(burst) is not bool:
+        raise StudySpecError(
+            "study.dataset.tick_stitch_x1_burst_included is required when "
+            "tick_stitch_plan is set (explicit bool; no silent default)"
+        )
+    plan_raw = Path(str(dataset["tick_stitch_plan"]))
+    if not plan_raw.is_absolute():
+        plan_path = (Path(base_directory) / plan_raw).resolve()
+    else:
+        plan_path = plan_raw.resolve()
+    if not plan_path.is_file():
+        raise StudySpecError(f"study.dataset.tick_stitch_plan is not an existing file: {plan_path}")
+    root = resolve_tick_stitch_root(plan_path)
+    bars_raw = Path(str(dataset["path"]))
+    if not bars_raw.is_absolute():
+        bars_path = (Path(base_directory) / bars_raw).resolve()
+    else:
+        bars_path = bars_raw.resolve()
+    refuse_nas_trading_paths(plan_path, root, bars_path)
+    study = spec.get("study") if isinstance(spec.get("study"), Mapping) else {}
+    levels = {**DEFAULT_LEVELS_SETTINGS, **dict(study.get("levels") or {})}
+    day_bins = int(levels["prior_day_profile_aggregation_ticks"])
+    week_bins = int(levels["prior_week_profile_aggregation_ticks"])
+    month_bins = int(levels["prior_month_profile_aggregation_ticks"])
+    stitch_id = compute_tick_stitch_source_id(plan_path, root, tick_stitch_x1_burst_included=burst)
+    prior_parquet = output_dir / STUDY_PRIOR_PROFILE_PARQUET
+    apoc_parquet = output_dir / STUDY_APOC_TICK_PARQUET
+    cache_path = output_dir / STUDY_TICK_STITCH_CACHE
+    cached = _load_stitch_cache(cache_path)
+    cache_ok = (
+        cached is not None
+        and cached.get("tick_source_id") == stitch_id
+        and cached.get("day_bins") == day_bins
+        and cached.get("week_bins") == week_bins
+        and cached.get("month_bins") == month_bins
+        and cached.get("tick_stitch_x1_burst_included") is burst
+        and prior_parquet.is_file()
+        and apoc_parquet.is_file()
+    )
+    if cache_ok:
+        apoc_id = str(cached["apoc_tick_source_id"])
+        quality = dict(cached.get("data_quality") or {})
+    else:
+        instrument = str(dataset.get("instrument") or "ES")
+        format_profile = str(dataset.get("format_profile") or "canonical")
+        source_tz = str(dataset.get("source_timezone") or "UTC")
+        bars = load_ohlcv(
+            bars_path,
+            source_tz=source_tz,
+            target_tz="UTC",
+            format_profile=format_profile,
+        )
+        built = build_stitch_parent_tables(
+            plan_path,
+            root,
+            bars,
+            instrument=instrument,
+            tick_stitch_x1_burst_included=burst,
+            value_area_pct=float(levels["value_area_pct"]),
+            prior_day_aggregation_ticks=day_bins,
+            prior_week_aggregation_ticks=week_bins,
+            prior_month_aggregation_ticks=month_bins,
+        )
+        built.prior_profile_table.to_parquet(prior_parquet)
+        apoc_tick_table_to_parquet(built.apoc_tick_table, apoc_parquet)
+        apoc_id = built.apoc_tick_source_id
+        quality = dict(built.data_quality)
+        _write_stitch_cache(
+            cache_path,
+            {
+                "tick_source_id": stitch_id,
+                "apoc_tick_source_id": apoc_id,
+                "day_bins": day_bins,
+                "week_bins": week_bins,
+                "month_bins": month_bins,
+                "tick_stitch_x1_burst_included": burst,
+                "data_quality": quality,
+            },
+        )
+    for run in expansion.experiment.get("runs") or []:
+        if not isinstance(run, dict):
+            continue
+        run_ds = dict(run.get("dataset") or {})
+        run_ds.pop("tick_paths", None)
+        run_ds["prior_profile_table_path"] = str(prior_parquet)
+        run_ds["apoc_tick_table_path"] = str(apoc_parquet)
+        run_ds["tick_source_id"] = stitch_id
+        run_ds["apoc_tick_source_id"] = apoc_id
+        run["dataset"] = run_ds
+        run[_STITCH_DATA_QUALITY_KEY] = quality
+
+
+def _detach_stitch_quality(expansion: ExpansionResult) -> list[tuple[dict[str, Any], Any]]:
+    """Remove the task-only quality payload so experiment.yaml stays a RunSpec."""
+    held: list[tuple[dict[str, Any], Any]] = []
+    for run in expansion.experiment.get("runs") or []:
+        if isinstance(run, dict) and _STITCH_DATA_QUALITY_KEY in run:
+            held.append((run, run.pop(_STITCH_DATA_QUALITY_KEY)))
+    return held
+
+
+def _reattach_stitch_quality(
+    expansion: ExpansionResult,
+    held: list[tuple[dict[str, Any], Any]],
+) -> None:
+    for run, quality in held:
+        run[_STITCH_DATA_QUALITY_KEY] = quality
+
+
+def _load_stitch_cache(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _write_stitch_cache(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(json.dumps(dict(payload), indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def execute_study_cell(
     task: tuple[dict[str, Any], str],
 ) -> dict[str, Any]:
@@ -730,7 +890,12 @@ def execute_study_cell(
     run_spec, base_directory = task
     name = str(run_spec["name"])
     baseline_cfg = _random_baseline_cfg(run_spec.get(_DA5_RANDOM_BASELINE_KEY))
-    engine_spec = {key: value for key, value in run_spec.items() if key != _DA5_RANDOM_BASELINE_KEY}
+    stitch_quality = run_spec.get(_STITCH_DATA_QUALITY_KEY)
+    engine_spec = {
+        key: value
+        for key, value in run_spec.items()
+        if key not in {_DA5_RANDOM_BASELINE_KEY, _STITCH_DATA_QUALITY_KEY}
+    }
     try:
         enter_context_slot()
         state = run_experiment(
@@ -760,6 +925,8 @@ def execute_study_cell(
             )
         except Exception:  # noqa: BLE001 — null must not fail a successful cell
             index_row.update(_empty_random_baseline_fields())
+        if isinstance(stitch_quality, Mapping):
+            index_row.update(stitch_quality)
         return {
             "status": "ok",
             "name": name,
@@ -1371,18 +1538,31 @@ def run_study(
         # Gates passed — build the prior-profile table once, then persist
         # expansion artifacts so workers receive the parquet path.
         out.mkdir(parents=True, exist_ok=True)
-        _prepare_study_prior_profile(
-            spec,
-            expansion,
-            output_dir=out,
-            base_directory=Path(base_directory),
-        )
-        write_expansion_artifacts(
-            out,
-            normalized_spec=spec,
-            expansion=expansion,
-            source_spec_parent=base_directory,
-        )
+        if dataset_has_tick_stitch_plan(_study_dataset(spec) or {}):
+            _prepare_study_tick_stitch(
+                spec,
+                expansion,
+                output_dir=out,
+                base_directory=Path(base_directory),
+            )
+        else:
+            _prepare_study_prior_profile(
+                spec,
+                expansion,
+                output_dir=out,
+                base_directory=Path(base_directory),
+            )
+        # Private task-only key must not land in experiment.yaml (_RUN_KEYS).
+        held_quality = _detach_stitch_quality(expansion)
+        try:
+            write_expansion_artifacts(
+                out,
+                normalized_spec=spec,
+                expansion=expansion,
+                source_spec_parent=base_directory,
+            )
+        finally:
+            _reattach_stitch_quality(expansion, held_quality)
 
         ledger = _init_study_ledger(existing, expansion, run_names, force=force)
         if confirm:

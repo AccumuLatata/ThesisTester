@@ -30,7 +30,7 @@ from thesistester.study.schema import (
     validate_study_spec,
 )
 
-_DATASET_PATH_KEYS = ("path", "subtimeframe_path")
+_DATASET_PATH_KEYS = ("path", "subtimeframe_path", "tick_stitch_plan")
 # QI-07-06 / QR A-15: prefix only. Clause SoT is ``REPLAY_NOT_STUDY_RUN``.
 _EXPERIMENT_YAML_REPLAY_COMMENT = f"# Replay: {REPLAY_NOT_STUDY_RUN}\n"
 

@@ -469,7 +469,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - `compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces all six independent columns: four Single Print columns plus `APOC` and `pAPOC`.
 - Known limitations: default tick source requires matching Tick–Tick–Last files (refuse without them); not full-session POC; not Single Print-derived.
 
-### 5d2) Tick-stitch X1 15s residual fill (TS4 helper; not execute-wired)
+### 5d2) Tick-stitch X1 15s residual fill (TS5 parent wires the helper)
 - `thesistester.levels.tick_x1_fill.fill_x1_15s_residual` fills only
   `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)` UTC from 15s residual
   typical-price Last×Volume (`profile._bucket_prices`, `bar_ts + 7.5s`).
@@ -486,8 +486,12 @@ This engine is for **research screening**, not proof of a durable edge.
 - Quality record (not trade-frame columns): `x1_15s_residual_fill` is true
   only for trade date 2025-11-07; `x1_burst_included` is the explicit
   argument; `shared_gap_1649_1758` is true on 11-07 and is not filled.
-- Not called from `execute_study_cell` / `compute_levels` in TS4 (TS5
-  reducer). `LEVEL_ENGINE_VERSION` stays 11.
+- TS5 parent `build_stitch_parent_tables` (called from
+  `_prepare_study_tick_stitch` when `dataset.tick_stitch_plan` is set)
+  runs clip → fill → hourly guard. Stitch-absent execute does not call it.
+  `LEVEL_ENGINE_VERSION` stays 11. Burst-off leftover tick-to-tick holes
+  that are not contained in `X1_BURST_INTERVAL` still fail the unchanged
+  guard (Accumu pending; do not change `guard_hourly_tick_holes` semantics).
 
 ### 5e) Previous 30m VWAP (`prev30mVWAP`) is opt-in (Phase 1)
 

@@ -1,10 +1,11 @@
-"""Tick-stitch plan schema, verify (TS1), session stream (TS2), clip/guard (TS3), X1 fill hook (TS4).
+"""Tick-stitch plan schema, verify (TS1), session stream (TS2), clip/guard (TS3), X1 fill hook (TS4), parent tables (TS5).
 
 Parse an ordered, non-overlapping segment plan and fail closed against a
 directory of Quantower Tick–Tick–Last CSVs. ``iter_stitch_sessions`` is a
 sibling of ``iter_tick_files``, not a monkey-patch. This is **not** an
-ingest path: ``load_ohlcv``, ``iter_tick_files``, and study execute do not
-call it.
+ingest path: ``load_ohlcv`` and ``iter_tick_files`` do not call it. The
+TS5 parent reducer (``build_stitch_parent_tables``) is the only execute
+hook; workers never stream farm ticks.
 
 Header contract is the tick loader's (semicolon, ``utf-8-sig``, alias, then
 ``_require_tick_columns`` / ``_REQUIRED_TICK_COLUMNS``). The timestamp-column
@@ -30,6 +31,7 @@ from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Final
 
@@ -75,6 +77,11 @@ _REQUIRED_SEGMENT_FIELDS: Final[tuple[str, ...]] = (
     "file_first_utc",
     "file_last_utc",
 )
+# §4.2 stitch-on identity tokens. Not ``compute_tick_source_id`` over a path list.
+X1_FILL_POLICY_TOKEN: Final[str] = "x1_15s_residual_v1"
+CLIP_POLICY_TOKEN: Final[str] = "clip_15s_present_bars_v1"
+TICK_STITCH_ROOT_ENV: Final[str] = "THESISTESTER_TICK_STITCH_ROOT"
+_NAS_TRADING_MARKER: Final[tuple[str, str]] = ("mnt", "nas-trading")
 
 
 class TickStitchError(DataValidationError):
@@ -110,6 +117,17 @@ class TickStitchVerifyResult:
     segments: tuple[TickStitchSegment, ...]
     unique_files: int
     unique_bytes: int
+
+
+@dataclass(frozen=True)
+class StitchParentTables:
+    """Parent-only VA + APOC tables for worker injection (TS5)."""
+
+    prior_profile_table: object
+    apoc_tick_table: object
+    tick_source_id: str
+    apoc_tick_source_id: str
+    data_quality: dict[str, bool]
 
 
 def load_tick_stitch_plan(path: str | Path) -> tuple[TickStitchSegment, ...]:
@@ -263,7 +281,8 @@ def iter_stitch_sessions(
 ) -> Iterator[TickChunk]:
     """Yield CME session chunks from a stitch plan.
 
-    Execute does not call this. TS4 ``farm-impact`` is a parent-only caller.
+    TS5 parent ``build_stitch_parent_tables`` is the execute hook. Workers
+    never call this. TS4 ``farm-impact`` is also parent-only.
 
     Walk segments in plan order. Consecutive same-filename windows share one
     chunked ``pd.read_csv``. Inclusive trim: keep
@@ -335,7 +354,7 @@ def clip_ticks_to_15s_bars(
     """Drop ticks whose ``floor(ts, 15s)`` is not a present 15s bar.
 
     Left-closed, right-open (§4.4). Does not impute missing bars. Tests and
-    the future parent reducer call this; ``iter_stitch_sessions`` does not.
+    the TS5 parent reducer call this; ``iter_stitch_sessions`` does not.
     """
     if ticks.empty:
         return ticks.copy()
@@ -413,9 +432,9 @@ def apply_x1_residual_fill(
 ):
     """TS4 hook for the TS5 reducer: clip → fill → guard. Lazy import.
 
-    ``tick_stitch_x1_burst_included`` has no silent default. Nobody in
-    execute calls this yet. Burst-off allowlist is
-    :func:`x1_burst_guard_allowed_intervals` (TS5 wires it into the guard).
+    ``tick_stitch_x1_burst_included`` has no silent default. TS5 parent
+    ``build_stitch_parent_tables`` is the only execute hook. Burst-off
+    allowlist is :func:`x1_burst_guard_allowed_intervals`.
     """
     from thesistester.levels.tick_x1_fill import fill_x1_15s_residual
 
@@ -437,6 +456,252 @@ def x1_burst_guard_allowed_intervals(
     from thesistester.levels.tick_x1_fill import x1_burst_guard_allowed_intervals as impl
 
     return impl(tick_stitch_x1_burst_included, session_date=session_date)
+
+
+def hourly_guard_allowed_intervals(
+    tick_stitch_x1_burst_included: bool,
+    *,
+    session_date: date | None = None,
+) -> tuple[tuple[pd.Timestamp, pd.Timestamp], ...]:
+    """11-28 locked interval plus burst-off allowlist only when burst is off."""
+    intervals: list[tuple[pd.Timestamp, pd.Timestamp]] = list(_ALLOWLIST_UTC)
+    if not tick_stitch_x1_burst_included:
+        intervals.extend(x1_burst_guard_allowed_intervals(False, session_date=session_date))
+    return tuple(intervals)
+
+
+def refuse_nas_trading_paths(*paths: str | Path) -> None:
+    """Workers and the parent refuse ``/mnt/nas-trading`` (NVMe / CI only)."""
+    for raw in paths:
+        parts = Path(raw).expanduser().parts
+        for index in range(len(parts) - 1):
+            if (
+                parts[index] == _NAS_TRADING_MARKER[0]
+                and parts[index + 1] == _NAS_TRADING_MARKER[1]
+            ):
+                raise TickStitchError(
+                    "tick stitch refuses /mnt/nas-trading "
+                    "(NVMe stitch only; workers never read farm SMB)."
+                )
+
+
+def resolve_tick_stitch_root(plan_path: str | Path) -> Path:
+    """Env ``THESISTESTER_TICK_STITCH_ROOT`` if set, else the plan parent."""
+    raw = os.environ.get(TICK_STITCH_ROOT_ENV)
+    if raw and str(raw).strip():
+        return Path(raw).expanduser()
+    return Path(plan_path).expanduser().resolve().parent
+
+
+def compute_tick_stitch_source_id(
+    plan: str | Path | Sequence[Mapping[str, Any]] | Sequence[TickStitchSegment],
+    root: str | Path,
+    *,
+    tick_stitch_x1_burst_included: bool,
+) -> str:
+    """SHA-256 of plan JSON + per-file hashes + fill/clip/session-cut tokens + burst.
+
+    This is **not** ``compute_tick_source_id`` over a naive path list. Stitch-on
+    identity is ``tick_stitch_source_id`` only.
+    """
+    if type(tick_stitch_x1_burst_included) is not bool:
+        raise TickStitchError(
+            "tick_stitch_x1_burst_included must be an explicit bool "
+            "(no silent default; Q9 is Accumu's call)."
+        )
+    refuse_nas_trading_paths(root, plan if isinstance(plan, (str, Path)) else root)
+    segments = _coerce_segments(plan)
+    root_dir = Path(root).expanduser()
+    from thesistester.levels.tick_vap import SESSION_CUT_POLICY_ID
+    from thesistester.persistence.execution_artifacts import source_content_hash
+
+    hasher = sha256()
+    hasher.update(_canonical_plan_json_bytes(plan, segments))
+    hasher.update(b"\0")
+    unique: dict[str, Path] = {}
+    for segment in segments:
+        unique.setdefault(segment.filename, root_dir / segment.filename)
+    for name in sorted(unique):
+        path = unique[name]
+        hasher.update(name.encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(source_content_hash(path).encode("utf-8"))
+        hasher.update(b"\0")
+    hasher.update(X1_FILL_POLICY_TOKEN.encode("utf-8"))
+    hasher.update(b"\0")
+    hasher.update(b"true" if tick_stitch_x1_burst_included else b"false")
+    hasher.update(b"\0")
+    hasher.update(CLIP_POLICY_TOKEN.encode("utf-8"))
+    hasher.update(b"\0")
+    hasher.update(SESSION_CUT_POLICY_ID.encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def build_stitch_parent_tables(
+    plan: str | Path | Sequence[Mapping[str, Any]] | Sequence[TickStitchSegment],
+    root: str | Path,
+    bars: pd.DataFrame,
+    *,
+    instrument: str,
+    tick_stitch_x1_burst_included: bool,
+    value_area_pct: float,
+    prior_day_aggregation_ticks: int,
+    prior_week_aggregation_ticks: int,
+    prior_month_aggregation_ticks: int,
+) -> StitchParentTables:
+    """Verify → stream → clip → X1 fill → hourly guard → VA/APOC tables.
+
+    Parent RAM: one session of ticks + the current histogram + A-period
+    scalars. Workers never see farm CSV paths. Burst-off still uses the
+    locked 11-28 allowlist plus ``x1_burst_guard_allowed_intervals``;
+    ``guard_hourly_tick_holes`` semantics are unchanged (Accumu pending).
+    """
+    if type(tick_stitch_x1_burst_included) is not bool:
+        raise TickStitchError(
+            "tick_stitch_x1_burst_included must be an explicit bool "
+            "(no silent default; Q9 is Accumu's call)."
+        )
+    refuse_nas_trading_paths(root, plan if isinstance(plan, (str, Path)) else root)
+    from thesistester.config import INSTRUMENTS
+    from thesistester.levels.apoc_candidates import (
+        APOCProfileInputError,
+        compute_tick_last_volume_profile,
+        select_a_period_rows,
+    )
+    from thesistester.levels.apoc_tick import (
+        A_PERIOD_MINUTES,
+        APOC_A_PERIOD_POLICY_ID,
+        APeriodTickProfileTable,
+    )
+    from thesistester.levels.session_date import trading_session_date
+    from thesistester.levels.tick_vap import _session_histogram
+    from thesistester.levels.tick_x1_fill import (
+        _chunk_from_ticks,
+        _table_from_histograms,
+        reject_x1_synthetics,
+    )
+
+    if instrument not in INSTRUMENTS:
+        raise TickStitchError(f"Unsupported instrument: {instrument!r}")
+    inst = INSTRUMENTS[instrument]
+    verify_tick_stitch_plan(plan, root)
+    stitch_id = compute_tick_stitch_source_id(
+        plan,
+        root,
+        tick_stitch_x1_burst_included=tick_stitch_x1_burst_included,
+    )
+    apoc_id = _apoc_id_from_stitch(stitch_id, APOC_A_PERIOD_POLICY_ID)
+    if bars.empty or "timestamp" not in bars.columns:
+        raise TickStitchError("build_stitch_parent_tables requires 15s bars with timestamp.")
+    bar_work = bars.copy()
+    bar_work["timestamp"] = pd.to_datetime(bar_work["timestamp"], utc=True)
+    bar_local = bar_work["timestamp"].dt.tz_convert(inst.exchange_tz)
+    bar_sessions = trading_session_date(bar_local, inst.eth_start)
+    histograms: list[Any] = []
+    poc_by_session: dict[date, float] = {}
+    n_ticks_by_session: dict[date, int] = {}
+    x1_fill = False
+    shared_gap = False
+    for chunk in iter_stitch_sessions(plan, root, instrument=instrument):
+        clipped = clip_ticks_to_15s_bars(chunk.ticks, bar_work["timestamp"])
+        filled, quality = apply_x1_residual_fill(
+            clipped,
+            bar_work,
+            tick_stitch_x1_burst_included=tick_stitch_x1_burst_included,
+            session_date=chunk.session_date,
+            tick_size=inst.tick_size,
+        )
+        session_bars = bar_work.loc[bar_sessions.eq(chunk.session_date).to_numpy()]
+        guard_hourly_tick_holes(
+            filled,
+            session_bars,
+            allowed_intervals=hourly_guard_allowed_intervals(
+                tick_stitch_x1_burst_included,
+                session_date=chunk.session_date,
+            ),
+        )
+        hist = _session_histogram(
+            _chunk_from_ticks(chunk.session_date, filled),
+            tick_size=inst.tick_size,
+        )
+        if hist is not None:
+            histograms.append(hist)
+        cleaned = reject_x1_synthetics(filled)
+        try:
+            selected = select_a_period_rows(
+                cleaned,
+                session_date=chunk.session_date,
+                exchange_tz=inst.exchange_tz,
+                rth_start=inst.rth_start,
+                period_minutes=A_PERIOD_MINUTES,
+            )
+            if selected.empty:
+                poc_by_session[chunk.session_date] = float("nan")
+                n_ticks_by_session[chunk.session_date] = 0
+            else:
+                result = compute_tick_last_volume_profile(selected, tick_size=inst.tick_size)
+                poc_by_session[chunk.session_date] = float(result.poc)
+                n_ticks_by_session[chunk.session_date] = int(result.source_rows)
+        except APOCProfileInputError:
+            poc_by_session[chunk.session_date] = float("nan")
+            n_ticks_by_session[chunk.session_date] = 0
+        x1_fill = x1_fill or bool(quality.x1_15s_residual_fill)
+        shared_gap = shared_gap or bool(quality.shared_gap_1649_1758)
+    prior = _table_from_histograms(
+        histograms,
+        instrument=instrument,
+        value_area_pct=value_area_pct,
+        prior_day_aggregation_ticks=prior_day_aggregation_ticks,
+        prior_week_aggregation_ticks=prior_week_aggregation_ticks,
+        prior_month_aggregation_ticks=prior_month_aggregation_ticks,
+    )
+    apoc = APeriodTickProfileTable(
+        poc_by_session=poc_by_session,
+        n_ticks_by_session=n_ticks_by_session,
+        source_id=apoc_id,
+    )
+    return StitchParentTables(
+        prior_profile_table=prior,
+        apoc_tick_table=apoc,
+        tick_source_id=stitch_id,
+        apoc_tick_source_id=apoc_id,
+        data_quality={
+            "data_quality.x1_15s_residual_fill": x1_fill,
+            "data_quality.x1_burst_included": tick_stitch_x1_burst_included,
+            "data_quality.shared_gap_1649_1758": shared_gap,
+        },
+    )
+
+
+def _apoc_id_from_stitch(stitch_id: str, policy_id: str) -> str:
+    hasher = sha256()
+    hasher.update(b"apoc_a_period_tick\0")
+    hasher.update(stitch_id.encode("utf-8"))
+    hasher.update(b"\0")
+    hasher.update(policy_id.encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def _canonical_plan_json_bytes(
+    plan: str | Path | Sequence[Mapping[str, Any]] | Sequence[TickStitchSegment],
+    segments: Sequence[TickStitchSegment],
+) -> bytes:
+    if isinstance(plan, (str, Path)):
+        payload = json.loads(Path(plan).expanduser().read_text(encoding="utf-8"))
+    else:
+        payload = [
+            {
+                "filename": segment.filename,
+                "size_bytes": segment.size_bytes,
+                "effective_first_utc": str(segment.effective_first_utc),
+                "effective_last_utc": str(segment.effective_last_utc),
+                "file_first_utc": str(segment.file_first_utc),
+                "file_last_utc": str(segment.file_last_utc),
+                "mtime": segment.mtime,
+            }
+            for segment in segments
+        ]
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
