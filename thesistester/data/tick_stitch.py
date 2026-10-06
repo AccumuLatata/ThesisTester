@@ -1,4 +1,4 @@
-"""Tick-stitch plan schema, offline verify (TS1), and session stream (TS2).
+"""Tick-stitch plan schema, verify (TS1), session stream (TS2), clip/guard (TS3).
 
 Parse an ordered, non-overlapping segment plan and fail closed against a
 directory of Quantower Tick–Tick–Last CSVs. ``iter_stitch_sessions`` is a
@@ -54,6 +54,16 @@ from thesistester.data.quantower_ticks import (
 
 _SEEK_TAIL_BYTES: Final[int] = 1024 * 1024
 _STREAM_CHUNKSIZE: Final[int] = 100_000
+_BAR_INTERVAL: Final[pd.Timedelta] = pd.Timedelta(seconds=15)
+HOURLY_HOLE_TOLERANCE: Final[pd.Timedelta] = pd.Timedelta(seconds=5)
+# Locked §5 TS3 allowlist (1). X1 is not a member. Empty-in-both weekends
+# and daily-halt gaps (2)(4) do not fail the per-hour predicates.
+_ALLOWLIST_UTC: Final[tuple[tuple[pd.Timestamp, pd.Timestamp], ...]] = (
+    (
+        pd.Timestamp("2025-11-28 02:00:00", tz="UTC"),
+        pd.Timestamp("2025-11-28 13:30:00", tz="UTC"),
+    ),
+)
 _REQUIRED_SEGMENT_FIELDS: Final[tuple[str, ...]] = (
     "filename",
     "size_bytes",
@@ -313,6 +323,63 @@ def iter_stitch_sessions(
     yield from flush_ready(None)
 
 
+def clip_ticks_to_15s_bars(
+    ticks: pd.DataFrame,
+    bar_timestamps: pd.Series | Sequence[object],
+) -> pd.DataFrame:
+    """Drop ticks whose ``floor(ts, 15s)`` is not a present 15s bar.
+
+    Left-closed, right-open (§4.4). Does not impute missing bars. Tests and
+    the future parent reducer call this; ``iter_stitch_sessions`` does not.
+    """
+    if ticks.empty:
+        return ticks.copy()
+    if "timestamp" not in ticks.columns:
+        raise TickStitchError("clip_ticks_to_15s_bars requires a timestamp column.")
+    stamps = _as_utc_us_series(ticks["timestamp"])
+    bar_index = pd.DatetimeIndex(_as_utc_us_series(pd.Series(list(bar_timestamps))))
+    keep = stamps.dt.floor("15s").isin(bar_index)
+    return ticks.loc[keep.to_numpy()].reset_index(drop=True)
+
+
+def guard_hourly_tick_holes(ticks: pd.DataFrame, bars: pd.DataFrame) -> None:
+    """Fail closed on unexpected ≥5s holes versus 15s bars with volume.
+
+    Not an execute hook (TS3). X1 is not an allowlist bypass: an unfilled
+    X1 hour with 15s volume fails. The 2025-11-28 CME outage through
+    13:30:00 UTC is allowlisted. Hours with ticks but no 15s bars do not
+    fail.
+    """
+    if "timestamp" not in bars.columns or "volume" not in bars.columns:
+        raise TickStitchError("guard_hourly_tick_holes requires bars timestamp and volume.")
+    if bars.empty:
+        return
+    bar_work = pd.DataFrame(
+        {
+            "timestamp": _as_utc_us_series(bars["timestamp"]),
+            "volume": pd.to_numeric(bars["volume"], errors="coerce"),
+        }
+    )
+    bar_work = bar_work.dropna(subset=["timestamp"])
+    if bar_work.empty:
+        return
+    tick_stamps = (
+        _as_utc_us_series(ticks["timestamp"])
+        if not ticks.empty and "timestamp" in ticks.columns
+        else pd.Series(dtype="datetime64[us, UTC]")
+    )
+    bar_work["hour"] = bar_work["timestamp"].dt.floor("h")
+    tick_hours = (
+        tick_stamps.dt.floor("h") if len(tick_stamps) else pd.Series(dtype="datetime64[us, UTC]")
+    )
+    for hour, hour_bars in bar_work.groupby("hour", sort=True):
+        hour_ts = pd.Timestamp(hour)
+        if _hour_allowlisted(hour_ts):
+            continue
+        hour_ticks = tick_stamps.loc[tick_hours == hour_ts] if len(tick_stamps) else tick_stamps
+        _guard_one_hour(hour_ts, hour_ticks, hour_bars)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """``python -m thesistester.data.tick_stitch verify PLAN ROOT``."""
     parser = argparse.ArgumentParser(prog="python -m thesistester.data.tick_stitch")
@@ -444,6 +511,73 @@ def _iter_trimmed_chunks(
         close = getattr(reader, "close", None)
         if callable(close):
             close()
+
+
+def _as_utc_us_series(values: pd.Series) -> pd.Series:
+    parsed = pd.to_datetime(values, errors="coerce", format="mixed", utc=True)
+    if parsed.dt.tz is None:
+        parsed = parsed.dt.tz_localize("UTC")
+    else:
+        parsed = parsed.dt.tz_convert("UTC")
+    return parsed.dt.floor("us")
+
+
+def _hour_allowlisted(hour: pd.Timestamp) -> bool:
+    if hour.tzinfo is None:
+        hour = hour.tz_localize("UTC")
+    else:
+        hour = hour.tz_convert("UTC")
+    for start, end in _ALLOWLIST_UTC:
+        if start <= hour < end:
+            return True
+    return False
+
+
+def _guard_one_hour(
+    hour: pd.Timestamp,
+    hour_ticks: pd.Series,
+    hour_bars: pd.DataFrame,
+) -> None:
+    if hour_ticks.empty:
+        raise TickStitchError(
+            f"Hour {hour.isoformat()} has 15s bars but no stitched+clipped ticks."
+        )
+    vol_bars = hour_bars.loc[hour_bars["volume"].fillna(0) > 0].sort_values("timestamp")
+    last_bar = hour_bars.sort_values("timestamp").iloc[-1]
+    last_tick = pd.Timestamp(hour_ticks.max())
+    last_bar_ts = pd.Timestamp(last_bar["timestamp"])
+    if float(last_bar["volume"] or 0) > 0 and (last_bar_ts - last_tick) >= HOURLY_HOLE_TOLERANCE:
+        raise TickStitchError(
+            f"Hour {hour.isoformat()} is cut short: last tick {last_tick.isoformat()} "
+            f"is ≥5s before last 15s bar {last_bar_ts.isoformat()}."
+        )
+    if not vol_bars.empty:
+        first_vol = pd.Timestamp(vol_bars["timestamp"].iloc[0])
+        first_tick = pd.Timestamp(hour_ticks.min())
+        if first_tick - first_vol >= HOURLY_HOLE_TOLERANCE:
+            raise TickStitchError(
+                f"Hour {hour.isoformat()} has a head-of-hour hole: first tick "
+                f"{first_tick.isoformat()} is ≥5s after first 15s bar with volume "
+                f"{first_vol.isoformat()}."
+            )
+    ordered = hour_ticks.sort_values().reset_index(drop=True)
+    if len(ordered) < 2:
+        return
+    gaps = ordered.diff().iloc[1:]
+    for offset, gap in enumerate(gaps):
+        if pd.isna(gap) or gap < HOURLY_HOLE_TOLERANCE:
+            continue
+        prev_ts = pd.Timestamp(ordered.iloc[offset])
+        next_ts = pd.Timestamp(ordered.iloc[offset + 1])
+        spanning = vol_bars.loc[
+            (vol_bars["timestamp"] < next_ts) & (vol_bars["timestamp"] + _BAR_INTERVAL > prev_ts)
+        ]
+        if not spanning.empty:
+            raise TickStitchError(
+                f"Hour {hour.isoformat()} has a mid-hour tick gap ≥5s "
+                f"({prev_ts.isoformat()} → {next_ts.isoformat()}) spanning 15s bars "
+                "with volume."
+            )
 
 
 def _utc_us(value: object, *, field: str) -> pd.Timestamp:
