@@ -359,6 +359,11 @@ def guard_hourly_tick_holes(
     whole clock hours — a cut-short after 13:30 still fails. Hours with
     ticks but no 15s bars do not fail.
 
+    Mid-hour: a tick gap ≥5s fails only when it fully contains at least
+    one 15s volume bar ``[t, t+15s)`` (no clipped tick inside that bar).
+    A 15s-spaced residual fill at ``bar_ts + 7.5s`` does not trip this.
+    Head-of-hour and cut-short stay left-edge offset checks.
+
     ``allowed_intervals`` is the §5 TS3 (4) hook: extra half-open UTC
     ``(start, end)`` pairs supplied by the caller (stitch-meta inter-file
     weekends). This function does not invent those dates. They merge with
@@ -627,8 +632,9 @@ def _guard_one_hour(
             continue
         prev_ts = pd.Timestamp(ordered.iloc[offset])
         next_ts = pd.Timestamp(ordered.iloc[offset + 1])
+        # Fully spanned: [bar_ts, bar_ts+15s) ⊆ (prev_ts, next_ts].
         spanning = vol_bars.loc[
-            (vol_bars["timestamp"] < next_ts) & (vol_bars["timestamp"] + _BAR_INTERVAL > prev_ts)
+            (vol_bars["timestamp"] > prev_ts) & (vol_bars["timestamp"] + _BAR_INTERVAL <= next_ts)
         ]
         if not spanning.empty and not _interval_allowlisted(prev_ts, next_ts, allowed):
             raise TickStitchError(

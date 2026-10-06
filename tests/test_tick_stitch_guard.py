@@ -72,16 +72,78 @@ def test_head_of_hour_hole_fails():
 
 
 def test_mid_hour_gap_spanning_volume_bars_fails():
-    ticks = _ticks("2026-03-17 14:10:00", "2026-03-17 14:10:15")
+    ticks = _ticks("2026-03-17 14:10:00", "2026-03-17 14:10:30")
     bars = pd.DataFrame(
         {
-            "timestamp": [_utc("2026-03-17 14:10:00"), _utc("2026-03-17 14:10:15")],
-            "volume": [4.0, 4.0],
+            "timestamp": [
+                _utc("2026-03-17 14:10:00"),
+                _utc("2026-03-17 14:10:15"),
+                _utc("2026-03-17 14:10:30"),
+            ],
+            "volume": [4.0, 4.0, 4.0],
         }
     )
     clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
     with pytest.raises(TickStitchError, match="mid-hour"):
         guard_hourly_tick_holes(clipped, bars)
+
+
+def test_sparse_7s_gaps_with_a_tick_in_every_volume_bar_pass():
+    bars = _bars("2026-03-17 14:00:00", "2026-03-17 14:59:45")
+    ticks = _dense_ticks("2026-03-17 14:00:00", "2026-03-17 14:59:59", freq="7s")
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    assert not clipped.empty
+    guard_hourly_tick_holes(clipped, bars)
+
+
+def test_volume_bar_with_no_tick_fails_mid_hour():
+    ticks = _ticks("2026-03-17 14:10:00.100", "2026-03-17 14:10:30.050")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2026-03-17 14:10:00"),
+                _utc("2026-03-17 14:10:15"),
+                _utc("2026-03-17 14:10:30"),
+            ],
+            "volume": [4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+
+
+def test_filled_hour_one_print_per_bar_at_7_5s_passes():
+    bars = _bars("2026-03-17 14:00:00", "2026-03-17 14:59:45")
+    fill = pd.DataFrame(
+        {
+            "timestamp": bars["timestamp"] + pd.Timedelta(milliseconds=7500),
+            "price": [100.0] * len(bars),
+            "volume": [1.0] * len(bars),
+        }
+    )
+    # Unchanged head-of-hour is left-edge +5s (TS3 test). A +7.5s-only hour
+    # fails that rule; TS4 still requires the filled hour to pass mid-hour.
+    head = _ticks("2026-03-17 14:00:00")
+    ticks = pd.concat([head, fill], ignore_index=True)
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    assert len(clipped) == len(bars) + 1
+    guard_hourly_tick_holes(clipped, bars)
+
+
+def test_filled_hour_plus_7_5s_only_trips_unchanged_head_not_mid_hour():
+    bars = _bars("2026-03-17 14:00:00", "2026-03-17 14:59:45")
+    ticks = pd.DataFrame(
+        {
+            "timestamp": bars["timestamp"] + pd.Timedelta(milliseconds=7500),
+            "price": [100.0] * len(bars),
+            "volume": [1.0] * len(bars),
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="head-of-hour") as excinfo:
+        guard_hourly_tick_holes(clipped, bars)
+    assert "mid-hour" not in str(excinfo.value)
 
 
 def test_1128_allowlisted_hole_does_not_fail():
