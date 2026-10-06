@@ -16,6 +16,9 @@ from thesistester.data.tick_stitch import TickStitchError, iter_stitch_sessions
 from thesistester.persistence.local_store import LEVEL_ENGINE_VERSION
 from thesistester.study import execute as execute_mod
 
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "tick_stitch"
+FIXTURE_PLAN = FIXTURES / "plan.json"
+
 
 def _write_ticks(path: Path, rows: list[tuple[str, str, str, str]]) -> int:
     lines = ["Aggressor flag;Price;Volume;Time left;"]
@@ -228,6 +231,30 @@ def test_intervening_fill_yields_in_plan_order_not_mega_first(tmp_path, monkeypa
     assert chunks[0].ticks["price"].tolist() == [1.0, 2.0, 5.0, 9.0, 10.0]
 
 
+def test_session_date_summer_dst_uses_eth_start_not_hardcoded_utc(tmp_path):
+    """Winter 23:00 UTC is 18:00 ET; summer session cut is 22:00 UTC."""
+    path = tmp_path / "summer.csv"
+    size = _write_ticks(
+        path,
+        [
+            ("", "10.0", "1", "2026-07-15 21:59:00.000"),
+            ("", "11.0", "2", "2026-07-15 22:00:00.000"),
+        ],
+    )
+    plan = [
+        _segment(
+            path.name,
+            size,
+            effective_first="2026-07-15 21:59:00.000",
+            effective_last="2026-07-15 22:00:00.000",
+            file_first="2026-07-15 21:59:00.000",
+            file_last="2026-07-15 22:00:00.000",
+        )
+    ]
+    chunks = list(iter_stitch_sessions(plan, tmp_path))
+    assert [chunk.session_date for chunk in chunks] == [date(2026, 7, 15), date(2026, 7, 16)]
+
+
 def test_session_date_uses_trading_session_date_not_utc_midnight(tmp_path):
     path = tmp_path / "winter.csv"
     size = _write_ticks(
@@ -273,6 +300,8 @@ def test_streamer_does_not_call_hash_or_peek(tmp_path, monkeypatch):
     monkeypatch.setattr("thesistester.data.quantower_ticks._file_sha256", boom)
     monkeypatch.setattr("thesistester.data.quantower_ticks._peek_tick_file", boom)
     monkeypatch.setattr("thesistester.levels.tick_vap.compute_tick_source_id", boom)
+    monkeypatch.setattr("thesistester.levels.apoc_tick.attach_apoc_identity", boom)
+    monkeypatch.setattr("thesistester.levels.rolling_poc_tick.attach_rolling_poc_identity", boom)
     list(iter_stitch_sessions(plan, tmp_path))
     import_block = (
         inspect.getsource(tick_stitch)
@@ -318,3 +347,66 @@ def test_missing_file_fails_closed(tmp_path):
     ]
     with pytest.raises(TickStitchError, match="does not exist"):
         list(iter_stitch_sessions(plan, tmp_path))
+
+
+def test_missing_later_file_fails_before_any_yield(tmp_path):
+    path = tmp_path / "ok.csv"
+    size = _write_ticks(
+        path,
+        [
+            ("", "10.0", "1", "2026-01-15 22:59:00.000"),
+            ("", "11.0", "1", "2026-01-15 23:00:00.000"),
+        ],
+    )
+    plan = [
+        _segment(
+            path.name,
+            size,
+            effective_first="2026-01-15 22:59:00.000",
+            effective_last="2026-01-15 23:00:00.000",
+            file_first="2026-01-15 22:59:00.000",
+            file_last="2026-01-15 23:00:00.000",
+        ),
+        _segment(
+            "missing.csv",
+            1,
+            effective_first="2026-01-16 10:00:00.000",
+            effective_last="2026-01-16 10:00:00.000",
+            file_first="2026-01-16 10:00:00.000",
+            file_last="2026-01-16 10:00:00.000",
+        ),
+    ]
+    yielded: list[date] = []
+    with pytest.raises(TickStitchError, match="does not exist"):
+        for chunk in iter_stitch_sessions(plan, tmp_path):
+            yielded.append(chunk.session_date)
+    assert yielded == []
+
+
+def test_unparseable_timestamp_is_tick_stitch_error(tmp_path):
+    path = tmp_path / "bad.csv"
+    size = _write_ticks(
+        path,
+        [
+            ("", "10.0", "1", "2026-01-15 10:00:00.000"),
+            ("", "11.0", "1", "NOT_A_TIME"),
+        ],
+    )
+    plan = [
+        _segment(
+            path.name,
+            size,
+            effective_first="2026-01-15 10:00:00.000",
+            effective_last="2026-01-15 10:00:00.000",
+            file_first="2026-01-15 10:00:00.000",
+            file_last="2026-01-15 10:00:00.000",
+        )
+    ]
+    with pytest.raises(TickStitchError, match="Unparseable"):
+        list(iter_stitch_sessions(plan, tmp_path))
+
+
+def test_ts1_fixture_plan_streams_in_plan_order():
+    chunks = list(iter_stitch_sessions(FIXTURE_PLAN, FIXTURES))
+    prices = [price for chunk in chunks for price in chunk.ticks["price"].tolist()]
+    assert prices == [100.0, 101.0, 200.0, 201.0, 202.0, 203.0]

@@ -256,7 +256,9 @@ def iter_stitch_sessions(
     ``trading_session_date`` / ``_session_end_utc`` (not UTC midnight).
     Same-ms prints and ``Aggressor=None`` with ``volume > 0`` are kept;
     ``volume <= 0`` is dropped. Does not call ``_file_sha256``,
-    ``_peek_tick_file``, or ``compute_tick_source_id``.
+    ``_peek_tick_file``, or ``compute_tick_source_id``. Parse failures on
+    the yield path raise ``TickStitchError`` (not a bare ``TickIngestError``).
+    Missing basenames fail closed before the first yield.
     """
     # Lazy: session_date → levels/__init__ → this package via apoc_tick.
     from thesistester.levels.session_date import trading_session_date
@@ -266,6 +268,7 @@ def iter_stitch_sessions(
     if not root_dir.is_dir():
         raise TickStitchError(f"Tick stitch root is not a directory: {root_dir}")
     inst = _instrument(instrument)
+    _preflight_stitch_files(root_dir, segments)
 
     open_parts: dict[date, list[pd.DataFrame]] = {}
     open_paths: dict[date, list[str]] = {}
@@ -289,8 +292,6 @@ def iter_stitch_sessions(
 
     for run in _consecutive_filename_runs(segments):
         path = root_dir / run[0].filename
-        if not path.is_file():
-            raise TickStitchError(f"Tick file does not exist: {path}")
         _check_header_contract(path)
         for kept in _iter_trimmed_chunks(path, run):
             local_ts = kept["timestamp"].dt.tz_convert(inst.exchange_tz)
@@ -348,6 +349,18 @@ def _coerce_segments(
     return parse_tick_stitch_plan(items)
 
 
+def _preflight_stitch_files(root_dir: Path, segments: Sequence[TickStitchSegment]) -> None:
+    """Fail closed on a missing basename before any session is yielded."""
+    seen: set[str] = set()
+    for segment in segments:
+        if segment.filename in seen:
+            continue
+        seen.add(segment.filename)
+        path = root_dir / segment.filename
+        if not path.is_file():
+            raise TickStitchError(f"Tick file does not exist: {path}")
+
+
 def _consecutive_filename_runs(
     segments: Sequence[TickStitchSegment],
 ) -> Iterator[tuple[TickStitchSegment, ...]]:
@@ -382,7 +395,9 @@ def _iter_trimmed_chunks(
     run: Sequence[TickStitchSegment],
 ) -> Iterator[pd.DataFrame]:
     windows = [(segment.effective_first_utc, segment.effective_last_utc) for segment in run]
-    last_end = windows[-1][1]
+    # Latest effective_last in this run. Plan order is time order (§4.3), so
+    # this equals windows[-1][1]; max is the stop condition either way.
+    last_end = max(last for _, last in windows)
     try:
         reader = pd.read_csv(
             path,
@@ -398,7 +413,10 @@ def _iter_trimmed_chunks(
             if raw.empty:
                 continue
             chunk = _normalize_tick_chunk(raw, path)
-            stamps = _localize_utc(chunk["timestamp"], source_tz="UTC", path=path)
+            try:
+                stamps = _localize_utc(chunk["timestamp"], source_tz="UTC", path=path)
+            except TickIngestError as exc:
+                raise TickStitchError(str(exc)) from exc
             stamps = stamps.dt.tz_convert("UTC").dt.floor("us")
             if stamps.min() > last_end:
                 break
@@ -418,6 +436,10 @@ def _iter_trimmed_chunks(
                     "volume": volumes.loc[keep].to_numpy(dtype="float64"),
                 }
             )
+    except TickStitchError:
+        raise
+    except (OSError, EmptyDataError, ParserError, ValueError) as exc:
+        raise TickStitchError(f"Unable to read tick file {path}: {exc}") from exc
     finally:
         close = getattr(reader, "close", None)
         if callable(close):
