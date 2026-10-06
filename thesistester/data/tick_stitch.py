@@ -414,7 +414,8 @@ def apply_x1_residual_fill(
     """TS4 hook for the TS5 reducer: clip → fill → guard. Lazy import.
 
     ``tick_stitch_x1_burst_included`` has no silent default. Nobody in
-    execute calls this yet.
+    execute calls this yet. Burst-off allowlist is
+    :func:`x1_burst_guard_allowed_intervals` (TS5 wires it into the guard).
     """
     from thesistester.levels.tick_x1_fill import fill_x1_15s_residual
 
@@ -425,6 +426,17 @@ def apply_x1_residual_fill(
         session_date=session_date,
         tick_size=tick_size,
     )
+
+
+def x1_burst_guard_allowed_intervals(
+    tick_stitch_x1_burst_included: bool,
+    *,
+    session_date: date | None = None,
+):
+    """TS5 parent passes this into ``guard_hourly_tick_holes`` (Accumu option A)."""
+    from thesistester.levels.tick_x1_fill import x1_burst_guard_allowed_intervals as impl
+
+    return impl(tick_stitch_x1_burst_included, session_date=session_date)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

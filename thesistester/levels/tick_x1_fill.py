@@ -50,6 +50,8 @@ X1_WINDOW_START: Final[pd.Timestamp] = pd.Timestamp("2025-11-07 17:58:14.581", t
 X1_WINDOW_END: Final[pd.Timestamp] = pd.Timestamp("2025-11-07 19:00:00.009", tz="UTC")
 X1_BURST_START: Final[pd.Timestamp] = pd.Timestamp("2025-11-07 18:00:45", tz="UTC")
 X1_BURST_END: Final[pd.Timestamp] = pd.Timestamp("2025-11-07 18:01:30", tz="UTC")
+X1_BURST_INTERVAL: Final[tuple[pd.Timestamp, pd.Timestamp]] = (X1_BURST_START, X1_BURST_END)
+X1_BURST_EXCLUDED: Final[str] = "excluded"
 X1_FILL_OFFSET: Final[pd.Timedelta] = pd.Timedelta(milliseconds=7500)
 _BAR_INTERVAL: Final[pd.Timedelta] = pd.Timedelta(seconds=15)
 PD_LOOKAHEAD_DATE: Final[date] = date(2025, 11, 10)
@@ -78,7 +80,7 @@ class X1FillQuality:
     x1_15s_residual_fill: bool
     x1_burst_included: bool
     shared_gap_1649_1758: bool
-    x1_burst: bool
+    x1_burst: bool | str
     n_synthetics: int
     residual_volume: float
     burst_synthetic_volume: float
@@ -89,6 +91,12 @@ class X1FillQuality:
             "data_quality.x1_burst_included": self.x1_burst_included,
             "data_quality.shared_gap_1649_1758": self.shared_gap_1649_1758,
         }
+
+    def guard_allowed_intervals(self) -> tuple[tuple[pd.Timestamp, pd.Timestamp], ...]:
+        """TS3 caller-supplied allowlist for TS5. Burst-off only; burst-on is empty."""
+        if self.x1_15s_residual_fill and not self.x1_burst_included:
+            return (X1_BURST_INTERVAL,)
+        return ()
 
 
 def fill_x1_15s_residual(
@@ -119,7 +127,7 @@ def fill_x1_15s_residual(
             n_synthetics=0,
             residual_volume=0.0,
             burst_synthetic_volume=0.0,
-            x1_burst=False,
+            x1_burst=_x1_burst_tag(burst_included, burst_volume=0.0),
         )
 
     tick_vol = _tick_volume_by_bar(tick_work)
@@ -151,8 +159,28 @@ def fill_x1_15s_residual(
         n_synthetics=int(len(synthetics)),
         residual_volume=residual_volume,
         burst_synthetic_volume=burst_volume,
-        x1_burst=burst_volume > 0,
+        x1_burst=_x1_burst_tag(burst_included, burst_volume=burst_volume),
     )
+
+
+def x1_burst_guard_allowed_intervals(
+    tick_stitch_x1_burst_included: bool,
+    *,
+    session_date: date | None = None,
+) -> tuple[tuple[pd.Timestamp, pd.Timestamp], ...]:
+    """Exactly ``[2025-11-07 18:00:45, 18:01:30)`` UTC when burst is off.
+
+    Accumu option A (2026-10-06). The parent (TS5) passes this into
+    ``guard_hourly_tick_holes(..., allowed_intervals=...)``. Burst-on
+    returns ``()``. The guard rule is unchanged. Quality keeps
+    ``x1_burst = excluded``.
+    """
+    burst_included = _require_explicit_burst_flag(tick_stitch_x1_burst_included)
+    if burst_included:
+        return ()
+    if session_date is not None and session_date != X1_TRADE_DATE:
+        return ()
+    return (X1_BURST_INTERVAL,)
 
 
 def reject_x1_synthetics(ticks: pd.DataFrame) -> pd.DataFrame:
@@ -385,6 +413,12 @@ def main(argv: list[str] | None = None) -> int:
     return os.EX_OK
 
 
+def _x1_burst_tag(burst_included: bool, *, burst_volume: float) -> bool | str:
+    if not burst_included:
+        return X1_BURST_EXCLUDED
+    return burst_volume > 0
+
+
 def _require_explicit_burst_flag(value: object) -> bool:
     if type(value) is not bool:
         raise TypeError(
@@ -412,7 +446,7 @@ def _session_quality(
     n_synthetics: int,
     residual_volume: float,
     burst_synthetic_volume: float,
-    x1_burst: bool,
+    x1_burst: bool | str,
 ) -> X1FillQuality:
     return X1FillQuality(
         x1_15s_residual_fill=True,

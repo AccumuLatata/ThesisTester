@@ -20,6 +20,7 @@ from thesistester.data.tick_stitch import (
     apply_x1_residual_fill,
     clip_ticks_to_15s_bars,
     guard_hourly_tick_holes,
+    x1_burst_guard_allowed_intervals,
 )
 from thesistester.levels.apoc_candidates import (
     VOLUME_CONSERVATION_ATOL,
@@ -33,6 +34,8 @@ from thesistester.levels.tick_x1_fill import (
     VARIANT_FILL_WITHOUT_BURST,
     VARIANT_TICKS_ONLY,
     X1_BURST_END,
+    X1_BURST_EXCLUDED,
+    X1_BURST_INTERVAL,
     X1_BURST_START,
     X1_FILL_OFFSET,
     X1_TRADE_DATE,
@@ -315,7 +318,8 @@ def test_burst_off_leaves_burst_bars_at_residual_zero():
         assert extra["timestamp"].eq(left + X1_FILL_OFFSET).sum() == 0
     assert extra["timestamp"].eq(_utc("2025-11-07 18:02:07.500")).sum() == 1
     assert quality.x1_burst_included is False
-    assert quality.x1_burst is False
+    assert quality.x1_burst == X1_BURST_EXCLUDED
+    assert quality.guard_allowed_intervals() == (X1_BURST_INTERVAL,)
 
 
 def test_burst_on_tags_x1_burst_synthetics():
@@ -386,16 +390,120 @@ def test_unfilled_x1_hour_still_fails_guard():
 
 
 def test_fill_without_burst_does_not_bypass_guard_on_burst_volume_bars():
-    """Burst-off leaves 18:01:00/15 volume bars empty — TS3 containment still fails.
-
-    Not a product default. Q9 remains Accumu's. The filled-with-burst hour passes.
-    """
+    """Burst-off without the Accumu option A interval still fails TS3 containment."""
     ticks, bars = _shaped_11_07_fixture()
     hour_bars = bars.loc[bars["timestamp"].dt.floor("h") == _utc("2025-11-07 18:00:00")]
-    filled, _quality = _fill(ticks, bars, burst=False)
+    filled, quality = _fill(ticks, bars, burst=False)
+    assert quality.x1_burst == X1_BURST_EXCLUDED
     clipped = clip_ticks_to_15s_bars(filled, hour_bars["timestamp"])
     with pytest.raises(TickStitchError, match="mid-hour"):
         guard_hourly_tick_holes(clipped, hour_bars)
+
+
+def test_x1_burst_interval_is_exact_half_open_window():
+    assert X1_BURST_INTERVAL == (
+        _utc("2025-11-07 18:00:45"),
+        _utc("2025-11-07 18:01:30"),
+    )
+    assert X1_BURST_INTERVAL == (X1_BURST_START, X1_BURST_END)
+    assert x1_burst_guard_allowed_intervals(True) == ()
+    assert x1_burst_guard_allowed_intervals(False) == (X1_BURST_INTERVAL,)
+    assert x1_burst_guard_allowed_intervals(False, session_date=X1_TRADE_DATE) == (
+        X1_BURST_INTERVAL,
+    )
+    assert x1_burst_guard_allowed_intervals(False, session_date=date(2025, 11, 10)) == ()
+
+
+def _compact_burst_off_guard_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Burst-off hour whose tick-to-tick hole is contained in X1_BURST_INTERVAL."""
+    compact_left = pd.date_range(
+        _utc("2025-11-07 18:00:00"), _utc("2025-11-07 18:01:45"), freq="15s"
+    )
+    bars = pd.DataFrame(
+        [
+            _bar_row(
+                ts,
+                high=FILL_PRICE if ts < X1_BURST_START else ISLAND_PRICE + 10,
+                low=FILL_PRICE if ts < X1_BURST_START else ISLAND_PRICE - 10,
+                close=FILL_PRICE if ts < X1_BURST_START else ISLAND_PRICE,
+                volume=PLAIN_BAR_VOLUME if ts < X1_BURST_START or ts >= X1_BURST_END else 90_000.0,
+            )
+            for ts in compact_left
+        ]
+    )
+    ticks = pd.concat(
+        [
+            _tick_frame([_utc("2025-11-07 18:00:00.100")], FILL_PRICE, 2.0),
+            _tick_frame([_utc("2025-11-07 18:00:45.050")], ISLAND_PRICE, 2.0),
+            _tick_frame([_utc("2025-11-07 18:01:30.000")], FILL_PRICE, 1.0),
+        ],
+        ignore_index=True,
+    )
+    return ticks, bars
+
+
+def test_burst_off_passes_hourly_guard_only_via_exact_burst_interval():
+    """Accumu option A: burst-off allowlists exactly [18:00:45, 18:01:30)."""
+    ticks, bars = _compact_burst_off_guard_frames()
+    filled, quality = _fill(ticks, bars, burst=False)
+    assert quality.x1_burst == X1_BURST_EXCLUDED
+    assert quality.x1_burst_included is False
+    clipped = clip_ticks_to_15s_bars(filled, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+    allowed = quality.guard_allowed_intervals()
+    assert allowed == (X1_BURST_INTERVAL,)
+    guard_hourly_tick_holes(clipped, bars, allowed_intervals=allowed)
+
+
+def test_burst_off_hole_outside_burst_interval_still_fails():
+    ticks, bars = _compact_burst_off_guard_frames()
+    filled, quality = _fill(ticks, bars, burst=False)
+    assert quality.x1_burst == X1_BURST_EXCLUDED
+    outside = pd.DataFrame(
+        [
+            _bar_row(
+                _utc("2025-11-07 18:10:00"),
+                high=FILL_PRICE,
+                low=FILL_PRICE,
+                close=FILL_PRICE,
+                volume=PLAIN_BAR_VOLUME,
+            )
+        ]
+    )
+    guard_bars = pd.concat([bars, outside], ignore_index=True)
+    clipped = clip_ticks_to_15s_bars(filled, guard_bars["timestamp"])
+    with pytest.raises(TickStitchError):
+        guard_hourly_tick_holes(
+            clipped,
+            guard_bars,
+            allowed_intervals=quality.guard_allowed_intervals(),
+        )
+
+
+def test_shaped_1107_burst_off_exact_interval_does_not_contain_plus_75s_hole():
+    """11-07 hole is [18:00:54.037, 18:01:37.5); guard rule is unchanged."""
+    ticks, bars = _shaped_11_07_fixture()
+    hour_bars = bars.loc[bars["timestamp"].dt.floor("h") == _utc("2025-11-07 18:00:00")]
+    filled, quality = _fill(ticks, bars, burst=False)
+    assert quality.x1_burst == X1_BURST_EXCLUDED
+    clipped = clip_ticks_to_15s_bars(filled, hour_bars["timestamp"])
+    with pytest.raises(TickStitchError, match="18:01:37.500"):
+        guard_hourly_tick_holes(
+            clipped,
+            hour_bars,
+            allowed_intervals=quality.guard_allowed_intervals(),
+        )
+
+
+def test_burst_on_still_passes_guard_with_no_interval():
+    ticks, bars = _shaped_11_07_fixture()
+    hour_bars = bars.loc[bars["timestamp"].dt.floor("h") == _utc("2025-11-07 18:00:00")]
+    filled, quality = _fill(ticks, bars, burst=True)
+    assert quality.x1_burst is True
+    assert quality.guard_allowed_intervals() == ()
+    clipped = clip_ticks_to_15s_bars(filled, hour_bars["timestamp"])
+    guard_hourly_tick_holes(clipped, hour_bars)
 
 
 def test_ci_impact_emits_three_triples_and_identical_apoc():
@@ -452,6 +560,7 @@ def test_apply_hook_matches_fill_and_is_not_execute_wired():
     assert "fill_x1_15s_residual" not in inspect.getsource(execute_mod)
     assert "tick_x1_fill" not in inspect.getsource(execute_mod)
     assert "apply_x1_residual_fill" not in inspect.getsource(execute_mod)
+    assert "x1_burst_guard_allowed_intervals" not in inspect.getsource(execute_mod)
     assert "tick_x1_fill" not in inspect.getsource(loader_mod)
     import thesistester.levels.tick_x1_fill as fill_mod
 

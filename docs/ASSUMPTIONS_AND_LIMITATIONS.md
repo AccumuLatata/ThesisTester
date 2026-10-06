@@ -478,7 +478,9 @@ This engine is for **research screening**, not proof of a durable edge.
   (`fill timestamps lie only in [...)`).
 - `dataset.tick_stitch_x1_burst_included` is an explicit boolean argument
   (no silent default). Q9 remains Accumu's call. The missing-key reject is
-  TS5/TS6, not this helper.
+  TS5/TS6, not this helper. Accumu option A (2026-10-06): burst-off
+  exposes exactly `[2025-11-07 18:00:45, 18:01:30)` UTC for the TS3
+  guard `allowed_intervals`; `x1_burst` stays `excluded`; TS5 wires it.
 - APOC A-period `[14:30, 15:00)` UTC on 2025-11-07 is outside the hole.
   Synthetics are dropped before `select_a_period_rows`.
 - Quality record (not trade-frame columns): `x1_15s_residual_fill` is true
