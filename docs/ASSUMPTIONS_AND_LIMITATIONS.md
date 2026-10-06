@@ -489,9 +489,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - TS5 parent `build_stitch_parent_tables` (called from
   `_prepare_study_tick_stitch` when `dataset.tick_stitch_plan` is set)
   runs clip → fill → hourly guard. Stitch-absent execute does not call it.
-  `LEVEL_ENGINE_VERSION` stays 11. Burst-off leftover tick-to-tick holes
-  that are not contained in `X1_BURST_INTERVAL` still fail the unchanged
-  guard (Accumu pending; do not change `guard_hourly_tick_holes` semantics).
+  `LEVEL_ENGINE_VERSION` stays 11. Allowed intervals excuse a hole when
+  every whole empty 15s volume bar in it lies inside an allowed interval
+  (Accumu option A, 2026-10-06). The fail rule for holes outside allowed
+  intervals and 11-28 `[02:00, 13:30)` strictness are unchanged.
 
 ### 5e) Previous 30m VWAP (`prev30mVWAP`) is opt-in (Phase 1)
 

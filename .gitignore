@@ -26,3 +26,5 @@ dist/
 !tests/fixtures/memory_parity/**/*.parquet
 .thesistester_store/
 .DS_Store
+# Farm NVMe tick copy (Accumu Q2 option A). Lives in ~/thesistester/data/ticks/.
+data/ticks/

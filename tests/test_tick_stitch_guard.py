@@ -197,6 +197,49 @@ def test_1128_head_of_hour_after_1330_still_fails():
         guard_hourly_tick_holes(clipped, bars)
 
 
+def test_allowlist_excuses_empty_bars_not_whole_hole():
+    """Accumu option A: hole [18:00:54.037, 18:01:37.500) is not contained in
+    [18:00:45, 18:01:30), but its whole empty 15s bars are."""
+    ticks = _ticks("2025-11-07 18:00:54.037", "2025-11-07 18:01:37.500")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-07 18:00:45"),
+                _utc("2025-11-07 18:01:00"),
+                _utc("2025-11-07 18:01:15"),
+                _utc("2025-11-07 18:01:30"),
+            ],
+            "volume": [4.0, 4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+    guard_hourly_tick_holes(
+        clipped,
+        bars,
+        allowed_intervals=[(_utc("2025-11-07 18:00:45"), _utc("2025-11-07 18:01:30"))],
+    )
+
+
+def test_1128_whole_empty_bar_after_1330_still_fails():
+    """11-28 allowlist stays [02:00, 13:30): empty bar [13:30:00, 13:30:15) is not excused."""
+    ticks = _ticks("2025-11-28 13:29:50.100", "2025-11-28 13:30:20.050")
+    bars = pd.DataFrame(
+        {
+            "timestamp": [
+                _utc("2025-11-28 13:29:45"),
+                _utc("2025-11-28 13:30:00"),
+                _utc("2025-11-28 13:30:15"),
+            ],
+            "volume": [4.0, 4.0, 4.0],
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError, match="mid-hour"):
+        guard_hourly_tick_holes(clipped, bars)
+
+
 def test_caller_inter_file_weekend_is_honored_and_not_invented():
     """§5 TS3 allowlist (4): caller supplies stitch-meta weekends; none are baked in."""
     bars = _bars("2026-03-21 10:00:00", "2026-03-21 10:59:45")

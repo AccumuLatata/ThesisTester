@@ -390,8 +390,12 @@ def guard_hourly_tick_holes(
     ``allowed_intervals`` is the §5 TS3 (4) hook: extra half-open UTC
     ``(start, end)`` pairs supplied by the caller (stitch-meta inter-file
     weekends). This function does not invent those dates. They merge with
-    the locked 11-28 interval. A hole fails unless ``[hole_start, hole_end)``
-    is contained in the merged allowlist.
+    the locked 11-28 interval. Accumu option A (2026-10-06): a hole is
+    excused when every whole empty 15s volume bar ``[t, t+15s)`` in it
+    lies inside an allowed interval. A hole with no whole empty bar
+    already passes under the TS3 containment rule. The fail rule for
+    holes outside allowed intervals is unchanged; 11-28 stays
+    ``[02:00, 13:30)`` (a whole empty bar after 13:30 still fails).
     """
     if "timestamp" not in bars.columns or "volume" not in bars.columns:
         raise TickStitchError("guard_hourly_tick_holes requires bars timestamp and volume.")
@@ -553,8 +557,9 @@ def build_stitch_parent_tables(
 
     Parent RAM: one session of ticks + the current histogram + A-period
     scalars. Workers never see farm CSV paths. Burst-off still uses the
-    locked 11-28 allowlist plus ``x1_burst_guard_allowed_intervals``;
-    ``guard_hourly_tick_holes`` semantics are unchanged (Accumu pending).
+    locked 11-28 allowlist plus ``x1_burst_guard_allowed_intervals``.
+    Allowed intervals excuse a hole when every whole empty 15s volume
+    bar in it lies inside an allowed interval (Accumu option A).
     """
     if type(tick_stitch_x1_burst_included) is not bool:
         raise TickStitchError(
@@ -894,6 +899,24 @@ def _interval_allowlisted(
     return False
 
 
+def _empty_volume_bars_allowlisted(
+    bars: pd.DataFrame,
+    allowed: Sequence[tuple[pd.Timestamp, pd.Timestamp]],
+) -> bool:
+    """True iff every bar ``[t, t+15s)`` lies inside one allowed interval.
+
+    Accumu option A (2026-10-06). Empty ``bars`` means no whole empty
+    15s volume bar (already a TS3 pass for mid/head).
+    """
+    if bars.empty:
+        return True
+    for raw in bars["timestamp"]:
+        start = pd.Timestamp(raw)
+        if not _interval_allowlisted(start, start + _BAR_INTERVAL, allowed):
+            return False
+    return True
+
+
 def _guard_one_hour(
     hour: pd.Timestamp,
     hour_ticks: pd.Series,
@@ -901,9 +924,8 @@ def _guard_one_hour(
     allowed: Sequence[tuple[pd.Timestamp, pd.Timestamp]],
 ) -> None:
     if hour_ticks.empty:
-        span_start = pd.Timestamp(hour_bars["timestamp"].min())
-        span_end = pd.Timestamp(hour_bars["timestamp"].max()) + _BAR_INTERVAL
-        if _interval_allowlisted(span_start, span_end, allowed):
+        vol_empty = hour_bars.loc[hour_bars["volume"].fillna(0) > 0]
+        if not vol_empty.empty and _empty_volume_bars_allowlisted(vol_empty, allowed):
             return
         raise TickStitchError(
             f"Hour {hour.isoformat()} has 15s bars but no stitched+clipped ticks."
@@ -913,7 +935,8 @@ def _guard_one_hour(
     last_tick = pd.Timestamp(hour_ticks.max())
     last_bar_ts = pd.Timestamp(last_bar["timestamp"])
     if float(last_bar["volume"] or 0) > 0 and (last_bar_ts - last_tick) >= HOURLY_HOLE_TOLERANCE:
-        if not _interval_allowlisted(last_tick, last_bar_ts, allowed):
+        cut_empty = vol_bars.loc[vol_bars["timestamp"] > last_tick]
+        if not _empty_volume_bars_allowlisted(cut_empty, allowed):
             raise TickStitchError(
                 f"Hour {hour.isoformat()} is cut short: last tick {last_tick.isoformat()} "
                 f"is ≥5s before last 15s bar {last_bar_ts.isoformat()}."
@@ -928,8 +951,8 @@ def _guard_one_hour(
                 (vol_bars["timestamp"] >= first_vol)
                 & (vol_bars["timestamp"] + _BAR_INTERVAL <= first_tick)
             ]
-            if not head_spanning.empty and not _interval_allowlisted(
-                first_vol, first_tick, allowed
+            if not head_spanning.empty and not _empty_volume_bars_allowlisted(
+                head_spanning, allowed
             ):
                 raise TickStitchError(
                     f"Hour {hour.isoformat()} has a head-of-hour hole: first tick "
@@ -949,7 +972,7 @@ def _guard_one_hour(
         spanning = vol_bars.loc[
             (vol_bars["timestamp"] > prev_ts) & (vol_bars["timestamp"] + _BAR_INTERVAL <= next_ts)
         ]
-        if not spanning.empty and not _interval_allowlisted(prev_ts, next_ts, allowed):
+        if not spanning.empty and not _empty_volume_bars_allowlisted(spanning, allowed):
             raise TickStitchError(
                 f"Hour {hour.isoformat()} has a mid-hour tick gap ≥5s "
                 f"({prev_ts.isoformat()} → {next_ts.isoformat()}) spanning 15s bars "
