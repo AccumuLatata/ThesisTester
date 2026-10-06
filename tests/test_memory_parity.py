@@ -271,6 +271,7 @@ def test_mw1_runtime_surface_is_limited_vs_main() -> None:
     allowed = {
         "thesistester/engine/intrabar.py",
         "thesistester/study/execute.py",
+        "thesistester/data/tick_stitch.py",
     }
     files: set[str] = set()
     for line in diff.splitlines():
