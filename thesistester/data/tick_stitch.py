@@ -5,9 +5,11 @@ directory of Quantower Tick–Tick–Last CSVs. This is **not** an ingest path:
 ``load_ohlcv``, ``iter_tick_files``, and study execute do not call it.
 
 Header contract is the tick loader's (semicolon, ``utf-8-sig``, alias, then
-``_require_tick_columns`` / ``_REQUIRED_TICK_COLUMNS``). First and last
-parseable ``Time left`` are taken by seek, not by ``_peek_tick_file`` (that
-reads every timestamp and content-hashes the file). Filename windows are
+``_require_tick_columns`` / ``_REQUIRED_TICK_COLUMNS``). The timestamp-column
+index uses the same pandas header parse as ``_read_tick_csv`` so quoted
+headers the loader accepts are not rejected. First and last parseable
+``Time left`` are taken by seek, not by ``_peek_tick_file`` (that reads
+every timestamp and content-hashes the file). Filename windows are
 ignored. The same basename may appear more than once with disjoint trims;
 ``_reject_duplicate_files`` / unique-``tick_paths`` do not run here.
 
@@ -28,12 +30,13 @@ from pathlib import Path
 from typing import Any, Final
 
 import pandas as pd
+from pandas.errors import EmptyDataError, ParserError
 
 from thesistester.data.loader import DataValidationError
 from thesistester.data.quantower_ticks import (
     TickIngestError,
     _REQUIRED_TICK_COLUMNS,
-    _aliased_column_name,
+    _is_timestamp_header,
     _localize_utc,
     _read_tick_csv,
     _require_tick_columns,
@@ -87,7 +90,7 @@ class TickStitchVerifyResult:
 
 def load_tick_stitch_plan(path: str | Path) -> tuple[TickStitchSegment, ...]:
     """Load an ordered segment array from a JSON file."""
-    plan_path = Path(path)
+    plan_path = Path(path).expanduser()
     try:
         payload = json.loads(plan_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -168,12 +171,16 @@ def verify_tick_stitch_plan(
     """
     if isinstance(plan, (str, Path)):
         segments = load_tick_stitch_plan(plan)
-    elif plan and all(isinstance(item, TickStitchSegment) for item in plan):
-        segments = tuple(plan)  # type: ignore[arg-type]
     else:
-        segments = parse_tick_stitch_plan(list(plan))
+        # Materialize first. A generator would be consumed by the type check
+        # and then verify zero segments — fail-open.
+        items = list(plan)
+        if items and all(isinstance(item, TickStitchSegment) for item in items):
+            segments = tuple(items)
+        else:
+            segments = parse_tick_stitch_plan(items)
 
-    root_dir = Path(root)
+    root_dir = Path(root).expanduser()
     if not root_dir.is_dir():
         raise TickStitchError(f"Tick stitch root is not a directory: {root_dir}")
 
@@ -306,7 +313,7 @@ def _check_header_contract(path: Path) -> None:
     try:
         header = _read_tick_csv(path, nrows=0)
         _require_tick_columns(header, path)
-    except TickIngestError as exc:
+    except (TickIngestError, OSError, EmptyDataError, ParserError, ValueError) as exc:
         raise TickStitchError(str(exc)) from exc
     missing = [column for column in _REQUIRED_TICK_COLUMNS if column not in header.columns]
     if missing:
@@ -315,20 +322,32 @@ def _check_header_contract(path: Path) -> None:
         )
 
 
-def _timestamp_column_index(header_line: str) -> int:
-    fields = header_line.rstrip("\r\n").split(";")
-    for index, field in enumerate(fields):
-        if _aliased_column_name(field) == "timestamp":
-            return index
-    raise TickStitchError("Header has no Time left / timestamp column after alias.")
+def _timestamp_column_index(path: Path) -> int:
+    """Column index from the loader's pandas header parse, not a raw split.
+
+    §4.2.3: same header grammar as ``_read_tick_csv`` (semicolon, utf-8-sig,
+    alias). A raw ``split(';')`` rejects quoted headers the loader accepts.
+    The index is taken *before* unused empty columns are dropped so it still
+    matches on-disk field positions.
+    """
+    try:
+        raw = pd.read_csv(path, sep=";", nrows=0, dtype=str, encoding="utf-8-sig")
+    except (OSError, EmptyDataError, ParserError, ValueError) as exc:
+        raise TickStitchError(f"Unable to read tick header {path}: {exc}") from exc
+    matches = [index for index, column in enumerate(raw.columns) if _is_timestamp_header(column)]
+    if len(matches) != 1:
+        raise TickStitchError(
+            f"Header has no unique Time left / timestamp column after alias in {path}"
+        )
+    return matches[0]
 
 
 def _seek_first_last_timestamps(path: Path) -> tuple[pd.Timestamp, pd.Timestamp]:
+    ts_index = _timestamp_column_index(path)
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         header_line = handle.readline()
         if not header_line:
             raise TickStitchError(f"Tick file has no header: {path}")
-        ts_index = _timestamp_column_index(header_line)
         first: pd.Timestamp | None = None
         for line in handle:
             first = _parse_line_timestamp(line, ts_index, path=path)
@@ -373,6 +392,8 @@ def _parse_line_timestamp(line: str, ts_index: int, *, path: Path) -> pd.Timesta
     if ts_index >= len(fields):
         return None
     text = fields[ts_index].strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
+        text = text[1:-1].strip()
     if not text:
         return None
     parsed = pd.to_datetime(text, errors="coerce", format="mixed")

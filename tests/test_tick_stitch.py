@@ -21,6 +21,7 @@ from thesistester.data.quantower_ticks import (
 from thesistester.data.tick_stitch import (
     TickStitchCensus,
     TickStitchError,
+    _SEEK_TAIL_BYTES,
     load_tick_stitch_plan,
     verify_tick_stitch_plan,
 )
@@ -135,6 +136,7 @@ def test_verify_reuses_loader_header_contract():
     import_block = import_block.split(")", 1)[0]
     assert "_require_tick_columns" in import_block
     assert "_REQUIRED_TICK_COLUMNS" in import_block
+    assert "_is_timestamp_header" in import_block
     assert tick_stitch._REQUIRED_TICK_COLUMNS is _REQUIRED_TICK_COLUMNS
     assert "_peek_tick_file" not in import_block
     assert "_reject_duplicate_files" not in import_block
@@ -160,6 +162,68 @@ def test_missing_price_column_fails(tmp_path):
     payload[0]["effective_last_utc"] = "2026-01-15 10:00:00.000"
     with pytest.raises(TickStitchError, match="missing required columns"):
         verify_tick_stitch_plan(payload, tmp_path)
+
+
+def test_quoted_header_matches_loader_and_verifies(tmp_path):
+    payload = _plan_payload()[:1]
+    path = tmp_path / "early.csv"
+    path.write_text(
+        '"Aggressor flag";"Price";"Volume";"Time left";\n'
+        ";100.0;1;2026-01-15 10:00:00.000;\n"
+        ";101.0;1;2026-01-15 10:00:01.000;\n",
+        encoding="utf-8",
+    )
+    payload[0]["size_bytes"] = path.stat().st_size
+    result = verify_tick_stitch_plan(payload, tmp_path)
+    assert result.unique_files == 1
+    assert result.segments[0].file_first_utc.isoformat() == "2026-01-15T10:00:00+00:00"
+
+
+def test_verify_does_not_succeed_on_consumed_segment_iterator():
+    segments = load_tick_stitch_plan(PLAN_PATH)
+    result = verify_tick_stitch_plan(iter(segments), FIXTURES)
+    assert len(result.segments) == 3
+    assert result.unique_files == 2
+    result = verify_tick_stitch_plan(iter(_plan_payload()), FIXTURES)
+    assert len(result.segments) == 3
+
+
+def test_effective_window_outside_file_range_fails():
+    payload = _plan_payload()
+    payload[0]["effective_last_utc"] = "2026-01-15 10:00:02.000"
+    with pytest.raises(TickStitchError, match="outside file range"):
+        verify_tick_stitch_plan(payload, FIXTURES)
+
+
+def test_large_file_last_timestamp_uses_seek_tail(tmp_path):
+    payload = _plan_payload()[:1]
+    path = tmp_path / "early.csv"
+    mid = ";100.5;1;2026-01-15 10:00:00.500;\n"
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("Aggressor flag;Price;Volume;Time left;\n")
+        handle.write(";100.0;1;2026-01-15 10:00:00.000;\n")
+        written = handle.tell()
+        while written < _SEEK_TAIL_BYTES + 4096:
+            handle.write(mid)
+            written = handle.tell()
+        handle.write(";101.0;1;2026-01-15 10:00:01.000;\n")
+    assert path.stat().st_size > _SEEK_TAIL_BYTES
+    payload[0]["size_bytes"] = path.stat().st_size
+    result = verify_tick_stitch_plan(payload, tmp_path)
+    assert result.segments[0].file_first_utc.isoformat() == "2026-01-15T10:00:00+00:00"
+    assert result.segments[0].file_last_utc.isoformat() == "2026-01-15T10:00:01+00:00"
+
+
+def test_root_expands_user(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    ticks = tmp_path / "ticks"
+    ticks.mkdir()
+    payload = _plan_payload()[:1]
+    dest = ticks / "early.csv"
+    dest.write_bytes((FIXTURES / "early.csv").read_bytes())
+    payload[0]["size_bytes"] = dest.stat().st_size
+    result = verify_tick_stitch_plan(payload, "~/ticks")
+    assert result.unique_files == 1
 
 
 def test_bom_header_is_accepted(tmp_path):
