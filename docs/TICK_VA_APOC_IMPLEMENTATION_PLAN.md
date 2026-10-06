@@ -266,8 +266,8 @@ See §6 for the fill design (normative). This PR implements it and the impact te
 |---|---|
 | **Scope** | Residual 15s VAP fill for the X1 window only. Per-session quality flag. APOC path rejects synthetics. |
 | **Files** | `thesistester/levels/tick_x1_fill.py` (new, small); hook from the stitch reducer; `tests/test_tick_x1_fill.py`; synthetic 15s+tick fixture shaped like 11-07 (shared empty 16:49–17:58, 10k-tick island, burst bars, 59 min empty). **Do not** commit farm ticks. |
-| **Tests** | Fill timestamps lie only in `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)`. Residual volume = `max(0, 15s_vol − tick_vol)` per 15s bar; 10k-island bar does not double-count. Synthetics never appear in `select_a_period_rows` for 2025-11-07. Shared 16:49–17:58 gap is **not** filled. Flag `x1_15s_residual_fill` is true only for trade date 2025-11-07. **Impact test (required):** report `pd*` for 2025-11-07, `pd*` on 2025-11-10 (prior-day), and `pw*` for the W-SUN week that contains 2025-11-07, under three variants — ticks-only, fill-without-burst, fill-with-burst (product default). Assert the three triples are emitted and that APOC 2025-11-07 is identical across variants. Do **not** assert a preferred VA number; the report is the artifact. |
-| **Acceptance** | Default product path is fill-with-burst + flag. Reverting this PR restores “no fill” without touching TS1–TS3. |
+| **Tests** | Fill timestamps lie only in `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)`. Residual volume = `max(0, 15s_vol − tick_vol)` per 15s bar; 10k-island bar does not double-count. Synthetics never appear in `select_a_period_rows` for 2025-11-07. Shared 16:49–17:58 gap is **not** filled. Flag `x1_15s_residual_fill` is true only for trade date 2025-11-07. **Impact test (required):** three variants — ticks-only, fill-without-burst, fill-with-burst — none of which is a product default. For each, report 2025-11-07 full-session VA (`VAH`/`VAL`/`POC`) and any downstream `pdPOC` / `pVA` / `pwVA` cell deltas the fill touches (including `pd*` on 2025-11-10 and `pw*` for the W-SUN week that contains 2025-11-07). Assert the three triples are emitted and that APOC 2025-11-07 is identical across variants. Do **not** assert a preferred VA number; the report is the artifact. Accumu picks the default from that report before the tick packet is frozen. Until then `x1_burst_included` has no silent default; the validator rejects a missing value. |
+| **Acceptance** | No silent burst default. `x1_burst_included` is required and explicit; the validator rejects a missing value. Accumu sets it from the impact report before the tick packet is frozen (§8, Q9). Reverting this PR restores “no fill” without touching TS1–TS3. |
 
 ---
 
@@ -356,7 +356,7 @@ Why **residual**, not full 15s volume: the island `2025-11-07 18:00:53.022`–`1
 
 15s that day is itself degraded: ~280k contracts print in 18:00:45–18:01:30, which the quality report flags as a replay dump. That interval sits **inside** the X1 window and **overlaps** the 10k-tick island.
 
-**Product default: include the burst via the same residual rule.** The prompt requires the hole to be filled from 15s VAP; that volume is the only 15s evidence. Dropping it would silently omit on the order of 10%+ of session volume.
+**No product default for the burst.** Include it via the same residual rule, or leave those bars at residual 0. That volume is the only 15s evidence for the hole; dropping it omits on the order of 10%+ of session volume. Accumu picks from the impact report before the tick packet is frozen (§8, Q9). Config key `x1_burst_included` is required and explicit; a missing value is a validator error, not a silent true or false.
 
 **Honesty:** those synthetics are tagged `x1_burst` in the session quality record. They land on a handful of typical prices, so they can move POC.
 
@@ -366,7 +366,7 @@ Why **residual**, not full 15s volume: the island `2025-11-07 18:00:53.022`–`1
 |---|---|---|---|---|
 | ticks-only (no fill) | report | report | report | **identical** |
 | fill, burst bars residual = 0 | report | report | report | **identical** |
-| fill-with-burst (default) | report | report | report | **identical** |
+| fill-with-burst | report | report | report | **identical** |
 
 `pm*` for 2025-11 also moves; not required by the prompt — see Q6.
 
@@ -380,7 +380,7 @@ Per trade date, persist (table column or sidecar, additive):
 
 ```text
 data_quality.x1_15s_residual_fill = true   # 2025-11-07 only
-data_quality.x1_burst_included    = true   # default product path
+data_quality.x1_burst_included    = <explicit>   # required config; no silent default
 data_quality.shared_gap_1649_1758 = true   # not filled; both sources empty
 ```
 
@@ -411,8 +411,9 @@ Order is mandatory: **merge TS1–TS6 → stitch-off parity → small pilot → 
 2. **Checksums.** `sha256sum` each NVMe file; size must match the plan (`36,415,038,585` unique-file bytes). Store the digest sidecar next to the plan. Re-run `verify_tick_stitch_plan`.
 3. **15s CSV** already local (`~/thesistester/data/`, 344,135,035 bytes). Do not re-point `dataset.path`.
 4. **Parity (stitch off).** Smoke cell vs `farm_reference/full` as in §5.1. Wave-0 ONH solo is a side-by-side against a `0ebc1494` run, not against `farm_reference` (that cell is not in the locked tree). Any delta other than ledger wall-clock → **stop**.
-5. **Pilot.** One tick-gated cell only: `pdPOC` (first core of `progB_r2_w0_va`). `study run` has no `--cell` flag, and `progB_w0_va.yaml` expands nine cores — do not launch that file. Use a one-anchor spec copied from it with `core_level: [pdPOC]` only. That copy is not a hand-edit of the generated packet. It must set `poc_windows: []` explicitly (the generated tick YAML still has `["30min"]`, which makes each worker `list()` every tick) and must not put farm CSV paths on the cell. Confirm parent RSS, worker VmHWM at or below the documented production envelope (3.85–4.46 GiB at `--workers 12`; the MW0 full-run flag-on figure is 3.73 GiB), no SMB open (`lsof` / `nfsstat`), X1 flag present on 11-07, prior-profile table has a finite 11-07 `pdPOC`. The VA pilot does not enable APOC; a finite 11-07 APOC is the APOC study’s check, not this cell’s. Not a full-packet result.
-6. **Full run.** `manifest_tick.yaml` (8 studies / 253 cells), one study at a time, 12 workers, Notion/logging as Run 2. Soft-resume. Do not `--force`.
+5. **Pilot.** One tick-gated cell only: `pdPOC` (first core of `progB_r2_w0_va`). `study run` has no `--cell` flag, and `progB_w0_va.yaml` expands nine cores — do not launch that file. Use a one-anchor spec copied from it with `core_level: [pdPOC]` only. That copy is not a hand-edit of the generated packet. It must set `poc_windows: []` explicitly (the generated tick YAML still has `["30min"]`, which makes each worker `list()` every tick) and must not put farm CSV paths on the cell. Confirm parent RSS, worker VmHWM at or below the documented production envelope (3.85–4.46 GiB at `--workers 12`; the MW0 full-run flag-on figure is 3.73 GiB), no SMB open (`lsof` / `nfsstat`), X1 flag present on 11-07, prior-profile table has a finite 11-07 `pdPOC`. The VA pilot does not enable APOC. Not a full-packet result. Second pilot, same stitch plan and the same `workers` as the `pdPOC` copy: one-anchor spec with `core_level: [APOC]` (`APOC_LEVEL_NAMES` in `thesistester/levels/catalog.py`), `poc_windows: []`, no farm CSV paths on the cell. Pass: the cell runs to completion; workers never open or content-hash farm tick CSVs (same sentinel as the TS5 table injection); `MemAvailable` stays ≥ 6 GiB; APOC on a few spot-check sessions matches a direct parent-side computation from the stitch. Both pilot cells must pass before `manifest_tick.yaml` starts.
+6. **Burst decision (gate).** TS4 impact report is in hand: 2025-11-07 `VAH`/`VAL`/`POC` for ticks-only, fill-without-burst, and fill-with-burst, plus the downstream `pdPOC` / `pVA` / `pwVA` deltas. Accumu sets explicit `x1_burst_included`. A missing value → do not start `manifest_tick.yaml`.
+7. **Full run.** `manifest_tick.yaml` (8 studies / 253 cells), one study at a time, 12 workers, Notion/logging as Run 2. Soft-resume. Do not `--force`.
 
 If verify or parity fails, do not start the pilot.
 
@@ -447,6 +448,7 @@ Listed instead of guessing. Implementation PRs must not invent answers.
 6. **Q6 — Impact-test `pm*`?** The fill also moves November 2025 `pm*` and December prior-month VA. The required triple is 11-07 VA / 11-10 `pd*` / that week’s `pw*`. Add `pm*` or not?
 7. **Q7 — Re-run the quality report on the 46-segment plan before the pilot?** The attached report is pre-patch (40/37). Drift result should still hold; hole A/B/D/E should now be gone. Farm ops, not a code PR — confirm it is a hard gate.
 8. **Q8 — Launch schema: stitch plan *instead of* `tick_paths`, or in addition?** `dataset_has_tick_paths` and `product_tick_family_preflight` ignore every other key, so a stitch plan alone is refused today, and a leftover `tick_paths` list is opened and content-hashed inside `compute_levels`. The worker invariant is already locked (§2, §5 TS5): expanded cells do not carry farm CSV paths. The open choice is the validator shape only — omit `tick_paths` and treat `tick_stitch_plan` as the tick input, or keep a non-path token. TS5 implements that choice; it does not leave farm paths on the cell “until Q8 is answered.”
+9. **Q9 — X1 burst include?** Operator decision (Accumu). The impact test reports ticks-only, fill-without-burst, and fill-with-burst (2025-11-07 `VAH`/`VAL`/`POC`, plus downstream `pdPOC` / `pVA` / `pwVA` deltas). Accumu sets `x1_burst_included` from that report before the tick packet is frozen. Until then the key has no silent default; the validator rejects a missing value.
 
 ---
 
