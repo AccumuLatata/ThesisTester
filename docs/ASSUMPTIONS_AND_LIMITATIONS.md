@@ -492,7 +492,9 @@ This engine is for **research screening**, not proof of a durable edge.
   `LEVEL_ENGINE_VERSION` stays 11. Allowed intervals excuse a hole when
   every whole empty 15s volume bar in it lies inside an allowed interval
   (Accumu option A, 2026-10-06). The fail rule for holes outside allowed
-  intervals and 11-28 `[02:00, 13:30)` strictness are unchanged.
+  intervals and 11-28 `[02:00, 13:30)` strictness are unchanged. The
+  locked allowlist also holds 14 farm-QC single empty 15s volume bars
+  (TS5c; Accumu QC gate option A, 2026-10-06).
 
 ### 5e) Previous 30m VWAP (`prev30mVWAP`) is opt-in (Phase 1)
 

@@ -63,10 +63,84 @@ HOURLY_HOLE_TOLERANCE: Final[pd.Timedelta] = pd.Timedelta(seconds=5)
 # have no 15s bars, so the per-hour predicates never run. Inter-file
 # weekends listed in stitch meta (4) are not invented here — stitch meta
 # is not in the repo. Callers pass them as ``allowed_intervals``.
+# 11-28 CME outage stays [02:00, 13:30). The 14 single-bar windows are
+# the §8 step-3 farm QC unexpected empty 15s volume bars (Accumu QC
+# gate option A, 2026-10-06). Each is [bar_ts, bar_ts+15s) UTC.
 _ALLOWLIST_UTC: Final[tuple[tuple[pd.Timestamp, pd.Timestamp], ...]] = (
     (
         pd.Timestamp("2025-11-28 02:00:00", tz="UTC"),
         pd.Timestamp("2025-11-28 13:30:00", tz="UTC"),
+    ),
+    # 2025-11-07 16:33:15, bar-assignment mismatch (214 lots)
+    (
+        pd.Timestamp("2025-11-07 16:33:15", tz="UTC"),
+        pd.Timestamp("2025-11-07 16:33:30", tz="UTC"),
+    ),
+    # 2025-11-07 16:39:30, bar-assignment mismatch (43)
+    (
+        pd.Timestamp("2025-11-07 16:39:30", tz="UTC"),
+        pd.Timestamp("2025-11-07 16:39:45", tz="UTC"),
+    ),
+    # 2025-12-24 06:40:45, bar-assignment mismatch (3)
+    (
+        pd.Timestamp("2025-12-24 06:40:45", tz="UTC"),
+        pd.Timestamp("2025-12-24 06:41:00", tz="UTC"),
+    ),
+    # 2025-12-24 06:41:30, bar-assignment mismatch (5)
+    (
+        pd.Timestamp("2025-12-24 06:41:30", tz="UTC"),
+        pd.Timestamp("2025-12-24 06:41:45", tz="UTC"),
+    ),
+    # 2025-12-24 07:55:00, bar-assignment mismatch (1)
+    (
+        pd.Timestamp("2025-12-24 07:55:00", tz="UTC"),
+        pd.Timestamp("2025-12-24 07:55:15", tz="UTC"),
+    ),
+    # 2025-12-24 11:02:30, bar-assignment mismatch (2)
+    (
+        pd.Timestamp("2025-12-24 11:02:30", tz="UTC"),
+        pd.Timestamp("2025-12-24 11:02:45", tz="UTC"),
+    ),
+    # 2025-12-24 11:56:00, bar-assignment mismatch (1)
+    (
+        pd.Timestamp("2025-12-24 11:56:00", tz="UTC"),
+        pd.Timestamp("2025-12-24 11:56:15", tz="UTC"),
+    ),
+    # 2025-12-26 06:49:45, bar-assignment mismatch (1)
+    (
+        pd.Timestamp("2025-12-26 06:49:45", tz="UTC"),
+        pd.Timestamp("2025-12-26 06:50:00", tz="UTC"),
+    ),
+    # 2025-12-26 09:46:30, bar-assignment mismatch (11)
+    (
+        pd.Timestamp("2025-12-26 09:46:30", tz="UTC"),
+        pd.Timestamp("2025-12-26 09:46:45", tz="UTC"),
+    ),
+    # 2025-12-26 11:23:15, bar-assignment mismatch (1)
+    (
+        pd.Timestamp("2025-12-26 11:23:15", tz="UTC"),
+        pd.Timestamp("2025-12-26 11:23:30", tz="UTC"),
+    ),
+    # 2026-01-23 03:53:15, bar-assignment mismatch (2)
+    (
+        pd.Timestamp("2026-01-23 03:53:15", tz="UTC"),
+        pd.Timestamp("2026-01-23 03:53:30", tz="UTC"),
+    ),
+    # 2026-03-24 17:55:30, tick freeze (44.5 s tick gap mid-US session, 547 lots)
+    (
+        pd.Timestamp("2026-03-24 17:55:30", tz="UTC"),
+        pd.Timestamp("2026-03-24 17:55:45", tz="UTC"),
+    ),
+    # 2026-04-16 20:39:15, bar-assignment mismatch (49)
+    (
+        pd.Timestamp("2026-04-16 20:39:15", tz="UTC"),
+        pd.Timestamp("2026-04-16 20:39:30", tz="UTC"),
+    ),
+    # 2026-04-16 20:46:15, dual-feed outage (both feeds out 20:44–22:36;
+    # ticks stamped 20:47:11.877, which has no 15s bar; 1,511 lots)
+    (
+        pd.Timestamp("2026-04-16 20:46:15", tz="UTC"),
+        pd.Timestamp("2026-04-16 20:46:30", tz="UTC"),
     ),
 )
 _REQUIRED_SEGMENT_FIELDS: Final[tuple[str, ...]] = (
@@ -390,12 +464,13 @@ def guard_hourly_tick_holes(
     ``allowed_intervals`` is the §5 TS3 (4) hook: extra half-open UTC
     ``(start, end)`` pairs supplied by the caller (stitch-meta inter-file
     weekends). This function does not invent those dates. They merge with
-    the locked 11-28 interval. Accumu option A (2026-10-06): a hole is
-    excused when every whole empty 15s volume bar ``[t, t+15s)`` in it
-    lies inside an allowed interval. A hole with no whole empty bar
-    already passes under the TS3 containment rule. The fail rule for
-    holes outside allowed intervals is unchanged; 11-28 stays
-    ``[02:00, 13:30)`` (a whole empty bar after 13:30 still fails).
+    the locked allowlist (11-28 plus 14 QC single-bar intervals). Accumu
+    option A (2026-10-06): a hole is excused when every whole empty 15s
+    volume bar ``[t, t+15s)`` in it lies inside an allowed interval. A
+    hole with no whole empty bar already passes under the TS3 containment
+    rule. The fail rule for holes outside allowed intervals is unchanged;
+    11-28 stays ``[02:00, 13:30)`` (a whole empty bar after 13:30 still
+    fails).
     """
     if "timestamp" not in bars.columns or "volume" not in bars.columns:
         raise TickStitchError("guard_hourly_tick_holes requires bars timestamp and volume.")
@@ -467,7 +542,7 @@ def hourly_guard_allowed_intervals(
     *,
     session_date: date | None = None,
 ) -> tuple[tuple[pd.Timestamp, pd.Timestamp], ...]:
-    """11-28 locked interval plus burst-off allowlist only when burst is off."""
+    """Locked allowlist (11-28 plus 14 QC bars) plus burst-off when burst is off."""
     intervals: list[tuple[pd.Timestamp, pd.Timestamp]] = list(_ALLOWLIST_UTC)
     if not tick_stitch_x1_burst_included:
         intervals.extend(x1_burst_guard_allowed_intervals(False, session_date=session_date))
@@ -557,9 +632,10 @@ def build_stitch_parent_tables(
 
     Parent RAM: one session of ticks + the current histogram + A-period
     scalars. Workers never see farm CSV paths. Burst-off still uses the
-    locked 11-28 allowlist plus ``x1_burst_guard_allowed_intervals``.
-    Allowed intervals excuse a hole when every whole empty 15s volume
-    bar in it lies inside an allowed interval (Accumu option A).
+    locked allowlist (11-28 plus 14 QC bars) plus
+    ``x1_burst_guard_allowed_intervals``. Allowed intervals excuse a hole
+    when every whole empty 15s volume bar in it lies inside an allowed
+    interval (Accumu option A).
     """
     if type(tick_stitch_x1_burst_included) is not bool:
         raise TickStitchError(
@@ -854,7 +930,7 @@ def _as_utc_us_series(values: pd.Series) -> pd.Series:
 def _normalize_allowlist(
     extra: Sequence[tuple[object, object]] | None,
 ) -> tuple[tuple[pd.Timestamp, pd.Timestamp], ...]:
-    """Locked 11-28 interval plus caller-supplied §5 TS3 (4) pairs."""
+    """Locked 11-28 plus 14 QC single-bar intervals, and caller §5 TS3 (4) pairs."""
     intervals: list[tuple[pd.Timestamp, pd.Timestamp]] = list(_ALLOWLIST_UTC)
     if extra:
         for index, item in enumerate(extra):
