@@ -361,8 +361,10 @@ def guard_hourly_tick_holes(
 
     Mid-hour: a tick gap ≥5s fails only when it fully contains at least
     one 15s volume bar ``[t, t+15s)`` (no clipped tick inside that bar).
-    A 15s-spaced residual fill at ``bar_ts + 7.5s`` does not trip this.
-    Head-of-hour and cut-short stay left-edge offset checks.
+    Head-of-hour (Accumu option A, 2026-10-06): same containment rule on
+    the stretch from the first volume-bar left edge to the first clipped
+    tick. A ``bar_ts + 7.5s`` fill does not trip head or mid-hour.
+    Cut-short stays a left-edge offset check.
 
     ``allowed_intervals`` is the §5 TS3 (4) hook: extra half-open UTC
     ``(start, end)`` pairs supplied by the caller (stitch-meta inter-file
@@ -617,11 +619,19 @@ def _guard_one_hour(
         first_vol = pd.Timestamp(vol_bars["timestamp"].iloc[0])
         first_tick = pd.Timestamp(hour_ticks.min())
         if first_tick - first_vol >= HOURLY_HOLE_TOLERANCE:
-            if not _interval_allowlisted(first_vol, first_tick, allowed):
+            # Same containment as mid-hour, but the stretch includes the
+            # first volume-bar left edge: [t, t+15s) ⊆ [first_vol, first_tick).
+            head_spanning = vol_bars.loc[
+                (vol_bars["timestamp"] >= first_vol)
+                & (vol_bars["timestamp"] + _BAR_INTERVAL <= first_tick)
+            ]
+            if not head_spanning.empty and not _interval_allowlisted(
+                first_vol, first_tick, allowed
+            ):
                 raise TickStitchError(
                     f"Hour {hour.isoformat()} has a head-of-hour hole: first tick "
-                    f"{first_tick.isoformat()} is ≥5s after first 15s bar with volume "
-                    f"{first_vol.isoformat()}."
+                    f"{first_tick.isoformat()} is after a whole 15s volume bar "
+                    f"starting {first_vol.isoformat()} with no tick."
                 )
     ordered = hour_ticks.sort_values().reset_index(drop=True)
     if len(ordered) < 2:

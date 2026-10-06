@@ -64,8 +64,9 @@ def test_cut_short_hour_fails():
 
 
 def test_head_of_hour_hole_fails():
-    ticks = _ticks("2026-03-17 14:00:05", "2026-03-17 14:59:45")
+    """First whole volume bar of the hour has no tick (Accumu option A)."""
     bars = _bars("2026-03-17 14:00:00", "2026-03-17 14:59:45")
+    ticks = _dense_ticks("2026-03-17 14:00:15", "2026-03-17 14:59:59")
     clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
     with pytest.raises(TickStitchError, match="head-of-hour"):
         guard_hourly_tick_holes(clipped, bars)
@@ -113,25 +114,21 @@ def test_volume_bar_with_no_tick_fails_mid_hour():
         guard_hourly_tick_holes(clipped, bars)
 
 
-def test_filled_hour_one_print_per_bar_at_7_5s_passes():
-    bars = _bars("2026-03-17 14:00:00", "2026-03-17 14:59:45")
-    fill = pd.DataFrame(
+def test_filled_x1_style_1800_hour_one_print_per_bar_at_7_5s_passes():
+    bars = _bars("2025-11-07 18:00:00", "2025-11-07 18:59:45")
+    ticks = pd.DataFrame(
         {
             "timestamp": bars["timestamp"] + pd.Timedelta(milliseconds=7500),
             "price": [100.0] * len(bars),
             "volume": [1.0] * len(bars),
         }
     )
-    # Unchanged head-of-hour is left-edge +5s (TS3 test). A +7.5s-only hour
-    # fails that rule; TS4 still requires the filled hour to pass mid-hour.
-    head = _ticks("2026-03-17 14:00:00")
-    ticks = pd.concat([head, fill], ignore_index=True)
     clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
-    assert len(clipped) == len(bars) + 1
+    assert len(clipped) == len(bars)
     guard_hourly_tick_holes(clipped, bars)
 
 
-def test_filled_hour_plus_7_5s_only_trips_unchanged_head_not_mid_hour():
+def test_filled_hour_plus_7_5s_only_passes_whole_guard():
     bars = _bars("2026-03-17 14:00:00", "2026-03-17 14:59:45")
     ticks = pd.DataFrame(
         {
@@ -141,9 +138,7 @@ def test_filled_hour_plus_7_5s_only_trips_unchanged_head_not_mid_hour():
         }
     )
     clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
-    with pytest.raises(TickStitchError, match="head-of-hour") as excinfo:
-        guard_hourly_tick_holes(clipped, bars)
-    assert "mid-hour" not in str(excinfo.value)
+    guard_hourly_tick_holes(clipped, bars)
 
 
 def test_1128_allowlisted_hole_does_not_fail():
@@ -196,7 +191,7 @@ def test_1128_healthy_resume_after_1330_passes():
 
 def test_1128_head_of_hour_after_1330_still_fails():
     bars = _bars("2025-11-28 13:30:00", "2025-11-28 13:59:45")
-    ticks = _dense_ticks("2025-11-28 13:30:05", "2025-11-28 13:59:59")
+    ticks = _dense_ticks("2025-11-28 13:30:15", "2025-11-28 13:59:59")
     clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
     with pytest.raises(TickStitchError, match="head-of-hour"):
         guard_hourly_tick_holes(clipped, bars)
