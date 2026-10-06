@@ -1,8 +1,10 @@
-"""Tick-stitch plan schema and offline verify (TS1).
+"""Tick-stitch plan schema, offline verify (TS1), and session stream (TS2).
 
 Parse an ordered, non-overlapping segment plan and fail closed against a
-directory of Quantower Tick–Tick–Last CSVs. This is **not** an ingest path:
-``load_ohlcv``, ``iter_tick_files``, and study execute do not call it.
+directory of Quantower Tick–Tick–Last CSVs. ``iter_stitch_sessions`` is a
+sibling of ``iter_tick_files``, not a monkey-patch. This is **not** an
+ingest path: ``load_ohlcv``, ``iter_tick_files``, and study execute do not
+call it.
 
 Header contract is the tick loader's (semicolon, ``utf-8-sig``, alias, then
 ``_require_tick_columns`` / ``_REQUIRED_TICK_COLUMNS``). The timestamp-column
@@ -24,8 +26,10 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections import Counter
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, Final
 
@@ -34,15 +38,22 @@ from pandas.errors import EmptyDataError, ParserError
 
 from thesistester.data.loader import DataValidationError
 from thesistester.data.quantower_ticks import (
+    TickChunk,
     TickIngestError,
     _REQUIRED_TICK_COLUMNS,
+    _aliased_column_name,
+    _build_chunk,
+    _instrument,
     _is_timestamp_header,
     _localize_utc,
     _read_tick_csv,
     _require_tick_columns,
+    _session_end_utc,
+    _unused_empty_column,
 )
 
 _SEEK_TAIL_BYTES: Final[int] = 1024 * 1024
+_STREAM_CHUNKSIZE: Final[int] = 100_000
 _REQUIRED_SEGMENT_FIELDS: Final[tuple[str, ...]] = (
     "filename",
     "size_bytes",
@@ -169,17 +180,7 @@ def verify_tick_stitch_plan(
     ``root`` is an operator argument (local NVMe copies). It is never a
     hardcoded home directory. Same basename may appear more than once.
     """
-    if isinstance(plan, (str, Path)):
-        segments = load_tick_stitch_plan(plan)
-    else:
-        # Materialize first. A generator would be consumed by the type check
-        # and then verify zero segments — fail-open.
-        items = list(plan)
-        if items and all(isinstance(item, TickStitchSegment) for item in items):
-            segments = tuple(items)
-        else:
-            segments = parse_tick_stitch_plan(items)
-
+    segments = _coerce_segments(plan)
     root_dir = Path(root).expanduser()
     if not root_dir.is_dir():
         raise TickStitchError(f"Tick stitch root is not a directory: {root_dir}")
@@ -241,6 +242,77 @@ def verify_tick_stitch_plan(
     )
 
 
+def iter_stitch_sessions(
+    plan: str | Path | Sequence[Mapping[str, Any]] | Sequence[TickStitchSegment],
+    root: str | Path,
+    *,
+    instrument: str = "MNQ",
+) -> Iterator[TickChunk]:
+    """Yield CME session chunks from a stitch plan. Nobody calls this yet (TS2).
+
+    Walk segments in plan order. Consecutive same-filename windows share one
+    chunked ``pd.read_csv``. Inclusive trim: keep
+    ``effective_first <= timestamp <= effective_last``. Session dates use
+    ``trading_session_date`` / ``_session_end_utc`` (not UTC midnight).
+    Same-ms prints and ``Aggressor=None`` with ``volume > 0`` are kept;
+    ``volume <= 0`` is dropped. Does not call ``_file_sha256``,
+    ``_peek_tick_file``, or ``compute_tick_source_id``. Parse failures on
+    the yield path raise ``TickStitchError`` (not a bare ``TickIngestError``).
+    Missing basenames fail closed before the first yield.
+    """
+    # Lazy: session_date → levels/__init__ → this package via apoc_tick.
+    from thesistester.levels.session_date import trading_session_date
+
+    segments = _coerce_segments(plan)
+    root_dir = Path(root).expanduser()
+    if not root_dir.is_dir():
+        raise TickStitchError(f"Tick stitch root is not a directory: {root_dir}")
+    inst = _instrument(instrument)
+    _preflight_stitch_files(root_dir, segments)
+
+    open_parts: dict[date, list[pd.DataFrame]] = {}
+    open_paths: dict[date, list[str]] = {}
+
+    def flush_ready(next_ts: pd.Timestamp | None) -> Iterator[TickChunk]:
+        ready = [
+            session
+            for session in list(open_parts)
+            if next_ts is None or next_ts >= _session_end_utc(session, inst)
+        ]
+        for session in sorted(ready):
+            yield _build_chunk(
+                session,
+                parts=open_parts.pop(session),
+                source_paths=tuple(dict.fromkeys(open_paths.pop(session))),
+                filename_window_mismatch=False,
+                warnings=(),
+                filename_window_start=None,
+                filename_window_end=None,
+            )
+
+    for run in _consecutive_filename_runs(segments):
+        path = root_dir / run[0].filename
+        _check_header_contract(path)
+        for kept in _iter_trimmed_chunks(path, run):
+            local_ts = kept["timestamp"].dt.tz_convert(inst.exchange_tz)
+            kept = kept.copy()
+            kept["_session_date"] = trading_session_date(local_ts, inst.eth_start)
+            for session_key, part in kept.groupby(kept["_session_date"], sort=False):
+                session = (
+                    session_key
+                    if isinstance(session_key, date)
+                    else pd.Timestamp(session_key).date()
+                )
+                first_ts = pd.Timestamp(part["timestamp"].iloc[0])
+                yield from flush_ready(first_ts)
+                open_parts.setdefault(session, []).append(
+                    part[["timestamp", "price", "volume"]].reset_index(drop=True)
+                )
+                open_paths.setdefault(session, []).append(str(path))
+
+    yield from flush_ready(None)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """``python -m thesistester.data.tick_stitch verify PLAN ROOT``."""
     parser = argparse.ArgumentParser(prog="python -m thesistester.data.tick_stitch")
@@ -262,6 +334,116 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"{result.unique_bytes} unique byte(s)."
     )
     return os.EX_OK
+
+
+def _coerce_segments(
+    plan: str | Path | Sequence[Mapping[str, Any]] | Sequence[TickStitchSegment],
+) -> tuple[TickStitchSegment, ...]:
+    if isinstance(plan, (str, Path)):
+        return load_tick_stitch_plan(plan)
+    # Materialize first. A generator would be consumed by the type check
+    # and then verify zero segments — fail-open.
+    items = list(plan)
+    if items and all(isinstance(item, TickStitchSegment) for item in items):
+        return tuple(items)
+    return parse_tick_stitch_plan(items)
+
+
+def _preflight_stitch_files(root_dir: Path, segments: Sequence[TickStitchSegment]) -> None:
+    """Fail closed on a missing basename before any session is yielded."""
+    seen: set[str] = set()
+    for segment in segments:
+        if segment.filename in seen:
+            continue
+        seen.add(segment.filename)
+        path = root_dir / segment.filename
+        if not path.is_file():
+            raise TickStitchError(f"Tick file does not exist: {path}")
+
+
+def _consecutive_filename_runs(
+    segments: Sequence[TickStitchSegment],
+) -> Iterator[tuple[TickStitchSegment, ...]]:
+    index = 0
+    while index < len(segments):
+        end = index + 1
+        while end < len(segments) and segments[end].filename == segments[index].filename:
+            end += 1
+        yield tuple(segments[index:end])
+        index = end
+
+
+def _normalize_tick_chunk(raw: pd.DataFrame, path: Path) -> pd.DataFrame:
+    keep = [column for column in raw.columns if not _unused_empty_column(column, raw[column])]
+    raw = raw.loc[:, keep]
+    columns = [_aliased_column_name(column) for column in raw.columns]
+    raw.columns = columns
+    duplicates = sorted(name for name, count in Counter(raw.columns).items() if count > 1)
+    if duplicates:
+        raise TickStitchError(
+            f"Duplicate columns after alias normalization: {duplicates} in {path}"
+        )
+    try:
+        _require_tick_columns(raw, path)
+    except TickIngestError as exc:
+        raise TickStitchError(str(exc)) from exc
+    return raw
+
+
+def _iter_trimmed_chunks(
+    path: Path,
+    run: Sequence[TickStitchSegment],
+) -> Iterator[pd.DataFrame]:
+    windows = [(segment.effective_first_utc, segment.effective_last_utc) for segment in run]
+    # Latest effective_last in this run. Plan order is time order (§4.3), so
+    # this equals windows[-1][1]; max is the stop condition either way.
+    last_end = max(last for _, last in windows)
+    try:
+        reader = pd.read_csv(
+            path,
+            sep=";",
+            dtype=str,
+            encoding="utf-8-sig",
+            chunksize=_STREAM_CHUNKSIZE,
+        )
+    except (OSError, EmptyDataError, ParserError, ValueError) as exc:
+        raise TickStitchError(f"Unable to read tick file {path}: {exc}") from exc
+    try:
+        for raw in reader:
+            if raw.empty:
+                continue
+            chunk = _normalize_tick_chunk(raw, path)
+            try:
+                stamps = _localize_utc(chunk["timestamp"], source_tz="UTC", path=path)
+            except TickIngestError as exc:
+                raise TickStitchError(str(exc)) from exc
+            stamps = stamps.dt.tz_convert("UTC").dt.floor("us")
+            if stamps.min() > last_end:
+                break
+            prices = pd.to_numeric(chunk["price"], errors="coerce")
+            volumes = pd.to_numeric(chunk["volume"], errors="coerce")
+            usable = prices.notna() & volumes.notna() & (volumes > 0)
+            in_window = pd.Series(False, index=chunk.index)
+            for first, last in windows:
+                in_window = in_window | ((stamps >= first) & (stamps <= last))
+            keep = usable & in_window
+            if not keep.any():
+                continue
+            yield pd.DataFrame(
+                {
+                    "timestamp": stamps.loc[keep].reset_index(drop=True),
+                    "price": prices.loc[keep].to_numpy(dtype="float64"),
+                    "volume": volumes.loc[keep].to_numpy(dtype="float64"),
+                }
+            )
+    except TickStitchError:
+        raise
+    except (OSError, EmptyDataError, ParserError, ValueError) as exc:
+        raise TickStitchError(f"Unable to read tick file {path}: {exc}") from exc
+    finally:
+        close = getattr(reader, "close", None)
+        if callable(close):
+            close()
 
 
 def _utc_us(value: object, *, field: str) -> pd.Timestamp:
