@@ -1,4 +1,4 @@
-"""Tick-stitch plan schema, verify (TS1), session stream (TS2), clip/guard (TS3).
+"""Tick-stitch plan schema, verify (TS1), session stream (TS2), clip/guard (TS3), X1 fill hook (TS4).
 
 Parse an ordered, non-overlapping segment plan and fail closed against a
 directory of Quantower Tick–Tick–Last CSVs. ``iter_stitch_sessions`` is a
@@ -261,7 +261,9 @@ def iter_stitch_sessions(
     *,
     instrument: str = "MNQ",
 ) -> Iterator[TickChunk]:
-    """Yield CME session chunks from a stitch plan. Nobody calls this yet (TS2).
+    """Yield CME session chunks from a stitch plan.
+
+    Execute does not call this. TS4 ``farm-impact`` is a parent-only caller.
 
     Walk segments in plan order. Consecutive same-filename windows share one
     chunked ``pd.read_csv``. Inclusive trim: keep
@@ -399,6 +401,42 @@ def guard_hourly_tick_holes(
         hour_ts = _utc_us(hour, field="hour")
         hour_ticks = tick_stamps.loc[tick_hours == hour_ts] if len(tick_stamps) else tick_stamps
         _guard_one_hour(hour_ts, hour_ticks, hour_bars, allowed)
+
+
+def apply_x1_residual_fill(
+    ticks: pd.DataFrame,
+    bars: pd.DataFrame,
+    *,
+    tick_stitch_x1_burst_included: bool,
+    session_date: date,
+    tick_size: float,
+):
+    """TS4 hook for the TS5 reducer: clip → fill → guard. Lazy import.
+
+    ``tick_stitch_x1_burst_included`` has no silent default. Nobody in
+    execute calls this yet. Burst-off allowlist is
+    :func:`x1_burst_guard_allowed_intervals` (TS5 wires it into the guard).
+    """
+    from thesistester.levels.tick_x1_fill import fill_x1_15s_residual
+
+    return fill_x1_15s_residual(
+        ticks,
+        bars,
+        tick_stitch_x1_burst_included=tick_stitch_x1_burst_included,
+        session_date=session_date,
+        tick_size=tick_size,
+    )
+
+
+def x1_burst_guard_allowed_intervals(
+    tick_stitch_x1_burst_included: bool,
+    *,
+    session_date: date | None = None,
+):
+    """TS5 parent passes this into ``guard_hourly_tick_holes`` (Accumu option A)."""
+    from thesistester.levels.tick_x1_fill import x1_burst_guard_allowed_intervals as impl
+
+    return impl(tick_stitch_x1_burst_included, session_date=session_date)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

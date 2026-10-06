@@ -469,6 +469,26 @@ This engine is for **research screening**, not proof of a durable edge.
 - `compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces all six independent columns: four Single Print columns plus `APOC` and `pAPOC`.
 - Known limitations: default tick source requires matching Tick–Tick–Last files (refuse without them); not full-session POC; not Single Print-derived.
 
+### 5d2) Tick-stitch X1 15s residual fill (TS4 helper; not execute-wired)
+- `thesistester.levels.tick_x1_fill.fill_x1_15s_residual` fills only
+  `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)` UTC from 15s residual
+  typical-price Last×Volume (`profile._bucket_prices`, `bar_ts + 7.5s`).
+  The shared empty gap ~16:49–17:58 UTC is not filled. Bar `19:00:00` has
+  a left edge inside the window, but `+7.5s` is not, so it stays unfilled
+  (`fill timestamps lie only in [...)`).
+- `dataset.tick_stitch_x1_burst_included` is an explicit boolean argument
+  (no silent default). Q9 remains Accumu's call. The missing-key reject is
+  TS5/TS6, not this helper. Accumu option A (2026-10-06): burst-off
+  exposes exactly `[2025-11-07 18:00:45, 18:01:30)` UTC for the TS3
+  guard `allowed_intervals`; `x1_burst` stays `excluded`; TS5 wires it.
+- APOC A-period `[14:30, 15:00)` UTC on 2025-11-07 is outside the hole.
+  Synthetics are dropped before `select_a_period_rows`.
+- Quality record (not trade-frame columns): `x1_15s_residual_fill` is true
+  only for trade date 2025-11-07; `x1_burst_included` is the explicit
+  argument; `shared_gap_1649_1758` is true on 11-07 and is not filled.
+- Not called from `execute_study_cell` / `compute_levels` in TS4 (TS5
+  reducer). `LEVEL_ENGINE_VERSION` stays 11.
+
 ### 5e) Previous 30m VWAP (`prev30mVWAP`) is opt-in (Phase 1)
 
 - The Levels page and headless API enable `prev30mVWAP` in their built-in configuration. Direct `compute_all_levels` calls retain `prev30m_vwap_enabled=False` by default.
