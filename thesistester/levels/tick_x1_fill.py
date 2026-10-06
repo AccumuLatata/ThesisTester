@@ -494,9 +494,9 @@ def _residual_synthetics(
         return pd.DataFrame(columns=["timestamp", "price", "volume"])
     return pd.DataFrame(
         {
-            "timestamp": left[keep.to_numpy()] + X1_FILL_OFFSET,
+            "timestamp": left[keep] + X1_FILL_OFFSET,
             "price": price.loc[keep].to_numpy(dtype="float64"),
-            "volume": residual[keep.to_numpy()],
+            "volume": residual[keep],
         }
     ).reset_index(drop=True)
 

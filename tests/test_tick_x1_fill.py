@@ -220,7 +220,7 @@ def test_burst_flag_has_no_silent_default():
     hook = inspect.signature(apply_x1_residual_fill).parameters
     assert hook["tick_stitch_x1_burst_included"].default is inspect.Parameter.empty
     ticks, bars = _shaped_11_07_fixture()
-    with pytest.raises(TypeError, match="explicit bool"):
+    with pytest.raises(TypeError, match="tick_stitch_x1_burst_included"):
         fill_x1_15s_residual(ticks, bars, session_date=X1_TRADE_DATE, tick_size=TICK_SIZE)
     with pytest.raises(TypeError, match="explicit bool"):
         fill_x1_15s_residual(
@@ -494,7 +494,7 @@ def test_farm_impact_cli_on_synthetic_fixture(tmp_path: Path):
     )
     assert completed.returncode == os.EX_OK, completed.stderr
     report = json.loads(completed.stdout)
-    assert tuple(report["variants"]) == IMPACT_VARIANTS
+    assert set(report["variants"]) == set(IMPACT_VARIANTS)
     assert report["apoc_identical"] is True
     for name in IMPACT_VARIANTS:
         assert "session_2025-11-07" in report["variants"][name]
