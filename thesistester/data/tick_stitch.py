@@ -544,9 +544,7 @@ def _normalize_allowlist(
     if extra:
         for index, item in enumerate(extra):
             if not isinstance(item, (tuple, list)) or len(item) != 2:
-                raise TickStitchError(
-                    f"allowed_intervals[{index}] must be a (start, end) pair."
-                )
+                raise TickStitchError(f"allowed_intervals[{index}] must be a (start, end) pair.")
             start = _utc_us(item[0], field=f"allowed_intervals[{index}].start")
             end = _utc_us(item[1], field=f"allowed_intervals[{index}].end")
             if start >= end:
