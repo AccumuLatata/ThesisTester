@@ -281,7 +281,8 @@ def iter_stitch_sessions(
 ) -> Iterator[TickChunk]:
     """Yield CME session chunks from a stitch plan.
 
-    Execute does not call this. TS4 ``farm-impact`` is a parent-only caller.
+    TS5 parent ``build_stitch_parent_tables`` is the execute hook. Workers
+    never call this. TS4 ``farm-impact`` is also parent-only.
 
     Walk segments in plan order. Consecutive same-filename windows share one
     chunked ``pd.read_csv``. Inclusive trim: keep
@@ -353,7 +354,7 @@ def clip_ticks_to_15s_bars(
     """Drop ticks whose ``floor(ts, 15s)`` is not a present 15s bar.
 
     Left-closed, right-open (§4.4). Does not impute missing bars. Tests and
-    the future parent reducer call this; ``iter_stitch_sessions`` does not.
+    the TS5 parent reducer call this; ``iter_stitch_sessions`` does not.
     """
     if ticks.empty:
         return ticks.copy()
@@ -465,9 +466,7 @@ def hourly_guard_allowed_intervals(
     """11-28 locked interval plus burst-off allowlist only when burst is off."""
     intervals: list[tuple[pd.Timestamp, pd.Timestamp]] = list(_ALLOWLIST_UTC)
     if not tick_stitch_x1_burst_included:
-        intervals.extend(
-            x1_burst_guard_allowed_intervals(False, session_date=session_date)
-        )
+        intervals.extend(x1_burst_guard_allowed_intervals(False, session_date=session_date))
     return tuple(intervals)
 
 
@@ -570,6 +569,7 @@ def build_stitch_parent_tables(
         select_a_period_rows,
     )
     from thesistester.levels.apoc_tick import (
+        A_PERIOD_MINUTES,
         APOC_A_PERIOD_POLICY_ID,
         APeriodTickProfileTable,
     )
@@ -611,7 +611,7 @@ def build_stitch_parent_tables(
             session_date=chunk.session_date,
             tick_size=inst.tick_size,
         )
-        session_bars = bar_work.loc[bar_sessions.to_numpy() == chunk.session_date]
+        session_bars = bar_work.loc[bar_sessions.eq(chunk.session_date).to_numpy()]
         guard_hourly_tick_holes(
             filled,
             session_bars,
@@ -632,14 +632,14 @@ def build_stitch_parent_tables(
                 cleaned,
                 session_date=chunk.session_date,
                 exchange_tz=inst.exchange_tz,
+                rth_start=inst.rth_start,
+                period_minutes=A_PERIOD_MINUTES,
             )
             if selected.empty:
                 poc_by_session[chunk.session_date] = float("nan")
                 n_ticks_by_session[chunk.session_date] = 0
             else:
-                result = compute_tick_last_volume_profile(
-                    selected, tick_size=inst.tick_size
-                )
+                result = compute_tick_last_volume_profile(selected, tick_size=inst.tick_size)
                 poc_by_session[chunk.session_date] = float(result.poc)
                 n_ticks_by_session[chunk.session_date] = int(result.source_rows)
         except APOCProfileInputError:
@@ -701,9 +701,7 @@ def _canonical_plan_json_bytes(
             }
             for segment in segments
         ]
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
-        "utf-8"
-    )
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

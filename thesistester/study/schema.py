@@ -27,8 +27,8 @@ from thesistester.levels.catalog import (
 )
 from thesistester.levels.tick_requirements import (
     dataset_has_named_apoc_tick_input,
-    dataset_has_named_va_tick_input,
     dataset_has_tick_paths,
+    dataset_has_tick_stitch_plan,
     named_apoc_requires_ticks_message,
     named_rolling_poc_requires_ticks_message,
     named_va_requires_ticks_message,
@@ -285,7 +285,9 @@ def _require_ticks_for_named_va(
     tokens = named_prior_profile_tokens(_factor_level_tokens(factors))
     if not tokens:
         return
-    if dataset_has_named_va_tick_input(dataset):
+    # Stitch-absent: same as 0ebc1494 (tick_paths only). Do not accept a
+    # prior-profile parquet here — that key is injected after this gate.
+    if dataset_has_tick_paths(dataset) or dataset_has_tick_stitch_plan(dataset):
         return
     raise StudySpecError(named_va_requires_ticks_message(tokens, prefix="study.dataset.tick_paths"))
 

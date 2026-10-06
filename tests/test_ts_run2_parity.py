@@ -303,18 +303,10 @@ def test_stitch_absent_call_sentinels(tmp_path: Path, monkeypatch: pytest.Monkey
 
         return _inner
 
-    monkeypatch.setattr(
-        "thesistester.data.tick_stitch.verify_tick_stitch_plan", _boom("verify")
-    )
-    monkeypatch.setattr(
-        "thesistester.data.tick_stitch.iter_stitch_sessions", _boom("iter")
-    )
-    monkeypatch.setattr(
-        "thesistester.data.tick_stitch.apply_x1_residual_fill", _boom("x1_fill")
-    )
-    monkeypatch.setattr(
-        "thesistester.data.tick_stitch.guard_hourly_tick_holes", _boom("guard")
-    )
+    monkeypatch.setattr("thesistester.data.tick_stitch.verify_tick_stitch_plan", _boom("verify"))
+    monkeypatch.setattr("thesistester.data.tick_stitch.iter_stitch_sessions", _boom("iter"))
+    monkeypatch.setattr("thesistester.data.tick_stitch.apply_x1_residual_fill", _boom("x1_fill"))
+    monkeypatch.setattr("thesistester.data.tick_stitch.guard_hourly_tick_holes", _boom("guard"))
     monkeypatch.setattr(
         "thesistester.study.execute._prepare_study_tick_stitch", _boom("parent_prepare")
     )
@@ -368,8 +360,7 @@ def test_stitch_absent_call_sentinels(tmp_path: Path, monkeypatch: pytest.Monkey
 
     yaml_path = _mini_study_yaml(tmp_path / "study.yaml")
     (tmp_path / "bars.csv").write_text(
-        "timestamp,open,high,low,close,volume\n"
-        "2026-06-02 09:30:00,100,101,99,100,10\n",
+        "timestamp,open,high,low,close,volume\n2026-06-02 09:30:00,100,101,99,100,10\n",
         encoding="utf-8",
     )
     run_study(
@@ -383,9 +374,7 @@ def test_stitch_absent_call_sentinels(tmp_path: Path, monkeypatch: pytest.Monkey
 
 def test_stitch_absent_tick_paths_va_apoc_match_0ebc1494() -> None:
     bars = _two_session_bars()
-    result = compute_levels(
-        bars, instrument="ES", tick_paths=[FIXTURE_TICKS], config=_LEAN_LEVELS
-    )
+    result = compute_levels(bars, instrument="ES", tick_paths=[FIXTURE_TICKS], config=_LEAN_LEVELS)
     levels = result["levels"]
     settings = result["levels_settings"]
     apoc = [None if pd.isna(v) else round(float(v), 8) for v in levels[COL_APOC].tolist()]
@@ -451,6 +440,14 @@ def test_schema_rejects_stitch_plan_without_burst_flag() -> None:
         validate_study_spec(normalize_study_spec(raw))
 
 
+def test_named_va_prior_profile_table_without_ticks_or_stitch_still_refuses() -> None:
+    """Stitch-absent schema named-VA gate stays tick_paths-only (0ebc1494)."""
+    raw = _minimal_study(prior_profile_table_path="results/prior.parquet")
+    raw["study"]["factors"]["core_level"] = ["pdPOC"]
+    with pytest.raises(StudySpecError, match="VA requires ticks"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
 def test_validate_run_spec_accepts_new_dataset_keys_and_rejects_unknown(tmp_path: Path) -> None:
     _write_two_session_bars_csv(tmp_path / "bars.csv")
     spec = _lean_run_spec(
@@ -475,9 +472,7 @@ def test_compute_levels_forwards_apoc_tick_source_id_without_hashing(
     def _forbid(*_args, **_kwargs):
         raise AssertionError("compute_apoc_tick_source_id must not run")
 
-    monkeypatch.setattr(
-        "thesistester.levels.apoc_tick.compute_apoc_tick_source_id", _forbid
-    )
+    monkeypatch.setattr("thesistester.levels.apoc_tick.compute_apoc_tick_source_id", _forbid)
     table = APeriodTickProfileTable(
         poc_by_session={date(2026, 6, 2): 100.25},
         n_ticks_by_session={date(2026, 6, 2): 3},
@@ -766,6 +761,83 @@ def test_parent_prepare_injects_ids_and_strips_tick_paths(tmp_path: Path) -> Non
     assert dataset["apoc_tick_source_id"]
     assert dataset["tick_source_id"] != TICK_SOURCE_NONE
     assert run["_tick_stitch_data_quality"]["data_quality.x1_burst_included"] is True
+
+
+def test_parent_prepare_does_not_persist_quality_on_experiment_yaml(tmp_path: Path) -> None:
+    """Private task key must not enter experiment.yaml (_RUN_KEYS closed)."""
+    import yaml
+
+    from thesistester.study.execute import (
+        _STITCH_DATA_QUALITY_KEY,
+        _detach_stitch_quality,
+        _reattach_stitch_quality,
+    )
+    from thesistester.study.expand import write_expansion_artifacts
+
+    rows = [
+        ("2026-01-15 10:00:00.000", 100.0, 1.0),
+        ("2026-01-15 10:00:01.000", 101.0, 1.0),
+    ]
+    tick = _write_tick_csv(tmp_path / "early.csv", rows)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(__import__("json").dumps(_plan_for(tick, rows)), encoding="utf-8")
+    _canonical_15s(tmp_path / "bars.csv", ["2026-01-15 10:00:00"])
+    spec = _minimal_study(
+        path=str(tmp_path / "bars.csv"),
+        instrument="MNQ",
+        format_profile="canonical",
+        source_timezone="UTC",
+        tick_stitch_plan=str(plan_path),
+        tick_stitch_x1_burst_included=True,
+    )
+    spec["study"]["levels"]["poc_windows"] = []
+    expansion = expand_study(spec, source_spec_parent=tmp_path)
+    _prepare_study_tick_stitch(
+        spec, expansion, output_dir=tmp_path / "out", base_directory=tmp_path
+    )
+    assert expansion.experiment["runs"][0][_STITCH_DATA_QUALITY_KEY]
+    held = _detach_stitch_quality(expansion)
+    try:
+        write_expansion_artifacts(
+            tmp_path / "out",
+            normalized_spec=spec,
+            expansion=expansion,
+            source_spec_parent=tmp_path,
+        )
+    finally:
+        _reattach_stitch_quality(expansion, held)
+    experiment = yaml.safe_load((tmp_path / "out" / "experiment.yaml").read_text(encoding="utf-8"))
+    for run in experiment["runs"]:
+        assert _STITCH_DATA_QUALITY_KEY not in run
+        validate_run_spec(run)
+    assert _STITCH_DATA_QUALITY_KEY in expansion.experiment["runs"][0]
+
+
+def test_apoc_parquet_roundtrip_accepts_timestamp_session_date(tmp_path: Path) -> None:
+    from thesistester.api import apoc_tick_table_from_parquet, apoc_tick_table_to_parquet
+
+    table = APeriodTickProfileTable(
+        poc_by_session={date(2026, 6, 2): 100.25},
+        n_ticks_by_session={date(2026, 6, 2): 3},
+        source_id="roundtrip",
+    )
+    path = tmp_path / "apoc.parquet"
+    apoc_tick_table_to_parquet(table, path)
+    loaded = apoc_tick_table_from_parquet(path)
+    assert loaded.poc_for(date(2026, 6, 2)) == 100.25
+    assert loaded.source_id == "roundtrip"
+    widened = pd.DataFrame(
+        {
+            "session_date": [pd.Timestamp("2026-06-02", tz="UTC")],
+            "poc": [100.25],
+            "n_ticks": [3],
+            "source_id": ["roundtrip"],
+        }
+    )
+    wide_path = tmp_path / "apoc_ts.parquet"
+    widened.to_parquet(wide_path, index=False)
+    loaded_wide = apoc_tick_table_from_parquet(wide_path)
+    assert loaded_wide.poc_for(date(2026, 6, 2)) == 100.25
 
 
 def test_normalized_levels_hash_has_no_new_always_on_keys() -> None:

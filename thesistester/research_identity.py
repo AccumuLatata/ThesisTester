@@ -30,6 +30,10 @@ from thesistester.levels.rolling_poc_tick import (
     ROLLING_POC_PROFILE_SOURCES,
     attach_rolling_poc_identity,
 )
+from thesistester.levels.tick_requirements import (
+    dataset_has_apoc_tick_table,
+    dataset_has_tick_stitch_plan,
+)
 from thesistester.levels.tick_vap import (
     LEVELS_TICK_IDENTITY_KEYS,
     TICK_SOURCE_NONE,
@@ -113,7 +117,7 @@ def _dataset_tick_paths(dataset: Mapping[str, Any] | None) -> list[str | Path] |
     """
     if not dataset:
         return None
-    if dataset.get("tick_stitch_plan") or dataset.get("apoc_tick_table_path"):
+    if dataset_has_tick_stitch_plan(dataset) or dataset_has_apoc_tick_table(dataset):
         return None
     paths = dataset.get("tick_paths")
     if isinstance(paths, list) and any(str(item).strip() for item in paths):
@@ -128,7 +132,7 @@ def _tick_source_id_from_dataset(dataset: Mapping[str, Any] | None) -> str:
     explicit = dataset.get("tick_source_id")
     if isinstance(explicit, str) and explicit.strip():
         return explicit
-    if dataset.get("tick_stitch_plan") or dataset.get("apoc_tick_table_path"):
+    if dataset_has_tick_stitch_plan(dataset) or dataset_has_apoc_tick_table(dataset):
         # Stitch-on identity is the parent stamp; do not hash farm paths.
         return TICK_SOURCE_NONE
     paths = dataset.get("tick_paths")

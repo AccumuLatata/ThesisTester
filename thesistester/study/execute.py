@@ -781,9 +781,7 @@ def _prepare_study_tick_stitch(
     day_bins = int(levels["prior_day_profile_aggregation_ticks"])
     week_bins = int(levels["prior_week_profile_aggregation_ticks"])
     month_bins = int(levels["prior_month_profile_aggregation_ticks"])
-    stitch_id = compute_tick_stitch_source_id(
-        plan_path, root, tick_stitch_x1_burst_included=burst
-    )
+    stitch_id = compute_tick_stitch_source_id(plan_path, root, tick_stitch_x1_burst_included=burst)
     prior_parquet = output_dir / STUDY_PRIOR_PROFILE_PARQUET
     apoc_parquet = output_dir / STUDY_APOC_TICK_PARQUET
     cache_path = output_dir / STUDY_TICK_STITCH_CACHE
@@ -802,7 +800,7 @@ def _prepare_study_tick_stitch(
         apoc_id = str(cached["apoc_tick_source_id"])
         quality = dict(cached.get("data_quality") or {})
     else:
-        instrument = str(dataset.get("instrument") or "MNQ")
+        instrument = str(dataset.get("instrument") or "ES")
         format_profile = str(dataset.get("format_profile") or "canonical")
         source_tz = str(dataset.get("source_timezone") or "UTC")
         bars = load_ohlcv(
@@ -848,6 +846,23 @@ def _prepare_study_tick_stitch(
         run_ds["tick_source_id"] = stitch_id
         run_ds["apoc_tick_source_id"] = apoc_id
         run["dataset"] = run_ds
+        run[_STITCH_DATA_QUALITY_KEY] = quality
+
+
+def _detach_stitch_quality(expansion: ExpansionResult) -> list[tuple[dict[str, Any], Any]]:
+    """Remove the task-only quality payload so experiment.yaml stays a RunSpec."""
+    held: list[tuple[dict[str, Any], Any]] = []
+    for run in expansion.experiment.get("runs") or []:
+        if isinstance(run, dict) and _STITCH_DATA_QUALITY_KEY in run:
+            held.append((run, run.pop(_STITCH_DATA_QUALITY_KEY)))
+    return held
+
+
+def _reattach_stitch_quality(
+    expansion: ExpansionResult,
+    held: list[tuple[dict[str, Any], Any]],
+) -> None:
+    for run, quality in held:
         run[_STITCH_DATA_QUALITY_KEY] = quality
 
 
@@ -1537,12 +1552,17 @@ def run_study(
                 output_dir=out,
                 base_directory=Path(base_directory),
             )
-        write_expansion_artifacts(
-            out,
-            normalized_spec=spec,
-            expansion=expansion,
-            source_spec_parent=base_directory,
-        )
+        # Private task-only key must not land in experiment.yaml (_RUN_KEYS).
+        held_quality = _detach_stitch_quality(expansion)
+        try:
+            write_expansion_artifacts(
+                out,
+                normalized_spec=spec,
+                expansion=expansion,
+                source_spec_parent=base_directory,
+            )
+        finally:
+            _reattach_stitch_quality(expansion, held_quality)
 
         ledger = _init_study_ledger(existing, expansion, run_names, force=force)
         if confirm:

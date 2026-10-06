@@ -86,9 +86,11 @@ from thesistester.levels.rolling_poc_tick import (
     attach_rolling_poc_identity,
 )
 from thesistester.levels.tick_requirements import (
+    dataset_has_apoc_tick_table,
     dataset_has_named_apoc_tick_input,
     dataset_has_named_va_tick_input,
     dataset_has_tick_paths,
+    dataset_has_tick_stitch_plan,
     disable_unneeded_tick_families,
     named_apoc_requires_ticks_message,
     named_rolling_poc_requires_ticks_message,
@@ -605,7 +607,10 @@ def _validate_run_spec_dataset(spec: Mapping[str, Any]) -> None:
         if not isinstance(dataset["tick_source_id"], str) or not dataset["tick_source_id"]:
             raise ValueError("dataset.tick_source_id must be a non-empty string or null")
     if "tick_stitch_plan" in dataset and dataset["tick_stitch_plan"] is not None:
-        if not isinstance(dataset["tick_stitch_plan"], (str, Path)):
+        if (
+            not isinstance(dataset["tick_stitch_plan"], (str, Path))
+            or not str(dataset["tick_stitch_plan"]).strip()
+        ):
             raise ValueError("dataset.tick_stitch_plan must be a path string")
         if "tick_stitch_x1_burst_included" not in dataset:
             raise ValueError(
@@ -626,7 +631,10 @@ def _validate_run_spec_dataset(spec: Mapping[str, Any]) -> None:
         if not isinstance(dataset["apoc_tick_table_path"], (str, Path)):
             raise ValueError("dataset.apoc_tick_table_path must be a path string")
     if "apoc_tick_source_id" in dataset and dataset["apoc_tick_source_id"] is not None:
-        if not isinstance(dataset["apoc_tick_source_id"], str) or not dataset["apoc_tick_source_id"]:
+        if (
+            not isinstance(dataset["apoc_tick_source_id"], str)
+            or not dataset["apoc_tick_source_id"]
+        ):
             raise ValueError("dataset.apoc_tick_source_id must be a non-empty string or null")
     for key in (
         "instrument",
@@ -1736,6 +1744,24 @@ def apoc_tick_table_to_parquet(table: APeriodTickProfileTable, path: str | Path)
     frame.to_parquet(parquet, index=False)
 
 
+def _session_date_from_apoc_cell(value: object):
+    """Parse a parquet session_date cell. PyArrow may widen ISO dates to timestamps."""
+    from datetime import date as date_cls
+    from datetime import datetime as datetime_cls
+
+    if isinstance(value, datetime_cls):
+        return value.date()
+    if isinstance(value, date_cls):
+        return value
+    text = str(value).strip()
+    if not text:
+        raise ValueError("apoc_tick_table session_date is blank")
+    try:
+        return date_cls.fromisoformat(text[:10])
+    except ValueError:
+        return pd.Timestamp(value).date()
+
+
 def apoc_tick_table_from_parquet(
     path: str | Path,
     *,
@@ -1753,7 +1779,7 @@ def apoc_tick_table_from_parquet(
         if isinstance(first, str) and first.strip():
             resolved_id = first
     for row in frame.itertuples(index=False):
-        session = date_cls.fromisoformat(str(row.session_date))
+        session = _session_date_from_apoc_cell(row.session_date)
         poc_by_session[session] = float(row.poc)
         n_ticks_by_session[session] = int(row.n_ticks)
     return APeriodTickProfileTable(
@@ -1853,9 +1879,12 @@ def compute_levels(
         and key not in LEVELS_APOC_IDENTITY_KEYS
         and key not in LEVELS_ROLLING_POC_IDENTITY_KEYS
     }
-    if resolved_apoc_table is None and resolve_apoc_profile_source(
-        settings.get("apoc_profile_source")
-    ) == (APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1) and bool(settings.get("apoc_enabled")):
+    if (
+        resolved_apoc_table is None
+        and resolve_apoc_profile_source(settings.get("apoc_profile_source"))
+        == (APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1)
+        and bool(settings.get("apoc_enabled"))
+    ):
         resolved_apoc_table = build_a_period_tick_profile_table(
             tick_paths,
             instrument=instrument,
@@ -3114,8 +3143,8 @@ def run_experiment(
     table_path = dataset_config.get("prior_profile_table_path")
     # Always resolve tick files unless stitch/APOC table is injected. A
     # leftover farm path list is opened and content-hashed inside workers.
-    stitch_injected = bool(
-        dataset_config.get("tick_stitch_plan") or dataset_config.get("apoc_tick_table_path")
+    stitch_injected = dataset_has_tick_stitch_plan(dataset_config) or dataset_has_apoc_tick_table(
+        dataset_config
     )
     resolved_tick_paths = (
         None
