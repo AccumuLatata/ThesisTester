@@ -26,6 +26,8 @@ from thesistester.levels.catalog import (
     pivot_column_names,
 )
 from thesistester.levels.tick_requirements import (
+    dataset_has_named_apoc_tick_input,
+    dataset_has_named_va_tick_input,
     dataset_has_tick_paths,
     named_apoc_requires_ticks_message,
     named_rolling_poc_requires_ticks_message,
@@ -241,6 +243,30 @@ def _validate_dataset_tick_keys(dataset: Mapping[str, Any]) -> None:
             resolve_tick_format_profile(dataset["tick_format_profile"])
         except ValueError as exc:
             raise StudySpecError(str(exc)) from exc
+    if "tick_stitch_plan" in dataset and dataset["tick_stitch_plan"] is not None:
+        raw_plan = dataset["tick_stitch_plan"]
+        if not isinstance(raw_plan, (str, Path)) or not str(raw_plan).strip():
+            raise StudySpecError("study.dataset.tick_stitch_plan must be a path string")
+        if "tick_stitch_x1_burst_included" not in dataset:
+            raise StudySpecError(
+                "study.dataset.tick_stitch_x1_burst_included is required "
+                "when tick_stitch_plan is set"
+            )
+        if type(dataset["tick_stitch_x1_burst_included"]) is not bool:
+            raise StudySpecError(
+                "study.dataset.tick_stitch_x1_burst_included must be an explicit bool "
+                "(no silent default; Q9 is Accumu's call)"
+            )
+    if "apoc_tick_table_path" in dataset and dataset["apoc_tick_table_path"] is not None:
+        raw_apoc = dataset["apoc_tick_table_path"]
+        if not isinstance(raw_apoc, (str, Path)) or not str(raw_apoc).strip():
+            raise StudySpecError("study.dataset.apoc_tick_table_path must be a path string")
+    if "apoc_tick_source_id" in dataset and dataset["apoc_tick_source_id"] is not None:
+        raw_id = dataset["apoc_tick_source_id"]
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise StudySpecError(
+                "study.dataset.apoc_tick_source_id must be a non-empty string or null"
+            )
 
 
 def _factor_level_tokens(factors: Mapping[str, Any]) -> list[str]:
@@ -259,7 +285,7 @@ def _require_ticks_for_named_va(
     tokens = named_prior_profile_tokens(_factor_level_tokens(factors))
     if not tokens:
         return
-    if dataset_has_tick_paths(dataset):
+    if dataset_has_named_va_tick_input(dataset):
         return
     raise StudySpecError(named_va_requires_ticks_message(tokens, prefix="study.dataset.tick_paths"))
 
@@ -275,13 +301,16 @@ def _require_ticks_for_named_apoc_and_rolling(
         return
     if dataset_has_tick_paths(dataset):
         return
-    if apoc_tokens:
+    if apoc_tokens and not dataset_has_named_apoc_tick_input(dataset):
         raise StudySpecError(
             named_apoc_requires_ticks_message(apoc_tokens, prefix="study.dataset.tick_paths")
         )
-    raise StudySpecError(
-        named_rolling_poc_requires_ticks_message(rolling_tokens, prefix="study.dataset.tick_paths")
-    )
+    if rolling_tokens:
+        raise StudySpecError(
+            named_rolling_poc_requires_ticks_message(
+                rolling_tokens, prefix="study.dataset.tick_paths"
+            )
+        )
 
 
 def _validate_levels_map(levels_map: Mapping[str, Any]) -> None:

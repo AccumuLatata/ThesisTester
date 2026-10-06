@@ -74,6 +74,7 @@ from thesistester.levels.sessions import compute_session_levels
 from thesistester.levels.apoc_tick import (
     APOC_PROFILE_SOURCES,
     APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1,
+    APeriodTickProfileTable,
     LEVELS_APOC_IDENTITY_KEYS,
     attach_apoc_identity,
     build_a_period_tick_profile_table,
@@ -85,6 +86,8 @@ from thesistester.levels.rolling_poc_tick import (
     attach_rolling_poc_identity,
 )
 from thesistester.levels.tick_requirements import (
+    dataset_has_named_apoc_tick_input,
+    dataset_has_named_va_tick_input,
     dataset_has_tick_paths,
     disable_unneeded_tick_families,
     named_apoc_requires_ticks_message,
@@ -333,6 +336,10 @@ _DATASET_KEYS = {
     "tick_format_profile",
     "prior_profile_table_path",
     "tick_source_id",
+    "tick_stitch_plan",
+    "tick_stitch_x1_burst_included",
+    "apoc_tick_table_path",
+    "apoc_tick_source_id",
 }
 _SUPPORTED_INGESTION_MODES = frozenset({"primary", INGESTION_MODE_15S_PRIMARY_DERIVE_1M})
 # QI-01-06: same objects as loader (page uses getattr fallback; builder R17 kept).
@@ -597,6 +604,30 @@ def _validate_run_spec_dataset(spec: Mapping[str, Any]) -> None:
     if "tick_source_id" in dataset and dataset["tick_source_id"] is not None:
         if not isinstance(dataset["tick_source_id"], str) or not dataset["tick_source_id"]:
             raise ValueError("dataset.tick_source_id must be a non-empty string or null")
+    if "tick_stitch_plan" in dataset and dataset["tick_stitch_plan"] is not None:
+        if not isinstance(dataset["tick_stitch_plan"], (str, Path)):
+            raise ValueError("dataset.tick_stitch_plan must be a path string")
+        if "tick_stitch_x1_burst_included" not in dataset:
+            raise ValueError(
+                "dataset.tick_stitch_x1_burst_included is required when tick_stitch_plan is set"
+            )
+        if type(dataset["tick_stitch_x1_burst_included"]) is not bool:
+            raise ValueError(
+                "dataset.tick_stitch_x1_burst_included must be an explicit bool "
+                "(no silent default; Q9 is Accumu's call)"
+            )
+    if (
+        "tick_stitch_x1_burst_included" in dataset
+        and dataset["tick_stitch_x1_burst_included"] is not None
+        and type(dataset["tick_stitch_x1_burst_included"]) is not bool
+    ):
+        raise ValueError("dataset.tick_stitch_x1_burst_included must be an explicit bool")
+    if "apoc_tick_table_path" in dataset and dataset["apoc_tick_table_path"] is not None:
+        if not isinstance(dataset["apoc_tick_table_path"], (str, Path)):
+            raise ValueError("dataset.apoc_tick_table_path must be a path string")
+    if "apoc_tick_source_id" in dataset and dataset["apoc_tick_source_id"] is not None:
+        if not isinstance(dataset["apoc_tick_source_id"], str) or not dataset["apoc_tick_source_id"]:
+            raise ValueError("dataset.apoc_tick_source_id must be a non-empty string or null")
     for key in (
         "instrument",
         "source_timezone",
@@ -1598,7 +1629,7 @@ def _require_ticks_for_named_va(
     tokens = _named_prior_profile_from_setup(setup)
     if not tokens:
         return
-    if dataset_has_tick_inputs(dict(dataset)):
+    if dataset_has_named_va_tick_input(dataset) or dataset_has_tick_inputs(dict(dataset)):
         return
     raise ValueError(named_va_requires_ticks_message(tokens, prefix="dataset.tick_paths"))
 
@@ -1618,13 +1649,14 @@ def _require_ticks_for_named_apoc_and_rolling(
         return
     if dataset_has_tick_paths(dataset):
         return
-    if apoc_tokens:
+    if apoc_tokens and not dataset_has_named_apoc_tick_input(dataset):
         raise ValueError(
             named_apoc_requires_ticks_message(apoc_tokens, prefix="dataset.tick_paths")
         )
-    raise ValueError(
-        named_rolling_poc_requires_ticks_message(rolling_tokens, prefix="dataset.tick_paths")
-    )
+    if rolling_tokens:
+        raise ValueError(
+            named_rolling_poc_requires_ticks_message(rolling_tokens, prefix="dataset.tick_paths")
+        )
 
 
 def _resolve_dataset_tick_paths(
@@ -1687,6 +1719,50 @@ def _resolve_prior_profile_table(
     return None, tick_source_id or TICK_SOURCE_NONE
 
 
+def apoc_tick_table_to_parquet(table: APeriodTickProfileTable, path: str | Path) -> None:
+    """Persist an A-period table. Lives here so ``apoc_tick.py`` stays off TS5."""
+    rows = [
+        {
+            "session_date": session.isoformat(),
+            "poc": float(poc),
+            "n_ticks": int(table.n_ticks_by_session.get(session, 0)),
+            "source_id": table.source_id,
+        }
+        for session, poc in table.poc_by_session.items()
+    ]
+    frame = pd.DataFrame(rows, columns=["session_date", "poc", "n_ticks", "source_id"])
+    parquet = Path(path)
+    parquet.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_parquet(parquet, index=False)
+
+
+def apoc_tick_table_from_parquet(
+    path: str | Path,
+    *,
+    source_id: str | None = None,
+) -> APeriodTickProfileTable:
+    """Load an A-period table written by :func:`apoc_tick_table_to_parquet`."""
+    from datetime import date as date_cls
+
+    frame = pd.read_parquet(path)
+    poc_by_session: dict[date_cls, float] = {}
+    n_ticks_by_session: dict[date_cls, int] = {}
+    resolved_id = source_id or TICK_SOURCE_NONE
+    if not frame.empty and "source_id" in frame.columns:
+        first = frame["source_id"].iloc[0]
+        if isinstance(first, str) and first.strip():
+            resolved_id = first
+    for row in frame.itertuples(index=False):
+        session = date_cls.fromisoformat(str(row.session_date))
+        poc_by_session[session] = float(row.poc)
+        n_ticks_by_session[session] = int(row.n_ticks)
+    return APeriodTickProfileTable(
+        poc_by_session=poc_by_session,
+        n_ticks_by_session=n_ticks_by_session,
+        source_id=resolved_id,
+    )
+
+
 def compute_levels(
     data: pd.DataFrame,
     *,
@@ -1700,16 +1776,31 @@ def compute_levels(
     prior_profile_table: PriorProfileTable | None = None,
     prior_profile_table_path: str | Path | None = None,
     tick_source_id: str | None = None,
+    apoc_tick_table: APeriodTickProfileTable | None = None,
+    apoc_tick_table_path: str | Path | None = None,
+    apoc_tick_source_id: str | None = None,
 ) -> LevelsResult:
     """Compute UI-equivalent levels without reading or writing session state.
 
     ``cache_policy`` defaults to ``off`` (legacy cold). ``read`` / ``read_write``
     reuse verified levels artifacts when a ``data_identity`` is supplied or can
     be derived. Cache misses never raise; they fall through to cold compute.
+    New APOC table/id kwargs default off so stitch-absent call sites stay the
+    ``0ebc1494`` keyword set.
     """
     _instrument(instrument)
     settings = normalize_levels_config(config, instrument=instrument)
-    refuse = product_tick_family_preflight(settings, tick_paths=tick_paths)
+    resolved_apoc_table = apoc_tick_table
+    if resolved_apoc_table is None and apoc_tick_table_path:
+        resolved_apoc_table = apoc_tick_table_from_parquet(
+            apoc_tick_table_path, source_id=apoc_tick_source_id
+        )
+    refuse = product_tick_family_preflight(
+        settings,
+        tick_paths=tick_paths,
+        apoc_tick_table=resolved_apoc_table,
+        apoc_tick_table_path=apoc_tick_table_path,
+    )
     if refuse:
         raise ValueError(refuse)
     table, resolved_tick_source_id = _resolve_prior_profile_table(
@@ -1726,6 +1817,7 @@ def compute_levels(
             attach_tick_identity(settings, tick_source_id=resolved_tick_source_id),
             tick_paths=tick_paths,
             format_profile=resolve_tick_format_profile(tick_format_profile),
+            apoc_tick_source_id=apoc_tick_source_id,
         ),
         tick_paths=tick_paths,
         format_profile=resolve_tick_format_profile(tick_format_profile),
@@ -1761,11 +1853,10 @@ def compute_levels(
         and key not in LEVELS_APOC_IDENTITY_KEYS
         and key not in LEVELS_ROLLING_POC_IDENTITY_KEYS
     }
-    apoc_tick_table = None
-    if resolve_apoc_profile_source(settings.get("apoc_profile_source")) == (
-        APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1
-    ) and bool(settings.get("apoc_enabled")):
-        apoc_tick_table = build_a_period_tick_profile_table(
+    if resolved_apoc_table is None and resolve_apoc_profile_source(
+        settings.get("apoc_profile_source")
+    ) == (APOC_PROFILE_SOURCE_TICK_LAST_VOLUME_V1) and bool(settings.get("apoc_enabled")):
+        resolved_apoc_table = build_a_period_tick_profile_table(
             tick_paths,
             instrument=instrument,
             format_profile=resolve_tick_format_profile(tick_format_profile),
@@ -1774,7 +1865,7 @@ def compute_levels(
         data,
         instrument=instrument,
         prior_profile_table=table,
-        apoc_tick_table=apoc_tick_table,
+        apoc_tick_table=resolved_apoc_table,
         tick_paths=tick_paths,
         **kwargs,
     )
@@ -3021,9 +3112,16 @@ def run_experiment(
     dataset_id = data_identity.dataset_id()
 
     table_path = dataset_config.get("prior_profile_table_path")
-    # Always resolve tick files. A prebuilt PriorProfileTable is not an APOC
-    # input; starving tick_paths here made tick_last_volume_v1 emit all-NaN.
-    resolved_tick_paths = _resolve_dataset_tick_paths(dataset_config, base_directory=base_directory)
+    # Always resolve tick files unless stitch/APOC table is injected. A
+    # leftover farm path list is opened and content-hashed inside workers.
+    stitch_injected = bool(
+        dataset_config.get("tick_stitch_plan") or dataset_config.get("apoc_tick_table_path")
+    )
+    resolved_tick_paths = (
+        None
+        if stitch_injected
+        else _resolve_dataset_tick_paths(dataset_config, base_directory=base_directory)
+    )
     tick_format_profile = (
         str(dataset_config["tick_format_profile"])
         if dataset_config.get("tick_format_profile") is not None
@@ -3041,19 +3139,24 @@ def run_experiment(
         prior_profile_table_path=table_path,
         tick_source_id=explicit_tick_source_id,
     )
-    level_result = compute_levels(
-        data,
-        instrument=instrument,
-        config=run.get("levels"),
-        cache_policy=policy,
-        data_identity=data_identity,
-        store_root=store_root,
-        prior_profile_table=table,
-        prior_profile_table_path=None,
-        tick_paths=resolved_tick_paths,
-        tick_format_profile=tick_format_profile,
-        tick_source_id=resolved_tick_source_id,
-    )
+    level_kwargs: dict[str, Any] = {
+        "instrument": instrument,
+        "config": run.get("levels"),
+        "cache_policy": policy,
+        "data_identity": data_identity,
+        "store_root": store_root,
+        "prior_profile_table": table,
+        "prior_profile_table_path": None,
+        "tick_paths": resolved_tick_paths,
+        "tick_format_profile": tick_format_profile,
+        "tick_source_id": resolved_tick_source_id,
+    }
+    # New kwargs stay at default (unsupplied) when stitch is absent.
+    if dataset_config.get("apoc_tick_table_path"):
+        level_kwargs["apoc_tick_table_path"] = dataset_config["apoc_tick_table_path"]
+    if dataset_config.get("apoc_tick_source_id"):
+        level_kwargs["apoc_tick_source_id"] = str(dataset_config["apoc_tick_source_id"])
+    level_result = compute_levels(data, **level_kwargs)
     levels_status = str(level_result.get("cache_status", "bypassed"))
     levels_stage: dict[str, Any] = {
         "status": levels_status,

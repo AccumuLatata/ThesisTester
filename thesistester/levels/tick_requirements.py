@@ -22,6 +22,10 @@ APOC_REQUIRES_TICKS: Final[str] = "APOC requires ticks"
 ROLLING_POC_REQUIRES_TICKS: Final[str] = "rolling POC requires ticks"
 
 
+def _nonblank_path(value: object) -> bool:
+    return isinstance(value, (str, Path)) and bool(str(value).strip())
+
+
 def dataset_has_tick_paths(dataset: Mapping[str, Any] | None) -> bool:
     """True when ``tick_paths`` lists at least one non-blank path.
 
@@ -32,6 +36,43 @@ def dataset_has_tick_paths(dataset: Mapping[str, Any] | None) -> bool:
     paths = dataset.get("tick_paths")
     return isinstance(paths, list) and any(
         isinstance(item, (str, Path)) and str(item).strip() for item in paths
+    )
+
+
+def dataset_has_tick_stitch_plan(dataset: Mapping[str, Any] | None) -> bool:
+    """True when ``tick_stitch_plan`` names a non-blank plan path."""
+    if not dataset:
+        return False
+    return _nonblank_path(dataset.get("tick_stitch_plan"))
+
+
+def dataset_has_apoc_tick_table(dataset: Mapping[str, Any] | None) -> bool:
+    """True when an injected A-period parquet path is present."""
+    if not dataset:
+        return False
+    return _nonblank_path(dataset.get("apoc_tick_table_path"))
+
+
+def dataset_has_named_va_tick_input(dataset: Mapping[str, Any] | None) -> bool:
+    """VA gate: tick files, stitch plan, or a prior-profile parquet."""
+    if not dataset:
+        return False
+    if dataset_has_tick_paths(dataset) or dataset_has_tick_stitch_plan(dataset):
+        return True
+    return _nonblank_path(dataset.get("prior_profile_table_path"))
+
+
+def dataset_has_named_apoc_tick_input(dataset: Mapping[str, Any] | None) -> bool:
+    """APOC gate: tick files, stitch plan, or an injected A-period parquet.
+
+    Rolling POC is not satisfied by stitch or the A-period table.
+    """
+    if not dataset:
+        return False
+    return (
+        dataset_has_tick_paths(dataset)
+        or dataset_has_tick_stitch_plan(dataset)
+        or dataset_has_apoc_tick_table(dataset)
     )
 
 
@@ -115,17 +156,32 @@ def product_tick_family_message(*, apoc: bool, rolling: bool) -> str:
 def product_tick_family_preflight(
     settings: Mapping[str, Any] | None,
     tick_paths: Sequence[str | Path] | str | Path | None = None,
+    *,
+    apoc_tick_table: object | None = None,
+    apoc_tick_table_path: str | Path | None = None,
+    tick_stitch_plan: str | Path | None = None,
 ) -> str:
     """Shared UI / API refuse text when APOC or rolling POC is on without ticks.
 
     Empty string means the product path may proceed. Never invents a typical
     fallback (AP/RP). Study validate still uses named-token messages; those
     share ``APOC requires ticks`` / ``rolling POC requires ticks``.
+
+    A stitch plan or injected A-period table satisfies APOC only. Rolling POC
+    still requires real ``tick_paths``.
     """
     need_apoc = settings_require_apoc_ticks(settings)
     need_rolling = settings_require_rolling_poc_ticks(settings)
-    if (need_apoc or need_rolling) and not tick_paths_present(tick_paths):
-        return product_tick_family_message(apoc=need_apoc, rolling=need_rolling)
+    has_paths = tick_paths_present(tick_paths)
+    has_apoc = has_paths or apoc_tick_table is not None or _nonblank_path(apoc_tick_table_path)
+    if not has_apoc:
+        has_apoc = _nonblank_path(tick_stitch_plan)
+    if need_rolling and not has_paths:
+        if need_apoc and not has_apoc:
+            return product_tick_family_message(apoc=True, rolling=True)
+        return product_tick_family_message(apoc=False, rolling=True)
+    if need_apoc and not has_apoc:
+        return product_tick_family_message(apoc=True, rolling=False)
     return ""
 
 

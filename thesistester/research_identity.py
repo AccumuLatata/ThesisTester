@@ -107,8 +107,13 @@ def normalize_levels_config(
 
 
 def _dataset_tick_paths(dataset: Mapping[str, Any] | None) -> list[str | Path] | None:
-    """Return dataset tick file paths only. A prior-VA table path is not APOC input."""
+    """Return dataset tick file paths only. A prior-VA table path is not APOC input.
+
+    Stitch cells carry no farm CSV paths; workers must not content-hash them.
+    """
     if not dataset:
+        return None
+    if dataset.get("tick_stitch_plan") or dataset.get("apoc_tick_table_path"):
         return None
     paths = dataset.get("tick_paths")
     if isinstance(paths, list) and any(str(item).strip() for item in paths):
@@ -123,6 +128,9 @@ def _tick_source_id_from_dataset(dataset: Mapping[str, Any] | None) -> str:
     explicit = dataset.get("tick_source_id")
     if isinstance(explicit, str) and explicit.strip():
         return explicit
+    if dataset.get("tick_stitch_plan") or dataset.get("apoc_tick_table_path"):
+        # Stitch-on identity is the parent stamp; do not hash farm paths.
+        return TICK_SOURCE_NONE
     paths = dataset.get("tick_paths")
     if isinstance(paths, list) and any(str(item).strip() for item in paths):
         profile = resolve_tick_format_profile(dataset.get("tick_format_profile"))
@@ -133,6 +141,16 @@ def _tick_source_id_from_dataset(dataset: Mapping[str, Any] | None) -> str:
         if resolved.is_file():
             return compute_table_path_source_id(resolved)
     return TICK_SOURCE_NONE
+
+
+def _apoc_tick_source_id_from_dataset(dataset: Mapping[str, Any] | None) -> str | None:
+    """Return the parent-injected APOC id when present. Never hash farm paths."""
+    if not dataset:
+        return None
+    explicit = dataset.get("apoc_tick_source_id")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit
+    return None
 
 
 def compute_run_spec_hash(spec: Mapping[str, Any]) -> str:
@@ -405,6 +423,7 @@ class LevelsIdentity:
         tick_source_id: str | None = None,
         tick_paths: Sequence[str | Path] | None = None,
         tick_format_profile: str | None = None,
+        apoc_tick_source_id: str | None = None,
     ) -> LevelsIdentity:
         resolved_instrument = instrument or data_identity.instrument
         inbound = None
@@ -420,6 +439,7 @@ class LevelsIdentity:
                 ),
                 tick_paths=tick_paths,
                 format_profile=resolve_tick_format_profile(tick_format_profile),
+                apoc_tick_source_id=apoc_tick_source_id,
             ),
             tick_paths=tick_paths,
             format_profile=resolve_tick_format_profile(tick_format_profile),
@@ -444,6 +464,7 @@ class LevelsIdentity:
                 if dataset.get("tick_format_profile") is not None
                 else None
             ),
+            apoc_tick_source_id=_apoc_tick_source_id_from_dataset(dataset),
         )
 
     @classmethod

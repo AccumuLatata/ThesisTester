@@ -32,7 +32,7 @@ LAUNCH_JSON_NAME = "study.launch.json"
 STUDIES_LAUNCH_OUTPUT_DIR_KEY = "studies_launch_output_dir"
 STUDIES_LAUNCH_APPROVAL_KEY = "studies_launch_approval"
 
-_DATASET_PATH_KEYS = ("path", "subtimeframe_path")
+_DATASET_PATH_KEYS = ("path", "subtimeframe_path", "tick_stitch_plan")
 
 
 class StudyLaunchError(ValueError):

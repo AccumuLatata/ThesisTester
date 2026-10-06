@@ -273,6 +273,12 @@ def test_mw1_runtime_surface_is_limited_vs_main() -> None:
         "thesistester/study/execute.py",
         "thesistester/data/tick_stitch.py",
         "thesistester/levels/tick_x1_fill.py",  # TS4 plan-row file (Accumu option A; §12)
+        "thesistester/api.py",  # TS5 plan-row file (Accumu option A; §12)
+        "thesistester/levels/tick_requirements.py",
+        "thesistester/study/schema.py",
+        "thesistester/study/launch.py",
+        "thesistester/study/expand.py",
+        "thesistester/research_identity.py",
     }
     files: set[str] = set()
     for line in diff.splitlines():
