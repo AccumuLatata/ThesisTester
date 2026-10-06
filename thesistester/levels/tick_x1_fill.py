@@ -37,10 +37,13 @@ from thesistester.levels.profile import _bucket_prices
 from thesistester.levels.tick_vap import (
     PriorProfileTable,
     _family_rows,
+    _normalize_table_frame,
     _session_histogram,
     build_prior_profile_table,
     map_shifted_prior_profile,
 )
+
+_NAS_TRADING_MARKER: Final[tuple[str, str]] = ("mnt", "nas-trading")
 
 X1_TRADE_DATE: Final[date] = date(2025, 11, 7)
 X1_WINDOW_START: Final[pd.Timestamp] = pd.Timestamp("2025-11-07 17:58:14.581", tz="UTC")
@@ -120,30 +123,25 @@ def fill_x1_15s_residual(
         )
 
     tick_vol = _tick_volume_by_bar(tick_work)
-    synthetics = _residual_synthetics(
-        fillable,
-        tick_vol,
-        tick_size=tick_size,
-        burst_included=burst_included,
-    )
+    residual = _bar_residuals(fillable, tick_vol, burst_included=burst_included)
+    expected_residual = float(residual.sum())
+    synthetics = _residual_synthetics(fillable, residual, tick_size=tick_size)
     if synthetics.empty:
         filled = tick_work.copy()
+        burst_volume = 0.0
+        residual_volume = 0.0
     else:
         filled = (
             pd.concat([tick_work, synthetics], ignore_index=True)
             .sort_values("timestamp")
             .reset_index(drop=True)
         )
-    if synthetics.empty:
-        burst_volume = 0.0
-        residual_volume = 0.0
-    else:
         burst_mask = _is_burst_bar(synthetics["timestamp"] - X1_FILL_OFFSET)
         burst_volume = float(synthetics.loc[burst_mask.to_numpy(), "volume"].sum())
         residual_volume = float(synthetics["volume"].sum())
-    if residual_volume > 0 and not np.isclose(
+    if not np.isclose(
         residual_volume,
-        float(synthetics["volume"].sum()),
+        expected_residual,
         rtol=VOLUME_CONSERVATION_RTOL,
         atol=VOLUME_CONSERVATION_ATOL,
     ):
@@ -257,7 +255,12 @@ def run_farm_impact_report(
     prior_week_aggregation_ticks: int = STUDY_WEEK_AGG,
     prior_month_aggregation_ticks: int = STUDY_MONTH_AGG,
 ) -> dict[str, Any]:
-    """Parent-only NVMe stitch impact. Not a worker. Not CI. Do not run on farm here."""
+    """Parent-only NVMe stitch impact. Not a worker. Not CI. Do not run on farm here.
+
+    Does not call ``guard_hourly_tick_holes``. Ticks-only and burst-off still
+    emit (the TS3 option-A X1 18:00 guard remains an escalated plan-vs-code
+    point; this report must not abort on it).
+    """
     from thesistester.data.loader import load_ohlcv
     from thesistester.data.tick_stitch import (
         clip_ticks_to_15s_bars,
@@ -265,6 +268,7 @@ def run_farm_impact_report(
         verify_tick_stitch_plan,
     )
 
+    _refuse_nas_trading_paths(plan, root, bars_path)
     if instrument not in INSTRUMENTS:
         raise X1FillError(f"Unsupported instrument: {instrument}")
     inst = INSTRUMENTS[instrument]
@@ -359,6 +363,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command != "farm-impact":
         raise AssertionError(f"Unhandled command: {args.command}")
+    from thesistester.data.loader import DataValidationError
+
     try:
         report = run_farm_impact_report(
             args.plan,
@@ -372,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
             prior_week_aggregation_ticks=args.prior_week_aggregation_ticks,
             prior_month_aggregation_ticks=args.prior_month_aggregation_ticks,
         )
-    except (X1FillError, ValueError, OSError) as exc:
+    except (X1FillError, DataValidationError, ValueError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return os.EX_DATAERR
     print(json.dumps(report, indent=2, sort_keys=True, default=_json_default))
@@ -475,30 +481,50 @@ def _is_burst_bar(left_edges: pd.DatetimeIndex | pd.Series) -> pd.Series:
     return pd.Series((values < X1_BURST_END) & (right > X1_BURST_START), dtype=bool)
 
 
-def _residual_synthetics(
+def _bar_residuals(
     bars: pd.DataFrame,
     tick_vol: pd.Series,
     *,
-    tick_size: float,
     burst_included: bool,
-) -> pd.DataFrame:
+) -> np.ndarray:
     left = pd.DatetimeIndex(bars["timestamp"])
-    burst = _is_burst_bar(left)
+    burst = _is_burst_bar(left).to_numpy()
     aligned = tick_vol.reindex(left, fill_value=0.0).to_numpy(dtype="float64")
     residual = np.maximum(0.0, bars["volume"].to_numpy(dtype="float64") - aligned)
-    residual = np.where(burst.to_numpy() & (not burst_included), 0.0, residual)
+    return np.where(burst & (not burst_included), 0.0, residual)
+
+
+def _residual_synthetics(
+    bars: pd.DataFrame,
+    residual: np.ndarray,
+    *,
+    tick_size: float,
+) -> pd.DataFrame:
+    left = pd.DatetimeIndex(bars["timestamp"])
     typical = (bars["high"] + bars["low"] + bars["close"]) / 3.0
-    price = _bucket_prices(typical, tick_size)
+    price = np.asarray(_bucket_prices(typical, tick_size), dtype="float64")
     keep = residual > 0
     if not keep.any():
         return pd.DataFrame(columns=["timestamp", "price", "volume"])
     return pd.DataFrame(
         {
-            "timestamp": left[keep] + X1_FILL_OFFSET,
-            "price": price.loc[keep].to_numpy(dtype="float64"),
+            "timestamp": left.to_numpy()[keep] + X1_FILL_OFFSET,
+            "price": price[keep],
             "volume": residual[keep],
         }
     ).reset_index(drop=True)
+
+
+def _refuse_nas_trading_paths(*paths: str | Path) -> None:
+    """Farm-impact is NVMe-only. Never open ``/mnt/nas-trading`` (not even in CI)."""
+    for raw in paths:
+        parts = Path(raw).expanduser().parts
+        for index in range(len(parts) - 1):
+            if parts[index] == _NAS_TRADING_MARKER[0] and parts[index + 1] == _NAS_TRADING_MARKER[1]:
+                raise X1FillError(
+                    "farm-impact refuses /mnt/nas-trading "
+                    "(NVMe stitch only; not a CI or SMB path)."
+                )
 
 
 def _utc_series(values: pd.Series) -> pd.Series:
@@ -573,7 +599,7 @@ def _table_from_histograms(
             value_area_pct=value_area_pct,
         )
     )
-    return PriorProfileTable(frame=pd.DataFrame(rows))
+    return PriorProfileTable(frame=_normalize_table_frame(pd.DataFrame(rows)))
 
 
 def _triple_payload(vah: object, val: object, poc: object) -> dict[str, float]:

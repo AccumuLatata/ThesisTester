@@ -261,7 +261,9 @@ def iter_stitch_sessions(
     *,
     instrument: str = "MNQ",
 ) -> Iterator[TickChunk]:
-    """Yield CME session chunks from a stitch plan. Nobody calls this yet (TS2).
+    """Yield CME session chunks from a stitch plan.
+
+    Execute does not call this. TS4 ``farm-impact`` is a parent-only caller.
 
     Walk segments in plan order. Consecutive same-filename windows share one
     chunked ``pd.read_csv``. Inclusive trim: keep
