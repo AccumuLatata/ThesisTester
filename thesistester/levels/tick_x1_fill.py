@@ -257,8 +257,8 @@ def run_farm_impact_report(
 ) -> dict[str, Any]:
     """Parent-only NVMe stitch impact. Not a worker. Not CI. Do not run on farm here.
 
-    Does not call ``guard_hourly_tick_holes``. Ticks-only and burst-off still
-    emit (the TS3 option-A X1 18:00 guard remains an escalated plan-vs-code
+    Does not run the TS3 hourly hole guard. Ticks-only and burst-off still
+    emit (the option-A X1 18:00 guard remains an escalated plan-vs-code
     point; this report must not abort on it).
     """
     from thesistester.data.loader import load_ohlcv

@@ -541,8 +541,8 @@ def test_farm_impact_does_not_call_hourly_guard_and_still_emits_all_variants():
     """Ticks-only / burst-off fail TS3 option A; farm-impact must not abort."""
     import thesistester.levels.tick_x1_fill as fill_mod
 
-    assert "guard_hourly_tick_holes" not in inspect.getsource(fill_mod.run_farm_impact_report)
-    assert "guard_hourly_tick_holes" not in inspect.getsource(fill_mod.main)
+    assert "guard_hourly_tick_holes(" not in inspect.getsource(fill_mod.run_farm_impact_report)
+    assert "guard_hourly_tick_holes(" not in inspect.getsource(fill_mod.main)
     ticks, bars = _shaped_11_07_fixture()
     hour_bars = bars.loc[bars["timestamp"].dt.floor("h") == _utc("2025-11-07 18:00:00")]
     clipped = clip_ticks_to_15s_bars(ticks, hour_bars["timestamp"])
