@@ -548,15 +548,6 @@ def _ticks_skipping(bars: pd.DataFrame, *skip: pd.Timestamp) -> pd.DataFrame:
     )
 
 
-def _neighbor_unlisted(empty_left: pd.Timestamp) -> pd.Timestamp:
-    plus = empty_left + pd.Timedelta(seconds=15)
-    if plus.floor("h") == empty_left.floor("h"):
-        return plus
-    minus = empty_left - pd.Timedelta(seconds=15)
-    assert minus.floor("h") == empty_left.floor("h")
-    return minus
-
-
 def test_locked_allowlist_is_exactly_1128_plus_14_qc_bars():
     from thesistester.data import tick_stitch as stitch_mod
 
@@ -566,6 +557,26 @@ def test_locked_allowlist_is_exactly_1128_plus_14_qc_bars():
     )
     assert stitch_mod._ALLOWLIST_UTC == expected
     assert len(stitch_mod._ALLOWLIST_UTC) == 15
+    for start, end in stitch_mod._ALLOWLIST_UTC:
+        assert start.tz is not None and str(start.tz) == "UTC"
+        assert end.tz is not None and str(end.tz) == "UTC"
+        assert start < end
+    assert stitch_mod._ALLOWLIST_UTC[0][1] - stitch_mod._ALLOWLIST_UTC[0][0] == pd.Timedelta(
+        hours=11, minutes=30
+    )
+    for start, end in stitch_mod._ALLOWLIST_UTC[1:]:
+        assert end - start == pd.Timedelta(seconds=15)
+    # 11-28 entry stays byte-for-byte the TS3 lock (not rewritten).
+    src = inspect.getsource(stitch_mod)
+    assert (
+        'pd.Timestamp("2025-11-28 02:00:00", tz="UTC"),\n'
+        '        pd.Timestamp("2025-11-28 13:30:00", tz="UTC"),'
+    ) in src
+    assert stitch_mod.hourly_guard_allowed_intervals(True) == stitch_mod._ALLOWLIST_UTC
+    burst_off = stitch_mod.hourly_guard_allowed_intervals(False)
+    assert set(stitch_mod._ALLOWLIST_UTC).issubset(burst_off)
+    # Adjacent QC windows must not merge into a wider hole.
+    assert len(stitch_mod._normalize_allowlist(None)) == 15
 
 
 @pytest.mark.parametrize("left,reason", _QC_EMPTY_BARS, ids=[row[0] for row in _QC_EMPTY_BARS])
@@ -578,12 +589,44 @@ def test_qc_empty_bar_alone_in_its_hour_passes(left: str, reason: str):
     guard_hourly_tick_holes(clipped, bars)
 
 
+@pytest.mark.parametrize("delta_s", [-15, 15], ids=["minus_15s", "plus_15s"])
 @pytest.mark.parametrize("left,reason", _QC_EMPTY_BARS, ids=[row[0] for row in _QC_EMPTY_BARS])
-def test_qc_neighbor_unlisted_empty_bar_still_fails(left: str, reason: str):
+def test_qc_neighbor_unlisted_empty_bar_still_fails(left: str, reason: str, delta_s: int):
+    """Listed bar plus a ±15s unlisted empty bar is a larger hole and must fail."""
     empty_left = _utc(left)
-    neighbor = _neighbor_unlisted(empty_left)
+    neighbor = empty_left + pd.Timedelta(seconds=delta_s)
+    assert neighbor.floor("h") == empty_left.floor("h")
     bars = _hour_volume_bars(empty_left)
     ticks = _ticks_skipping(bars, empty_left, neighbor)
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError):
+        guard_hourly_tick_holes(clipped, bars)
+
+
+@pytest.mark.parametrize("delta_s", [-15, 15], ids=["minus_15s", "plus_15s"])
+@pytest.mark.parametrize("left,reason", _QC_EMPTY_BARS, ids=[row[0] for row in _QC_EMPTY_BARS])
+def test_qc_neighbor_alone_is_not_excused(left: str, reason: str, delta_s: int):
+    """Half-open: a bar starting exactly at the window end (or the prior bar) fails."""
+    empty_left = _utc(left)
+    neighbor = empty_left + pd.Timedelta(seconds=delta_s)
+    assert neighbor.floor("h") == empty_left.floor("h")
+    bars = _hour_volume_bars(empty_left)
+    ticks = _ticks_skipping(bars, neighbor)
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError):
+        guard_hourly_tick_holes(clipped, bars)
+
+
+@pytest.mark.parametrize("left,reason", _QC_EMPTY_BARS, ids=[row[0] for row in _QC_EMPTY_BARS])
+def test_qc_same_clock_in_a_different_hour_still_fails(left: str, reason: str):
+    """An allowlisted 15s window is an absolute UTC interval, not a clock-of-day match."""
+    listed = {_utc(ts) for ts, _reason in _QC_EMPTY_BARS}
+    other = _utc(left) + pd.Timedelta(hours=1)
+    if other in listed:
+        other = _utc(left) - pd.Timedelta(hours=1)
+    assert other not in listed
+    bars = _hour_volume_bars(other)
+    ticks = _ticks_skipping(bars, other)
     clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
     with pytest.raises(TickStitchError):
         guard_hourly_tick_holes(clipped, bars)

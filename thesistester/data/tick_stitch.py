@@ -632,9 +632,10 @@ def build_stitch_parent_tables(
 
     Parent RAM: one session of ticks + the current histogram + A-period
     scalars. Workers never see farm CSV paths. Burst-off still uses the
-    locked 11-28 allowlist plus ``x1_burst_guard_allowed_intervals``.
-    Allowed intervals excuse a hole when every whole empty 15s volume
-    bar in it lies inside an allowed interval (Accumu option A).
+    locked allowlist (11-28 plus 14 QC bars) plus
+    ``x1_burst_guard_allowed_intervals``. Allowed intervals excuse a hole
+    when every whole empty 15s volume bar in it lies inside an allowed
+    interval (Accumu option A).
     """
     if type(tick_stitch_x1_burst_included) is not bool:
         raise TickStitchError(
@@ -929,7 +930,7 @@ def _as_utc_us_series(values: pd.Series) -> pd.Series:
 def _normalize_allowlist(
     extra: Sequence[tuple[object, object]] | None,
 ) -> tuple[tuple[pd.Timestamp, pd.Timestamp], ...]:
-    """Locked 11-28 interval plus caller-supplied §5 TS3 (4) pairs."""
+    """Locked 11-28 plus 14 QC single-bar intervals, and caller §5 TS3 (4) pairs."""
     intervals: list[tuple[pd.Timestamp, pd.Timestamp]] = list(_ALLOWLIST_UTC)
     if extra:
         for index, item in enumerate(extra):
