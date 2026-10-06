@@ -1,0 +1,416 @@
+[
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 6_1_2024 120000 AM-6_30_2024 120000 AM_73f1ca0d-bf88-48f3-81b0-d1f710d19fb2.csv",
+    "size_bytes": 791724046,
+    "effective_first_utc": "2024-06-02 22:00:00.069000",
+    "effective_last_utc": "2024-06-28 20:59:59.879000",
+    "file_first_utc": "2024-06-02 22:00:00.069000",
+    "file_last_utc": "2024-06-28 20:59:59.879000",
+    "mtime": "2026-08-25 10:23:43.173655"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 7_1_2024 120000 AM-7_31_2024 120000 AM_cb34f218-ee36-4a2c-9f63-7c627e70a47c.csv",
+    "size_bytes": 1148614496,
+    "effective_first_utc": "2024-06-30 22:00:00.080000",
+    "effective_last_utc": "2024-07-30 20:59:59.990000",
+    "file_first_utc": "2024-06-30 22:00:00.080000",
+    "file_last_utc": "2024-07-30 20:59:59.990000",
+    "mtime": "2026-08-25 10:58:48.012964"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 8_1_2024 120000 AM-8_31_2024 120000 AM_fdbe60af-15e3-462e-9442-68884465a28f.csv",
+    "size_bytes": 1265501916,
+    "effective_first_utc": "2024-07-31 22:00:00.056000",
+    "effective_last_utc": "2024-08-30 20:59:59.902000",
+    "file_first_utc": "2024-07-31 22:00:00.056000",
+    "file_last_utc": "2024-08-30 20:59:59.902000",
+    "mtime": "2026-08-25 11:28:17.567394"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 9_1_2024 120000 AM-9_30_2024 120000 AM_d0a367ac-c7e9-4a70-8e10-23a1810e4675.csv",
+    "size_bytes": 877435875,
+    "effective_first_utc": "2024-09-01 22:00:00.072000",
+    "effective_last_utc": "2024-09-25 22:00:00.035999",
+    "file_first_utc": "2024-09-01 22:00:00.072000",
+    "file_last_utc": "2024-09-27 20:59:59.988000",
+    "mtime": "2026-08-25 11:54:45.203937"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 26.9.24 000000-1.10.24 235900_0ddbbc95-493c-4c15-ace5-171dabb990ba.csv",
+    "size_bytes": 194714724,
+    "effective_first_utc": "2024-09-25 22:00:00.036000",
+    "effective_last_utc": "2024-10-01 14:51:52.278000",
+    "file_first_utc": "2024-09-25 22:00:00.036000",
+    "file_last_utc": "2024-10-01 20:59:59.873000",
+    "mtime": "2026-10-02 22:18:20.479308"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 10_1_2024 120000 AM-10_31_2024 120000 AM_94cdfc35-b8d5-4bd4-93aa-2476dfea34ac.csv",
+    "size_bytes": 954362403,
+    "effective_first_utc": "2024-10-01 14:51:52.278001",
+    "effective_last_utc": "2024-10-29 23:00:00.007999",
+    "file_first_utc": "2024-09-30 22:00:00.054000",
+    "file_last_utc": "2024-10-30 22:59:59.431000",
+    "mtime": "2026-08-25 12:15:37.898606"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 30.10.24 000000-1.11.24 235900_c2f59b7a-dc4f-4504-b74b-a10130cae178.csv",
+    "size_bytes": 147536135,
+    "effective_first_utc": "2024-10-29 23:00:00.008000",
+    "effective_last_utc": "2024-11-01 20:59:59.835000",
+    "file_first_utc": "2024-10-29 23:00:00.008000",
+    "file_last_utc": "2024-11-01 20:59:59.835000",
+    "mtime": "2026-10-04 21:43:07.669374"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 11_1_2024 120000 AM-11_30_2024 120000 AM_201699d6-41ff-4fff-b76b-a96bbd208cef.csv",
+    "size_bytes": 904706286,
+    "effective_first_utc": "2024-11-01 20:59:59.835001",
+    "effective_last_utc": "2024-11-29 18:14:59.978000",
+    "file_first_utc": "2024-10-31 23:00:00.005000",
+    "file_last_utc": "2024-11-29 18:14:59.978000",
+    "mtime": "2026-08-25 12:49:16.803557"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 12_1_2024 120000 AM-12_31_2024 120000 AM_b3eed91b-4f43-43fc-9f30-6f0b81eba61b.csv",
+    "size_bytes": 819634739,
+    "effective_first_utc": "2024-12-01 23:00:00.073000",
+    "effective_last_utc": "2024-12-29 23:00:00.058999",
+    "file_first_utc": "2024-12-01 23:00:00.073000",
+    "file_last_utc": "2024-12-30 21:59:58.932000",
+    "mtime": "2026-08-25 13:53:23.028616"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 30.12.24 000000-2.1.25 235900_34887476-6a66-49db-bbec-efa85038db76.csv",
+    "size_bytes": 172993999,
+    "effective_first_utc": "2024-12-29 23:00:00.059000",
+    "effective_last_utc": "2025-01-02 21:59:59.947000",
+    "file_first_utc": "2024-12-29 23:00:00.059000",
+    "file_last_utc": "2025-01-02 21:59:59.947000",
+    "mtime": "2026-10-02 22:19:41.770646"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1_1_2025 120000 AM-1_31_2025 120000 AM_db13feba-a883-4b2f-bd6d-78362356e5f9.csv",
+    "size_bytes": 831283554,
+    "effective_first_utc": "2025-01-02 21:59:59.947001",
+    "effective_last_utc": "2025-01-22 23:00:00.010999",
+    "file_first_utc": "2025-01-01 23:00:00.027000",
+    "file_last_utc": "2025-01-23 14:55:51.512000",
+    "mtime": "2026-08-25 14:14:26.401319"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 23.1.25 000000-3.2.25 235900_a2c8b2ea-18e6-4b93-9271-794ae0a35374.csv",
+    "size_bytes": 514206640,
+    "effective_first_utc": "2025-01-22 23:00:00.011000",
+    "effective_last_utc": "2025-02-03 21:59:59.775000",
+    "file_first_utc": "2025-01-22 23:00:00.011000",
+    "file_last_utc": "2025-02-03 21:59:59.775000",
+    "mtime": "2026-10-02 22:55:47.894394"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.2.25 000000-28.2.25 000000_49e9d8e6-4466-4e2a-9c52-1f26c882f007.csv",
+    "size_bytes": 990437505,
+    "effective_first_utc": "2025-02-03 21:59:59.775001",
+    "effective_last_utc": "2025-02-26 23:00:00.013999",
+    "file_first_utc": "2025-02-02 23:00:00.157000",
+    "file_last_utc": "2025-02-27 21:59:59.882000",
+    "mtime": "2026-09-05 16:09:06.109414"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 27.2.25 000000-3.3.25 235900_84fcf2dd-cfca-4308-abfd-eecc888ee8b2.csv",
+    "size_bytes": 265476777,
+    "effective_first_utc": "2025-02-26 23:00:00.014000",
+    "effective_last_utc": "2025-03-03 21:59:59.937000",
+    "file_first_utc": "2025-02-26 23:00:00.014000",
+    "file_last_utc": "2025-03-03 21:59:59.937000",
+    "mtime": "2026-10-02 22:23:40.551521"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.3.25 000000-31.3.25 000000_4e0b29af-be8f-47e2-8133-42dbadabce7d.csv",
+    "size_bytes": 1459466700,
+    "effective_first_utc": "2025-03-03 21:59:59.937001",
+    "effective_last_utc": "2025-03-27 23:00:00.322999",
+    "file_first_utc": "2025-03-02 23:00:00.073000",
+    "file_last_utc": "2025-03-28 20:59:59.921000",
+    "mtime": "2026-09-05 16:33:00.615527"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 28.3.25 000000-1.4.25 235900_0a5795f1-5bf6-4b7f-8360-d7001a65df6e.csv",
+    "size_bytes": 227006629,
+    "effective_first_utc": "2025-03-27 23:00:00.323000",
+    "effective_last_utc": "2025-04-01 20:59:59.778000",
+    "file_first_utc": "2025-03-27 23:00:00.323000",
+    "file_last_utc": "2025-04-01 20:59:59.778000",
+    "mtime": "2026-10-02 22:24:59.856519"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.4.25 000000-30.4.25 000000_9e47f621-15f7-46f7-9ace-2c1c01d248c9.csv",
+    "size_bytes": 1681398742,
+    "effective_first_utc": "2025-04-01 20:59:59.778001",
+    "effective_last_utc": "2025-04-28 22:00:00.014999",
+    "file_first_utc": "2025-03-31 22:00:00.015000",
+    "file_last_utc": "2025-04-29 20:59:58.826000",
+    "mtime": "2026-09-05 17:03:17.506823"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 29.4.25 000000-1.5.25 235900_4604ab8e-6b86-45d4-a446-ce7bb8e6d1c5.csv",
+    "size_bytes": 194759105,
+    "effective_first_utc": "2025-04-28 22:00:00.015000",
+    "effective_last_utc": "2025-05-01 20:59:59.968000",
+    "file_first_utc": "2025-04-28 22:00:00.015000",
+    "file_last_utc": "2025-05-01 20:59:59.968000",
+    "mtime": "2026-10-02 22:25:05.815577"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.5.25 000000-31.5.25 000000_fc97d4fa-262b-4b6c-86bc-78f98b9a1d5b.csv",
+    "size_bytes": 1137125882,
+    "effective_first_utc": "2025-05-01 20:59:59.968001",
+    "effective_last_utc": "2025-05-30 20:59:58.370000",
+    "file_first_utc": "2025-04-30 22:00:00.012000",
+    "file_last_utc": "2025-05-30 20:59:58.370000",
+    "mtime": "2026-09-05 17:50:59.758835"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.6.25 000000-30.6.25 000000_436070b6-2508-4baa-bd67-12cd4597016a.csv",
+    "size_bytes": 713060475,
+    "effective_first_utc": "2025-06-01 22:00:00.068000",
+    "effective_last_utc": "2025-06-23 22:00:00.010999",
+    "file_first_utc": "2025-06-01 22:00:00.068000",
+    "file_last_utc": "2025-06-24 14:28:21.655000",
+    "mtime": "2026-09-05 18:09:24.376007"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 24.6.25 000000-1.8.25 235900_4df3f25c-0001-4484-abdb-3876c3a8e72d.csv",
+    "size_bytes": 1126340759,
+    "effective_first_utc": "2025-06-23 22:00:00.011000",
+    "effective_last_utc": "2025-08-01 20:59:59.473000",
+    "file_first_utc": "2025-06-23 22:00:00.011000",
+    "file_last_utc": "2025-08-01 20:59:59.473000",
+    "mtime": "2026-10-02 22:41:55.464628"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.7.25 000000-31.7.26 000000_1e2d3445-eaf5-423d-be2b-1ee4e70335cc.csv",
+    "size_bytes": 6684663701,
+    "effective_first_utc": "2025-08-01 20:59:59.473001",
+    "effective_last_utc": "2025-09-28 22:00:00.068999",
+    "file_first_utc": "2025-07-30 22:00:00.017000",
+    "file_last_utc": "2026-01-27 14:30:04.298000",
+    "mtime": "2026-09-12 22:29:19.645349"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 29.9.25 000000-1.10.25 235900_4fcd2962-6fb3-4a64-a1be-7b3b81b3cd52.csv",
+    "size_bytes": 134341920,
+    "effective_first_utc": "2025-09-28 22:00:00.069000",
+    "effective_last_utc": "2025-10-01 20:59:59.750000",
+    "file_first_utc": "2025-09-28 22:00:00.069000",
+    "file_last_utc": "2025-10-01 20:59:59.750000",
+    "mtime": "2026-10-02 22:43:59.949195"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.7.25 000000-31.7.26 000000_1e2d3445-eaf5-423d-be2b-1ee4e70335cc.csv",
+    "size_bytes": 6684663701,
+    "effective_first_utc": "2025-10-01 20:59:59.750001",
+    "effective_last_utc": "2025-10-29 23:00:00.239999",
+    "file_first_utc": "2025-07-30 22:00:00.017000",
+    "file_last_utc": "2026-01-27 14:30:04.298000",
+    "mtime": "2026-09-12 22:29:19.645349"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 30.10.25 000000-3.11.25 235900_7dc08c75-be5f-46a4-8d72-c25b4348a7e4.csv",
+    "size_bytes": 179455530,
+    "effective_first_utc": "2025-10-29 23:00:00.240000",
+    "effective_last_utc": "2025-10-31 14:29:19.369000",
+    "file_first_utc": "2025-10-29 23:00:00.240000",
+    "file_last_utc": "2025-11-03 21:59:59.826000",
+    "mtime": "2026-10-02 22:49:39.127142"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.7.25 000000-31.7.26 000000_1e2d3445-eaf5-423d-be2b-1ee4e70335cc.csv",
+    "size_bytes": 6684663701,
+    "effective_first_utc": "2025-10-31 14:29:19.369001",
+    "effective_last_utc": "2025-10-31 15:00:00.016999",
+    "file_first_utc": "2025-07-30 22:00:00.017000",
+    "file_last_utc": "2026-01-27 14:30:04.298000",
+    "mtime": "2026-09-12 22:29:19.645349"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 30.10.25 000000-3.11.25 235900_7dc08c75-be5f-46a4-8d72-c25b4348a7e4.csv",
+    "size_bytes": 179455530,
+    "effective_first_utc": "2025-10-31 15:00:00.017000",
+    "effective_last_utc": "2025-11-03 21:59:59.826000",
+    "file_first_utc": "2025-10-29 23:00:00.240000",
+    "file_last_utc": "2025-11-03 21:59:59.826000",
+    "mtime": "2026-10-02 22:49:39.127142"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.7.25 000000-31.7.26 000000_1e2d3445-eaf5-423d-be2b-1ee4e70335cc.csv",
+    "size_bytes": 6684663701,
+    "effective_first_utc": "2025-11-03 21:59:59.826001",
+    "effective_last_utc": "2025-11-26 23:00:00.012999",
+    "file_first_utc": "2025-07-30 22:00:00.017000",
+    "file_last_utc": "2026-01-27 14:30:04.298000",
+    "mtime": "2026-09-12 22:29:19.645349"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 27.11.25 000000-29.11.25 235900_a63abe92-ac8c-40cc-a300-46a00836cd02.csv",
+    "size_bytes": 19296902,
+    "effective_first_utc": "2025-11-26 23:00:00.013000",
+    "effective_last_utc": "2025-11-27 07:00:00.122999",
+    "file_first_utc": "2025-11-26 23:00:00.013000",
+    "file_last_utc": "2025-11-28 18:14:59.990000",
+    "mtime": "2026-10-05 17:43:38.152172"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 27.11.25 000000-29.11.25 235900_649f12d1-728d-49cf-996c-5099d17db765.csv",
+    "size_bytes": 16689869,
+    "effective_first_utc": "2025-11-27 07:00:00.123000",
+    "effective_last_utc": "2025-11-28 18:14:59.990000",
+    "file_first_utc": "2025-11-27 07:00:00.123000",
+    "file_last_utc": "2025-11-28 18:14:59.990000",
+    "mtime": "2026-10-05 18:31:51.177159"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.7.25 000000-31.7.26 000000_1e2d3445-eaf5-423d-be2b-1ee4e70335cc.csv",
+    "size_bytes": 6684663701,
+    "effective_first_utc": "2025-11-28 18:14:59.990001",
+    "effective_last_utc": "2025-12-29 23:00:00.015999",
+    "file_first_utc": "2025-07-30 22:00:00.017000",
+    "file_last_utc": "2026-01-27 14:30:04.298000",
+    "mtime": "2026-09-12 22:29:19.645349"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 30.12.25 000000-2.1.26 235900_9cfa42e6-3c19-45d7-9b96-7aaaf2a859dc.csv",
+    "size_bytes": 123481448,
+    "effective_first_utc": "2025-12-29 23:00:00.016000",
+    "effective_last_utc": "2026-01-02 21:59:59.546000",
+    "file_first_utc": "2025-12-29 23:00:00.016000",
+    "file_last_utc": "2026-01-02 21:59:59.546000",
+    "mtime": "2026-10-02 22:48:21.003098"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.1.26 000000-31.1.26 000000_7aee358d-cea6-43cd-820d-3575588ebbfc.csv",
+    "size_bytes": 1265983461,
+    "effective_first_utc": "2026-01-02 21:59:59.546001",
+    "effective_last_utc": "2026-01-28 18:23:08.624000",
+    "file_first_utc": "2026-01-01 23:00:00.022000",
+    "file_last_utc": "2026-01-30 21:59:59.980000",
+    "mtime": "2026-09-26 16:33:22.002636"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 28.1.26 190000-28.1.26 203000_85752266-f31f-4c3e-967b-6502c61253fd.csv",
+    "size_bytes": 5159571,
+    "effective_first_utc": "2026-01-28 18:23:08.624001",
+    "effective_last_utc": "2026-01-28 19:00:00.024999",
+    "file_first_utc": "2026-01-28 18:00:00.005000",
+    "file_last_utc": "2026-01-28 19:29:59.938000",
+    "mtime": "2026-10-06 00:27:28.501214"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.1.26 000000-31.1.26 000000_7aee358d-cea6-43cd-820d-3575588ebbfc.csv",
+    "size_bytes": 1265983461,
+    "effective_first_utc": "2026-01-28 19:00:00.025000",
+    "effective_last_utc": "2026-01-30 21:59:59.980000",
+    "file_first_utc": "2026-01-01 23:00:00.022000",
+    "file_last_utc": "2026-01-30 21:59:59.980000",
+    "mtime": "2026-09-26 16:33:22.002636"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.2.26 000000-28.2.26 000000_acc32a8c-7c60-4be4-9e51-f4aa66d09a02.csv",
+    "size_bytes": 1446104240,
+    "effective_first_utc": "2026-02-01 23:00:00.090000",
+    "effective_last_utc": "2026-02-27 21:59:59.025000",
+    "file_first_utc": "2026-02-01 23:00:00.090000",
+    "file_last_utc": "2026-02-27 21:59:59.025000",
+    "mtime": "2026-09-26 16:50:44.145605"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.3.26 000000-31.3.26 000000_a3693b4b-b7fd-4849-9c0e-3b1fd76f46ab.csv",
+    "size_bytes": 1537680382,
+    "effective_first_utc": "2026-03-01 23:00:00.149000",
+    "effective_last_utc": "2026-03-29 22:00:00.094999",
+    "file_first_utc": "2026-03-01 23:00:00.149000",
+    "file_last_utc": "2026-03-30 20:59:59.820000",
+    "mtime": "2026-09-26 16:52:24.394980"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 30.3.26 000000-1.4.26 235900_de9bd814-ead5-4342-a89e-194a8ecf4661.csv",
+    "size_bytes": 228851705,
+    "effective_first_utc": "2026-03-29 22:00:00.095000",
+    "effective_last_utc": "2026-04-01 20:59:59.138000",
+    "file_first_utc": "2026-03-29 22:00:00.095000",
+    "file_last_utc": "2026-04-01 20:59:59.138000",
+    "mtime": "2026-10-02 22:56:04.216837"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.4.26 000000-30.4.26 000000_42d8ff29-58e9-446f-9f4c-9eed8a74283b.csv",
+    "size_bytes": 1286207063,
+    "effective_first_utc": "2026-04-01 20:59:59.138001",
+    "effective_last_utc": "2026-04-28 22:00:00.020999",
+    "file_first_utc": "2026-03-31 22:00:00.013000",
+    "file_last_utc": "2026-04-29 20:59:59.964000",
+    "mtime": "2026-09-26 17:11:53.044936"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 29.4.26 000000-1.5.26 235900_b66f5eee-3271-4850-a25e-82393365f0db.csv",
+    "size_bytes": 197844952,
+    "effective_first_utc": "2026-04-28 22:00:00.021000",
+    "effective_last_utc": "2026-05-01 20:59:59.999000",
+    "file_first_utc": "2026-04-28 22:00:00.021000",
+    "file_last_utc": "2026-05-01 20:59:59.999000",
+    "mtime": "2026-10-02 22:59:50.674803"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.5.26 000000-31.5.26 000000_20c9a3bb-5be7-4b19-ae32-41f7a068c5c0.csv",
+    "size_bytes": 1549206723,
+    "effective_first_utc": "2026-05-01 20:59:59.999001",
+    "effective_last_utc": "2026-05-29 20:59:59.382000",
+    "file_first_utc": "2026-04-30 22:00:00.019000",
+    "file_last_utc": "2026-05-29 20:59:59.382000",
+    "mtime": "2026-09-26 18:30:41.448077"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 1.6.26 000000-30.6.26 000000_af054292-fbe1-49b1-9c86-9311de06c93a.csv",
+    "size_bytes": 1000074161,
+    "effective_first_utc": "2026-05-31 22:00:00.050000",
+    "effective_last_utc": "2026-06-10 22:00:00.015999",
+    "file_first_utc": "2026-05-31 22:00:00.050000",
+    "file_last_utc": "2026-06-12 05:59:21.327000",
+    "mtime": "2026-09-26 19:09:48.126592"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 11.6.26 000000-7.8.26 235900_7d1bb1d2-251e-44f8-9c14-49c60d294599.csv",
+    "size_bytes": 3087952746,
+    "effective_first_utc": "2026-06-10 22:00:00.016000",
+    "effective_last_utc": "2026-07-20 01:42:00.575000",
+    "file_first_utc": "2026-06-10 22:00:00.016000",
+    "file_last_utc": "2026-07-24 09:59:59.799000",
+    "mtime": "2026-10-03 00:11:35.795746"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 20.7.26 030000-20.7.26 043000_894f9455-d04c-4afd-8e30-1c3aafa7cc55.csv",
+    "size_bytes": 4689966,
+    "effective_first_utc": "2026-07-20 01:42:00.575001",
+    "effective_last_utc": "2026-07-20 02:00:00.052999",
+    "file_first_utc": "2026-07-20 01:00:00.018000",
+    "file_last_utc": "2026-07-20 02:29:59.277000",
+    "mtime": "2026-10-06 00:37:41.426769"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 11.6.26 000000-7.8.26 235900_7d1bb1d2-251e-44f8-9c14-49c60d294599.csv",
+    "size_bytes": 3087952746,
+    "effective_first_utc": "2026-07-20 02:00:00.053000",
+    "effective_last_utc": "2026-07-22 22:00:00.022999",
+    "file_first_utc": "2026-06-10 22:00:00.016000",
+    "file_last_utc": "2026-07-24 09:59:59.799000",
+    "mtime": "2026-10-03 00:11:35.795746"
+  },
+  {
+    "filename": "MNQ AMP Futures (Rithmic), Tick - Tick - Last, 23.7.26 000000-7.8.26 235900_a62db1fa-8ade-4fe0-9c8f-e27d9992ea48.csv",
+    "size_bytes": 1229566858,
+    "effective_first_utc": "2026-07-22 22:00:00.023000",
+    "effective_last_utc": "2026-08-07 20:59:59.833000",
+    "file_first_utc": "2026-07-22 22:00:00.023000",
+    "file_last_utc": "2026-08-07 20:59:59.833000",
+    "mtime": "2026-10-05 18:03:54.955740"
+  }
+]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 import os
@@ -25,9 +26,12 @@ from thesistester.data.tick_stitch import (
 )
 from thesistester.persistence.local_store import LEVEL_ENGINE_VERSION
 
+REPO = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "tick_stitch"
 PLAN_PATH = FIXTURES / "plan.json"
 SHARED_NAME = "MNQ Tick - Tick - Last, 1_1_2020 100000 AM-1_2_2020 100000 AM.csv"
+FARM_PLAN = REPO / "examples" / "studies" / "program_b_run2" / "tick_stitch_plan.json"
+FARM_PLAN_SHA256 = "0954eac3a53b2a3f9a964f5c284043a972ea2242b9468dac5a43c4354d5a8ada"
 FARM_CENSUS = TickStitchCensus(
     unique_files=39,
     segments=46,
@@ -212,3 +216,26 @@ def test_load_plan_and_level_engine_version_unchanged():
     segments = load_tick_stitch_plan(PLAN_PATH)
     assert len(segments) == 3
     assert LEVEL_ENGINE_VERSION == 11
+
+
+def test_committed_farm_plan_census_schema_order_without_tick_files():
+    """Q1: committed 46-segment plan. Schema/census/order only; no verify, no ticks."""
+    assert hashlib.sha256(FARM_PLAN.read_bytes()).hexdigest() == FARM_PLAN_SHA256
+    segments = load_tick_stitch_plan(FARM_PLAN)
+    unique_sizes: dict[str, int] = {}
+    for segment in segments:
+        assert Path(segment.filename).name == segment.filename
+        assert "/" not in segment.filename and "\\" not in segment.filename
+        prior = unique_sizes.get(segment.filename)
+        if prior is not None:
+            assert prior == segment.size_bytes
+        unique_sizes[segment.filename] = segment.size_bytes
+        assert segment.effective_first_utc <= segment.effective_last_utc
+        assert segment.file_first_utc <= segment.file_last_utc
+        assert segment.file_first_utc <= segment.effective_first_utc
+        assert segment.effective_last_utc <= segment.file_last_utc
+    assert len(segments) == FARM_CENSUS.segments
+    assert len(unique_sizes) == FARM_CENSUS.unique_files
+    assert sum(unique_sizes.values()) == FARM_CENSUS.unique_bytes
+    for index in range(len(segments) - 1):
+        assert segments[index].effective_last_utc < segments[index + 1].effective_first_utc
