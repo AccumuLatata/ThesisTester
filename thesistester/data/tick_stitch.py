@@ -311,8 +311,7 @@ def _check_header_contract(path: Path) -> None:
     missing = [column for column in _REQUIRED_TICK_COLUMNS if column not in header.columns]
     if missing:
         raise TickStitchError(
-            "Quantower Tick–Tick–Last profile is missing required columns: "
-            f"{missing} in {path}"
+            f"Quantower Tick–Tick–Last profile is missing required columns: {missing} in {path}"
         )
 
 

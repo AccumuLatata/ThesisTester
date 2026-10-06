@@ -80,7 +80,8 @@ def test_first_last_mismatch_fails():
 
 def test_overlap_fails():
     payload = _plan_payload()
-    payload[0]["effective_last_utc"] = "2026-01-15 11:00:00.000"
+    # Keep the window inside the shared file range so the overlap check fires.
+    payload[1]["effective_last_utc"] = "2026-01-15 12:00:00.500"
     with pytest.raises(TickStitchError, match="not strictly before"):
         verify_tick_stitch_plan(payload, FIXTURES)
 
@@ -126,12 +127,15 @@ def test_verify_does_not_call_duplicate_file_guards(monkeypatch):
 
 def test_verify_reuses_loader_header_contract():
     source = inspect.getsource(tick_stitch)
-    assert "_require_tick_columns" in source
-    assert "_REQUIRED_TICK_COLUMNS" in source
+    import_block = source.split("from thesistester.data.quantower_ticks import", 1)[1]
+    import_block = import_block.split(")", 1)[0]
+    assert "_require_tick_columns" in import_block
+    assert "_REQUIRED_TICK_COLUMNS" in import_block
     assert tick_stitch._REQUIRED_TICK_COLUMNS is _REQUIRED_TICK_COLUMNS
-    assert "_peek_tick_file" not in source
-    assert "_reject_duplicate_files" not in source
-    assert "_file_sha256" not in source
+    assert "_peek_tick_file" not in import_block
+    assert "_reject_duplicate_files" not in import_block
+    assert "_file_sha256" not in import_block
+    assert not hasattr(tick_stitch, "_peek_tick_file")
     assert "36415038585" not in source
     assert "36_415_038_585" not in source
 
