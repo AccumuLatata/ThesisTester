@@ -520,10 +520,12 @@ def _refuse_nas_trading_paths(*paths: str | Path) -> None:
     for raw in paths:
         parts = Path(raw).expanduser().parts
         for index in range(len(parts) - 1):
-            if parts[index] == _NAS_TRADING_MARKER[0] and parts[index + 1] == _NAS_TRADING_MARKER[1]:
+            if (
+                parts[index] == _NAS_TRADING_MARKER[0]
+                and parts[index + 1] == _NAS_TRADING_MARKER[1]
+            ):
                 raise X1FillError(
-                    "farm-impact refuses /mnt/nas-trading "
-                    "(NVMe stitch only; not a CI or SMB path)."
+                    "farm-impact refuses /mnt/nas-trading (NVMe stitch only; not a CI or SMB path)."
                 )
 
 
