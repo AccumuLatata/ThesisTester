@@ -272,7 +272,7 @@ def test_mw1_runtime_surface_is_limited_vs_main() -> None:
         "thesistester/engine/intrabar.py",
         "thesistester/study/execute.py",
         "thesistester/data/tick_stitch.py",
-        "thesistester/levels/tick_x1_fill.py",  # TS4 §5 plan-row file (Accumu Option A)
+        "thesistester/levels/tick_x1_fill.py",  # TS4 plan-row file (Accumu option A; §12)
     }
     files: set[str] = set()
     for line in diff.splitlines():

@@ -473,7 +473,9 @@ This engine is for **research screening**, not proof of a durable edge.
 - `thesistester.levels.tick_x1_fill.fill_x1_15s_residual` fills only
   `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)` UTC from 15s residual
   typical-price Last×Volume (`profile._bucket_prices`, `bar_ts + 7.5s`).
-  The shared empty gap ~16:49–17:58 UTC is not filled.
+  The shared empty gap ~16:49–17:58 UTC is not filled. Bar `19:00:00` has
+  a left edge inside the window, but `+7.5s` is not, so it stays unfilled
+  (`fill timestamps lie only in [...)`).
 - `dataset.tick_stitch_x1_burst_included` is an explicit boolean argument
   (no silent default). Q9 remains Accumu's call. The missing-key reject is
   TS5/TS6, not this helper.

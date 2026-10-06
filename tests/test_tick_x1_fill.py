@@ -38,9 +38,11 @@ from thesistester.levels.tick_x1_fill import (
     X1_TRADE_DATE,
     X1_WINDOW_END,
     X1_WINDOW_START,
+    X1FillError,
     build_synthetic_impact_report,
     fill_x1_15s_residual,
     reject_x1_synthetics,
+    run_farm_impact_report,
 )
 from thesistester.persistence.local_store import LEVEL_ENGINE_VERSION
 from thesistester.study import execute as execute_mod
@@ -244,6 +246,21 @@ def test_fill_timestamps_lie_only_inside_locked_window():
     assert (extra["timestamp"] == extra["timestamp"].dt.floor("15s") + X1_FILL_OFFSET).all()
 
 
+def test_190000_bar_left_edge_in_window_but_placement_outside_is_unfilled():
+    """Bar 19:00:00 is in [17:58:14.581, 19:00:00.009); +7.5s is not."""
+    left = _utc("2025-11-07 19:00:00")
+    placed = left + X1_FILL_OFFSET
+    assert X1_WINDOW_START <= left < X1_WINDOW_END
+    assert not (X1_WINDOW_START <= placed < X1_WINDOW_END)
+    ticks, bars = _shaped_11_07_fixture()
+    filled, _quality = _fill(ticks, bars, burst=True)
+    extra = _extra(filled, ticks)
+    assert extra["timestamp"].min() >= X1_WINDOW_START
+    assert extra["timestamp"].max() < X1_WINDOW_END
+    assert not extra["timestamp"].eq(placed).any()
+    assert extra["timestamp"].eq(_utc("2025-11-07 18:59:52.500")).sum() == 1
+
+
 def test_175800_bar_is_not_filled_and_shared_gap_is_not_filled():
     ticks, bars = _shaped_11_07_fixture()
     filled, quality = _fill(ticks, bars, burst=False)
@@ -413,6 +430,10 @@ def test_ci_impact_emits_three_triples_and_identical_apoc():
     assert "q9" in report
     assert "no product default" in report["q9"]
     assert "deltas" in report
+    for name in IMPACT_VARIANTS:
+        row = report["variants"][name]
+        assert row["pd_2025-11-10"] == row["session_2025-11-07"]
+        assert row["pm_prior_month_2025-12"] == row["pm_2025-11"]
 
 
 def test_apply_hook_matches_fill_and_is_not_execute_wired():
@@ -497,8 +518,66 @@ def test_farm_impact_cli_on_synthetic_fixture(tmp_path: Path):
     assert set(report["variants"]) == set(IMPACT_VARIANTS)
     assert report["apoc_identical"] is True
     for name in IMPACT_VARIANTS:
-        assert "session_2025-11-07" in report["variants"][name]
-        assert "pd_2025-11-10" in report["variants"][name]
-        assert "pw_w_sun_containing_2025-11-07" in report["variants"][name]
-        assert "pm_2025-11" in report["variants"][name]
-        assert "pm_prior_month_2025-12" in report["variants"][name]
+        row = report["variants"][name]
+        assert "session_2025-11-07" in row
+        assert "pd_2025-11-10" in row
+        assert "pw_w_sun_containing_2025-11-07" in row
+        assert "pm_2025-11" in row
+        assert "pm_prior_month_2025-12" in row
+        for key in (
+            "session_2025-11-07",
+            "pd_2025-11-10",
+            "pw_w_sun_containing_2025-11-07",
+            "pm_2025-11",
+            "pm_prior_month_2025-12",
+        ):
+            for field in ("VAH", "VAL", "POC"):
+                assert np.isfinite(row[key][field])
+        assert row["pd_2025-11-10"] == row["session_2025-11-07"]
+        assert row["pm_prior_month_2025-12"] == row["pm_2025-11"]
+
+
+def test_farm_impact_does_not_call_hourly_guard_and_still_emits_all_variants():
+    """Ticks-only / burst-off fail TS3 option A; farm-impact must not abort."""
+    import thesistester.levels.tick_x1_fill as fill_mod
+
+    assert "guard_hourly_tick_holes" not in inspect.getsource(fill_mod.run_farm_impact_report)
+    assert "guard_hourly_tick_holes" not in inspect.getsource(fill_mod.main)
+    ticks, bars = _shaped_11_07_fixture()
+    hour_bars = bars.loc[bars["timestamp"].dt.floor("h") == _utc("2025-11-07 18:00:00")]
+    clipped = clip_ticks_to_15s_bars(ticks, hour_bars["timestamp"])
+    with pytest.raises(TickStitchError):
+        guard_hourly_tick_holes(clipped, hour_bars)
+    filled_off, _quality = _fill(ticks, bars, burst=False)
+    clipped_off = clip_ticks_to_15s_bars(filled_off, hour_bars["timestamp"])
+    with pytest.raises(TickStitchError):
+        guard_hourly_tick_holes(clipped_off, hour_bars)
+    later = _tick_frame([_utc("2025-11-10 15:05:00.100")], 20_100.00, 7.0)
+    report = build_synthetic_impact_report(
+        {X1_TRADE_DATE: ticks, PD_LOOKAHEAD_DATE: later},
+        bars,
+        instrument="MNQ",
+    )
+    assert tuple(report["variants"]) == IMPACT_VARIANTS
+    assert report["apoc_identical"] is True
+
+
+def test_farm_impact_refuses_nas_trading_without_reading_it():
+    with pytest.raises(X1FillError, match="nas-trading"):
+        run_farm_impact_report(
+            "/mnt/nas-trading/plan.json",
+            "/tmp/tick-root",
+            "/tmp/bars.csv",
+        )
+    with pytest.raises(X1FillError, match="nas-trading"):
+        run_farm_impact_report(
+            "/tmp/plan.json",
+            "/mnt/nas-trading/ticks",
+            "/tmp/bars.csv",
+        )
+    with pytest.raises(X1FillError, match="nas-trading"):
+        run_farm_impact_report(
+            "/tmp/plan.json",
+            "/tmp/tick-root",
+            "/mnt/nas-trading/bars.csv",
+        )
