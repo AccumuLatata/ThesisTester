@@ -242,20 +242,19 @@ def test_1128_whole_empty_bar_after_1330_still_fails():
 
 def test_bar_inside_only_if_half_open_span_fully_in_interval():
     """[t, t+15s) ⊆ interval. Straddle start/end fail; exact edges pass."""
-    ticks = _ticks("2025-11-07 18:00:10.000", "2025-11-07 18:00:50.000")
+    ticks = _ticks("2025-11-07 18:00:10.000", "2025-11-07 18:00:35.000")
     bars = pd.DataFrame(
         {
             "timestamp": [
                 _utc("2025-11-07 18:00:00"),
                 _utc("2025-11-07 18:00:15"),
                 _utc("2025-11-07 18:00:30"),
-                _utc("2025-11-07 18:00:45"),
             ],
-            "volume": [4.0, 4.0, 4.0, 4.0],
+            "volume": [4.0, 4.0, 4.0],
         }
     )
     clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
-    # Empty whole bar is [18:00:15, 18:00:30). Interval starts at 18:00:20 → straddle.
+    # Sole empty whole bar is [18:00:15, 18:00:30). Interval starts at 18:00:20 → straddle.
     with pytest.raises(TickStitchError, match="mid-hour"):
         guard_hourly_tick_holes(
             clipped,
@@ -413,7 +412,11 @@ def test_tz_aware_chicago_interval_and_naive_utc_match():
 
 def test_exact_15s_tick_boundary_empty_bar_is_the_open_right_span():
     """Tick at 18:01:00 is the left edge of that bar; [18:01:15, 18:01:30) is empty."""
-    ticks = _ticks("2025-11-07 18:01:00.000", "2025-11-07 18:01:30.000")
+    ticks = _ticks(
+        "2025-11-07 18:00:50.000",
+        "2025-11-07 18:01:00.000",
+        "2025-11-07 18:01:30.000",
+    )
     bars = pd.DataFrame(
         {
             "timestamp": [
