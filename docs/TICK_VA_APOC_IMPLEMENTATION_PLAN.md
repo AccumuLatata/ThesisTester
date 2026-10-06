@@ -1,7 +1,7 @@
 # Tick stitch → VA / APOC — implementation plan (TS)
 
 **Document type:** Implementation plan (fully scoped PRs). This file is the review copy of the plan. **This PR ships no runtime, no packet, no config, and no data.**
-**Date:** 2026-10-05
+**Date:** 2026-10-06
 **Status:** Plan lock. No study. No code in the plan PR.
 **Series code:** **TS** (Tick Stitch for VA + APOC). Not TV (Tick VAP, landed). Not AP (A-period source, landed). Not RP (rolling POC). Not MW.
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist.
@@ -35,7 +35,7 @@ Series complete when:
 2. X1 `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)` UTC is filled from 15s residual volume-at-price, flagged, and impact-tested. APOC that day is untouched. The right edge is exclusive (§6.1).
 3. An hourly hole guard refuses a cut-short export.
 4. With the tick option **off**, Run 2 15s cells reproduce `0ebc1494` bit-identically (wall-clock timestamps excepted).
-5. Farm copy is NVMe-only; workers never read `/mnt/nas-trading`. A small pilot study runs before the 253-cell tick packet.
+5. Farm copy is NVMe-only; workers never read `/mnt/nas-trading`. Two one-cell pilots in order: pdPOC, then APOC, before the 253-cell tick packet.
 
 ---
 
@@ -87,7 +87,7 @@ The current loader cannot express the stitch (same file, five disjoint windows o
 | Check | Use in this series |
 |---|---|
 | Exact OHLC 98.065%, close 99.039%, vol exact 96.109% on 78,205 bars; best shift 0 s / 0 ms; median close ratio 1.0 | Tolerance lock for any tick→15s **bar** compare. Session VA is not required to match 15s typical. |
-| Σvol ticks/15s 0.997–1.000 | Do not expect bar-exact volume. |
+| Σvol ticks/15s 0.997–1.000 (source 0.997312–1.000276) | Do not expect bar-exact volume. |
 | Holes A/B (fixable) and D/E (then open) | **Closed** by stitch patches 1–2. Do not re-open. |
 | Hole C / X1 | Still the only unexpected residual. **Fill**, do not exclude. |
 
@@ -147,7 +147,7 @@ Fail closed on any mismatch. Do not “repair” the plan at runtime.
 
 Farm census is a **separate** expected-lock, not a property of every plan. When the caller passes it (farm plan only): unique-file count 39, segment count 46, `sum(unique size_bytes) == 36415038585`. TS1 synthetic plans (including one file with two disjoint windows) must verify **without** that lock. Hardcoding 39/46 inside `verify_tick_stitch_plan` would make the fixture suite fail.
 
-Identity for a verified tree: SHA-256 of (canonical plan JSON + per-file content hashes + X1 fill-policy token + clip policy token + session-cut policy `cme_eth_start_v1`). This is **not** `compute_tick_source_id` over a naive path list (that API hashes whole files and would collide with a different trim). New helper; old helper unchanged when stitch is off.
+Identity for a verified tree: SHA-256 of (canonical plan JSON + per-file content hashes + X1 fill-policy token + `dataset.tick_stitch_x1_burst_included` + clip policy token + session-cut policy `cme_eth_start_v1`). This is **not** `compute_tick_source_id` over a naive path list (that API hashes whole files and would collide with a different trim). Stitch-on identity is `tick_stitch_source_id` only. `compute_tick_source_id` is unchanged when the stitch is off.
 
 ### 4.3 Stream per session (parent only)
 
@@ -182,15 +182,17 @@ This removes:
 - the seven 1-lot halt prints at 21:00:00.0xx / 22:00:00.0xx on quarterly-roll Tuesdays (quality report residual risk 5);
 - ticks that sit in 15s weekend/holiday edge gaps (quality report: 15s often drops the last 15s bar before a break).
 
-It does **not** impute 15s-missing bars. The 2025-11-28 outage (15s ends ~02:24:15 UTC, ticks end ~02:44 UTC, both empty through 13:30:00 UTC) stays empty.
+It does **not** impute 15s-missing bars. The 2025-11-28 outage (15s ends ~02:24:15 UTC, ticks end ~02:44 UTC, both empty through 13:30:00 UTC) stays empty. Segments 0–1 (2024-06-02 → 07-30, 1,940,338,542 bytes) predate the 15s window and are dropped by clip, but are still copied for the 39/46 census.
 
 ### 4.5 RAM budget
 
 | Process | May hold | Must not hold |
 |---|---|---|
 | Verify CLI | One file’s first/last seek buffers; running sha256 block (1 MiB) | All 34 GiB decoded |
-| Study parent (stitch on) | One CSV chunk + current session histogram + A-period accumulator + the two output tables | All sessions’ raw ticks; a second copy of the mega file; every window of one file buffered across an intervening segment |
+| Study parent (stitch on) | One CSV chunk + current session histogram + A-period accumulator + the two output tables + the 15s bar index (timestamps + volume; OHLC only for the X1 window) | All sessions’ raw ticks; a second copy of the mega file; every window of one file buffered across an intervening segment |
 | Study worker (12×) | Existing 15s + levels + two scalar tables (documented VmHWM 3.73 GiB full-run; 3.85–4.46 GiB at 12 workers) | Any farm tick CSV; `list(iter_tick_files)`; `compute_tick_source_id` / APOC / rolling identity hashes of farm paths |
+
+The 15s bar index is loaded once on the parent via `load_ohlcv` on the Run 2 CSV (344,135,035 bytes; `COLUMN_ALIASES` maps `time left` → timestamp): timestamps + volume for every bar, OHLC only for bars inside the X1 window. That read is the index cost; it is not a second 34 GiB tick scan. Cache the two parent parquets keyed by stitch identity + 4/8/10 bins + `dataset.tick_stitch_x1_burst_included` so the 8 studies + 2 pilots do not re-verify or re-stream 34 GiB each time.
 
 Operational abort (farm, not a unit test): if `MemAvailable` would fall below **6 GiB** during the parent stream, stop. Do not raise worker count.
 
@@ -248,10 +250,10 @@ Golden files under `tests/fixtures/golden/` are not regenerated.
 
 | | |
 |---|---|
-| **Scope** | Clip (§4.4). Per-hour compare: if the 15s frame has at least one bar in hour `H` and the stitched+clipped ticks have none, or the last tick in `H` ends before the last 15s bar in `H` by ≥ 5 s **and** that bar has volume, **fail** unless the interval is on the allowlist. |
+| **Scope** | Clip (§4.4). Per-hour compare: if the 15s frame has at least one bar in hour `H` and the stitched+clipped ticks have none, or the last tick in `H` ends before the last 15s bar in `H` by ≥ 5 s **and** that bar has volume, **fail** unless the interval is on the allowlist. Also fail a head-of-hour hole (first tick ≥ 5 s after the first 15s bar with volume in that hour) and a mid-hour gap (any tick gap ≥ 5 s spanning 15s bars with volume). Allowlist unchanged. X1 is still not a bypass. |
 | **Allowlist (locked)** | (1) 2025-11-28 CME outage, empty through 13:30:00 UTC. 15s coverage ends ~02:24:15 and tick coverage ends ~02:44; both sources are missing across that span (also empty in the 15s frame). Do not fill it (§4.4). (2) Thanksgiving / weekend / daily-halt gaps already empty in **both** sources. (3) X1 is **not** an allowlist bypass. TS3’s direct guard call on an unfilled X1 hour **fails**. After the TS4 fill, that hour must **pass**. (4) Inter-file weekends listed in stitch meta. |
 | **Files** | `thesistester/data/tick_stitch.py` (or `tick_stitch_guard.py`); `tests/test_tick_stitch_guard.py` |
-| **Tests** | Halt 1-lot print at 22:00:00.050 is clipped away. Synthetic cut-short hour (ticks end 14:51:52, 15s has bars to 15:00) **fails**. 11-28 allowlisted hole does **not** fail. Hour with ticks but no 15s (roll-Tuesday 21:00 print) does **not** fail after clip. |
+| **Tests** | Halt 1-lot print at 22:00:00.050 is clipped away. Synthetic cut-short hour (ticks end 14:51:52, 15s has bars to 15:00) **fails**. Head-of-hour (first tick ≥ 5 s after the first 15s bar with volume) **fails**. Mid-hour tick gap ≥ 5 s spanning 15s bars with volume **fails**. 11-28 allowlisted hole does **not** fail. Hour with ticks but no 15s (roll-Tuesday 21:00 print) does **not** fail after clip. |
 | **Acceptance** | Still not wired into execute. Guard is a function tests call. |
 
 The guard exists so a future Quantower chunk truncation cannot slip into a study the way holes A–E did.
@@ -266,8 +268,8 @@ See §6 for the fill design (normative). This PR implements it and the impact te
 |---|---|
 | **Scope** | Residual 15s VAP fill for the X1 window only. Per-session quality flag. APOC path rejects synthetics. |
 | **Files** | `thesistester/levels/tick_x1_fill.py` (new, small); hook from the stitch reducer; `tests/test_tick_x1_fill.py`; synthetic 15s+tick fixture shaped like 11-07 (shared empty 16:49–17:58, 10k-tick island, burst bars, 59 min empty). **Do not** commit farm ticks. |
-| **Tests** | Fill timestamps lie only in `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)`. Residual volume = `max(0, 15s_vol − tick_vol)` per 15s bar; 10k-island bar does not double-count. Synthetics never appear in `select_a_period_rows` for 2025-11-07. Shared 16:49–17:58 gap is **not** filled. Flag `x1_15s_residual_fill` is true only for trade date 2025-11-07. **Impact test (required):** three variants — ticks-only, fill-without-burst, fill-with-burst — none of which is a product default. For each, report 2025-11-07 full-session VA (`VAH`/`VAL`/`POC`) and any downstream `pdPOC` / `pVA` / `pwVA` cell deltas the fill touches (including `pd*` on 2025-11-10 and `pw*` for the W-SUN week that contains 2025-11-07). Assert the three triples are emitted and that APOC 2025-11-07 is identical across variants. Do **not** assert a preferred VA number; the report is the artifact. Accumu picks the default from that report before the tick packet is frozen. Until then `x1_burst_included` has no silent default; the validator rejects a missing value. |
-| **Acceptance** | No silent burst default. `x1_burst_included` is required and explicit; the validator rejects a missing value. Accumu sets it from the impact report before the tick packet is frozen (§8, Q9). Reverting this PR restores “no fill” without touching TS1–TS3. |
+| **Tests** | Fill timestamps lie only in `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)`. Residual volume = `max(0, 15s_vol − tick_vol)` per 15s bar; 10k-island bar does not double-count. Synthetics never appear in `select_a_period_rows` for 2025-11-07. Shared 16:49–17:58 gap is **not** filled. Flag `x1_15s_residual_fill` is true only for trade date 2025-11-07. Hourly guard passes the X1 hour after the fill. **CI impact test** (`tests/test_tick_x1_fill.py`, synthetic fixture): three variants — ticks-only, fill-without-burst, fill-with-burst — none of which is a product default. Assert the three triples are emitted and that APOC 2025-11-07 is identical across variants. Do **not** assert a preferred VA number. **Parent-only farm impact command** (NVMe stitch, not a worker, not CI): emits the real 2025-11-07 `VAH`/`VAL`/`POC` for those three variants plus downstream 2025-11-10 `pd*` and the W-SUN week `pw*` deltas. Accumu picks the `dataset.tick_stitch_x1_burst_included` value from that farm report before the tick packet is frozen. Until then `dataset.tick_stitch_x1_burst_included` has no silent default; the validator rejects a missing value when `tick_stitch_plan` is set. |
+| **Acceptance** | No silent burst default. `dataset.tick_stitch_x1_burst_included` (bool) is required when `tick_stitch_plan` is set; the validator rejects a missing value. Accumu sets it from the farm impact report before the tick packet is frozen (§8, Q9). TS4 hooks into the TS5 reducer: revert TS5 first (stops the call), then TS4 (deletes the fill module). Reverting TS4 while TS5 still calls it is not a clean revert. |
 
 ---
 
@@ -277,30 +279,34 @@ First engine/study touch. Default remains bit-identical to `0ebc1494`.
 
 | | |
 |---|---|
-| **Scope** | If `dataset.tick_stitch_plan` is absent: **zero** behaviour change. If present (later packets): parent runs verify → stream → clip → X1 fill → hourly guard → write `PriorProfileTable` parquet (existing, aggregation **4/8/10** from the study levels) **and** `APeriodTickProfileTable` parquet (new path). Inject both paths **and precomputed source ids** onto every cell. The worker call chain is `execute_study_cell` → `run_experiment` → `compute_levels` → `compute_all_levels`. It is not a direct `compute_apoc_levels` call. `compute_levels` must grow an `apoc_tick_table` / path argument and, when that table is present, must not call `build_a_period_tick_profile_table`. `product_tick_family_preflight` and `_require_ticks_for_named_apoc_and_rolling` must treat the injected APOC table as tick input; today both look only at `tick_paths` and would refuse or, if paths remain, hash and `list()` the farm CSVs inside every worker (`api.py` `compute_levels` and the experiment levels block). Expanded stitch cells must not carry farm CSV paths. Identity stamps are the parent’s precomputed ids, not a worker-side `compute_tick_source_id`. |
-| **Files** | `thesistester/study/execute.py` (parent prepare + inject, beside `_prepare_study_prior_profile`); `thesistester/api.py` (`compute_levels` + `run_experiment` table/id threading); `thesistester/levels/tick_requirements.py` (stitch plan or injected APOC table counts as tick input); `thesistester/study/schema.py` / `launch.py` / `expand.py` (additive key `tick_stitch_plan`, optional `apoc_tick_table_path`); `thesistester/research_identity.py` (hash the new keys when present; do not content-hash farm paths on the worker); `tests/test_ts_run2_parity.py` (**named parity test**, below); docs sentences that are newly true. |
+| **Scope** | If `dataset.tick_stitch_plan` is absent: **zero** behaviour change. If present: `dataset.tick_stitch_x1_burst_included` (bool) is required and the validator rejects a missing value. Parent runs verify → stream → clip → X1 fill → hourly guard → write `PriorProfileTable` parquet (existing, aggregation **4/8/10** from the study levels) **and** `APeriodTickProfileTable` parquet (new path), cached by stitch identity + 4/8/10 bins + `dataset.tick_stitch_x1_burst_included` (§4.5). Inject both paths **and precomputed source ids** onto every cell. The worker call chain is `execute_study_cell` → `run_experiment` → `compute_levels` → `compute_all_levels`. It is not a direct `compute_apoc_levels` call. `compute_levels` must grow an `apoc_tick_table` / path argument and, when that table is present, must not call `build_a_period_tick_profile_table`. `product_tick_family_preflight`, `study/schema.py::_require_ticks_for_named_va`, `api.py::_require_ticks_for_named_va`, and `_require_ticks_for_named_apoc_and_rolling` (both `study/schema.py` and `api.py`) must treat `tick_stitch_plan` with no `tick_paths`, and the injected APOC table, as tick input. Today schema `_require_ticks_for_named_va` and both APOC/rolling gates use `dataset_has_tick_paths` only; api `_require_ticks_for_named_va` uses `dataset_has_tick_inputs`. A leftover `tick_paths` list is opened and content-hashed inside every worker (`api.py` `compute_levels` and the experiment levels block). Expanded stitch cells must not carry farm CSV paths. Identity stamps are the parent’s precomputed ids, not a worker-side `compute_tick_source_id`. |
+| **Files** | `thesistester/study/execute.py` (parent prepare + inject, beside `_prepare_study_prior_profile`); `thesistester/api.py` (`compute_levels` + `run_experiment` table/id threading); `thesistester/levels/tick_requirements.py` (stitch plan or injected APOC table counts as tick input); `thesistester/study/schema.py` / `launch.py` / `expand.py` (additive keys `tick_stitch_plan` and `dataset.tick_stitch_x1_burst_included` — bool, required when `tick_stitch_plan` is set, validator rejects missing — plus optional `apoc_tick_table_path`); `thesistester/research_identity.py` (hash the new keys when present; do not content-hash farm paths on the worker); `tests/test_ts_run2_parity.py` (**named parity test**, below); docs sentences that are newly true. |
 | **Forbidden** | Changing `dataset.path`, `load_ohlcv`, `prepare_15s_source_for_derivation`, `derive_complete_parent_ohlcv`, MW flag semantics, `poc_windows` on the **15s** packet. |
-| **Tests** | Named parity test §5.1. Unit: stitch absent → `apoc_tick_table_path` absent → APOC still builds from fixture `tick_paths` as today. Stitch present on a tiny fixture → worker-side `iter_tick_files`, `build_a_period_tick_profile_table`, and `compute_tick_source_id` are not called (monkeypatch sentinels). Parent table uses 4/8/10, not the 1/1/1 library defaults. Explicit `poc_windows: []` does not enter `compute_rolling_poc_tick_levels`; omitting the key must not be the “off” switch under test (product default is `["30min"]`). Future-shock: append a later session’s ticks → prior `pd*` / `APOC` unchanged (`tests/test_r3_point_in_time.py` pattern). |
-| **Acceptance** | `test_stitch_plan_absent_replays_run2_15s_smoke` green. Existing MW0 / fade / VA / APOC tests green. |
+| **Tests** | CI merge gate `test_stitch_plan_absent_execute_hook_audit` (§5.1). pdPOC and APOC specs with `tick_stitch_plan` and no `tick_paths` validate. Unit: stitch absent → `apoc_tick_table_path` absent → APOC still builds from fixture `tick_paths` as today. Stitch present on a tiny fixture → worker-side `iter_tick_files`, `build_a_period_tick_profile_table`, and `compute_tick_source_id` are not called (monkeypatch sentinels). Parent table uses 4/8/10, not the 1/1/1 library defaults. Explicit `poc_windows: []` does not enter `compute_rolling_poc_tick_levels`; omitting the key must not be the “off” switch under test (product default is `["30min"]`). Future-shock: append a later session’s ticks → prior `pd*` / `APOC` unchanged (`tests/test_r3_point_in_time.py` pattern). |
+| **Acceptance** | `test_stitch_plan_absent_execute_hook_audit` green (TS5 merge gate). Farm `capture_operator` + `compare_captures` is the §8 gate, not this merge gate. Existing MW0 / fade / VA / APOC tests green. |
 
 #### 5.1 Named parity test (lock)
 
-**Name:** `tests/test_ts_run2_parity.py::test_stitch_plan_absent_replays_run2_15s_smoke`
+**CI merge gate:** `tests/test_ts_run2_parity.py::test_stitch_plan_absent_execute_hook_audit`
 
-**Cells replayed:**
+Hook audit that the execute/API call graph is unchanged when `tick_stitch_plan` is omitted (same style as `test_memory_parity.py` hook points). This test is the TS5 merge gate. It does not run `compare_captures`.
+
+**Farm gate (§8):** `capture_operator` + `compare_captures`, zero tolerance. Parity runs use production `THESISTESTER_MEMORY_PATH=array` (farm measurement env in `docs/WORKER_MEMORY_IMPLEMENTATION_PLAN.md` §17; the library default stays unset unless the value is exactly `array`).
+
+**Cells replayed on the farm:**
 
 1. `examples/studies/program_b_run2/progB_smoke_ONH_SMA50_5min.yaml` — the MW0 full reference cell (`progB_r2_smoke_ONH_SMA50_5min_c0000_anchor_rules_fade_1min_SMA_50_5min_otfOff_*`, 59 trades, E=0.0805 on the farm CSV).
-2. First Wave-0 15s solo cell from `examples/studies/program_b_run2/progB_w0_solo.yaml` (ONH, `min_valid: 0`).
+2. Wave-0 ONH solo from a one-anchor spec copy of `examples/studies/program_b_run2/progB_w0_solo.yaml` (ONH, `min_valid: 0`). `study run` has no `--cell`. Do not launch the 39-anchor file.
 
-**Assert:** MW0 `compare_captures` in full mode. Do not write a second equality helper. That compare is bit-identical trades (every column, including `exit_subbar_timestamp`, dtypes, units, timezone), ordered replica bits, DA5 non-null where the reference is non-null, and the portable bundle hash stored on the capture as `canonical_bundle_hash`. Ledger wall-clock timestamps are stored and not compared. `NaN` equals `NaN`. No tolerance.
+**Assert (farm only):** MW0 `compare_captures` in full mode. Do not write a second equality helper. That compare is bit-identical trades (every column, including `exit_subbar_timestamp`, dtypes, units, timezone), ordered replica bits, DA5 non-null where the reference is non-null, and the portable bundle hash stored on the capture as `canonical_bundle_hash`. Ledger wall-clock timestamps are stored and not compared. `NaN` equals `NaN`. No tolerance.
 
 **What actually has a frozen capture.** `tests/fixtures/memory_parity/farm_reference/full` is the smoke cell only (`FULL_CELL`, 59 trades, E=0.0805). The six `short/` cells are not this test. Wave-0 `progB_w0_solo` ONH is **not** in `farm_reference`. Do not add it there: `test_farm_reference_bytes_match_official_pins` locks `farm_reference.sha256`.
 
 **CI vs farm.** The full real-CSV smoke is ~3–4 h and is **not** a default CI job. There is no `THESISTESTER_MEMORY_PARITY_CSV`. `stage_trace.py` is the VmHWM trace (`--csv`, `--output-json`, `--run-label`); it is not the parity gate.
 
-- CI: hook audit that the execute/API call graph is unchanged when `tick_stitch_plan` is omitted (same style as `test_memory_parity.py` hook points).
-- Farm, smoke: `python tests/fixtures/memory_parity/capture_operator.py --csv <farm 15s CSV> --output-dir <dir> --cells full --run-label <label>`, then `compare_captures` against `farm_reference/full`. Linux only. Do not compare a macOS capture to that tree (`ENGINEERING_PROPOSAL.md` §4.1).
-- Farm, Wave-0 ONH solo: side-by-side of the `0ebc1494` tree and the TS5 tree, stitch key omitted, same `compare_captures` rules. Do not commit the capture.
+- CI: `test_stitch_plan_absent_execute_hook_audit` (merge gate).
+- Farm, smoke: `python tests/fixtures/memory_parity/capture_operator.py --csv <farm 15s CSV> --output-dir <dir> --cells full --run-label <label>`, then `compare_captures` against `farm_reference/full`. Linux only. `THESISTESTER_MEMORY_PATH=array`. Do not compare a macOS capture to that tree (`ENGINEERING_PROPOSAL.md` §4.1).
+- Farm, Wave-0 ONH solo: one-anchor spec copy (no `--cell`), side-by-side of the `0ebc1494` tree and the TS5 tree, stitch key omitted, same `compare_captures` rules, same env. Do not commit the capture.
 
 A second test, `test_stitch_plan_absent_does_not_change_tick_source_id_none`, asserts identity keys stay `none` on 15s-only Run 2 specs.
 
@@ -312,12 +318,12 @@ A second test, `test_stitch_plan_absent_does_not_change_tick_source_id_none`, as
 |---|---|
 | **Scope** | Generator / validator / Run 2 **tick** packet only. 15s packet (`manifest.yaml`, 20 / 898) stays byte-stable except if the generator rewrite would touch shared helpers — then split the helper so 15s YAML hashes do not change. |
 | **Files** | `examples/studies/program_b/generate_program_b_yaml.py`; `validate_program_b_yaml.py`; regenerated `examples/studies/program_b_run2/manifest_tick.yaml` + 8 tick YAMLs; `tests/study/test_program_b_yaml.py`; `docs/PROGRAM_B_OPERATOR_RUNBOOK.md`; `docs/ASSUMPTIONS_AND_LIMITATIONS.md`; `docs/ARCHITECTURE.md`; `docs/ENGINEERING_ROADMAP.md`; `docs/README.md` (update the TS bullet’s status; the link itself landed in TS0). |
-| **Packet locks** | `dataset.path` **unchanged** (same 15s CSV). `workers: 1` **unchanged** in generated YAML; 12 is a launch flag only. New additive `dataset.tick_stitch_plan` pointing at the committed or farm-local plan JSON. Do **not** emit `data/mnq_tick_last.csv`. Do **not** require that placeholder to exist. `poc_windows: []` written explicitly on the tick packet (an omitted key becomes the product default `["30min"]`, and `None` inside `compute_profile_levels` becomes `30min`+`1h`+`4h`). Ticks feed VA + APOC only; rolling POC on 34 GiB would `list()` all ticks per worker. Today’s validator requires `poc_windows: ['30min']` on the tick packet — change that assertion in the same PR. `apoc_enabled: true` only on APOC studies, as today. `TICK_GATED_SET` unchanged. |
-| **Launch** | `study/launch.py` resolves each unique stitch filename under the operator NVMe root. Missing file refuses. SMB path refuses. |
-| **Tests** | `test_program_b_run2_tick_manifest_validates` updated to the new key. 15s `test_program_b_run2_manifest_expands_898_with_run2_locks` still asserts `"tick_paths" not in dataset` and no stitch key. Generate-matches-committed for **15s** files still holds. Wave-7 provenance still `tick_last_volume_v1`. |
+| **Packet locks** | `dataset.path` **unchanged** (same 15s CSV). `workers: 1` **unchanged** in generated YAML; 12 is a launch flag only. New additive `dataset.tick_stitch_plan` pointing at the committed or farm-local plan JSON. `dataset.tick_stitch_x1_burst_included` (bool) is required when `tick_stitch_plan` is set; the validator rejects a missing value. Do **not** emit `data/mnq_tick_last.csv`. Do **not** require that placeholder to exist. `poc_windows: []` written explicitly on the **Run 2** tick packet (an omitted key becomes the product default `["30min"]`, and `None` inside `compute_profile_levels` becomes `30min`+`1h`+`4h`). Ticks feed VA + APOC only; rolling POC on 34 GiB would `list()` all ticks per worker. Today’s validator requires `poc_windows: ['30min']` on every tick packet (`validate_program_b_yaml.py`). Scope that change to Run 2 locks. Run 1 (`examples/studies/program_b/`) keeps `['30min']`. `apoc_enabled: true` only on APOC studies, as today. `TICK_GATED_SET` unchanged. |
+| **Launch** | `study/launch.py` resolves each unique stitch filename under the operator NVMe root. Pass that root as env `THESISTESTER_TICK_STITCH_ROOT` and/or CLI `study run --tick-stitch-root` (neither exists on `0ebc1494`; `study run` today takes the study path plus `--output-dir`, `--workers`, `--confirm`, `--force`). Never a packet or cell field. Missing file refuses. SMB path refuses. |
+| **Tests** | `test_program_b_run2_tick_manifest_validates` updated to the new key. 15s `test_program_b_run2_manifest_expands_898_with_run2_locks` still asserts `"tick_paths" not in dataset` and no stitch key. Generate-matches-committed for **15s** files still holds. Wave-7 provenance still `tick_last_volume_v1`. `test_program_b_wave7_identity_hashes_are_pinned` gets an intentional Run 2 w7 re-pin (it pins both `examples/studies/program_b/` and `program_b_run2/`; Run 1 pins stay). Split `test_program_b_tick_levels_keep_aggregation_and_rolling` so the `poc_windows` check is by root: Run 1 keeps `['30min']`; Run 2 is `[]`. Assert the Run 1 touch packet (`examples/studies/program_b/`, generator default `--trigger touch` and `--output-dir` = that directory) regenerates byte-identically. |
 | **Acceptance** | Reverting TS6 restores the placeholder packet. TS5 code remains default-off. No study is launched by this PR. |
 
-Farm deploy steps in §8 are executed **after** TS1–TS6 merge, not inside a PR.
+Farm steps through the impact report and the Q9 decision run after TS1–TS5 merge, not inside those PRs. The TS6 packet is the §8 step that records explicit `dataset.tick_stitch_x1_burst_included`; it is not a prerequisite of the impact report.
 
 ---
 
@@ -333,7 +339,7 @@ Do **not** fill the shared empty gap ~16:49–17:58 UTC (both 15s and ticks are 
 
 ### 6.2 Residual allocation
 
-For each 15s bar `b` whose timestamp (left edge) lies in the X1 window:
+For each 15s bar `b` whose timestamp (left edge) lies in the X1 window (the 17:58:00 bar is excluded from the fill because its left edge is before the window `[2025-11-07 17:58:14.581, 2025-11-07 19:00:00.009)`):
 
 ```
 tick_vol[b] = Σ Volume of stitched ticks with floor(ts, 15s) == b.timestamp
@@ -356,7 +362,7 @@ Why **residual**, not full 15s volume: the island `2025-11-07 18:00:53.022`–`1
 
 15s that day is itself degraded: ~280k contracts print in 18:00:45–18:01:30, which the quality report flags as a replay dump. That interval sits **inside** the X1 window and **overlaps** the 10k-tick island.
 
-**No product default for the burst.** Include it via the same residual rule, or leave those bars at residual 0. That volume is the only 15s evidence for the hole; dropping it omits on the order of 10%+ of session volume. Accumu picks from the impact report before the tick packet is frozen (§8, Q9). Config key `x1_burst_included` is required and explicit; a missing value is a validator error, not a silent true or false.
+**No product default for the burst.** Include it via the same residual rule, or leave those bars at residual 0. That volume is the only 15s evidence for the hole; dropping it omits on the order of 10%+ of session volume. Accumu picks from the impact report before the tick packet is frozen (§8, Q9). Config key `dataset.tick_stitch_x1_burst_included` is required when `tick_stitch_plan` is set and is explicit; a missing value is a validator error, not a silent true or false.
 
 **Honesty:** those synthetics are tagged `x1_burst` in the session quality record. They land on a handful of typical prices, so they can move POC.
 
@@ -376,11 +382,11 @@ Why **residual**, not full 15s volume: the island `2025-11-07 18:00:53.022`–`1
 
 ### 6.5 Quality flag
 
-Per trade date, persist (table column or sidecar, additive):
+Per trade date, additive keys on the study cell index row written by `execute_study_cell` (not trade-frame columns, not level prices):
 
 ```text
 data_quality.x1_15s_residual_fill = true   # 2025-11-07 only
-data_quality.x1_burst_included    = <explicit>   # required config; no silent default
+data_quality.x1_burst_included    = <explicit>   # cell-output flag; value is dataset.tick_stitch_x1_burst_included (no silent default)
 data_quality.shared_gap_1649_1758 = true   # not filled; both sources empty
 ```
 
@@ -392,30 +398,36 @@ Named-VA cells on 11-07 / 11-10 remain `ok` if the profile is finite. The flag i
 
 | Gate | Tolerance | Applies to |
 |---|---|---|
-| `test_stitch_plan_absent_replays_run2_15s_smoke` | **None.** `compare_captures` full mode. Smoke vs `farm_reference/full`. Wave-0 ONH solo is a farm side-by-side vs `0ebc1494`, not a new committed capture. | §5.1 |
+| CI `test_stitch_plan_absent_execute_hook_audit` (TS5 merge gate); farm `capture_operator` + `compare_captures` (zero tolerance, §8) | **None** on the farm compare. The hook audit does not run `compare_captures`. Parity runs use production `THESISTESTER_MEMORY_PATH=array`. Smoke vs `farm_reference/full`. Wave-0 ONH solo is a one-anchor spec copy (no `--cell`), side-by-side vs `0ebc1494`, not a new committed capture. | §5.1 / §8 |
 | Existing golden / fade / MW / TV / AP / RP tests | Existing (no regen) | Default-off tree |
 | Tick → 15s **bar** OHLC compare (optional diagnostic, not a merge gate) | exact OHLC ≥ 98%, close ≥ 99%; **not** bar-exact volume (sampled 96.1%) | Farm stitch QC only |
-| Session Σvol ticks/15s | 0.997–1.001 after clip is informational | Not a VA equality claim |
+| Session Σvol ticks/15s | 0.997–1.000 (source 0.997312–1.000276) after clip is informational | Not a VA equality claim |
 | X1 impact test | Report-only; APOC identity across variants is exact | TS4 |
 | Hourly guard | Fail on unexpected ≥ 5 s hole with 15s volume | TS3 |
 
-`LEVEL_ENGINE_VERSION` stays 11. Stitch + fill change `tick_source_id` / a new `tick_stitch_source_id` when the option is on. Off → existing `none`, or `compute_tick_source_id` when `tick_paths` is set (whole-file content hashes, not a hash of the path list).
+`LEVEL_ENGINE_VERSION` stays 11. Stitch-on identity is `tick_stitch_source_id` only. Off → existing `none`, or `compute_tick_source_id` when `tick_paths` is set (whole-file content hashes, not a hash of the path list).
 
 ---
 
-## 8. Farm deployment (after merge, not a PR)
+## 8. Farm sequence (after TS1–TS5 merge, not inside those PRs)
 
-Order is mandatory: **merge TS1–TS6 → stitch-off parity → small pilot → full tick packet.**
+Order is mandatory: **0 confirm no study is running → copy to NVMe → sha256/verify → QC re-run → farm impact report → Q9 decision by Accumu → TS6 packet with explicit `dataset.tick_stitch_x1_burst_included` → stitch-off parity → pdPOC pilot → APOC pilot → full `manifest_tick.yaml`.**
 
-1. **Copy.** 39 unique CSVs from `/mnt/nas-trading/thesistester/chart_exports/tick_data/` to farm NVMe (suggested `~/thesistester/data/ticks/` — Q2). `cp`/`rsync` of **untouched** bytes. Do not concatenate. The parent streamer accepts only that root. Workers do not open it. Do not rewrite generated `workers: 1`; the full run passes `--workers 12`.
-2. **Checksums.** `sha256sum` each NVMe file; size must match the plan (`36,415,038,585` unique-file bytes). Store the digest sidecar next to the plan. Re-run `verify_tick_stitch_plan`.
-3. **15s CSV** already local (`~/thesistester/data/`, 344,135,035 bytes). Do not re-point `dataset.path`.
-4. **Parity (stitch off).** Smoke cell vs `farm_reference/full` as in §5.1. Wave-0 ONH solo is a side-by-side against a `0ebc1494` run, not against `farm_reference` (that cell is not in the locked tree). Any delta other than ledger wall-clock → **stop**.
-5. **Pilot.** One tick-gated cell only: `pdPOC` (first core of `progB_r2_w0_va`). `study run` has no `--cell` flag, and `progB_w0_va.yaml` expands nine cores — do not launch that file. Use a one-anchor spec copied from it with `core_level: [pdPOC]` only. That copy is not a hand-edit of the generated packet. It must set `poc_windows: []` explicitly (the generated tick YAML still has `["30min"]`, which makes each worker `list()` every tick) and must not put farm CSV paths on the cell. Confirm parent RSS, worker VmHWM at or below the documented production envelope (3.85–4.46 GiB at `--workers 12`; the MW0 full-run flag-on figure is 3.73 GiB), no SMB open (`lsof` / `nfsstat`), X1 flag present on 11-07, prior-profile table has a finite 11-07 `pdPOC`. The VA pilot does not enable APOC. Not a full-packet result. Second pilot, same stitch plan and the same `workers` as the `pdPOC` copy: one-anchor spec with `core_level: [APOC]` (`APOC_LEVEL_NAMES` in `thesistester/levels/catalog.py`), `poc_windows: []`, no farm CSV paths on the cell. Pass: the cell runs to completion; workers never open or content-hash farm tick CSVs (same sentinel as the TS5 table injection); `MemAvailable` stays ≥ 6 GiB; APOC on a few spot-check sessions matches a direct parent-side computation from the stitch. Both pilot cells must pass before `manifest_tick.yaml` starts.
-6. **Burst decision (gate).** TS4 impact report is in hand: 2025-11-07 `VAH`/`VAL`/`POC` for ticks-only, fill-without-burst, and fill-with-burst, plus the downstream `pdPOC` / `pVA` / `pwVA` deltas. Accumu sets explicit `x1_burst_included`. A missing value → do not start `manifest_tick.yaml`.
-7. **Full run.** `manifest_tick.yaml` (8 studies / 253 cells), one study at a time, 12 workers, Notion/logging as Run 2. Soft-resume. Do not `--force`.
+0. **Confirm no study is running.**
+1. **Copy.** 39 unique CSVs from `/mnt/nas-trading/thesistester/chart_exports/tick_data/` to farm NVMe (suggested `~/thesistester/data/ticks/` — Q2), including segments 0–1 which clip drops (§4.4). `cp`/`rsync` of **untouched** bytes. Do not concatenate. The 15s CSV is already local (`~/thesistester/data/`, 344,135,035 bytes). Do not re-point `dataset.path`. The parent streamer accepts only that tick root. Workers do not open it. Do not rewrite generated `workers: 1`; the full run passes `--workers 12`.
+2. **sha256/verify.** `sha256sum` each NVMe file; size must match the plan (`36,415,038,585` unique-file bytes). Store the digest sidecar next to the plan. Re-run `verify_tick_stitch_plan`.
+3. **QC re-run (hard gate; Q7 resolved).** Re-run `tick_quality_report` on the 46-segment plan. Any unexpected hole other than X1 = **stop**. This step is before parity and before the pilots.
+4. **Farm impact report.** Parent-only command on the NVMe stitch (TS4). Emits the real 2025-11-07 `VAH`/`VAL`/`POC` for ticks-only, fill-without-burst, and fill-with-burst, plus downstream 2025-11-10 `pd*` and the W-SUN week `pw*` deltas. The synthetic fixture test stays the CI test.
+5. **Q9 decision by Accumu.** Sets explicit `dataset.tick_stitch_x1_burst_included`. A missing value stops the sequence.
+6. **TS6 packet** with that explicit value. Generated YAML stays `workers: 1`. The NVMe root is not written into the packet or the cells (§ TS6 Launch).
+7. **Stitch-off parity.** `capture_operator` + `compare_captures`, zero tolerance, production `THESISTESTER_MEMORY_PATH=array` (§5.1). Smoke cell vs `farm_reference/full`. Wave-0 ONH solo is a one-anchor spec copy (no `--cell`), side-by-side against a `0ebc1494` run, not against `farm_reference` (that cell is not in the locked tree). Any delta other than ledger wall-clock → **stop**.
+8. **pdPOC pilot.** One tick-gated cell only: `pdPOC` (first core of `progB_r2_w0_va`). `study run` has no `--cell` flag, and `progB_w0_va.yaml` expands nine cores — do not launch that file. Use a one-anchor spec copied from it with `core_level: [pdPOC]` only and `workers: 1` (same value as the APOC copy; committed Run 2 YAML is `workers: 1`). That copy is not a hand-edit of the generated packet. It must set `poc_windows: []` explicitly (the generated tick YAML still has `["30min"]`, which makes each worker `list()` every tick) and must not put farm CSV paths on the cell. Confirm parent RSS, no SMB open (`lsof` / `nfsstat`), X1 flag present on 11-07, prior-profile table has the 11-07 POC row (= 11-10 pdPOC). The VA pilot does not enable APOC. Not a full-packet result.
+9. **APOC pilot.** Same stitch plan and `workers: 1`: one-anchor spec with `core_level: [APOC]` (`APOC_LEVEL_NAMES` in `thesistester/levels/catalog.py`), `poc_windows: []`, no farm CSV paths on the cell. Pass: the cell runs to completion; workers never open or content-hash farm tick CSVs (same sentinel as the TS5 table injection); `MemAvailable` stays ≥ 6 GiB; APOC on a few spot-check sessions matches a direct parent-side computation from the stitch.
+10. **Full `manifest_tick.yaml`.** 8 studies / 253 cells, one study at a time, 12 workers, Notion/logging as Run 2. Soft-resume. Do not `--force`. A one-cell pilot can't show 12-worker peak RAM; watch `MemAvailable` on the first full study (same 6 GiB abort).
 
-If verify or parity fails, do not start the pilot.
+Two one-cell pilots in order: pdPOC, then APOC. Both must pass before `manifest_tick.yaml`.
+
+If verify, the QC re-run, or parity fails, do not start the pilots.
 
 ---
 
@@ -442,13 +454,13 @@ Listed instead of guessing. Implementation PRs must not invent answers.
 
 1. **Q1 — Commit the farm `tick_stitch_plan.json`?** The 46-segment JSON has no tick bytes and would make TS1 verify reviewable. Alternative: farm-local only (`~/thesistester/_scratch/tick_stitch_plan.json`) and the packet points there. Prefer commit, but the desk owns the path.
 2. **Q2 — NVMe destination?** German notes used `~/thesistester/data/ticks/`. Confirm before the copy. The code should take a root argument, not hardcode a home directory.
-3. **Q3 — Pilot cell?** This plan recommends `progB_r2_w0_va` `pdPOC` solo. Confirm or name another single cell.
+3. **Q3 — Resolved.** Two one-cell pilots in order: pdPOC, then APOC (§8).
 4. **Q4 — Parent RSS cap during the 34 GiB stream?** Operational abort at `MemAvailable < 6 GiB` is proposed. Confirm the number; it is not a unit-testable CI gate.
 5. **Q5 — sha256 in the plan JSON?** The farm plan has sizes and first/last, not content hashes. TS1 can compute a sidecar at verify time. Should that sidecar be committed?
 6. **Q6 — Impact-test `pm*`?** The fill also moves November 2025 `pm*` and December prior-month VA. The required triple is 11-07 VA / 11-10 `pd*` / that week’s `pw*`. Add `pm*` or not?
-7. **Q7 — Re-run the quality report on the 46-segment plan before the pilot?** The attached report is pre-patch (40/37). Drift result should still hold; hole A/B/D/E should now be gone. Farm ops, not a code PR — confirm it is a hard gate.
+7. **Q7 — Resolved (hard gate).** Re-run `tick_quality_report` on the 46-segment plan before parity and before the pilots (§8). Any unexpected hole other than X1 = stop. The attached report is pre-patch (40/37). Drift result should still hold; hole A/B/D/E should now be gone. Farm ops, not a code PR.
 8. **Q8 — Launch schema: stitch plan *instead of* `tick_paths`, or in addition?** `dataset_has_tick_paths` and `product_tick_family_preflight` ignore every other key, so a stitch plan alone is refused today, and a leftover `tick_paths` list is opened and content-hashed inside `compute_levels`. The worker invariant is already locked (§2, §5 TS5): expanded cells do not carry farm CSV paths. The open choice is the validator shape only — omit `tick_paths` and treat `tick_stitch_plan` as the tick input, or keep a non-path token. TS5 implements that choice; it does not leave farm paths on the cell “until Q8 is answered.”
-9. **Q9 — X1 burst include?** Operator decision (Accumu). The impact test reports ticks-only, fill-without-burst, and fill-with-burst (2025-11-07 `VAH`/`VAL`/`POC`, plus downstream `pdPOC` / `pVA` / `pwVA` deltas). Accumu sets `x1_burst_included` from that report before the tick packet is frozen. Until then the key has no silent default; the validator rejects a missing value.
+9. **Q9 — X1 burst include?** Operator decision (Accumu), after the farm impact report and before the TS6 packet (§8). The farm command reports ticks-only, fill-without-burst, and fill-with-burst (2025-11-07 `VAH`/`VAL`/`POC`, plus downstream 2025-11-10 `pd*` and the W-SUN week `pw*` deltas). Accumu sets `dataset.tick_stitch_x1_burst_included` from that report. Until then the key has no silent default; the validator rejects a missing value when `tick_stitch_plan` is set.
 
 ---
 
@@ -469,7 +481,7 @@ Listed instead of guessing. Implementation PRs must not invent answers.
 
 - Unit tests for the new function, deterministic, no farm CSV. This series adds no randomness, so no new `random_state`.
 - Golden-master / fade artifacts untouched. `tests/fixtures/memory_parity/farm_reference/` and `farm_reference.sha256` untouched. `LEVEL_ENGINE_VERSION` stays 11. Generated YAML keeps `workers: 1`.
-- Default-off: stitch key absent → `0ebc1494` behaviour, proved by MW0 `compare_captures` (§5.1), not by a second equality helper.
+- Default-off: stitch key absent → `0ebc1494` behaviour. TS5 merge gate is the CI hook audit `test_stitch_plan_absent_execute_hook_audit` (§5.1). Farm proof is `capture_operator` + `compare_captures` (§8), not a second equality helper.
 - Docs in the same PR for any sentence that became true (`METRICS_GLOSSARY.md` only if a named statistic is added).
 - CI green. Small surface. One logical commit unless the reviewer asks otherwise.
 - Regression paragraph: which named test proves default-off identity, and that tick VA/APOC differences are **out** of that claim.
