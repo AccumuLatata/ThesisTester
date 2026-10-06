@@ -496,6 +496,127 @@ def test_clip_and_guard_are_not_wired_into_execute_or_streamer():
     stream_src = inspect.getsource(stitch_mod.iter_stitch_sessions)
     assert "clip_ticks_to_15s_bars" not in stream_src
     assert "guard_hourly_tick_holes" not in stream_src
-    assert "2025-11-07" not in "".join(
-        f"{start.isoformat()}{end.isoformat()}" for start, end in stitch_mod._ALLOWLIST_UTC
+    # X1 burst window is not a locked member; 11-07 QC bars are (TS5c).
+    assert (
+        _utc("2025-11-07 18:00:45"),
+        _utc("2025-11-07 18:01:30"),
+    ) not in stitch_mod._ALLOWLIST_UTC
+
+
+_QC_EMPTY_BARS: tuple[tuple[str, str], ...] = (
+    ("2025-11-07 16:33:15", "bar-assignment mismatch (214 lots)"),
+    ("2025-11-07 16:39:30", "bar-assignment mismatch (43)"),
+    ("2025-12-24 06:40:45", "bar-assignment mismatch (3)"),
+    ("2025-12-24 06:41:30", "bar-assignment mismatch (5)"),
+    ("2025-12-24 07:55:00", "bar-assignment mismatch (1)"),
+    ("2025-12-24 11:02:30", "bar-assignment mismatch (2)"),
+    ("2025-12-24 11:56:00", "bar-assignment mismatch (1)"),
+    ("2025-12-26 06:49:45", "bar-assignment mismatch (1)"),
+    ("2025-12-26 09:46:30", "bar-assignment mismatch (11)"),
+    ("2025-12-26 11:23:15", "bar-assignment mismatch (1)"),
+    ("2026-01-23 03:53:15", "bar-assignment mismatch (2)"),
+    ("2026-03-24 17:55:30", "tick freeze (44.5 s tick gap mid-US session, 547 lots)"),
+    ("2026-04-16 20:39:15", "bar-assignment mismatch (49)"),
+    ("2026-04-16 20:46:15", "dual-feed outage (both feeds out 20:44–22:36; 1,511 lots)"),
+)
+
+
+def _qc_window(left: str) -> tuple[pd.Timestamp, pd.Timestamp]:
+    start = _utc(left)
+    return start, start + pd.Timedelta(seconds=15)
+
+
+def _hour_volume_bars(empty_left: pd.Timestamp) -> pd.DataFrame:
+    hour = empty_left.floor("h")
+    stamps = pd.date_range(hour, hour + pd.Timedelta(minutes=59, seconds=45), freq="15s")
+    return pd.DataFrame({"timestamp": stamps, "volume": 1.0})
+
+
+def _ticks_skipping(bars: pd.DataFrame, *skip: pd.Timestamp) -> pd.DataFrame:
+    skip_set = set(skip)
+    stamps = [
+        ts + pd.Timedelta(milliseconds=7500)
+        for ts in bars["timestamp"]
+        if pd.Timestamp(ts) not in skip_set
+    ]
+    return pd.DataFrame(
+        {
+            "timestamp": stamps,
+            "price": [100.0] * len(stamps),
+            "volume": [1.0] * len(stamps),
+        }
     )
+
+
+def _neighbor_unlisted(empty_left: pd.Timestamp) -> pd.Timestamp:
+    plus = empty_left + pd.Timedelta(seconds=15)
+    if plus.floor("h") == empty_left.floor("h"):
+        return plus
+    minus = empty_left - pd.Timedelta(seconds=15)
+    assert minus.floor("h") == empty_left.floor("h")
+    return minus
+
+
+def test_locked_allowlist_is_exactly_1128_plus_14_qc_bars():
+    from thesistester.data import tick_stitch as stitch_mod
+
+    expected = (
+        (_utc("2025-11-28 02:00:00"), _utc("2025-11-28 13:30:00")),
+        *(_qc_window(left) for left, _reason in _QC_EMPTY_BARS),
+    )
+    assert stitch_mod._ALLOWLIST_UTC == expected
+    assert len(stitch_mod._ALLOWLIST_UTC) == 15
+
+
+@pytest.mark.parametrize("left,reason", _QC_EMPTY_BARS, ids=[row[0] for row in _QC_EMPTY_BARS])
+def test_qc_empty_bar_alone_in_its_hour_passes(left: str, reason: str):
+    empty_left = _utc(left)
+    bars = _hour_volume_bars(empty_left)
+    ticks = _ticks_skipping(bars, empty_left)
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    assert empty_left not in set(clipped["timestamp"].dt.floor("15s"))
+    guard_hourly_tick_holes(clipped, bars)
+
+
+@pytest.mark.parametrize("left,reason", _QC_EMPTY_BARS, ids=[row[0] for row in _QC_EMPTY_BARS])
+def test_qc_neighbor_unlisted_empty_bar_still_fails(left: str, reason: str):
+    empty_left = _utc(left)
+    neighbor = _neighbor_unlisted(empty_left)
+    bars = _hour_volume_bars(empty_left)
+    ticks = _ticks_skipping(bars, empty_left, neighbor)
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    with pytest.raises(TickStitchError):
+        guard_hourly_tick_holes(clipped, bars)
+
+
+def test_20260416_2000_hour_with_listed_empty_bars_only():
+    """Farm QC: last clipped tick 20:43:56.967; empty bars 20:39:15 and 20:46:15.
+
+    20:47:11.877 has no 15s bar and is clipped away. Trailing volume bars
+    after 20:46:15 were not in the 14-bar QC list.
+    """
+    empty_a = _utc("2026-04-16 20:39:15")
+    empty_b = _utc("2026-04-16 20:46:15")
+    last_tick = _utc("2026-04-16 20:43:56.967")
+    orphan = _utc("2026-04-16 20:47:11.877")
+    covered = pd.date_range(_utc("2026-04-16 20:00:00"), _utc("2026-04-16 20:43:45"), freq="15s")
+    bars = pd.DataFrame(
+        {
+            "timestamp": list(covered) + [empty_b],
+            "volume": [1.0] * (len(covered) + 1),
+        }
+    )
+    tick_stamps = [ts + pd.Timedelta(milliseconds=7500) for ts in covered if ts != empty_a]
+    tick_stamps.append(last_tick)
+    tick_stamps.append(orphan)
+    ticks = pd.DataFrame(
+        {
+            "timestamp": tick_stamps,
+            "price": [100.0] * len(tick_stamps),
+            "volume": [1.0] * len(tick_stamps),
+        }
+    )
+    clipped = clip_ticks_to_15s_bars(ticks, bars["timestamp"])
+    assert orphan not in set(clipped["timestamp"])
+    assert clipped["timestamp"].max() == last_tick
+    guard_hourly_tick_holes(clipped, bars)
