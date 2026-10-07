@@ -4,7 +4,7 @@ Bot runbook (normative): [`docs/PROGRAM_B_OPERATOR_RUNBOOK.md`](../../../docs/PR
 Generator: [`generate_program_b_yaml.py`](../program_b/generate_program_b_yaml.py).
 
 **15s packet:** 20 studies / **898** cells (`manifest.yaml`). Trigger `fade` @ 1min, `same_bar_opposite_direction: raise`, `report.random_baseline.n_replicas: 50`.
-**Tick-gated packet:** 8 studies / **253** cells (`manifest_tick.yaml`) — Wave 0 VA + Wave 0 APOC solos + Wave 4 + Wave 7. `dataset.tick_stitch_plan` = committed `examples/studies/program_b_run2/tick_stitch_plan.json`; `tick_stitch_x1_burst_included: false` (Q9 Accumu 2026-10-07); `poc_windows: []`. No `data/mnq_tick_last.csv`. NVMe root is `THESISTESTER_TICK_STITCH_ROOT`, not a packet field.
+**Tick-gated packet:** 8 studies / **253** cells (`manifest_tick.yaml`) — Wave 0 VA + Wave 0 APOC solos + Wave 4 + Wave 7. `dataset.tick_stitch_plan` = spec-dir-relative `tick_stitch_plan.json` (committed beside the YAMLs); `tick_stitch_x1_burst_included: false` (Q9 Accumu 2026-10-07); `poc_windows: []`. No `data/mnq_tick_last.csv`. NVMe root is `THESISTESTER_TICK_STITCH_ROOT`, not a packet field.
 Study names are `progB_r2_*` so `output_dir` does not collide with Run 1.
 Filenames stay `progB_*.yaml` so the validator Wave 0 / smoke stems still match.
 15s levels set `apoc_enabled: false` and `poc_windows: []` so product tick defaults cannot refuse a 15s-only launch. `POC_rolling_30min` is not a Program B core wave.

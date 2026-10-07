@@ -112,7 +112,7 @@ FIFTEEN_S_ANCHORS = [token for token in ALL_ANCHORS if token not in TICK_GATED_S
 # Run 1 tick packet only. Run 2 tick packet uses TICK_STITCH_PLAN instead.
 TICK_PATHS = ["data/mnq_tick_last.csv"]
 VA_TICK_PATHS = TICK_PATHS  # alias: older tests / validator copy
-TICK_STITCH_PLAN = "examples/studies/program_b_run2/tick_stitch_plan.json"
+TICK_STITCH_PLAN = "tick_stitch_plan.json"
 # Q9 Accumu 2026-10-07: without the burst.
 TICK_STITCH_X1_BURST_INCLUDED = False
 LOCKED_AGGREGATION = {
@@ -362,8 +362,8 @@ def _run2_readme(*, trigger: str, same_bar_policy: str, n_replicas: int) -> str:
         f"`report.random_baseline.n_replicas: {n_replicas}`.\n"
         "**Tick-gated packet:** 8 studies / **253** cells (`manifest_tick.yaml`) — "
         "Wave 0 VA + Wave 0 APOC solos + Wave 4 + Wave 7. "
-        "`dataset.tick_stitch_plan` = committed "
-        "`examples/studies/program_b_run2/tick_stitch_plan.json`; "
+        "`dataset.tick_stitch_plan` = spec-dir-relative "
+        "`tick_stitch_plan.json` (committed beside the YAMLs); "
         "`tick_stitch_x1_burst_included: false` (Q9 Accumu 2026-10-07); "
         "`poc_windows: []`. No `data/mnq_tick_last.csv`. NVMe root is "
         "`THESISTESTER_TICK_STITCH_ROOT`, not a packet field.\n"

@@ -23,7 +23,7 @@ study:
     format_profile: quantower_history_exporter
     source_timezone: UTC
     ingestion_mode: 15s_primary_derive_1m
-    tick_stitch_plan: examples/studies/program_b_run2/tick_stitch_plan.json
+    tick_stitch_plan: tick_stitch_plan.json
     tick_stitch_x1_burst_included: false
   levels:
     sma_lengths:

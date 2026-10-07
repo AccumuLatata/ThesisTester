@@ -47,6 +47,11 @@ from thesistester.data.tick_stitch import (
     refuse_nas_trading_paths,
     resolve_tick_stitch_root,
 )
+from thesistester.data.tick_stitch_cache import (
+    parent_cache_key,
+    store_parent_cache,
+    try_load_parent_cache,
+)
 from thesistester.levels.tick_requirements import dataset_has_tick_stitch_plan
 from thesistester.levels.tick_vap import (
     build_prior_profile_table_from_paths,
@@ -753,6 +758,18 @@ def _study_dataset(spec: Mapping[str, Any]) -> Mapping[str, Any] | None:
     return dataset
 
 
+def _resolve_study_relative_path(raw: str | Path, base_directory: Path) -> Path:
+    """Resolve a StudySpec-relative path the same way ``study run`` does.
+
+    Relative paths join the spec-file directory (``base_directory``). Absolute
+    paths stay absolute. Semantics are unchanged; do not search the repo root.
+    """
+    path = Path(raw)
+    if not path.is_absolute():
+        return (Path(base_directory) / path).resolve()
+    return path.resolve()
+
+
 def _prepare_study_tick_stitch(
     spec: Mapping[str, Any],
     expansion: ExpansionResult,
@@ -760,7 +777,12 @@ def _prepare_study_tick_stitch(
     output_dir: Path,
     base_directory: Path,
 ) -> None:
-    """Verify/stream/reduce the stitch on the parent; inject tables onto cells."""
+    """Verify/stream/reduce the stitch on the parent; inject tables onto cells.
+
+    Shared parent-table cache (§4.5) is consulted only after a plan is
+    present. Hits copy cached parquets into ``output_dir``; misses compute
+    then store atomically. Never called when ``tick_stitch_plan`` is absent.
+    """
     dataset = _study_dataset(spec)
     if dataset is None or not dataset_has_tick_stitch_plan(dataset):
         return
@@ -770,80 +792,118 @@ def _prepare_study_tick_stitch(
             "study.dataset.tick_stitch_x1_burst_included is required when "
             "tick_stitch_plan is set (explicit bool; no silent default)"
         )
-    plan_raw = Path(str(dataset["tick_stitch_plan"]))
-    if not plan_raw.is_absolute():
-        plan_path = (Path(base_directory) / plan_raw).resolve()
-    else:
-        plan_path = plan_raw.resolve()
+    plan_path = _resolve_study_relative_path(str(dataset["tick_stitch_plan"]), base_directory)
     if not plan_path.is_file():
         raise StudySpecError(f"study.dataset.tick_stitch_plan is not an existing file: {plan_path}")
     root = resolve_tick_stitch_root(plan_path)
-    bars_raw = Path(str(dataset["path"]))
-    if not bars_raw.is_absolute():
-        bars_path = (Path(base_directory) / bars_raw).resolve()
-    else:
-        bars_path = bars_raw.resolve()
+    bars_path = _resolve_study_relative_path(str(dataset["path"]), base_directory)
     refuse_nas_trading_paths(plan_path, root, bars_path)
     study = spec.get("study") if isinstance(spec.get("study"), Mapping) else {}
     levels = {**DEFAULT_LEVELS_SETTINGS, **dict(study.get("levels") or {})}
     day_bins = int(levels["prior_day_profile_aggregation_ticks"])
     week_bins = int(levels["prior_week_profile_aggregation_ticks"])
     month_bins = int(levels["prior_month_profile_aggregation_ticks"])
-    stitch_id = compute_tick_stitch_source_id(plan_path, root, tick_stitch_x1_burst_included=burst)
+    instrument = str(dataset.get("instrument") or "ES")
+    format_profile = str(dataset.get("format_profile") or "canonical")
+    source_tz = str(dataset.get("source_timezone") or "UTC")
+    cache_key = parent_cache_key(
+        plan_path=plan_path,
+        root=root,
+        bars_path=bars_path,
+        instrument=instrument,
+        burst=bool(burst),
+        value_area_pct=float(levels["value_area_pct"]),
+        day_bins=day_bins,
+        week_bins=week_bins,
+        month_bins=month_bins,
+        source_timezone=source_tz,
+        format_profile=format_profile,
+    )
     prior_parquet = output_dir / STUDY_PRIOR_PROFILE_PARQUET
     apoc_parquet = output_dir / STUDY_APOC_TICK_PARQUET
     cache_path = output_dir / STUDY_TICK_STITCH_CACHE
     cached = _load_stitch_cache(cache_path)
-    cache_ok = (
+    local_ok = (
         cached is not None
-        and cached.get("tick_source_id") == stitch_id
-        and cached.get("day_bins") == day_bins
-        and cached.get("week_bins") == week_bins
-        and cached.get("month_bins") == month_bins
-        and cached.get("tick_stitch_x1_burst_included") is burst
+        and cached.get("cache_key") == cache_key
         and prior_parquet.is_file()
         and apoc_parquet.is_file()
     )
-    if cache_ok:
+    if local_ok:
+        stitch_id = str(cached["tick_source_id"])
         apoc_id = str(cached["apoc_tick_source_id"])
         quality = dict(cached.get("data_quality") or {})
     else:
-        instrument = str(dataset.get("instrument") or "ES")
-        format_profile = str(dataset.get("format_profile") or "canonical")
-        source_tz = str(dataset.get("source_timezone") or "UTC")
-        bars = load_ohlcv(
-            bars_path,
-            source_tz=source_tz,
-            target_tz="UTC",
-            format_profile=format_profile,
-        )
-        built = build_stitch_parent_tables(
-            plan_path,
-            root,
-            bars,
-            instrument=instrument,
-            tick_stitch_x1_burst_included=burst,
-            value_area_pct=float(levels["value_area_pct"]),
-            prior_day_aggregation_ticks=day_bins,
-            prior_week_aggregation_ticks=week_bins,
-            prior_month_aggregation_ticks=month_bins,
-        )
-        built.prior_profile_table.to_parquet(prior_parquet)
-        apoc_tick_table_to_parquet(built.apoc_tick_table, apoc_parquet)
-        apoc_id = built.apoc_tick_source_id
-        quality = dict(built.data_quality)
-        _write_stitch_cache(
-            cache_path,
-            {
-                "tick_source_id": stitch_id,
-                "apoc_tick_source_id": apoc_id,
-                "day_bins": day_bins,
-                "week_bins": week_bins,
-                "month_bins": month_bins,
-                "tick_stitch_x1_burst_included": burst,
-                "data_quality": quality,
-            },
-        )
+        shared = try_load_parent_cache(cache_key, output_dir)
+        if shared is not None:
+            stitch_id = str(shared["tick_source_id"])
+            apoc_id = str(shared["apoc_tick_source_id"])
+            quality = dict(shared.get("data_quality") or {})
+            _write_stitch_cache(
+                cache_path,
+                {
+                    "cache_key": cache_key,
+                    "tick_source_id": stitch_id,
+                    "apoc_tick_source_id": apoc_id,
+                    "day_bins": day_bins,
+                    "week_bins": week_bins,
+                    "month_bins": month_bins,
+                    "tick_stitch_x1_burst_included": burst,
+                    "data_quality": quality,
+                },
+            )
+        else:
+            stitch_id = compute_tick_stitch_source_id(
+                plan_path, root, tick_stitch_x1_burst_included=burst
+            )
+            bars = load_ohlcv(
+                bars_path,
+                source_tz=source_tz,
+                target_tz="UTC",
+                format_profile=format_profile,
+            )
+            built = build_stitch_parent_tables(
+                plan_path,
+                root,
+                bars,
+                instrument=instrument,
+                tick_stitch_x1_burst_included=burst,
+                value_area_pct=float(levels["value_area_pct"]),
+                prior_day_aggregation_ticks=day_bins,
+                prior_week_aggregation_ticks=week_bins,
+                prior_month_aggregation_ticks=month_bins,
+            )
+            built.prior_profile_table.to_parquet(prior_parquet)
+            apoc_tick_table_to_parquet(built.apoc_tick_table, apoc_parquet)
+            apoc_id = built.apoc_tick_source_id
+            quality = dict(built.data_quality)
+            store_parent_cache(
+                cache_key,
+                prior_path=prior_parquet,
+                apoc_path=apoc_parquet,
+                fields={
+                    "tick_source_id": stitch_id,
+                    "apoc_tick_source_id": apoc_id,
+                    "day_bins": day_bins,
+                    "week_bins": week_bins,
+                    "month_bins": month_bins,
+                    "tick_stitch_x1_burst_included": burst,
+                    "data_quality": quality,
+                },
+            )
+            _write_stitch_cache(
+                cache_path,
+                {
+                    "cache_key": cache_key,
+                    "tick_source_id": stitch_id,
+                    "apoc_tick_source_id": apoc_id,
+                    "day_bins": day_bins,
+                    "week_bins": week_bins,
+                    "month_bins": month_bins,
+                    "tick_stitch_x1_burst_included": burst,
+                    "data_quality": quality,
+                },
+            )
     for run in expansion.experiment.get("runs") or []:
         if not isinstance(run, dict):
             continue

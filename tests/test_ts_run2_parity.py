@@ -1534,3 +1534,89 @@ def test_stitch_off_unnamed_apoc_still_disables_column(tmp_path: Path) -> None:
     assert COL_APOC not in state["levels"].columns
     assert "dOpen" in state["levels"].columns
     assert LEVEL_ENGINE_VERSION == 11
+
+
+def _tiny_stitch_study(
+    tmp_path: Path,
+    *,
+    burst: bool = False,
+    day_bins: int = 4,
+) -> dict:
+    rows = [
+        ("2026-01-15 10:00:00.000", 100.0, 1.0),
+        ("2026-01-15 10:00:01.000", 101.0, 1.0),
+    ]
+    tick = _write_tick_csv(tmp_path / "early.csv", rows)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(__import__("json").dumps(_plan_for(tick, rows)), encoding="utf-8")
+    _canonical_15s(tmp_path / "bars.csv", ["2026-01-15 10:00:00"])
+    spec = _minimal_study(
+        path=str(tmp_path / "bars.csv"),
+        instrument="MNQ",
+        format_profile="canonical",
+        source_timezone="UTC",
+        tick_stitch_plan=str(plan_path),
+        tick_stitch_x1_burst_included=burst,
+    )
+    spec["study"]["levels"]["poc_windows"] = []
+    spec["study"]["levels"]["prior_day_profile_aggregation_ticks"] = day_bins
+    return spec
+
+
+def test_shared_parent_cache_hit_miss_corrupt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from thesistester.data.tick_stitch import build_stitch_parent_tables
+    from thesistester.study.execute import (
+        STUDY_APOC_TICK_PARQUET,
+        STUDY_PRIOR_PROFILE_PARQUET,
+    )
+
+    shared = tmp_path / "shared_cache"
+    monkeypatch.setenv("THESISTESTER_TICK_STITCH_CACHE_DIR", str(shared))
+    calls = {"build": 0}
+    real = build_stitch_parent_tables
+
+    def _wrap(*args, **kwargs):
+        calls["build"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("thesistester.study.execute.build_stitch_parent_tables", _wrap)
+
+    spec = _tiny_stitch_study(tmp_path, burst=False)
+    expansion = expand_study(spec, source_spec_parent=tmp_path)
+    out1 = tmp_path / "out1"
+    _prepare_study_tick_stitch(spec, expansion, output_dir=out1, base_directory=tmp_path)
+    assert calls["build"] == 1
+    prior1 = (out1 / STUDY_PRIOR_PROFILE_PARQUET).read_bytes()
+    apoc1 = (out1 / STUDY_APOC_TICK_PARQUET).read_bytes()
+
+    expansion2 = expand_study(spec, source_spec_parent=tmp_path)
+    out2 = tmp_path / "out2"
+    _prepare_study_tick_stitch(spec, expansion2, output_dir=out2, base_directory=tmp_path)
+    assert calls["build"] == 1
+    assert (out2 / STUDY_PRIOR_PROFILE_PARQUET).read_bytes() == prior1
+    assert (out2 / STUDY_APOC_TICK_PARQUET).read_bytes() == apoc1
+
+    burst_spec = _tiny_stitch_study(tmp_path, burst=True)
+    burst_exp = expand_study(burst_spec, source_spec_parent=tmp_path)
+    _prepare_study_tick_stitch(
+        burst_spec, burst_exp, output_dir=tmp_path / "out_burst", base_directory=tmp_path
+    )
+    assert calls["build"] == 2
+
+    bin_spec = _tiny_stitch_study(tmp_path, burst=False, day_bins=8)
+    bin_exp = expand_study(bin_spec, source_spec_parent=tmp_path)
+    _prepare_study_tick_stitch(
+        bin_spec, bin_exp, output_dir=tmp_path / "out_bins", base_directory=tmp_path
+    )
+    assert calls["build"] == 3
+
+    for parquet in shared.rglob("study.prior_profile.parquet"):
+        parquet.write_bytes(b"corrupted-parent-table")
+    expansion3 = expand_study(spec, source_spec_parent=tmp_path)
+    out3 = tmp_path / "out3"
+    _prepare_study_tick_stitch(spec, expansion3, output_dir=out3, base_directory=tmp_path)
+    assert calls["build"] == 4
+    assert (out3 / STUDY_PRIOR_PROFILE_PARQUET).read_bytes() == prior1
+    assert (out3 / STUDY_APOC_TICK_PARQUET).read_bytes() == apoc1

@@ -154,6 +154,7 @@ _REQUIRED_SEGMENT_FIELDS: Final[tuple[str, ...]] = (
 # §4.2 stitch-on identity tokens. Not ``compute_tick_source_id`` over a path list.
 X1_FILL_POLICY_TOKEN: Final[str] = "x1_15s_residual_v1"
 CLIP_POLICY_TOKEN: Final[str] = "clip_15s_present_bars_v1"
+HOURLY_GUARD_POLICY_TOKEN: Final[str] = "hourly_guard_allowlist_qc14_v1"
 TICK_STITCH_ROOT_ENV: Final[str] = "THESISTESTER_TICK_STITCH_ROOT"
 _NAS_TRADING_MARKER: Final[tuple[str, str]] = ("mnt", "nas-trading")
 

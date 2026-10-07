@@ -2064,9 +2064,15 @@ that name neither family still run on 15s-only (`disable_unneeded_tick_families`
 Fresh Program B Wave 7 packets live in `manifest_tick.yaml` and omit
 `apoc_profile_source` (product tick). Run 1 carries placeholder
 `tick_paths`. Run 2 tick YAML uses additive `dataset.tick_stitch_plan`
-(committed `examples/studies/program_b_run2/tick_stitch_plan.json`) plus
+(spec-dir-relative `tick_stitch_plan.json`, committed beside the YAMLs as
+`examples/studies/program_b_run2/tick_stitch_plan.json`) plus
 explicit `tick_stitch_x1_burst_included: false` (Q9 Accumu 2026-10-07)
-and `poc_windows: []`. No `data/mnq_tick_last.csv` on the Run 2 tick
+and `poc_windows: []`. `study run` resolves that path against the spec
+file directory; it does not search the repo root. Parent tables are
+cached under `{THESISTESTER_STORE_DIR}/tick_stitch_parent` unless
+`THESISTESTER_TICK_STITCH_CACHE_DIR` is set (stitch identity + bins +
+burst + table-input tokens; parent-only; never called without a plan).
+No `data/mnq_tick_last.csv` on the Run 2 tick
 packet. NVMe root is `THESISTESTER_TICK_STITCH_ROOT`, not a packet
 field. Manifest rows record `WAVE7_TICK_PROVENANCE`. Historical ZIPs keep
 `WAVE7_HISTORICAL_PROVENANCE` (typical).

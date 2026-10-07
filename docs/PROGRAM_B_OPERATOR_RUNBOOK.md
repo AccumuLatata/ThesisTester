@@ -231,8 +231,9 @@ Same 20 files / 898 cells / same 15s order. Paths are under `examples/studies/pr
 | 19 | `progB_w8_prev30m_pivot.yaml` | 8 | 1 |
 
 Same Wave 7 / Wave 0 APOC object as Run 1: omitted source is product tick.
-Run 2 tick YAML points at committed
-`examples/studies/program_b_run2/tick_stitch_plan.json` with
+Run 2 tick YAML points at spec-dir-relative `tick_stitch_plan.json`
+(committed beside the YAMLs as
+`examples/studies/program_b_run2/tick_stitch_plan.json`) with
 `tick_stitch_x1_burst_included: false` (Q9 Accumu 2026-10-07). Historical
 ZIPs stay typical-labeled. See the Wave 7 note above.
 
@@ -261,6 +262,9 @@ steps through QC PASS at `84e7ccc0` and Q9 are done. This packet does
 5. **253 cells.** `manifest_tick.yaml` (8 studies / 253 cells), one study
    at a time, launch `--workers 12`. Committed YAML stays `workers: 1`.
    Soft-resume. Do not `--force`. Watch `MemAvailable` (abort `< 6 GiB`).
+   Parent tables (§4.5) cache under `{THESISTESTER_STORE_DIR}/tick_stitch_parent`
+   unless `THESISTESTER_TICK_STITCH_CACHE_DIR` is set. Hits skip verify/stream
+   and copy the two parquets into each study output. Cache is parent-only.
 
 ```bash
 export THESISTESTER_TICK_STITCH_ROOT=~/thesistester/data/ticks
