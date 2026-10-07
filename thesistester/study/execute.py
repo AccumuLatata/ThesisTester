@@ -623,15 +623,20 @@ def _index_row_from_existing_bundle(
     Rehydrate core trade metrics from ``trade_summary.json`` so report ranking
     stays honest without re-running the cell. Preserve non-null identity fields
     from ``prior_row`` / ``dataset_meta.json`` so soft-resume does not wipe
-    ``dataset_id`` / ``instrument``. DA2 keys come from ``trades.parquet`` when
-    present; collision copies stay ``None`` (DA1 diagnostic is in-memory only).
-    DA5 random-baseline keys stay ``None`` (null needs OHLCV + execution kwargs).
+    ``dataset_id`` / ``instrument``. Preserve ``data_quality.*`` from
+    ``prior_row`` when present (not stored in the bundle). DA2 keys come from
+    ``trades.parquet`` when present; collision copies stay ``None`` (DA1
+    diagnostic is in-memory only). DA5 random-baseline keys stay ``None``
+    (null needs OHLCV + execution kwargs).
     """
     row = _failed_index_row(name)
     if prior_row is not None:
         for key in _INDEX_IDENTITY_KEYS:
             value = prior_row.get(key)
             if not _metric_missing(value):
+                row[key] = value
+        for key, value in prior_row.items():
+            if _is_data_quality_index_key(key):
                 row[key] = value
     row["status"] = "ok"
     row["bundle_path"] = bundle_rel
@@ -973,11 +978,32 @@ def cost_hint_lines(
     return lines
 
 
+def _is_data_quality_index_key(key: object) -> bool:
+    return isinstance(key, str) and key.startswith("data_quality.")
+
+
+def _data_quality_index_keys(rows: list[Mapping[str, Any]]) -> tuple[str, ...]:
+    """Sorted ``data_quality.*`` keys present on at least one index row."""
+    found: set[str] = set()
+    for row in rows:
+        for key in row:
+            if _is_data_quality_index_key(key):
+                found.add(key)
+    return tuple(sorted(found))
+
+
 def _write_results_index(
     output_dir: Path,
     rows_by_name: Mapping[str, Mapping[str, Any]],
     run_names: list[str],
 ) -> Path:
+    """Write ``results_index.csv``.
+
+    Fixed ``STUDY_INDEX_KEYS`` always. ``data_quality.*`` columns are appended
+    only when at least one row carries such a key (stitch-on). Order is
+    deterministic (sorted). Rows missing a key get an empty CSV field.
+    Stitch-off bytes stay ``STUDY_INDEX_KEYS``-only (``0ebc1494``).
+    """
     ordered: list[dict[str, Any]] = []
     for name in run_names:
         if name in rows_by_name:
@@ -988,7 +1014,12 @@ def _write_results_index(
     for key in STUDY_INDEX_KEYS:
         if key not in frame.columns:
             frame[key] = None
-    frame = frame.loc[:, list(STUDY_INDEX_KEYS)]
+    quality_keys = _data_quality_index_keys(ordered)
+    columns = list(STUDY_INDEX_KEYS) + list(quality_keys)
+    for key in quality_keys:
+        if key not in frame.columns:
+            frame[key] = None
+    frame = frame.loc[:, columns]
     path = output_dir / "results_index.csv"
     tmp = path.with_name(".results_index.csv.tmp")
     frame.to_csv(tmp, index=False)

@@ -270,7 +270,7 @@ def test_mw1_runtime_surface_is_limited_vs_main() -> None:
         pytest.fail(str(exc))
     allowed = {
         "thesistester/engine/intrabar.py",
-        "thesistester/study/execute.py",
+        "thesistester/study/execute.py",  # TS6b plan-row file (Accumu option A; §12)
         "thesistester/data/tick_stitch.py",
         "thesistester/levels/tick_x1_fill.py",  # TS4 plan-row file (Accumu option A; §12)
         "thesistester/api.py",  # TS5 plan-row file (Accumu option A; §12)
