@@ -448,9 +448,12 @@ This engine is for **research screening**, not proof of a durable edge.
 - `tick_last_volume_v1` (default): Quantower Tick–Tick–Last Last×Volume prints inside `[RTH_open, RTH_open + 30 min)` in exchange time, keyed by RTH session date. Histogram math is `apoc_candidates.compute_tick_last_volume_profile`. Full-session `PriorProfileTable` is not a substitute. `run_experiment` still forwards `dataset.tick_paths` to the A-period table when a prior-VA parquet is also present. Missing or empty `tick_paths` refuse (`APOC requires ticks`) when APOC is enabled. Unsound prints emit `NaN`; they never fall back to typical.
 - `typical_mvp_v1` (dead/test-only library helper): `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max). Not a production source and not a silent fallback. Product defaults never select it.
 - Identity always stamps tick APOC (omitted key = `tick_last_volume_v1`). Settings identity includes source, `apoc_algorithm_version`, `apoc_allocation`, and `apoc_tick_source_id` (A-period policy, not the VA table id). `LEVEL_ENGINE_VERSION` stays 11.
-- Fresh Program B Wave 7 / Wave 0 APOC packets live in `manifest_tick.yaml`,
-  omit `apoc_profile_source` (product tick Last×Volume), and carry placeholder
-  `tick_paths`. Manifest rows record tick provenance. Historical ZIPs stay
+- Fresh Program B Wave 7 / Wave 0 APOC packets live in `manifest_tick.yaml`
+  and omit `apoc_profile_source` (product tick Last×Volume). Run 1 keeps
+  placeholder `tick_paths`. Run 2 tick YAML sets
+  `dataset.tick_stitch_plan` to the committed plan JSON,
+  `tick_stitch_x1_burst_included: false` (Q9), and `poc_windows: []`.
+  Manifest rows record tick provenance. Historical ZIPs stay
   labeled `legacy_typical_price`. Do not rewrite those ZIPs.
   Fresh `study.expansion.json`
   writes an additive `apoc_provenance` sidecar when the spec enables APOC
@@ -477,10 +480,17 @@ This engine is for **research screening**, not proof of a durable edge.
   a left edge inside the window, but `+7.5s` is not, so it stays unfilled
   (`fill timestamps lie only in [...)`).
 - `dataset.tick_stitch_x1_burst_included` is an explicit boolean argument
-  (no silent default). Q9 remains Accumu's call. The missing-key reject is
-  TS5/TS6, not this helper. Accumu option A (2026-10-06): burst-off
-  exposes exactly `[2025-11-07 18:00:45, 18:01:30)` UTC for the TS3
-  guard `allowed_intervals`; `x1_burst` stays `excluded`; TS5 wires it.
+  (no silent default). Decided by Accumu 2026-10-07:
+  `tick_stitch_x1_burst_included = false` (without burst), from farm
+  impact report `farm_impact.json` sha256
+  `04fab0a7ce3aa90ed296a64e760b532348e9e9ed6796c0ffedaa67f5aaca4da3`
+  (run 2026-10-06 at `84e7ccc0`). Burst excluded vs ticks-only: 11-07 VA
+  VAH/VAL/POC −146/−156/−248, `pw*` POC 0, `pm*` POC 0. With the burst,
+  `pw*` POC would move −960 and Nov `pm*` POC −410. The missing-key
+  reject is TS5 `study/schema.py` and TS6 `validate_program_b_yaml.py`.
+  Accumu option A (2026-10-06): burst-off exposes exactly
+  `[2025-11-07 18:00:45, 18:01:30)` UTC for the TS3 guard
+  `allowed_intervals`; `x1_burst` stays `excluded`; TS5 wires it.
 - APOC A-period `[14:30, 15:00)` UTC on 2025-11-07 is outside the hole.
   Synthetics are dropped before `select_a_period_rows`.
 - Quality record (not trade-frame columns): `x1_15s_residual_fill` is true

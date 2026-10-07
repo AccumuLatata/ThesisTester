@@ -247,6 +247,8 @@ def test_program_b_run2_manifest_expands_898_with_run2_locks():
         assert baseline["n_replicas"] == 50
         assert study["name"].startswith("progB_r2_")
         assert "tick_paths" not in study["dataset"]
+        assert "tick_stitch_plan" not in study["dataset"]
+        assert "tick_stitch_x1_burst_included" not in study["dataset"]
 
 
 def test_program_b_run1_yamls_keep_touch_legacy_and_no_null():
@@ -373,7 +375,14 @@ def _assert_wave7_tick_provenance(root: Path) -> None:
             levels = spec["study"]["levels"]
             assert "apoc_profile_source" not in levels, row["file"]
             assert levels["apoc_enabled"] is True, row["file"]
-            assert spec["study"]["dataset"]["tick_paths"] == _generate().TICK_PATHS
+            dataset = spec["study"]["dataset"]
+            if root == PROGRAM_B_RUN2:
+                assert "tick_paths" not in dataset
+                assert dataset["tick_stitch_plan"] == _generate().TICK_STITCH_PLAN
+                assert dataset["tick_stitch_x1_burst_included"] is False
+            else:
+                assert dataset["tick_paths"] == _generate().TICK_PATHS
+                assert "tick_stitch_plan" not in dataset
             header = (root / row["file"]).read_text(encoding="utf-8")
             assert "tick Last×Volume" in header
             assert "typical_mvp historical" in header
@@ -489,13 +498,13 @@ def test_program_b_wave7_identity_hashes_are_pinned():
             "7ecbf374033940f658414e6dc2cc91396b76713ad26dda40fec8762f83cb484a"
         ),
         PROGRAM_B_RUN2 / "progB_w7_apoc_ma.yaml": (
-            "6664517a6b60ca6930e1168f09e1ffe32638dc9d39494d3f71af52252e2cc688"
+            "f2dcbf8133cb5f61825d150ec81533c3643f25640267257b9be636c87331f1d5"
         ),
         PROGRAM_B_RUN2 / "progB_w7_apoc_rvwap.yaml": (
-            "c61bde203fd8d283ffd4cfb64d7a4210bb4cda4d6a03d1b03c162ccc3bddbe49"
+            "8134a685c1299e7865b1b5a9e4325beec6c9b3e7ea6438e06ba9a51f6f7f9559"
         ),
         PROGRAM_B_RUN2 / "progB_w7_apoc_pivot.yaml": (
-            "57240eeecb28284520ae35cb660c919964a70dba3b4a7e1410d1935667b488e2"
+            "1fa2f36b9f11cc46974b2f1d1ed0afe0bf0e621a1fe5c88f84fc29701fd67c00"
         ),
     }
     for path, expected in pins.items():
@@ -581,13 +590,14 @@ def test_program_b_fifteen_s_levels_disable_apoc_and_rolling():
 
 def test_program_b_tick_levels_keep_aggregation_and_rolling():
     gen = _generate()
+    expected_poc = {PROGRAM_B: ["30min"], PROGRAM_B_RUN2: []}
     for root in (PROGRAM_B, PROGRAM_B_RUN2):
         tick = yaml.safe_load((root / "manifest_tick.yaml").read_text(encoding="utf-8"))
         for row in tick["studies"]:
             spec = yaml.safe_load((root / row["file"]).read_text(encoding="utf-8"))
             levels = spec["study"]["levels"]
             cores = spec["study"]["factors"]["core_level"]
-            assert levels["poc_windows"] == ["30min"], f"{root}/{row['file']}"
+            assert levels["poc_windows"] == expected_poc[root], f"{root}/{row['file']}"
             assert levels["prior_day_profile_aggregation_ticks"] == 4, f"{root}/{row['file']}"
             assert levels["prior_week_profile_aggregation_ticks"] == 8, f"{root}/{row['file']}"
             assert levels["prior_month_profile_aggregation_ticks"] == 10, f"{root}/{row['file']}"
@@ -596,3 +606,65 @@ def test_program_b_tick_levels_keep_aggregation_and_rolling():
                 assert levels["apoc_enabled"] is True, f"{root}/{row['file']}"
             else:
                 assert levels["apoc_enabled"] is False, f"{root}/{row['file']}"
+
+
+def test_program_b_run1_touch_packet_regenerates_byte_identically(tmp_path):
+    gen = _generate()
+    gen.main(["--trigger", "touch", "--output-dir", str(tmp_path)])
+    for path in sorted(PROGRAM_B.glob("*.yaml")):
+        generated = tmp_path / path.name
+        assert generated.is_file(), path.name
+        assert generated.read_text(encoding="utf-8") == path.read_text(encoding="utf-8"), path.name
+
+
+def test_program_b_run2_tick_yaml_burst_false_and_manifest_expands_253():
+    gen = _generate()
+    tick = yaml.safe_load((PROGRAM_B_RUN2 / "manifest_tick.yaml").read_text(encoding="utf-8"))
+    assert tick["packet"] == "tick"
+    assert tick["total_studies"] == 8
+    assert tick["total_cells"] == 253
+    for row in tick["studies"]:
+        spec = yaml.safe_load((PROGRAM_B_RUN2 / row["file"]).read_text(encoding="utf-8"))
+        dataset = spec["study"]["dataset"]
+        assert dataset["tick_stitch_plan"] == gen.TICK_STITCH_PLAN, row["file"]
+        assert dataset["tick_stitch_x1_burst_included"] is False, row["file"]
+        assert "tick_paths" not in dataset, row["file"]
+        assert spec["study"]["levels"]["poc_windows"] == [], row["file"]
+        assert spec["study"]["workers"] == 1, row["file"]
+        assert "mnq_tick_last.csv" not in str(dataset)
+    validate = _validator()
+    ok_lines, failures, n_studies, n_cells = validate.validate_manifest(
+        PROGRAM_B_RUN2, manifest_name="manifest_tick.yaml"
+    )
+    assert failures == []
+    assert n_studies == 8
+    assert n_cells == 253
+    assert len(ok_lines) == 8
+
+
+def test_program_b_run2_tick_sidecar_basenames_match_plan_unique_files():
+    import json
+
+    plan = json.loads((PROGRAM_B_RUN2 / "tick_stitch_plan.json").read_text(encoding="utf-8"))
+    unique = {row["filename"] for row in plan}
+    sidecar = (PROGRAM_B_RUN2 / "tick_stitch_plan.sha256").read_text(encoding="utf-8")
+    names = []
+    for line in sidecar.splitlines():
+        if not line.strip():
+            continue
+        _digest, name = line.split("  ", 1)
+        names.append(name)
+    assert len(names) == 39
+    assert set(names) == unique
+
+
+def test_program_b_validator_rejects_run2_tick_missing_burst(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B_RUN2 / "progB_w0_va.yaml").read_text(encoding="utf-8"))
+    spec["study"]["dataset"].pop("tick_stitch_x1_burst_included", None)
+    drifted = tmp_path / "progB_w0_va.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 9, "min_valid": 0}, packet="tick", locks="run2"
+    )
+    assert any("tick_stitch_x1_burst_included" in item for item in failures)

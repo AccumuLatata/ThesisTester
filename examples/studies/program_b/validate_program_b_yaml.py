@@ -103,6 +103,7 @@ def _check_levels_locks(
     cores: list[str],
     packet: str,
     generate: Any,
+    locks: str = "run1",
 ) -> list[str]:
     """15s must disable product APOC/rolling; tick packet keeps explicit 4/8/10."""
     failures: list[str] = []
@@ -117,8 +118,9 @@ def _check_levels_locks(
             failures.append(f"{label}: 15s packet must set poc_windows: []")
         return failures
     if packet == "tick":
-        if list(levels.get("poc_windows") or []) != ["30min"]:
-            failures.append(f"{label}: tick packet must set poc_windows: ['30min']")
+        expected_poc = [] if locks == "run2" else ["30min"]
+        if list(levels.get("poc_windows") or []) != expected_poc:
+            failures.append(f"{label}: tick packet must set poc_windows: {expected_poc!r}")
         apoc_cores = [token for token in cores if token in generate.APOC_ANCHOR_SET]
         if apoc_cores:
             if levels.get("apoc_enabled") is not True:
@@ -141,8 +143,9 @@ def _check_packet_locks(
     cores: list[str],
     packet: str,
     generate: Any,
+    locks: str = "run1",
 ) -> list[str]:
-    """Keep VA/APOC tokens and tick_paths inside the tick packet only."""
+    """Keep VA/APOC tokens and tick inputs inside the tick packet only."""
     failures: list[str] = []
     raw_ticks = dataset.get("tick_paths")
     tick_in_cores = [token for token in cores if token in generate.TICK_GATED_SET]
@@ -152,6 +155,8 @@ def _check_packet_locks(
                 f"{label}: 15s packet must omit tick_paths "
                 f"(tick-gated studies live in {generate.TICK_MANIFEST_NAME})"
             )
+        if dataset.get("tick_stitch_plan") not in (None, ""):
+            failures.append(f"{label}: 15s packet must omit tick_stitch_plan")
         if tick_in_cores:
             failures.append(
                 f"{label}: 15s packet cannot name tick-gated cores {tick_in_cores} "
@@ -159,11 +164,36 @@ def _check_packet_locks(
             )
         return failures
     if packet == "tick":
-        if list(raw_ticks or []) != list(generate.TICK_PATHS):
-            failures.append(
-                f"{label}: tick packet tick_paths must be the generate-owned placeholder "
-                f"{list(generate.TICK_PATHS)!r}"
-            )
+        if locks == "run2":
+            if raw_ticks not in (None, [], ()):
+                failures.append(f"{label}: Run 2 tick packet must omit tick_paths")
+            plan = dataset.get("tick_stitch_plan")
+            if plan != generate.TICK_STITCH_PLAN:
+                failures.append(
+                    f"{label}: Run 2 tick_stitch_plan must be {generate.TICK_STITCH_PLAN!r}"
+                )
+            if "tick_stitch_x1_burst_included" not in dataset:
+                failures.append(
+                    f"{label}: tick_stitch_x1_burst_included is required when "
+                    "tick_stitch_plan is set"
+                )
+            elif type(dataset.get("tick_stitch_x1_burst_included")) is not bool:
+                failures.append(f"{label}: tick_stitch_x1_burst_included must be an explicit bool")
+            elif dataset.get("tick_stitch_x1_burst_included") is not (
+                generate.TICK_STITCH_X1_BURST_INCLUDED
+            ):
+                failures.append(
+                    f"{label}: Run 2 tick_stitch_x1_burst_included must be "
+                    f"{generate.TICK_STITCH_X1_BURST_INCLUDED!r}"
+                )
+        else:
+            if list(raw_ticks or []) != list(generate.TICK_PATHS):
+                failures.append(
+                    f"{label}: tick packet tick_paths must be the generate-owned placeholder "
+                    f"{list(generate.TICK_PATHS)!r}"
+                )
+            if dataset.get("tick_stitch_plan") not in (None, ""):
+                failures.append(f"{label}: Run 1 tick packet must omit tick_stitch_plan")
         if not cores or any(token not in generate.TICK_GATED_SET for token in cores):
             failures.append(f"{label}: tick packet must name only VA and/or APOC cores")
         return failures
@@ -252,6 +282,7 @@ def validate_study_file(
             cores=cores,
             packet=resolved_packet,
             generate=gen,
+            locks=locks,
         )
     )
     if isinstance(levels, Mapping):
@@ -262,6 +293,7 @@ def validate_study_file(
                 cores=cores,
                 packet=resolved_packet,
                 generate=gen,
+                locks=locks,
             )
         )
     expected_trigger = LOCKED_TRIGGER_RUN2 if locks == "run2" else LOCKED_TRIGGER
