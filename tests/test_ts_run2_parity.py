@@ -1534,3 +1534,195 @@ def test_stitch_off_unnamed_apoc_still_disables_column(tmp_path: Path) -> None:
     assert COL_APOC not in state["levels"].columns
     assert "dOpen" in state["levels"].columns
     assert LEVEL_ENGINE_VERSION == 11
+
+
+def _tiny_stitch_study(
+    tmp_path: Path,
+    *,
+    burst: bool = False,
+    day_bins: int = 4,
+    value_area_pct: float = 0.70,
+    one_cell: bool = False,
+) -> dict:
+    rows = [
+        ("2026-01-15 10:00:00.000", 100.0, 1.0),
+        ("2026-01-15 10:00:01.000", 101.0, 1.0),
+    ]
+    tick = _write_tick_csv(tmp_path / "early.csv", rows)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(__import__("json").dumps(_plan_for(tick, rows)), encoding="utf-8")
+    _canonical_15s(tmp_path / "bars.csv", ["2026-01-15 10:00:00"])
+    spec = _minimal_study(
+        path=str(tmp_path / "bars.csv"),
+        instrument="MNQ",
+        format_profile="canonical",
+        source_timezone="UTC",
+        tick_stitch_plan=str(plan_path),
+        tick_stitch_x1_burst_included=burst,
+    )
+    spec["study"]["levels"]["poc_windows"] = []
+    spec["study"]["levels"]["prior_day_profile_aggregation_ticks"] = day_bins
+    spec["study"]["levels"]["value_area_pct"] = value_area_pct
+    if one_cell:
+        spec["study"]["factors"]["partner_levels"] = [["SMA_50_1min"]]
+        spec["study"]["factors"]["confluence_mode"] = ["global_cluster"]
+    return spec
+
+
+def test_shared_parent_cache_hit_miss_corrupt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from thesistester.data.tick_stitch import build_stitch_parent_tables
+    from thesistester.study.execute import (
+        STUDY_APOC_TICK_PARQUET,
+        STUDY_PRIOR_PROFILE_PARQUET,
+        STUDY_TICK_STITCH_CACHE,
+    )
+
+    shared = tmp_path / "shared_cache"
+    monkeypatch.setenv("THESISTESTER_TICK_STITCH_CACHE_DIR", str(shared))
+    calls = {"build": 0}
+    real = build_stitch_parent_tables
+
+    def _wrap(*args, **kwargs):
+        calls["build"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("thesistester.study.execute.build_stitch_parent_tables", _wrap)
+
+    spec = _tiny_stitch_study(tmp_path, burst=False)
+    expansion = expand_study(spec, source_spec_parent=tmp_path)
+    out1 = tmp_path / "out1"
+    _prepare_study_tick_stitch(spec, expansion, output_dir=out1, base_directory=tmp_path)
+    assert calls["build"] == 1
+    prior1 = (out1 / STUDY_PRIOR_PROFILE_PARQUET).read_bytes()
+    apoc1 = (out1 / STUDY_APOC_TICK_PARQUET).read_bytes()
+    cache1 = (out1 / STUDY_TICK_STITCH_CACHE).read_text(encoding="utf-8")
+
+    expansion2 = expand_study(spec, source_spec_parent=tmp_path)
+    out2 = tmp_path / "out2"
+    _prepare_study_tick_stitch(spec, expansion2, output_dir=out2, base_directory=tmp_path)
+    assert calls["build"] == 1
+    assert (out2 / STUDY_PRIOR_PROFILE_PARQUET).read_bytes() == prior1
+    assert (out2 / STUDY_APOC_TICK_PARQUET).read_bytes() == apoc1
+    assert (out2 / STUDY_TICK_STITCH_CACHE).read_text(encoding="utf-8") == cache1
+    run1 = expansion.experiment["runs"][0]["dataset"]
+    run2 = expansion2.experiment["runs"][0]["dataset"]
+    assert run1["tick_source_id"] == run2["tick_source_id"]
+    assert run1["apoc_tick_source_id"] == run2["apoc_tick_source_id"]
+    assert (
+        expansion.experiment["runs"][0][_STITCH_DATA_QUALITY_KEY]
+        == expansion2.experiment["runs"][0][_STITCH_DATA_QUALITY_KEY]
+    )
+    dest_inode = (out2 / STUDY_PRIOR_PROFILE_PARQUET).stat().st_ino
+    cache_parquet = next(shared.rglob(STUDY_PRIOR_PROFILE_PARQUET))
+    assert cache_parquet.stat().st_ino != dest_inode
+    cache_bytes = cache_parquet.read_bytes()
+    (out2 / STUDY_PRIOR_PROFILE_PARQUET).write_bytes(b"mutated-dest-must-not-touch-cache")
+    assert cache_parquet.read_bytes() == cache_bytes
+
+    burst_spec = _tiny_stitch_study(tmp_path, burst=True)
+    burst_exp = expand_study(burst_spec, source_spec_parent=tmp_path)
+    _prepare_study_tick_stitch(
+        burst_spec, burst_exp, output_dir=tmp_path / "out_burst", base_directory=tmp_path
+    )
+    assert calls["build"] == 2
+
+    bin_spec = _tiny_stitch_study(tmp_path, burst=False, day_bins=8)
+    bin_exp = expand_study(bin_spec, source_spec_parent=tmp_path)
+    _prepare_study_tick_stitch(
+        bin_spec, bin_exp, output_dir=tmp_path / "out_bins", base_directory=tmp_path
+    )
+    assert calls["build"] == 3
+
+    vapct_spec = _tiny_stitch_study(tmp_path, burst=False, value_area_pct=0.68)
+    vapct_exp = expand_study(vapct_spec, source_spec_parent=tmp_path)
+    _prepare_study_tick_stitch(
+        vapct_spec, vapct_exp, output_dir=tmp_path / "out_vapct", base_directory=tmp_path
+    )
+    assert calls["build"] == 4
+
+    for parquet in shared.rglob("study.prior_profile.parquet"):
+        parquet.chmod(0o644)
+        parquet.write_bytes(b"corrupted-parent-table")
+    expansion3 = expand_study(spec, source_spec_parent=tmp_path)
+    out3 = tmp_path / "out3"
+    _prepare_study_tick_stitch(spec, expansion3, output_dir=out3, base_directory=tmp_path)
+    assert calls["build"] == 5
+    assert (out3 / STUDY_PRIOR_PROFILE_PARQUET).read_bytes() == prior1
+    assert (out3 / STUDY_APOC_TICK_PARQUET).read_bytes() == apoc1
+
+
+def test_shared_parent_cache_two_studies_identical_bundles_and_levels_meta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hit vs miss: per-study artifacts, ids, data_quality, bundles, levels_meta."""
+    import json
+    import zipfile
+
+    from thesistester.research_bundle import canonical_bundle_hash
+    from thesistester.study.execute import (
+        STUDY_APOC_TICK_PARQUET,
+        STUDY_PRIOR_PROFILE_PARQUET,
+        STUDY_TICK_STITCH_CACHE,
+    )
+
+    shared = tmp_path / "shared_cache"
+    monkeypatch.setenv("THESISTESTER_TICK_STITCH_CACHE_DIR", str(shared))
+    spec = _tiny_stitch_study(tmp_path, burst=False, one_cell=True)
+    yaml_path = tmp_path / "study.yaml"
+    yaml_path.write_text(__import__("yaml").safe_dump(spec, sort_keys=False), encoding="utf-8")
+
+    out1 = tmp_path / "study_miss"
+    out2 = tmp_path / "study_hit"
+    first = run_study(yaml_path, output_dir=out1)
+    second = run_study(yaml_path, output_dir=out2)
+    assert first["executed"] == 1
+    assert second["executed"] == 1
+
+    assert (out1 / STUDY_PRIOR_PROFILE_PARQUET).read_bytes() == (
+        out2 / STUDY_PRIOR_PROFILE_PARQUET
+    ).read_bytes()
+    assert (out1 / STUDY_APOC_TICK_PARQUET).read_bytes() == (
+        out2 / STUDY_APOC_TICK_PARQUET
+    ).read_bytes()
+    cache1 = json.loads((out1 / STUDY_TICK_STITCH_CACHE).read_text(encoding="utf-8"))
+    cache2 = json.loads((out2 / STUDY_TICK_STITCH_CACHE).read_text(encoding="utf-8"))
+    assert cache1 == cache2
+    assert cache1["data_quality"]["data_quality.x1_burst_included"] is False
+
+    exp1 = __import__("yaml").safe_load((out1 / "experiment.yaml").read_text(encoding="utf-8"))
+    exp2 = __import__("yaml").safe_load((out2 / "experiment.yaml").read_text(encoding="utf-8"))
+    ds1 = exp1["runs"][0]["dataset"]
+    ds2 = exp2["runs"][0]["dataset"]
+    assert ds1["tick_source_id"] == ds2["tick_source_id"] == cache1["tick_source_id"]
+    assert ds1["apoc_tick_source_id"] == ds2["apoc_tick_source_id"] == cache1["apoc_tick_source_id"]
+
+    idx1 = pd.read_csv(out1 / "results_index.csv")
+    idx2 = pd.read_csv(out2 / "results_index.csv")
+    assert list(idx1.columns) == list(idx2.columns)
+    assert list(idx1.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
+    assert [_csv_truthy(v) for v in idx1["data_quality.x1_burst_included"]] == [
+        _csv_truthy(v) for v in idx2["data_quality.x1_burst_included"]
+    ]
+    assert idx1["bundle_hash"].tolist() == idx2["bundle_hash"].tolist()
+
+    zips1 = sorted(out1.glob("*.research.zip"))
+    zips2 = sorted(out2.glob("*.research.zip"))
+    assert len(zips1) == len(zips2) == 1
+    assert canonical_bundle_hash(zips1[0].read_bytes()) == canonical_bundle_hash(
+        zips2[0].read_bytes()
+    )
+    with zipfile.ZipFile(zips1[0]) as left, zipfile.ZipFile(zips2[0]) as right:
+        meta1 = json.loads(left.read("levels_meta.json").decode("utf-8"))
+        meta2 = json.loads(right.read("levels_meta.json").decode("utf-8"))
+    assert meta1 == meta2
+    settings = meta1.get("levels_settings") or {}
+    assert settings.get("tick_source_id") == cache1["tick_source_id"]
+    assert settings.get("apoc_tick_source_id") == cache1["apoc_tick_source_id"]
+
+    resume = run_study(yaml_path, output_dir=out2)
+    assert resume["executed"] == 0
+    restored = pd.read_csv(out2 / "results_index.csv")
+    assert list(restored.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
+    assert all(_csv_truthy(value) is False for value in restored["data_quality.x1_burst_included"])

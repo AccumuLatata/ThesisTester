@@ -451,8 +451,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - Fresh Program B Wave 7 / Wave 0 APOC packets live in `manifest_tick.yaml`
   and omit `apoc_profile_source` (product tick Last×Volume). Run 1 keeps
   placeholder `tick_paths`. Run 2 tick YAML sets
-  `dataset.tick_stitch_plan` to the committed plan JSON,
+  `dataset.tick_stitch_plan` to spec-dir-relative `tick_stitch_plan.json`,
   `tick_stitch_x1_burst_included: false` (Q9), and `poc_windows: []`.
+  Shared parent-table cache lives under `{THESISTESTER_STORE_DIR}/tick_stitch_parent`
+  unless `THESISTESTER_TICK_STITCH_CACHE_DIR` is set.
   Manifest rows record tick provenance. Historical ZIPs stay
   labeled `legacy_typical_price`. Do not rewrite those ZIPs.
   Fresh `study.expansion.json`

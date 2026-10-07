@@ -489,6 +489,7 @@ Listed instead of guessing. Implementation PRs must not invent answers.
 | TS4–TS5 | `ASSUMPTIONS_AND_LIMITATIONS.md` | 11-07 VA is 15s-residual-filled and flagged; APOC that day is clean ticks; clip to 15s windows. |
 | TS6 | `PROGRAM_B_OPERATOR_RUNBOOK.md` | Tick packet launch: NVMe root, verify, stitch-off parity, pilot, then 253 cells. |
 | TS6 | `ENGINEERING_ROADMAP.md` + `docs/README.md` | Roadmap row, and the TS index bullet’s status (the link landed in TS0). |
+| TS6d | `PROGRAM_B_OPERATOR_RUNBOOK.md` + `ARCHITECTURE.md` | Run 2 tick YAML `tick_stitch_plan` is spec-dir-relative `tick_stitch_plan.json`. Parent tables cache under `{THESISTESTER_STORE_DIR}/tick_stitch_parent` or `THESISTESTER_TICK_STITCH_CACHE_DIR`. |
 
 `METRICS_GLOSSARY.md` only if a new named statistic is emitted (the quality flag is provenance, not a KPI).
 
@@ -506,3 +507,5 @@ Listed instead of guessing. Implementation PRs must not invent answers.
 TS6b: §8 step 8 pdPOC pilot at 3b81b1f8 found data_quality.* dropped by _write_results_index; Accumu option A 2026-10-07; pilot re-run after merge
 
 TS6c: §8 step 9 APOC pilot at e2c1e5b3 found `disable_unneeded_tick_families(run.get("levels"), setup)` hid named APOC (setup keys, not tokens); Accumu 2026-10-07; pass `_named_level_tokens_from_setup(setup)`; stitch-off unnamed APOC still disables; named stitch-off without ticks still refuses. Farm w0/w7 are `anchor_rules` (empty `selected_levels`, `anchor_level` APOC/pAPOC, optional partner rules) — e2e child tests must use that shape, not only `global_cluster` selected_levels.
+
+TS6d: §8 step 10 farm preflight at 30916f8a found (1) generator emitted repo-root-relative `tick_stitch_plan` so `study run` (spec-dir resolve) missed the plan; (2) parent-table cache was per-output-dir only, contradicting §4.5 shared cache. Accumu 2026-10-07; generator emits spec-dir-relative `tick_stitch_plan.json`; shared cache at `{THESISTESTER_STORE_DIR}/tick_stitch_parent` or `THESISTESTER_TICK_STITCH_CACHE_DIR`. Resolver semantics unchanged. 15s packet and Run 1 byte-stable. Cache never called without `tick_stitch_plan`. Review lock: installs are copies (not hardlinks); key includes tick_size + session-cut + listed sidecar digests (not the sidecar blob); hash-verify on local and shared read; unique temps.

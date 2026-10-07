@@ -490,13 +490,13 @@ def test_program_b_wave7_identity_hashes_are_pinned():
             "7ecbf374033940f658414e6dc2cc91396b76713ad26dda40fec8762f83cb484a"
         ),
         PROGRAM_B_RUN2 / "progB_w7_apoc_ma.yaml": (
-            "f2dcbf8133cb5f61825d150ec81533c3643f25640267257b9be636c87331f1d5"
+            "aeede217c6508e0736cf82a5866679b01cd25cab70b38fa6b3c5179c4f670713"
         ),
         PROGRAM_B_RUN2 / "progB_w7_apoc_rvwap.yaml": (
-            "8134a685c1299e7865b1b5a9e4325beec6c9b3e7ea6438e06ba9a51f6f7f9559"
+            "ab318dcfcbc520114f0911e116a1d3b375423c0d4bee62130157a1a7d5663ad1"
         ),
         PROGRAM_B_RUN2 / "progB_w7_apoc_pivot.yaml": (
-            "1fa2f36b9f11cc46974b2f1d1ed0afe0bf0e621a1fe5c88f84fc29701fd67c00"
+            "40f985268675580f760fcce116e9d43da4b6ca434b595ae883943db38a358311"
         ),
     }
     for path, expected in pins.items():
@@ -632,6 +632,28 @@ def test_program_b_run2_tick_yaml_burst_false_and_manifest_expands_253():
     assert n_studies == 8
     assert n_cells == 253
     assert len(ok_lines) == 8
+
+
+def test_run2_tick_yaml_plan_resolves_from_spec_dir_to_sidecar() -> None:
+    """Each committed tick YAML resolves tick_stitch_plan via the study-run path."""
+    import hashlib
+
+    from thesistester.study.execute import _resolve_study_relative_path
+
+    sidecar = PROGRAM_B_RUN2 / "tick_stitch_plan.sha256"
+    sidecar_sha = hashlib.sha256(sidecar.read_bytes()).hexdigest()
+    assert sidecar_sha == "8c965bb1a6a3a0e93452790136d7fa4363091471bd930deaeaa903b64ffc14b5"
+    committed = (PROGRAM_B_RUN2 / "tick_stitch_plan.json").resolve()
+    tick = yaml.safe_load((PROGRAM_B_RUN2 / "manifest_tick.yaml").read_text(encoding="utf-8"))
+    for row in tick["studies"]:
+        spec_path = PROGRAM_B_RUN2 / row["file"]
+        spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+        raw = spec["study"]["dataset"]["tick_stitch_plan"]
+        resolved = _resolve_study_relative_path(raw, spec_path.parent)
+        assert resolved.is_file(), spec_path.name
+        assert resolved == committed
+        neighbour = resolved.parent / "tick_stitch_plan.sha256"
+        assert hashlib.sha256(neighbour.read_bytes()).hexdigest() == sidecar_sha
 
 
 def test_program_b_run2_tick_sidecar_basenames_match_plan_unique_files():
