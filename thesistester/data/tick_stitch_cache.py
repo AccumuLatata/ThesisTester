@@ -268,9 +268,10 @@ def _manifest_usable(manifest: object) -> dict[str, Any] | None:
         return None
     if not isinstance(manifest.get("tick_source_id"), str) or not manifest["tick_source_id"]:
         return None
-    if not isinstance(manifest.get("apoc_tick_source_id"), str) or not manifest[
-        "apoc_tick_source_id"
-    ]:
+    if (
+        not isinstance(manifest.get("apoc_tick_source_id"), str)
+        or not manifest["apoc_tick_source_id"]
+    ):
         return None
     return manifest
 

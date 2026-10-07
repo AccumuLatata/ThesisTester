@@ -1610,9 +1610,10 @@ def test_shared_parent_cache_hit_miss_corrupt(
     run2 = expansion2.experiment["runs"][0]["dataset"]
     assert run1["tick_source_id"] == run2["tick_source_id"]
     assert run1["apoc_tick_source_id"] == run2["apoc_tick_source_id"]
-    assert expansion.experiment["runs"][0][_STITCH_DATA_QUALITY_KEY] == expansion2.experiment[
-        "runs"
-    ][0][_STITCH_DATA_QUALITY_KEY]
+    assert (
+        expansion.experiment["runs"][0][_STITCH_DATA_QUALITY_KEY]
+        == expansion2.experiment["runs"][0][_STITCH_DATA_QUALITY_KEY]
+    )
     dest_inode = (out2 / STUDY_PRIOR_PROFILE_PARQUET).stat().st_ino
     cache_parquet = next(shared.rglob(STUDY_PRIOR_PROFILE_PARQUET))
     assert cache_parquet.stat().st_ino != dest_inode
@@ -1724,6 +1725,4 @@ def test_shared_parent_cache_two_studies_identical_bundles_and_levels_meta(
     assert resume["executed"] == 0
     restored = pd.read_csv(out2 / "results_index.csv")
     assert list(restored.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
-    assert all(
-        _csv_truthy(value) is False for value in restored["data_quality.x1_burst_included"]
-    )
+    assert all(_csv_truthy(value) is False for value in restored["data_quality.x1_burst_included"])
