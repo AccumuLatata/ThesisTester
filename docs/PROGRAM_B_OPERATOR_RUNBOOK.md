@@ -27,7 +27,7 @@ Run the locked Program B grid on MNQ and collect n / `expectancy_r` / PF per cel
 | Wave 7 | `APOC` / `pAPOC` × 22 confirms | 44 | 3 family YAMLs — **tick-gated** |
 | **Tick total** | | **253** | 8 files (`manifest_tick.yaml`) |
 
-Catalog is still 50 anchors. VA and APOC are tick-gated objects. They must not share a YAML with 15s cores: one named-VA / APOC token refuses the **whole** study when `dataset.tick_paths` is empty. Every 15s StudySpec sets `apoc_enabled: false` and `poc_windows: []` so product tick defaults cannot refuse a 15s-only launch. `POC_rolling_30min` is **not** a Program B core wave — shutting `poc_windows` on 15s is the rolling fix.
+Catalog is still 50 anchors. VA and APOC are tick-gated objects. They must not share a YAML with 15s cores: one named-VA / APOC token refuses the **whole** study when there is no tick input (`dataset.tick_paths`, or Run 2 `dataset.tick_stitch_plan`). Every 15s StudySpec sets `apoc_enabled: false` and `poc_windows: []` so product tick defaults cannot refuse a 15s-only launch. `POC_rolling_30min` is **not** a Program B core wave — shutting `poc_windows` on 15s is the rolling fix.
 
 **15s-only (this desk):** run `manifest.yaml` in order: **smoke → Wave 0 → Wave 1 MA → rVWAP → pivot → Wave 2 → Wave 3 → Wave 5 → Wave 6 → Wave 8.** Run 1 `manifest_tick.yaml` stays parked on placeholder `tick_paths` until a real Tick–Tick–Last file is pinned. Run 2 `manifest_tick.yaml` is the stitch packet (see §4 Run 2 tick launch). Do not skip ahead because a cell is green. Do not drop a name because solo E < 0. Do not reintroduce typical.
 
@@ -191,8 +191,10 @@ key would merge `["30min"]` and `list()` 34 GiB per worker).
 | `progB_w7_apoc_pivot.yaml` | 16 | 1 |
 
 **Wave 7 APOC object (fresh packet):** these three files plus `progB_w0_apoc.yaml`
-omit `apoc_profile_source` (product tick Last×Volume) and carry placeholder
-`tick_paths`. Manifest rows record tick provenance (`apoc_object:
+omit `apoc_profile_source` (product tick Last×Volume). Run 1 carries
+placeholder `tick_paths`. Run 2 tick YAML uses committed
+`tick_stitch_plan` + `tick_stitch_x1_burst_included: false` (Q9) and
+omits `tick_paths`. Manifest rows record tick provenance (`apoc_object:
 tick_last_volume`). Historical ZIPs stay typical-labeled elsewhere — do
 **not** rewrite them. Do **not** compare Wave 7 cells to Quantower A-period
 POC. Do **not** reintroduce typical.
@@ -262,18 +264,16 @@ steps through QC PASS at `84e7ccc0` and Q9 are done. This packet does
 
 ```bash
 export THESISTESTER_TICK_STITCH_ROOT=~/thesistester/data/ticks
+# Verify CLI takes an explicit ROOT; it does not read the env.
+python -m thesistester.data.tick_stitch verify \
+  examples/studies/program_b_run2/tick_stitch_plan.json \
+  "$THESISTESTER_TICK_STITCH_ROOT"
 PYTHONPATH=. python3 examples/studies/program_b/validate_program_b_yaml.py \
   examples/studies/program_b_run2/manifest_tick.yaml
 # expect: ok 8 studies / 253 cells
-```
-
-```bash
-SPEC=examples/studies/program_b_run2/progB_smoke_ONH_SMA50_5min.yaml
-NAME=progB_r2_smoke_ONH_SMA50_5min
-OUT=results/studies/$NAME
-python -m thesistester study expand "$SPEC" --output-dir "$OUT"
-python -m thesistester study run "$SPEC" --output-dir "$OUT"
-python -m thesistester study report "$OUT"
+# study run reads the env via resolve_tick_stitch_root (joins plan
+# basenames under that root). No --tick-stitch-root flag. Missing
+# tick files refuse. Execute refuses /mnt/nas-trading.
 ```
 
 ---
