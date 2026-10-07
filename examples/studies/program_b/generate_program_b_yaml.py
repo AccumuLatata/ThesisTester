@@ -8,9 +8,12 @@ this directory — pass ``--output-dir`` elsewhere.
 
 15s packet: no VA / APOC / pAPOC cores, no ``tick_paths``, explicit
 ``apoc_enabled: false`` and ``poc_windows: []`` so product tick defaults
-cannot refuse a 15s-only launch. Tick packet: VA + Wave 0 APOC solos +
-Wave 7, placeholder ``tick_paths``, ``apoc_enabled: true`` on APOC studies
-only, omitted ``apoc_profile_source`` (product tick). Manifest Wave 7 rows
+cannot refuse a 15s-only launch. Run 1 tick packet: VA + Wave 0 APOC
+solos + Wave 7, placeholder ``tick_paths``, ``poc_windows: ['30min']``.
+Run 2 tick packet: committed ``tick_stitch_plan``, explicit
+``tick_stitch_x1_burst_included: false`` (Q9), ``poc_windows: []``. No
+``data/mnq_tick_last.csv``. ``apoc_enabled: true`` on APOC studies only,
+omitted ``apoc_profile_source`` (product tick). Manifest Wave 7 rows
 record ``WAVE7_TICK_PROVENANCE``. Historical ZIP typical labels stay
 elsewhere; do not rewrite those ZIPs and do not add ``apoc_profile_source``.
 ``POC_rolling_30min`` is not a Program B core wave — 15s shuts
@@ -106,8 +109,12 @@ TICK_WAVES = frozenset({"w4_profile", "w7_apoc"})
 FIFTEEN_S_ANCHORS = [token for token in ALL_ANCHORS if token not in TICK_GATED_SET]
 # Placeholder only. Schema/expand need a non-empty list so the StudySpec loads.
 # Launch still refuses until the operator pins a real Tick–Tick–Last export.
+# Run 1 tick packet only. Run 2 tick packet uses TICK_STITCH_PLAN instead.
 TICK_PATHS = ["data/mnq_tick_last.csv"]
 VA_TICK_PATHS = TICK_PATHS  # alias: older tests / validator copy
+TICK_STITCH_PLAN = "examples/studies/program_b_run2/tick_stitch_plan.json"
+# Q9 Accumu 2026-10-07: without the burst.
+TICK_STITCH_X1_BURST_INCLUDED = False
 LOCKED_AGGREGATION = {
     "prior_day_profile_aggregation_ticks": 4,
     "prior_week_profile_aggregation_ticks": 8,
@@ -170,15 +177,21 @@ def study_name(base: str, prefix: str) -> str:
     return f"{token}_{base}"
 
 
-def _levels(*, tick_gated: bool, apoc_enabled: bool) -> dict[str, object]:
+def _levels(
+    *,
+    tick_gated: bool,
+    apoc_enabled: bool,
+    poc_windows: list[str] | None = None,
+) -> dict[str, object]:
     """Shared StudySpec levels. 15s must disable product APOC / rolling defaults."""
+    windows = list(poc_windows) if poc_windows is not None else (["30min"] if tick_gated else [])
     levels: dict[str, object] = {
         "sma_lengths": [50, 200],
         "ema_lengths": [9, 21],
         "sma_timeframes": ["1min", "5min", "30min"],
         "ema_timeframes": ["1min", "5min", "30min"],
         "vwap_windows": ["30min", "4h"],
-        "poc_windows": ["30min"] if tick_gated else [],
+        "poc_windows": windows,
         "pivots_enabled": True,
         "pivot_timeframes": ["1min", "5min", "30min", "4h"],
         "prev30m_vwap_enabled": True,
@@ -196,6 +209,9 @@ def _shared(
     description: str,
     min_valid: int,
     tick_paths: list[str] | None = None,
+    tick_stitch_plan: str | None = None,
+    tick_stitch_x1_burst_included: bool | None = None,
+    poc_windows: list[str] | None = None,
     trigger: str = "touch",
     same_bar_policy: str | None = None,
     random_baseline: int | None = None,
@@ -210,6 +226,13 @@ def _shared(
     }
     if tick_paths:
         dataset["tick_paths"] = list(tick_paths)
+    if tick_stitch_plan:
+        if type(tick_stitch_x1_burst_included) is not bool:
+            raise ValueError(
+                "tick_stitch_x1_burst_included is required when tick_stitch_plan is set"
+            )
+        dataset["tick_stitch_plan"] = tick_stitch_plan
+        dataset["tick_stitch_x1_burst_included"] = tick_stitch_x1_burst_included
     trigger_params: dict[str, object] = {}
     if trigger == "fade":
         trigger_params["require_close_confirmation"] = False
@@ -253,7 +276,11 @@ def _shared(
             "confirm_above_runs": 200,
             "output_dir": f"results/studies/{name}",
             "dataset": dataset,
-            "levels": _levels(tick_gated=bool(tick_paths), apoc_enabled=apoc_enabled),
+            "levels": _levels(
+                tick_gated=bool(tick_paths) or bool(tick_stitch_plan),
+                apoc_enabled=apoc_enabled,
+                poc_windows=poc_windows,
+            ),
             "constants": {
                 "direction": "both",
                 "tolerance_ticks": 10,
@@ -334,9 +361,12 @@ def _run2_readme(*, trigger: str, same_bar_policy: str, n_replicas: int) -> str:
         f"Trigger `{trigger}` @ 1min, `same_bar_opposite_direction: {same_bar_policy}`, "
         f"`report.random_baseline.n_replicas: {n_replicas}`.\n"
         "**Tick-gated packet:** 8 studies / **253** cells (`manifest_tick.yaml`) — "
-        "Wave 0 VA + Wave 0 APOC solos + Wave 4 + Wave 7. Placeholder "
-        "`tick_paths: [data/mnq_tick_last.csv]`; launch refuses until a real "
-        "Tick–Tick–Last export is pinned.\n"
+        "Wave 0 VA + Wave 0 APOC solos + Wave 4 + Wave 7. "
+        "`dataset.tick_stitch_plan` = committed "
+        "`examples/studies/program_b_run2/tick_stitch_plan.json`; "
+        "`tick_stitch_x1_burst_included: false` (Q9 Accumu 2026-10-07); "
+        "`poc_windows: []`. No `data/mnq_tick_last.csv`. NVMe root is "
+        "`THESISTESTER_TICK_STITCH_ROOT`, not a packet field.\n"
         "Study names are `progB_r2_*` so `output_dir` does not collide with Run 1.\n"
         "Filenames stay `progB_*.yaml` so the validator Wave 0 / smoke stems still match.\n"
         "15s levels set `apoc_enabled: false` and `poc_windows: []` so product "
@@ -415,6 +445,15 @@ def generate_packet(
         "same_bar_policy": same_bar_policy,
         "random_baseline": random_baseline,
     }
+    run2_tick = write_tick and locks == "run2"
+    if run2_tick:
+        tick_input: dict[str, object] = {
+            "tick_stitch_plan": TICK_STITCH_PLAN,
+            "tick_stitch_x1_burst_included": TICK_STITCH_X1_BURST_INCLUDED,
+            "poc_windows": [],
+        }
+    else:
+        tick_input = {"tick_paths": TICK_PATHS}
 
     fifteen_s: list[dict[str, object]] = []
     tick_gated: list[dict[str, object]] = []
@@ -478,7 +517,7 @@ def generate_packet(
                 "(AO1 point zone, min_valid 0). Tick-gated."
             ),
             min_valid=0,
-            tick_paths=TICK_PATHS,
+            **tick_input,
             **shared_kw,
         )
         solo_va["study"]["factors"]["core_level"] = list(VA_ANCHORS)
@@ -488,10 +527,21 @@ def generate_packet(
             _header(
                 "Wave 0 solo VA (AO1, tick-gated)",
                 len(VA_ANCHORS),
-                "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
-                "# Tick-gated: do not launch on 15s-only. TV3 refuses without dataset.tick_paths.\n"
-                "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
-                "missing files.\n",
+                (
+                    "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
+                    "# Tick-gated: dataset.tick_stitch_plan (committed plan JSON). "
+                    "No tick_paths / no data/mnq_tick_last.csv.\n"
+                    "# tick_stitch_x1_burst_included: false (Q9 Accumu 2026-10-07).\n"
+                    "# poc_windows: []. NVMe root is THESISTESTER_TICK_STITCH_ROOT, "
+                    "not a packet field.\n"
+                    if run2_tick
+                    else (
+                        "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
+                        "# Tick-gated: do not launch on 15s-only. TV3 refuses without dataset.tick_paths.\n"
+                        "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
+                        "missing files.\n"
+                    )
+                ),
                 trigger=trigger,
             ),
             solo_va,
@@ -504,8 +554,8 @@ def generate_packet(
                 "Program B Wave 0 APOC: APOC/pAPOC alone (AO1 point zone, min_valid 0). Tick-gated."
             ),
             min_valid=0,
-            tick_paths=TICK_PATHS,
             apoc_enabled=True,
+            **tick_input,
             **shared_kw,
         )
         solo_apoc["study"]["factors"]["core_level"] = list(APOC_ANCHORS)
@@ -515,10 +565,22 @@ def generate_packet(
             _header(
                 "Wave 0 solo APOC (AO1, tick-gated)",
                 len(APOC_ANCHORS),
-                "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
-                "# Tick-gated APOC/pAPOC. Omit apoc_profile_source (product tick).\n"
-                "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
-                "missing files.\n",
+                (
+                    "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
+                    "# Tick-gated APOC/pAPOC. Omit apoc_profile_source (product tick).\n"
+                    "# Tick-gated: dataset.tick_stitch_plan (committed plan JSON). "
+                    "No tick_paths / no data/mnq_tick_last.csv.\n"
+                    "# tick_stitch_x1_burst_included: false (Q9 Accumu 2026-10-07).\n"
+                    "# poc_windows: []. NVMe root is THESISTESTER_TICK_STITCH_ROOT, "
+                    "not a packet field.\n"
+                    if run2_tick
+                    else (
+                        "# min_valid_confluences: 0. Point zone at the live anchor. Not ±10 ticks.\n"
+                        "# Tick-gated APOC/pAPOC. Omit apoc_profile_source (product tick).\n"
+                        "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
+                        "missing files.\n"
+                    )
+                ),
                 trigger=trigger,
             ),
             solo_apoc,
@@ -534,10 +596,22 @@ def generate_packet(
         if not tick_wave and not write_15s:
             continue
         extra = (
-            "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
-            "# Tick-gated cores. Do not launch on 15s-only.\n"
-            "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
-            "missing files.\n"
+            (
+                "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
+                "# Tick-gated cores. Do not launch on 15s-only.\n"
+                "# Tick-gated: dataset.tick_stitch_plan (committed plan JSON). "
+                "No tick_paths / no data/mnq_tick_last.csv.\n"
+                "# tick_stitch_x1_burst_included: false (Q9 Accumu 2026-10-07).\n"
+                "# poc_windows: []. NVMe root is THESISTESTER_TICK_STITCH_ROOT, "
+                "not a packet field.\n"
+                if run2_tick
+                else (
+                    "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
+                    "# Tick-gated cores. Do not launch on 15s-only.\n"
+                    "# Placeholder tick_paths: data/mnq_tick_last.csv. Launch still refuses "
+                    "missing files.\n"
+                )
+            )
             if tick_wave
             else (
                 "# min_valid_confluences: 1. One required partner. No dVWAP partner.\n"
@@ -562,7 +636,7 @@ def generate_packet(
                     f"Program B {wave_key} ({WAVE_TITLE[wave_key]}) x {FAMILY_TITLE[family]}."
                 ),
                 min_valid=1,
-                tick_paths=TICK_PATHS if tick_wave else None,
+                **(tick_input if tick_wave else {}),
                 apoc_enabled=wave_key == "w7_apoc",
                 **shared_kw,
             )

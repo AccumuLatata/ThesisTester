@@ -2061,9 +2061,14 @@ the same `product_tick_family_preflight` / `product_tick_family_message` as
 three share `APOC requires ticks` / `rolling POC requires ticks`. Studies
 that name neither family still run on 15s-only (`disable_unneeded_tick_families`).
 `typical_mvp_v1` is a dead/test-only library helper, not a production source.
-Fresh Program B Wave 7 packets live in `manifest_tick.yaml`, omit
-`apoc_profile_source` (product tick), and carry placeholder `tick_paths`.
-Manifest rows record `WAVE7_TICK_PROVENANCE`. Historical ZIPs keep
+Fresh Program B Wave 7 packets live in `manifest_tick.yaml` and omit
+`apoc_profile_source` (product tick). Run 1 carries placeholder
+`tick_paths`. Run 2 tick YAML uses additive `dataset.tick_stitch_plan`
+(committed `examples/studies/program_b_run2/tick_stitch_plan.json`) plus
+explicit `tick_stitch_x1_burst_included: false` (Q9 Accumu 2026-10-07)
+and `poc_windows: []`. No `data/mnq_tick_last.csv` on the Run 2 tick
+packet. NVMe root is `THESISTESTER_TICK_STITCH_ROOT`, not a packet
+field. Manifest rows record `WAVE7_TICK_PROVENANCE`. Historical ZIPs keep
 `WAVE7_HISTORICAL_PROVENANCE` (typical).
 `thesistester/study/apoc_provenance.py` is the sidecar helper; a missing
 sidecar still infers typical (ZIP contract). Rolling POC identity keys

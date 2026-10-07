@@ -19,10 +19,13 @@ from thesistester.data.quantower_ticks import (
     parse_quantower_tick_filename_window,
 )
 from thesistester.data.tick_stitch import (
+    TICK_STITCH_ROOT_ENV,
     TickStitchCensus,
     TickStitchError,
     _SEEK_TAIL_BYTES,
     load_tick_stitch_plan,
+    refuse_nas_trading_paths,
+    resolve_tick_stitch_root,
     verify_tick_stitch_plan,
 )
 from thesistester.persistence.local_store import LEVEL_ENGINE_VERSION
@@ -149,6 +152,33 @@ def test_verify_reuses_loader_header_contract():
 def test_missing_file_fails(tmp_path):
     with pytest.raises(TickStitchError, match="does not exist"):
         verify_tick_stitch_plan(PLAN_PATH, tmp_path)
+
+
+def test_resolve_tick_stitch_root_joins_basenames_under_env(tmp_path, monkeypatch):
+    """TS6 launch: env root is where plan basenames resolve. No CLI flag."""
+    root = tmp_path / "nvme_ticks"
+    root.mkdir()
+    monkeypatch.setenv(TICK_STITCH_ROOT_ENV, str(root))
+    resolved = resolve_tick_stitch_root(PLAN_PATH)
+    assert resolved == root
+    segments = load_tick_stitch_plan(PLAN_PATH)
+    joined = {segment.filename: resolved / segment.filename for segment in segments}
+    assert all(path.parent == root for path in joined.values())
+    assert all(path.name == name for name, path in joined.items())
+    with pytest.raises(TickStitchError, match="does not exist"):
+        verify_tick_stitch_plan(PLAN_PATH, resolved)
+
+
+def test_resolve_tick_stitch_root_falls_back_to_plan_parent(monkeypatch):
+    monkeypatch.delenv(TICK_STITCH_ROOT_ENV, raising=False)
+    assert resolve_tick_stitch_root(PLAN_PATH) == PLAN_PATH.resolve().parent
+
+
+def test_refuse_nas_trading_smb_path():
+    with pytest.raises(TickStitchError, match="nas-trading"):
+        refuse_nas_trading_paths("/mnt/nas-trading/ticks")
+    with pytest.raises(TickStitchError, match="nas-trading"):
+        refuse_nas_trading_paths(Path("/mnt/nas-trading"))
 
 
 def test_missing_price_column_fails(tmp_path):
