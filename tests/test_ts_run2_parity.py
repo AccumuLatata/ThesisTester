@@ -20,15 +20,16 @@ from thesistester.api import (
     run_experiment,
     validate_run_spec,
 )
-from thesistester.levels.tick_requirements import disable_unneeded_tick_families
 from thesistester.levels.apoc import COL_APOC, COL_PAPOC
 from thesistester.levels.apoc_tick import (
     APeriodTickProfileTable,
     attach_apoc_identity,
     compute_apoc_tick_source_id,
 )
+from thesistester.levels.catalog import named_apoc_tokens
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.rolling_poc_tick import attach_rolling_poc_identity
+from thesistester.levels.tick_requirements import disable_unneeded_tick_families
 from thesistester.levels.tick_vap import (
     TICK_SOURCE_NONE,
     attach_tick_identity,
@@ -1355,9 +1356,31 @@ def test_disable_unneeded_tick_families_old_setup_mapping_call_fails() -> None:
     off = disable_unneeded_tick_families({"apoc_enabled": True, "poc_windows": ["30min"]}, unnamed)
     assert off["apoc_enabled"] is False
     assert off["poc_windows"] == []
+    # Farm w0/w7 expand to empty selected_levels + anchor. Iterating the
+    # mapping (TS5) never sees APOC / pAPOC, so disable forced the family off.
+    farm_w0 = {"selected_levels": [], "anchor_level": "APOC", "confluence_rules": []}
+    assert named_apoc_tokens(farm_w0) == []
+    assert _named_level_tokens_from_setup(farm_w0) == ["APOC"]
+    farm_w7 = {
+        "selected_levels": [],
+        "anchor_level": "APOC",
+        "confluence_rules": [{"level": "SMA_50_1min"}],
+    }
+    assert _named_level_tokens_from_setup(farm_w7) == ["APOC", "SMA_50_1min"]
+    partner_only = {
+        "selected_levels": [],
+        "anchor_level": "dOpen",
+        "confluence_rules": [{"level": "pAPOC"}],
+    }
+    assert _named_level_tokens_from_setup(partner_only) == ["dOpen", "pAPOC"]
+    papoc_anchor = {"selected_levels": [], "anchor_level": "pAPOC", "confluence_rules": []}
+    assert _named_level_tokens_from_setup(papoc_anchor) == ["pAPOC"]
+    assert named_apoc_tokens(_named_level_tokens_from_setup(papoc_anchor)) == ["pAPOC"]
 
 
-def _injected_apoc_child_spec(tmp_path: Path, *, selected_levels: list[str]) -> tuple[dict, dict]:
+def _injected_apoc_child_spec(
+    tmp_path: Path, *, selected_levels: list[str] | None = None
+) -> tuple[dict, dict[date, float]]:
     table = APeriodTickProfileTable(
         poc_by_session={date(2026, 6, 2): 100.25, date(2026, 6, 3): 200.25},
         n_ticks_by_session={date(2026, 6, 2): 3, date(2026, 6, 3): 2},
@@ -1368,7 +1391,7 @@ def _injected_apoc_child_spec(tmp_path: Path, *, selected_levels: list[str]) -> 
     _write_two_session_bars_csv(tmp_path / "bars.csv")
     spec = _lean_run_spec(
         bars_name="bars.csv",
-        selected_levels=selected_levels,
+        selected_levels=selected_levels or ["dOpen", "RTH_Open"],
         extra_dataset={
             "apoc_tick_table_path": str(apoc_path),
             "apoc_tick_source_id": "injected-apoc",
@@ -1376,21 +1399,55 @@ def _injected_apoc_child_spec(tmp_path: Path, *, selected_levels: list[str]) -> 
     )
     spec["levels"]["poc_windows"] = []
     spec["setup"]["min_confluences"] = 1
-    spec["setup"]["max_confluences"] = max(1, len(selected_levels))
+    spec["setup"]["max_confluences"] = max(1, len(selected_levels or ["dOpen"]))
     return spec, {date(2026, 6, 2): 100.25, date(2026, 6, 3): 200.25}
 
 
-def _assert_apoc_matches_parent(state: dict, expected: dict[date, float]) -> None:
+def _apply_anchor_setup(spec: dict, *, anchor: str, partners: list[str] | None = None) -> dict:
+    """Farm w0/w7 shape: anchor_rules, empty selected_levels, optional partners."""
+    partners = partners or []
+    spec["setup"]["confluence_mode"] = "anchor_rules"
+    spec["setup"]["selected_levels"] = []
+    spec["setup"]["anchor_level"] = anchor
+    spec["setup"]["confluence_rules"] = [
+        {"level": token, "tolerance_ticks": 0.0, "required": True} for token in partners
+    ]
+    spec["setup"]["min_valid_confluences"] = 0 if not partners else 1
+    spec["setup"]["min_confluences"] = 1
+    spec["setup"]["max_confluences"] = 1
+    return spec
+
+
+def _series_or_none(frame: pd.DataFrame, column: str) -> list[float | None]:
+    return [None if pd.isna(v) else round(float(v), 8) for v in frame[column].tolist()]
+
+
+def _assert_injected_apoc_matches_parent(state: dict, *, expect_papoc: bool = False) -> None:
     levels = state["levels"]
     assert COL_APOC in levels.columns
-    bars = _two_session_bars().sort_values("timestamp").reset_index(drop=True)
-    local = bars["timestamp"].dt.tz_convert(TZ)
-    for session, poc in expected.items():
-        after_a = (local.dt.date == session) & (local.dt.strftime("%H:%M") >= "10:00")
-        values = levels.loc[after_a.to_numpy(), COL_APOC]
-        assert not values.empty
-        assert values.notna().all()
-        assert float(values.iloc[0]) == pytest.approx(poc, abs=1e-9)
+    # Same bars + same table POCs as §5.1 (b) stitch-absent pin.
+    assert _series_or_none(levels, COL_APOC) == [
+        None,
+        None,
+        100.25,
+        100.25,
+        None,
+        None,
+        200.25,
+        200.25,
+    ]
+    if expect_papoc:
+        assert COL_PAPOC in levels.columns
+        assert _series_or_none(levels, COL_PAPOC) == [
+            None,
+            None,
+            None,
+            None,
+            100.25,
+            100.25,
+            100.25,
+            100.25,
+        ]
 
 
 @pytest.mark.parametrize(
@@ -1400,18 +1457,53 @@ def _assert_apoc_matches_parent(state: dict, expected: dict[date, float]) -> Non
 def test_stitch_on_named_apoc_child_path_keeps_parent_table(
     tmp_path: Path, selected_levels: list[str]
 ) -> None:
-    spec, expected = _injected_apoc_child_spec(tmp_path, selected_levels=selected_levels)
+    spec, _expected = _injected_apoc_child_spec(tmp_path, selected_levels=selected_levels)
     assert "tick_paths" not in spec["dataset"]
     state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
-    _assert_apoc_matches_parent(state, expected)
-    if "pAPOC" in selected_levels:
-        assert COL_PAPOC in state["levels"].columns
-        bars = _two_session_bars().sort_values("timestamp").reset_index(drop=True)
-        local = bars["timestamp"].dt.tz_convert(TZ)
-        day2 = local.dt.date == date(2026, 6, 3)
-        values = state["levels"].loc[day2.to_numpy(), COL_PAPOC]
-        assert values.notna().all()
-        assert float(values.iloc[0]) == pytest.approx(100.25, abs=1e-9)
+    _assert_injected_apoc_matches_parent(state, expect_papoc="pAPOC" in selected_levels)
+
+
+@pytest.mark.parametrize("anchor", ["APOC", "pAPOC"])
+def test_stitch_on_farm_one_anchor_apoc_child_keeps_parent_table(
+    tmp_path: Path, anchor: str
+) -> None:
+    """progB_w0_apoc: anchor_rules, selected_levels=[], core APOC/pAPOC, empty partners.
+
+    Old disable(setup) hid the family; generate_signals then raised
+    ``Setup references unavailable level columns: ['APOC']`` (farm pilot).
+    """
+    spec, _expected = _injected_apoc_child_spec(tmp_path)
+    _apply_anchor_setup(spec, anchor=anchor)
+    assert spec["setup"]["selected_levels"] == []
+    assert "tick_paths" not in spec["dataset"]
+    state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+    _assert_injected_apoc_matches_parent(state, expect_papoc=True)
+
+
+def test_stitch_on_farm_w7_apoc_anchor_with_partner_keeps_parent_table(tmp_path: Path) -> None:
+    """progB_w7 shape: APOC anchor + non-APOC confluence partner."""
+    spec, _expected = _injected_apoc_child_spec(tmp_path)
+    _apply_anchor_setup(spec, anchor="APOC", partners=["dOpen"])
+    state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+    _assert_injected_apoc_matches_parent(state, expect_papoc=True)
+    assert "dOpen" in state["levels"].columns
+
+
+def test_stitch_on_papoc_partner_rule_keeps_parent_table(tmp_path: Path) -> None:
+    """pAPOC named only as a confluence-rule partner (not selected_levels)."""
+    spec, _expected = _injected_apoc_child_spec(tmp_path)
+    _apply_anchor_setup(spec, anchor="dOpen", partners=["pAPOC"])
+    state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+    _assert_injected_apoc_matches_parent(state, expect_papoc=True)
+
+
+def test_stitch_on_farm_one_anchor_execute_study_cell_ok(tmp_path: Path) -> None:
+    """Worker path that failed on the farm: execute_study_cell → run_experiment."""
+    spec, _expected = _injected_apoc_child_spec(tmp_path)
+    _apply_anchor_setup(spec, anchor="APOC")
+    payload = execute_study_cell((spec, str(tmp_path)))
+    assert payload["status"] == "ok", payload["error"]
+    assert payload["error"] is None
 
 
 def test_stitch_off_named_apoc_without_ticks_still_refuses(tmp_path: Path) -> None:
@@ -1420,6 +1512,15 @@ def test_stitch_off_named_apoc_without_ticks_still_refuses(tmp_path: Path) -> No
     spec = _lean_run_spec(bars_name="bars.csv", selected_levels=["APOC"])
     spec["setup"]["min_confluences"] = 1
     spec["setup"]["max_confluences"] = 1
+    with pytest.raises(ValueError, match="APOC requires ticks"):
+        run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+
+
+def test_stitch_off_farm_one_anchor_apoc_without_ticks_still_refuses(tmp_path: Path) -> None:
+    """Farm w0 stitch-off (empty selected_levels, anchor APOC) still refuses."""
+    _write_two_session_bars_csv(tmp_path / "bars.csv")
+    spec = _lean_run_spec(bars_name="bars.csv")
+    _apply_anchor_setup(spec, anchor="APOC")
     with pytest.raises(ValueError, match="APOC requires ticks"):
         run_experiment(spec, base_directory=tmp_path, cache_policy="off")
 
