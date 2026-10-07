@@ -439,21 +439,13 @@ def test_program_b_generate_wave7_provenance_is_deterministic(tmp_path):
 def test_program_b_run2_generate_matches_committed(tmp_path):
     gen = _generate()
     gen.main(["--trigger", "fade", "--output-dir", str(tmp_path)])
-    for name in (
-        "manifest.yaml",
-        "manifest_tick.yaml",
-        "progB_w0_solo.yaml",
-        "progB_w0_va.yaml",
-        "progB_w0_apoc.yaml",
-        "progB_w7_apoc_ma.yaml",
-        "README.md",
-    ):
-        generated = (tmp_path / name).read_text(encoding="utf-8")
-        committed = (PROGRAM_B_RUN2 / name).read_text(encoding="utf-8")
-        if name.endswith(".yaml"):
-            assert yaml.safe_load(generated) == yaml.safe_load(committed), name
-        else:
-            assert generated == committed, name
+    committed_names = sorted(path.name for path in PROGRAM_B_RUN2.glob("*.yaml"))
+    committed_names.append("README.md")
+    for name in committed_names:
+        generated = tmp_path / name
+        committed = PROGRAM_B_RUN2 / name
+        assert generated.is_file(), name
+        assert generated.read_bytes() == committed.read_bytes(), name
 
 
 def test_program_b_wave7_expand_succeeds_with_placeholder_paths():
@@ -643,11 +635,13 @@ def test_program_b_run2_tick_yaml_burst_false_and_manifest_expands_253():
 
 
 def test_program_b_run2_tick_sidecar_basenames_match_plan_unique_files():
+    import hashlib
     import json
 
     plan = json.loads((PROGRAM_B_RUN2 / "tick_stitch_plan.json").read_text(encoding="utf-8"))
     unique = {row["filename"] for row in plan}
-    sidecar = (PROGRAM_B_RUN2 / "tick_stitch_plan.sha256").read_text(encoding="utf-8")
+    sidecar_path = PROGRAM_B_RUN2 / "tick_stitch_plan.sha256"
+    sidecar = sidecar_path.read_text(encoding="utf-8")
     names = []
     for line in sidecar.splitlines():
         if not line.strip():
@@ -656,6 +650,10 @@ def test_program_b_run2_tick_sidecar_basenames_match_plan_unique_files():
         names.append(name)
     assert len(names) == 39
     assert set(names) == unique
+    assert (
+        hashlib.sha256(sidecar_path.read_bytes()).hexdigest()
+        == "8c965bb1a6a3a0e93452790136d7fa4363091471bd930deaeaa903b64ffc14b5"
+    )
 
 
 def test_program_b_validator_rejects_run2_tick_missing_burst(tmp_path):
@@ -668,3 +666,38 @@ def test_program_b_validator_rejects_run2_tick_missing_burst(tmp_path):
         drifted, {"file": drifted.name, "cells": 9, "min_valid": 0}, packet="tick", locks="run2"
     )
     assert any("tick_stitch_x1_burst_included" in item for item in failures)
+
+
+def test_program_b_validator_rejects_run2_tick_burst_true(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B_RUN2 / "progB_w0_va.yaml").read_text(encoding="utf-8"))
+    spec["study"]["dataset"]["tick_stitch_x1_burst_included"] = True
+    drifted = tmp_path / "progB_w0_va.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 9, "min_valid": 0}, packet="tick", locks="run2"
+    )
+    assert any("tick_stitch_x1_burst_included must be" in item for item in failures)
+
+
+def test_runbook_documents_env_tick_stitch_root_not_cli_flag():
+    text = Path("docs/PROGRAM_B_OPERATOR_RUNBOOK.md").read_text(encoding="utf-8")
+    assert "THESISTESTER_TICK_STITCH_ROOT" in text
+    assert "resolve_tick_stitch_root" in text
+    assert "--tick-stitch-root" in text
+    assert "has no `--tick-stitch-root` flag" in text
+    assert "Verify CLI takes an explicit ROOT; it does not read the env." in text
+    assert "Execute refuses /mnt/nas-trading." in text
+
+
+def test_program_b_validator_rejects_stitch_plan_on_15s_yaml(tmp_path):
+    validate = _validator()
+    spec = yaml.safe_load((PROGRAM_B_RUN2 / "progB_smoke_ONH_SMA50_5min.yaml").read_text())
+    spec["study"]["dataset"]["tick_stitch_plan"] = _generate().TICK_STITCH_PLAN
+    spec["study"]["dataset"]["tick_stitch_x1_burst_included"] = False
+    drifted = tmp_path / "progB_smoke_ONH_SMA50_5min.yaml"
+    drifted.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    failures = validate.validate_study_file(
+        drifted, {"file": drifted.name, "cells": 1, "min_valid": 1}, packet="15s", locks="run2"
+    )
+    assert any("15s packet must omit tick_stitch_plan" in item for item in failures)
