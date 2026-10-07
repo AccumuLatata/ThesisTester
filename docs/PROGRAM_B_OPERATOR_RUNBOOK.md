@@ -264,7 +264,9 @@ steps through QC PASS at `84e7ccc0` and Q9 are done. This packet does
    Soft-resume. Do not `--force`. Watch `MemAvailable` (abort `< 6 GiB`).
    Parent tables (§4.5) cache under `{THESISTESTER_STORE_DIR}/tick_stitch_parent`
    unless `THESISTESTER_TICK_STITCH_CACHE_DIR` is set. Hits skip verify/stream
-   and copy the two parquets into each study output. Cache is parent-only.
+   and copy (never hardlink) the two parquets into each study output. A
+   complete `tick_stitch_plan.sha256` sidecar is the tick-file lock for the
+   cache key; keep it in lockstep with the NVMe tree. Cache is parent-only.
 
 ```bash
 export THESISTESTER_TICK_STITCH_ROOT=~/thesistester/data/ticks

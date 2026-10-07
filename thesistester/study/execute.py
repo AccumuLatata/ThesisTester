@@ -43,12 +43,12 @@ from thesistester.study.briefing import read_zip_parquet, resolve_cell_bundle
 from thesistester.data.loader import load_ohlcv
 from thesistester.data.tick_stitch import (
     build_stitch_parent_tables,
-    compute_tick_stitch_source_id,
     refuse_nas_trading_paths,
     resolve_tick_stitch_root,
 )
 from thesistester.data.tick_stitch_cache import (
     parent_cache_key,
+    parquet_hashes_match,
     store_parent_cache,
     try_load_parent_cache,
 )
@@ -781,7 +781,9 @@ def _prepare_study_tick_stitch(
 
     Shared parent-table cache (§4.5) is consulted only after a plan is
     present. Hits copy cached parquets into ``output_dir``; misses compute
-    then store atomically. Never called when ``tick_stitch_plan`` is absent.
+    then store atomically. Dest files are copies (not hardlinks) so a
+    later study cannot mutate the shared cache. Never called when
+    ``tick_stitch_plan`` is absent.
     """
     dataset = _study_dataset(spec)
     if dataset is None or not dataset_has_tick_stitch_plan(dataset):
@@ -826,8 +828,16 @@ def _prepare_study_tick_stitch(
     local_ok = (
         cached is not None
         and cached.get("cache_key") == cache_key
-        and prior_parquet.is_file()
-        and apoc_parquet.is_file()
+        and isinstance(cached.get("tick_source_id"), str)
+        and cached["tick_source_id"]
+        and isinstance(cached.get("apoc_tick_source_id"), str)
+        and cached["apoc_tick_source_id"]
+        and parquet_hashes_match(
+            prior_parquet,
+            apoc_parquet,
+            cached.get("prior_sha256"),
+            cached.get("apoc_sha256"),
+        )
     )
     if local_ok:
         stitch_id = str(cached["tick_source_id"])
@@ -841,21 +851,20 @@ def _prepare_study_tick_stitch(
             quality = dict(shared.get("data_quality") or {})
             _write_stitch_cache(
                 cache_path,
-                {
-                    "cache_key": cache_key,
-                    "tick_source_id": stitch_id,
-                    "apoc_tick_source_id": apoc_id,
-                    "day_bins": day_bins,
-                    "week_bins": week_bins,
-                    "month_bins": month_bins,
-                    "tick_stitch_x1_burst_included": burst,
-                    "data_quality": quality,
-                },
+                _stitch_cache_payload(
+                    cache_key=cache_key,
+                    stitch_id=stitch_id,
+                    apoc_id=apoc_id,
+                    day_bins=day_bins,
+                    week_bins=week_bins,
+                    month_bins=month_bins,
+                    burst=burst,
+                    quality=quality,
+                    prior_sha256=str(shared["prior_sha256"]),
+                    apoc_sha256=str(shared["apoc_sha256"]),
+                ),
             )
         else:
-            stitch_id = compute_tick_stitch_source_id(
-                plan_path, root, tick_stitch_x1_burst_included=burst
-            )
             bars = load_ohlcv(
                 bars_path,
                 source_tz=source_tz,
@@ -873,11 +882,16 @@ def _prepare_study_tick_stitch(
                 prior_week_aggregation_ticks=week_bins,
                 prior_month_aggregation_ticks=month_bins,
             )
+            # Unlink first so a leftover hardlink from a pre-fix cache
+            # cannot truncate the shared inode when to_parquet opens dest.
+            _unlink_if_exists(prior_parquet)
+            _unlink_if_exists(apoc_parquet)
             built.prior_profile_table.to_parquet(prior_parquet)
             apoc_tick_table_to_parquet(built.apoc_tick_table, apoc_parquet)
+            stitch_id = built.tick_source_id
             apoc_id = built.apoc_tick_source_id
             quality = dict(built.data_quality)
-            store_parent_cache(
+            stored = store_parent_cache(
                 cache_key,
                 prior_path=prior_parquet,
                 apoc_path=apoc_parquet,
@@ -893,16 +907,18 @@ def _prepare_study_tick_stitch(
             )
             _write_stitch_cache(
                 cache_path,
-                {
-                    "cache_key": cache_key,
-                    "tick_source_id": stitch_id,
-                    "apoc_tick_source_id": apoc_id,
-                    "day_bins": day_bins,
-                    "week_bins": week_bins,
-                    "month_bins": month_bins,
-                    "tick_stitch_x1_burst_included": burst,
-                    "data_quality": quality,
-                },
+                _stitch_cache_payload(
+                    cache_key=cache_key,
+                    stitch_id=stitch_id,
+                    apoc_id=apoc_id,
+                    day_bins=day_bins,
+                    week_bins=week_bins,
+                    month_bins=month_bins,
+                    burst=burst,
+                    quality=quality,
+                    prior_sha256=str(stored["prior_sha256"]),
+                    apoc_sha256=str(stored["apoc_sha256"]),
+                ),
             )
     for run in expansion.experiment.get("runs") or []:
         if not isinstance(run, dict):
@@ -934,6 +950,39 @@ def _reattach_stitch_quality(
         run[_STITCH_DATA_QUALITY_KEY] = quality
 
 
+def _unlink_if_exists(path: Path) -> None:
+    if path.exists() or path.is_symlink():
+        path.unlink()
+
+
+def _stitch_cache_payload(
+    *,
+    cache_key: str,
+    stitch_id: str,
+    apoc_id: str,
+    day_bins: int,
+    week_bins: int,
+    month_bins: int,
+    burst: bool,
+    quality: Mapping[str, Any],
+    prior_sha256: str,
+    apoc_sha256: str,
+) -> dict[str, Any]:
+    """Per-study stitch sidecar. Hit and miss write the same keys."""
+    return {
+        "cache_key": cache_key,
+        "tick_source_id": stitch_id,
+        "apoc_tick_source_id": apoc_id,
+        "day_bins": day_bins,
+        "week_bins": week_bins,
+        "month_bins": month_bins,
+        "tick_stitch_x1_burst_included": burst,
+        "data_quality": dict(quality),
+        "prior_sha256": prior_sha256,
+        "apoc_sha256": apoc_sha256,
+    }
+
+
 def _load_stitch_cache(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
@@ -946,7 +995,7 @@ def _load_stitch_cache(path: Path) -> dict[str, Any] | None:
 
 def _write_stitch_cache(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(dict(payload), indent=2, sort_keys=True), encoding="utf-8")
     os.replace(tmp, path)
 

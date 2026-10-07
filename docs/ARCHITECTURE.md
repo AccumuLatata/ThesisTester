@@ -2071,7 +2071,11 @@ and `poc_windows: []`. `study run` resolves that path against the spec
 file directory; it does not search the repo root. Parent tables are
 cached under `{THESISTESTER_STORE_DIR}/tick_stitch_parent` unless
 `THESISTESTER_TICK_STITCH_CACHE_DIR` is set (stitch identity + bins +
-burst + table-input tokens; parent-only; never called without a plan).
+burst + `value_area_pct` + tick_size/session-cut/policy tokens; parent-only;
+copies, not hardlinks; never called without a plan). A complete
+`tick_stitch_plan.sha256` sidecar contributes listed per-file digests;
+an incomplete sidecar falls through to file bytes. Bars identity is the
+raw 15s CSV (`dataset.path`) SHA-256.
 No `data/mnq_tick_last.csv` on the Run 2 tick
 packet. NVMe root is `THESISTESTER_TICK_STITCH_ROOT`, not a packet
 field. Manifest rows record `WAVE7_TICK_PROVENANCE`. Historical ZIPs keep
