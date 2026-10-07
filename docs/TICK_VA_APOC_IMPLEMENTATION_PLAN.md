@@ -504,3 +504,5 @@ Listed instead of guessing. Implementation PRs must not invent answers.
 - Regression paragraph: which named test proves default-off identity, and that tick VA/APOC differences are **out** of that claim.
 
 TS6b: §8 step 8 pdPOC pilot at 3b81b1f8 found data_quality.* dropped by _write_results_index; Accumu option A 2026-10-07; pilot re-run after merge
+
+TS6c: §8 step 9 APOC pilot at e2c1e5b3 found `disable_unneeded_tick_families(run.get("levels"), setup)` hid named APOC (setup keys, not tokens); Accumu 2026-10-07; pass `_named_level_tokens_from_setup(setup)`; stitch-off unnamed APOC still disables; named stitch-off without ticks still refuses. Farm w0/w7 are `anchor_rules` (empty `selected_levels`, `anchor_level` APOC/pAPOC, optional partner rules) — e2e child tests must use that shape, not only `global_cluster` selected_levels.

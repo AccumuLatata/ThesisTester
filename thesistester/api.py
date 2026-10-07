@@ -3082,7 +3082,15 @@ def run_experiment(
     _require_ticks_for_named_va(dataset_config, setup)
     _require_ticks_for_named_apoc_and_rolling(dataset_config, setup)
     if not dataset_has_tick_paths(dataset_config):
-        run["levels"] = disable_unneeded_tick_families(run.get("levels"), setup)
+        # Named tokens, not the setup mapping. named_*_tokens iterates the
+        # sequence; a Mapping would yield keys (selected_levels, …) and force
+        # apoc_enabled=False even when the cell names APOC / pAPOC. Stitch-off
+        # 0ebc1494 identity holds: unnamed APOC still disables; a named APOC
+        # cell without ticks/table still refuses above.
+        run["levels"] = disable_unneeded_tick_families(
+            run.get("levels"),
+            _named_level_tokens_from_setup(setup),
+        )
     instrument = str(dataset_config.get("instrument", "ES"))
     inst = _instrument(instrument)
     dataset_path = Path(dataset_config["path"])
