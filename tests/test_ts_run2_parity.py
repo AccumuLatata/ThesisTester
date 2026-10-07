@@ -14,10 +14,13 @@ import pandas as pd
 import pytest
 
 from thesistester.api import (
+    _named_level_tokens_from_setup,
+    apoc_tick_table_to_parquet,
     compute_levels,
     run_experiment,
     validate_run_spec,
 )
+from thesistester.levels.tick_requirements import disable_unneeded_tick_families
 from thesistester.levels.apoc import COL_APOC, COL_PAPOC
 from thesistester.levels.apoc_tick import (
     APeriodTickProfileTable,
@@ -1318,3 +1321,115 @@ def test_stitch_quality_by_run_name_reads_expansion_flags(tmp_path: Path) -> Non
     for flags in by_name.values():
         assert flags["data_quality.x1_burst_included"] is False
         assert set(flags) == set(_STITCH_QUALITY_COLUMNS)
+
+
+def test_run_experiment_passes_named_tokens_not_setup_mapping() -> None:
+    """Regression: the TS5 call passed the setup mapping and hid named APOC."""
+    source = inspect.getsource(run_experiment)
+    assert "disable_unneeded_tick_families(" in source
+    assert "_named_level_tokens_from_setup(setup)" in source
+    assert 'disable_unneeded_tick_families(run.get("levels"), setup)' not in source
+
+
+def test_disable_unneeded_tick_families_old_setup_mapping_call_fails() -> None:
+    setup = {
+        "selected_levels": ["APOC"],
+        "anchor_level": None,
+        "confluence_rules": [],
+    }
+    with pytest.raises(TypeError, match="named level tokens"):
+        disable_unneeded_tick_families({"apoc_enabled": True}, setup)
+    tokens = _named_level_tokens_from_setup(setup)
+    assert tokens == ["APOC"]
+    kept = disable_unneeded_tick_families({"apoc_enabled": True, "poc_windows": ["30min"]}, tokens)
+    assert kept["apoc_enabled"] is True
+    assert kept["poc_windows"] == []
+    partner = _named_level_tokens_from_setup(
+        {"selected_levels": ["ONH"], "anchor_level": None, "confluence_rules": [{"level": "pAPOC"}]}
+    )
+    assert partner == ["ONH", "pAPOC"]
+    assert disable_unneeded_tick_families({"apoc_enabled": True}, partner)["apoc_enabled"] is True
+    unnamed = _named_level_tokens_from_setup(
+        {"selected_levels": ["dOpen", "RTH_Open"], "anchor_level": None, "confluence_rules": []}
+    )
+    off = disable_unneeded_tick_families({"apoc_enabled": True, "poc_windows": ["30min"]}, unnamed)
+    assert off["apoc_enabled"] is False
+    assert off["poc_windows"] == []
+
+
+def _injected_apoc_child_spec(tmp_path: Path, *, selected_levels: list[str]) -> tuple[dict, dict]:
+    table = APeriodTickProfileTable(
+        poc_by_session={date(2026, 6, 2): 100.25, date(2026, 6, 3): 200.25},
+        n_ticks_by_session={date(2026, 6, 2): 3, date(2026, 6, 3): 2},
+        source_id="injected-apoc",
+    )
+    apoc_path = tmp_path / "apoc.parquet"
+    apoc_tick_table_to_parquet(table, apoc_path)
+    _write_two_session_bars_csv(tmp_path / "bars.csv")
+    spec = _lean_run_spec(
+        bars_name="bars.csv",
+        selected_levels=selected_levels,
+        extra_dataset={
+            "apoc_tick_table_path": str(apoc_path),
+            "apoc_tick_source_id": "injected-apoc",
+        },
+    )
+    spec["levels"]["poc_windows"] = []
+    spec["setup"]["min_confluences"] = 1
+    spec["setup"]["max_confluences"] = max(1, len(selected_levels))
+    return spec, {date(2026, 6, 2): 100.25, date(2026, 6, 3): 200.25}
+
+
+def _assert_apoc_matches_parent(state: dict, expected: dict[date, float]) -> None:
+    levels = state["levels"]
+    assert COL_APOC in levels.columns
+    bars = _two_session_bars().sort_values("timestamp").reset_index(drop=True)
+    local = bars["timestamp"].dt.tz_convert(TZ)
+    for session, poc in expected.items():
+        after_a = (local.dt.date == session) & (local.dt.strftime("%H:%M") >= "10:00")
+        values = levels.loc[after_a.to_numpy(), COL_APOC]
+        assert not values.empty
+        assert values.notna().all()
+        assert float(values.iloc[0]) == pytest.approx(poc, abs=1e-9)
+
+
+@pytest.mark.parametrize(
+    "selected_levels",
+    [["APOC"], ["APOC", "dOpen"], ["dOpen", "pAPOC"]],
+)
+def test_stitch_on_named_apoc_child_path_keeps_parent_table(
+    tmp_path: Path, selected_levels: list[str]
+) -> None:
+    spec, expected = _injected_apoc_child_spec(tmp_path, selected_levels=selected_levels)
+    assert "tick_paths" not in spec["dataset"]
+    state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+    _assert_apoc_matches_parent(state, expected)
+    if "pAPOC" in selected_levels:
+        assert COL_PAPOC in state["levels"].columns
+        bars = _two_session_bars().sort_values("timestamp").reset_index(drop=True)
+        local = bars["timestamp"].dt.tz_convert(TZ)
+        day2 = local.dt.date == date(2026, 6, 3)
+        values = state["levels"].loc[day2.to_numpy(), COL_PAPOC]
+        assert values.notna().all()
+        assert float(values.iloc[0]) == pytest.approx(100.25, abs=1e-9)
+
+
+def test_stitch_off_named_apoc_without_ticks_still_refuses(tmp_path: Path) -> None:
+    """Stitch-off named APOC stays 0ebc1494: refuse, do not flip apoc_enabled on."""
+    _write_two_session_bars_csv(tmp_path / "bars.csv")
+    spec = _lean_run_spec(bars_name="bars.csv", selected_levels=["APOC"])
+    spec["setup"]["min_confluences"] = 1
+    spec["setup"]["max_confluences"] = 1
+    with pytest.raises(ValueError, match="APOC requires ticks"):
+        run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+
+
+def test_stitch_off_unnamed_apoc_still_disables_column(tmp_path: Path) -> None:
+    """Stitch-off 15s-only cells still drop unused APOC (0ebc1494 disable)."""
+    _write_two_session_bars_csv(tmp_path / "bars.csv")
+    spec = _lean_run_spec(bars_name="bars.csv", selected_levels=["dOpen", "RTH_Open"])
+    spec["levels"]["apoc_enabled"] = True
+    state = run_experiment(spec, base_directory=tmp_path, cache_policy="off")
+    assert COL_APOC not in state["levels"].columns
+    assert "dOpen" in state["levels"].columns
+    assert LEVEL_ENGINE_VERSION == 11

@@ -189,7 +189,17 @@ def disable_unneeded_tick_families(
     levels: Mapping[str, Any] | None,
     named_tokens: Sequence[object],
 ) -> dict[str, Any]:
-    """Turn off unused tick families so 15s-only runs do not emit placeholders."""
+    """Turn off unused tick families so 15s-only runs do not emit placeholders.
+
+    ``named_tokens`` must be the level names (``selected_levels`` / anchor /
+    rules), not the setup mapping. A mapping iterates as keys and silently
+    disables APOC / rolling even when those tokens are named.
+    """
+    if isinstance(named_tokens, Mapping):
+        raise TypeError(
+            "disable_unneeded_tick_families expects named level tokens, "
+            "not a setup mapping; pass _named_level_tokens_from_setup(setup)"
+        )
     out = dict(levels or {})
     if not named_apoc_tokens(named_tokens):
         out["apoc_enabled"] = False
