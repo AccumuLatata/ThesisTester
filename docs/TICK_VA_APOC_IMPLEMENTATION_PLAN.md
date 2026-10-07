@@ -398,7 +398,7 @@ Why **residual**, not full 15s volume: the island `2025-11-07 18:00:53.022`–`1
 
 ### 6.5 Quality flag
 
-Study-level booleans (not a per-date redesign) on the study cell index row written by `execute_study_cell` (not trade-frame columns, not level prices). `data_quality.*` is written only on stitch-on cells. TS6b persists those keys on `results_index.csv` when any row carries them; stitch-off keeps the `0ebc1494` header:
+Study-level booleans (not a per-date redesign) on the study cell index row written by `execute_study_cell` (not trade-frame columns, not level prices). `data_quality.*` is written only on stitch-on cells. TS6b persists those keys on `results_index.csv` when any row carries them; stitch-off keeps the `0ebc1494` header. Soft-resume finalize overlays the same study-level flags from stitch prepare onto every index row so a pre-TS6b stitch-on index (keys dropped by `_write_results_index`) and a mixed old/new index still write the columns:
 
 ```text
 data_quality.x1_15s_residual_fill = true   # 2025-11-07 only

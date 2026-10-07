@@ -332,7 +332,7 @@ re-queue semantics are unchanged.
 | `study.spec.yaml` / `study.expansion.json` / `experiment.yaml` | From expand |
 | `study.ledger.json` | Per-cell status (`pending`/`running`/`ok`/`failed`) + confirm record + `error` |
 | `*.research.zip` | Per-ok-cell bundles |
-| `results_index.csv` | R18 metric columns + DA2 direction-split keys + DA5 random-baseline keys + `bundle_path` + study `status`. Stitch-on studies also append sorted `data_quality.*` columns after that fixed set when any cell row carries them; stitch-off keeps the `0ebc1494` header. |
+| `results_index.csv` | R18 metric columns + DA2 direction-split keys + DA5 random-baseline keys + `bundle_path` + study `status`. Stitch-on studies also append sorted `data_quality.*` columns after that fixed set when any cell row carries them (finalize overlays the study-level flags from stitch prepare so soft-resume of a pre-TS6b index still writes them); stitch-off keeps the `0ebc1494` header. |
 
 `study run` prints `Cell status: ok=… failed=…` and, when any cell failed, the
 unique `cells.*.error` strings (capped) so a shared ingest/config fault is

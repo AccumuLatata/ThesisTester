@@ -36,9 +36,12 @@ from thesistester.research_identity import normalize_levels_config
 from thesistester.study.execute import (
     STUDY_INDEX_KEYS,
     _STITCH_DATA_QUALITY_KEY,
+    _coerce_data_quality_flag,
+    _finalize_study_index,
     _index_row_from_existing_bundle,
     _load_existing_index_rows,
     _prepare_study_tick_stitch,
+    _stitch_quality_by_run_name,
     _write_results_index,
     execute_study_cell,
     run_study,
@@ -879,6 +882,61 @@ def _stitch_off_index_row(name: str) -> dict:
     return row
 
 
+def _stitch_quality_flags(
+    *,
+    residual: bool = False,
+    burst: bool = False,
+    shared_gap: bool = True,
+) -> dict[str, bool]:
+    return {
+        "data_quality.x1_15s_residual_fill": residual,
+        "data_quality.x1_burst_included": burst,
+        "data_quality.shared_gap_1649_1758": shared_gap,
+    }
+
+
+def _assert_quality_csv_fields(path: Path) -> None:
+    frame = pd.read_csv(path)
+    for column in _STITCH_QUALITY_COLUMNS:
+        assert column in frame.columns
+        for value in frame[column].tolist():
+            if pd.isna(value):
+                continue
+            if isinstance(value, str):
+                assert value.strip().lower() in {"true", "false"}
+            else:
+                assert type(value) is bool
+    for line in path.read_text(encoding="utf-8").splitlines()[1:]:
+        assert not line.lower().endswith(",nan")
+        assert ",nan," not in line.lower()
+        assert ",none," not in line.lower()
+
+
+def _write_stitch_on_study_yaml(tmp_path: Path) -> Path:
+    import yaml
+
+    rows = [
+        ("2026-01-15 10:00:00.000", 100.0, 1.0),
+        ("2026-01-15 10:00:01.000", 101.0, 1.0),
+    ]
+    tick = _write_tick_csv(tmp_path / "early.csv", rows)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(__import__("json").dumps(_plan_for(tick, rows)), encoding="utf-8")
+    _canonical_15s(tmp_path / "bars.csv", ["2026-01-15 10:00:00"])
+    spec = _minimal_study(
+        path="bars.csv",
+        instrument="MNQ",
+        format_profile="canonical",
+        source_timezone="UTC",
+        tick_stitch_plan="plan.json",
+        tick_stitch_x1_burst_included=False,
+    )
+    spec["study"]["levels"]["poc_windows"] = []
+    yaml_path = tmp_path / "study.yaml"
+    yaml_path.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
+    return yaml_path
+
+
 def test_write_results_index_stitch_off_header_and_bytes_unchanged(tmp_path: Path) -> None:
     """Stitch-off ``results_index.csv`` stays STUDY_INDEX_KEYS-only (0ebc1494)."""
     names = ["cell_a", "cell_b"]
@@ -921,6 +979,10 @@ def test_write_results_index_stitch_on_sorted_quality_empty_missing(
     missing = frame.loc[frame["run_name"] == "without_quality"].iloc[0]
     for column in _STITCH_QUALITY_COLUMNS:
         assert pd.isna(missing[column])
+    raw = path.read_text(encoding="utf-8")
+    _assert_quality_csv_fields(path)
+    without_line = [line for line in raw.splitlines() if line.startswith("without_quality,")][0]
+    assert without_line.endswith(",,,")
 
 
 def test_stitch_on_results_index_has_data_quality_burst_false(tmp_path: Path) -> None:
@@ -1056,3 +1118,203 @@ def test_rebuild_direction_index_keeps_data_quality_columns(tmp_path: Path) -> N
     assert list(rebuilt.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
     assert _csv_truthy(rebuilt.iloc[0]["data_quality.x1_burst_included"]) is False
     assert _csv_truthy(rebuilt.iloc[0]["data_quality.shared_gap_1649_1758"]) is True
+
+
+def test_coerce_data_quality_flag_bools_empty_and_pandas_traps() -> None:
+    assert _coerce_data_quality_flag(True) is True
+    assert _coerce_data_quality_flag(False) is False
+    assert _coerce_data_quality_flag(None) is None
+    assert _coerce_data_quality_flag(float("nan")) is None
+    assert _coerce_data_quality_flag(pd.NA) is None
+    assert _coerce_data_quality_flag("False") is False
+    assert _coerce_data_quality_flag("true") is True
+    assert _coerce_data_quality_flag(0) is False
+    assert _coerce_data_quality_flag(1) is True
+    assert _coerce_data_quality_flag(0.0) is False
+    assert _coerce_data_quality_flag(1.0) is True
+    assert _coerce_data_quality_flag(2) is None
+
+
+def test_write_results_index_mixed_roundtrip_keeps_bools_and_empty(tmp_path: Path) -> None:
+    names = [f"cell_{index:02d}" for index in range(12)]
+    quality = _stitch_quality_flags(residual=True, burst=False, shared_gap=True)
+    rows = {}
+    for index, name in enumerate(names):
+        row = _stitch_off_index_row(name)
+        if index % 3 == 0:
+            row.update(quality)
+        rows[name] = row
+    shuffled = {name: rows[name] for name in reversed(names)}
+    path = _write_results_index(tmp_path, shuffled, names)
+    frame = pd.read_csv(path)
+    assert list(frame["run_name"]) == names
+    assert list(frame.columns)[: len(STUDY_INDEX_KEYS)] == list(STUDY_INDEX_KEYS)
+    assert list(frame.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
+    for index, name in enumerate(names):
+        row = frame.loc[frame["run_name"] == name].iloc[0]
+        if index % 3 == 0:
+            assert _csv_truthy(row["data_quality.x1_burst_included"]) is False
+            assert _csv_truthy(row["data_quality.x1_15s_residual_fill"]) is True
+            assert _csv_truthy(row["data_quality.shared_gap_1649_1758"]) is True
+        else:
+            for column in _STITCH_QUALITY_COLUMNS:
+                assert pd.isna(row[column])
+    first_bytes = path.read_bytes()
+    _assert_quality_csv_fields(path)
+    loaded = _load_existing_index_rows(tmp_path)
+    assert list(loaded) == names or set(loaded) == set(names)
+    for index, name in enumerate(names):
+        if index % 3 == 0:
+            assert loaded[name]["data_quality.x1_burst_included"] is False
+        else:
+            assert loaded[name]["data_quality.x1_burst_included"] is None
+    rewritten = _write_results_index(tmp_path, loaded, names)
+    assert rewritten.read_bytes() == first_bytes
+
+
+def test_finalize_overlays_stitch_quality_on_old_index(tmp_path: Path) -> None:
+    from thesistester.study.ledger import empty_ledger, mark_cell
+
+    name = "cell_old"
+    row = {
+        **_stitch_off_index_row(name),
+        "trade_count": 3,
+        "expectancy_r": 0.1,
+        "profit_factor": 1.2,
+        "win_rate": 0.5,
+    }
+    ledger = empty_ledger(study_identity_hash="hash", run_names=[name])
+    ledger = mark_cell(
+        ledger,
+        name,
+        status="ok",
+        error=None,
+        bundle_path=f"{name}.research.zip",
+        finished=True,
+    )
+    quality = {name: _stitch_quality_flags(residual=False, burst=False, shared_gap=True)}
+    path = _finalize_study_index(
+        tmp_path,
+        ledger,
+        [name],
+        {name: row},
+        quality_by_name=quality,
+    )
+    frame = pd.read_csv(path)
+    assert list(frame.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
+    assert _csv_truthy(frame.iloc[0]["data_quality.x1_burst_included"]) is False
+    assert _csv_truthy(frame.iloc[0]["data_quality.shared_gap_1649_1758"]) is True
+    _assert_quality_csv_fields(path)
+
+
+def test_rehydrate_without_prior_row_then_finalize_restores_quality(tmp_path: Path) -> None:
+    from tests.study.test_study_execute import _fake_bundle_bytes
+    from thesistester.study.ledger import empty_ledger, mark_cell
+
+    name = "cell_missing_index"
+    bundle_name = f"{name}.research.zip"
+    (tmp_path / bundle_name).write_bytes(_fake_bundle_bytes(name))
+    row = _index_row_from_existing_bundle(
+        name,
+        output_dir=tmp_path,
+        bundle_rel=bundle_name,
+    )
+    assert not any(_is_quality_key(key) for key in row)
+    ledger = empty_ledger(study_identity_hash="hash", run_names=[name])
+    ledger = mark_cell(
+        ledger,
+        name,
+        status="ok",
+        error=None,
+        bundle_path=bundle_name,
+        finished=True,
+    )
+    path = _finalize_study_index(
+        tmp_path,
+        ledger,
+        [name],
+        {name: row},
+        quality_by_name={name: _stitch_quality_flags(burst=False)},
+    )
+    frame = pd.read_csv(path)
+    assert list(frame.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
+    assert _csv_truthy(frame.iloc[0]["data_quality.x1_burst_included"]) is False
+
+
+def _is_quality_key(key: object) -> bool:
+    return isinstance(key, str) and key.startswith("data_quality.")
+
+
+def test_soft_resume_old_stitch_on_index_restores_data_quality(tmp_path: Path) -> None:
+    from tests.study.test_study_execute import _fake_executor_factory
+
+    yaml_path = _write_stitch_on_study_yaml(tmp_path)
+    out = tmp_path / "out"
+    first = run_study(yaml_path, output_dir=out, cell_executor=_fake_executor_factory())
+    assert first["executed"] > 0
+    index_path = out / "results_index.csv"
+    first_frame = pd.read_csv(index_path)
+    assert list(first_frame.columns)[: len(STUDY_INDEX_KEYS)] == list(STUDY_INDEX_KEYS)
+    assert list(first_frame.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
+    assert all(
+        _csv_truthy(value) is False for value in first_frame["data_quality.x1_burst_included"]
+    )
+    first_frame.loc[:, list(STUDY_INDEX_KEYS)].to_csv(index_path, index=False)
+    assert not any(column.startswith("data_quality.") for column in pd.read_csv(index_path).columns)
+
+    second = run_study(yaml_path, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 0
+    restored = pd.read_csv(index_path)
+    assert list(restored.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
+    assert all(_csv_truthy(value) is False for value in restored["data_quality.x1_burst_included"])
+    _assert_quality_csv_fields(index_path)
+
+
+def test_readers_tolerate_data_quality_columns(tmp_path: Path) -> None:
+    from thesistester.study.observatory_join import _read_results_index
+    from thesistester.study.report import _load_results_index as report_load
+    from thesistester.study.rollup import _load_results_index as rollup_load
+
+    names = ["alpha", "beta"]
+    quality = _stitch_quality_flags(residual=True, burst=False, shared_gap=True)
+    rows = {
+        "alpha": {**_stitch_off_index_row("alpha"), **quality},
+        "beta": _stitch_off_index_row("beta"),
+    }
+    _write_results_index(tmp_path, rows, names)
+    report = report_load(tmp_path)
+    rollup = rollup_load(tmp_path)
+    observatory = _read_results_index(tmp_path / "results_index.csv")
+    for frame in (report, rollup, observatory):
+        assert "run_name" in frame.columns
+        assert list(frame.columns)[len(STUDY_INDEX_KEYS) :] == list(_STITCH_QUALITY_COLUMNS)
+        assert set(frame["run_name"]) == set(names)
+
+
+def test_stitch_quality_by_run_name_reads_expansion_flags(tmp_path: Path) -> None:
+    rows = [
+        ("2026-01-15 10:00:00.000", 100.0, 1.0),
+        ("2026-01-15 10:00:01.000", 101.0, 1.0),
+    ]
+    tick = _write_tick_csv(tmp_path / "early.csv", rows)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(__import__("json").dumps(_plan_for(tick, rows)), encoding="utf-8")
+    _canonical_15s(tmp_path / "bars.csv", ["2026-01-15 10:00:00"])
+    spec = _minimal_study(
+        path=str(tmp_path / "bars.csv"),
+        instrument="MNQ",
+        format_profile="canonical",
+        source_timezone="UTC",
+        tick_stitch_plan=str(plan_path),
+        tick_stitch_x1_burst_included=False,
+    )
+    spec["study"]["levels"]["poc_windows"] = []
+    expansion = expand_study(spec, source_spec_parent=tmp_path)
+    _prepare_study_tick_stitch(
+        spec, expansion, output_dir=tmp_path / "out", base_directory=tmp_path
+    )
+    by_name = _stitch_quality_by_run_name(expansion)
+    assert by_name
+    for flags in by_name.values():
+        assert flags["data_quality.x1_burst_included"] is False
+        assert set(flags) == set(_STITCH_QUALITY_COLUMNS)

@@ -558,6 +558,9 @@ def rebuild_direction_index(study_dir: str | Path) -> Path:
     for key, values in filled.items():
         frame[key] = values
     extras = [column for column in existing_columns if column not in STUDY_INDEX_KEYS]
+    for column in extras:
+        if _is_data_quality_index_key(column):
+            frame[column] = [_coerce_data_quality_flag(value) for value in frame[column].tolist()]
     ordered = [column for column in STUDY_INDEX_KEYS if column in frame.columns] + extras
     frame = frame.loc[:, ordered]
     tmp = path.with_name(".results_index.csv.tmp")
@@ -637,7 +640,7 @@ def _index_row_from_existing_bundle(
                 row[key] = value
         for key, value in prior_row.items():
             if _is_data_quality_index_key(key):
-                row[key] = value
+                row[key] = _coerce_data_quality_flag(value)
     row["status"] = "ok"
     row["bundle_path"] = bundle_rel
     bundle_path = output_dir / bundle_rel
@@ -982,6 +985,54 @@ def _is_data_quality_index_key(key: object) -> bool:
     return isinstance(key, str) and key.startswith("data_quality.")
 
 
+def _coerce_data_quality_flag(value: Any) -> bool | None:
+    """Normalize a ``data_quality.*`` cell to ``True`` / ``False`` / ``None``.
+
+    Soft-resume re-reads the CSV. Empty fields become NaN; mixed columns can
+    become 1.0/0.0. Persist only real booleans so rewrite bytes stay
+    ``True`` / ``False`` / empty (not ``1.0`` / ``nan``).
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    try:
+        if value is pd.NA or bool(pd.isna(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"true", "1"}:
+            return True
+        if text in {"false", "0"}:
+            return False
+        return None
+    if isinstance(value, numbers.Integral) and not isinstance(value, bool):
+        if value in (0, 1):
+            return bool(int(value))
+        return None
+    if isinstance(value, numbers.Real):
+        number = float(value)
+        if math.isnan(number) or math.isinf(number):
+            return None
+        if number == 1.0:
+            return True
+        if number == 0.0:
+            return False
+        return None
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            inner = item()
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            return None
+        if inner is value:
+            return None
+        return _coerce_data_quality_flag(inner)
+    return None
+
+
 def _data_quality_index_keys(rows: list[Mapping[str, Any]]) -> tuple[str, ...]:
     """Sorted ``data_quality.*`` keys present on at least one index row."""
     found: set[str] = set()
@@ -990,6 +1041,46 @@ def _data_quality_index_keys(rows: list[Mapping[str, Any]]) -> tuple[str, ...]:
             if _is_data_quality_index_key(key):
                 found.add(key)
     return tuple(sorted(found))
+
+
+def _normalize_data_quality_on_row(row: dict[str, Any]) -> dict[str, Any]:
+    for key in list(row):
+        if _is_data_quality_index_key(key):
+            row[key] = _coerce_data_quality_flag(row[key])
+    return row
+
+
+def _stitch_quality_by_run_name(expansion: ExpansionResult) -> dict[str, dict[str, bool]]:
+    """Study-level ``data_quality.*`` flags from stitch prepare, keyed by run."""
+    out: dict[str, dict[str, bool]] = {}
+    for run in expansion.experiment.get("runs") or []:
+        if not isinstance(run, Mapping):
+            continue
+        raw = run.get(_STITCH_DATA_QUALITY_KEY)
+        if not isinstance(raw, Mapping):
+            continue
+        flags: dict[str, bool] = {}
+        for key, value in raw.items():
+            if not _is_data_quality_index_key(key):
+                continue
+            coerced = _coerce_data_quality_flag(value)
+            if coerced is not None:
+                flags[key] = coerced
+        name = run.get("name")
+        if flags and isinstance(name, str) and name:
+            out[name] = flags
+    return out
+
+
+def _apply_stitch_quality_to_index(
+    index_by_name: dict[str, dict[str, Any]],
+    quality_by_name: Mapping[str, Mapping[str, bool]],
+) -> None:
+    for name, flags in quality_by_name.items():
+        row = index_by_name.get(name)
+        if row is None:
+            continue
+        row.update(flags)
 
 
 def _write_results_index(
@@ -1002,12 +1093,13 @@ def _write_results_index(
     Fixed ``STUDY_INDEX_KEYS`` always. ``data_quality.*`` columns are appended
     only when at least one row carries such a key (stitch-on). Order is
     deterministic (sorted). Rows missing a key get an empty CSV field.
-    Stitch-off bytes stay ``STUDY_INDEX_KEYS``-only (``0ebc1494``).
+    Booleans serialize as ``True``/``False``. Stitch-off bytes stay
+    ``STUDY_INDEX_KEYS``-only (``0ebc1494``).
     """
     ordered: list[dict[str, Any]] = []
     for name in run_names:
         if name in rows_by_name:
-            ordered.append(dict(rows_by_name[name]))
+            ordered.append(_normalize_data_quality_on_row(dict(rows_by_name[name])))
         else:
             ordered.append({**_failed_index_row(name), "status": "pending", "bundle_path": None})
     frame = pd.DataFrame(ordered)
@@ -1038,7 +1130,7 @@ def _load_existing_index_rows(output_dir: Path) -> dict[str, dict[str, Any]]:
     for record in frame.to_dict(orient="records"):
         name = record.get("run_name")
         if isinstance(name, str):
-            rows[name] = dict(record)
+            rows[name] = _normalize_data_quality_on_row(dict(record))
     return rows
 
 
@@ -1500,10 +1592,13 @@ def _finalize_study_index(
     ledger: Mapping[str, Any],
     run_names: list[str],
     index_by_name: dict[str, dict[str, Any]],
+    quality_by_name: Mapping[str, Mapping[str, bool]] | None = None,
 ) -> Path:
     cells = ledger.get("cells") or {}
     for name in run_names:
         _sync_study_index_row(name, cells.get(name) or {}, index_by_name, out)
+    if quality_by_name:
+        _apply_stitch_quality_to_index(index_by_name, quality_by_name)
     return _write_results_index(out, index_by_name, run_names)
 
 
@@ -1634,9 +1729,17 @@ def run_study(
                 error="WorkerInterrupted: cell left running after study loop exit",
             )
 
-        # Final ordered index (includes soft-resumed ok rows).
+        # Final ordered index (includes soft-resumed ok rows). Overlay
+        # study-level stitch flags so a pre-TS6b index (keys dropped) and
+        # rows rehydrated without prior_row still persist data_quality.*.
         ledger = load_ledger(out) or ledger
-        index_path = _finalize_study_index(out, ledger, run_names, index_by_name)
+        index_path = _finalize_study_index(
+            out,
+            ledger,
+            run_names,
+            index_by_name,
+            quality_by_name=_stitch_quality_by_run_name(expansion),
+        )
         return _study_run_result(
             out=out,
             expansion=expansion,
